@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContextOptions, CDPSession, Page } from 'playwright';
-import type { GameEvents, GameState } from '../src/types';
+import type { DisplayInfo, GameEvents, GameState } from '../src/types';
 import type { LoggedEvent } from '../src/core/testhook';
 
 export interface ViewportSpec {
@@ -19,6 +19,11 @@ export const VIEWPORTS: Record<string, ViewportSpec> = {
     name: 'desktop',
     touch: false,
     options: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+  },
+  laptop: {
+    name: 'laptop',
+    touch: false,
+    options: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   },
   'phone-landscape': {
     name: 'phone-landscape',
@@ -63,8 +68,18 @@ export interface GameDriver {
   resumeGame(): Promise<void>;
   setZone(index: number): Promise<void>;
   setTimeScale(scale: number): Promise<void>;
+  setHealth(health: number): Promise<void>;
+  setScore(score: number): Promise<void>;
+  /** Difficulty override; null hands the speed back to gameplay. */
+  setSpeed(speed: number | null): Promise<void>;
+  /** Forces game over while playing. */
+  endRun(): Promise<void>;
   events(name?: keyof GameEvents): Promise<LoggedEvent[]>;
+  /** Events with `frame >= frame`. */
+  eventsSince(frame: number, name?: keyof GameEvents): Promise<LoggedEvent[]>;
   clearEvents(): Promise<void>;
+  /** Display info incl. the current adaptive view width. */
+  display(): Promise<DisplayInfo>;
   /** Presses for `holdFrames` ticks while frozen and returns the jump's apex height in view pixels. */
   jumpApex(holdFrames: number): Promise<number>;
 }
@@ -77,7 +92,7 @@ export interface PlaytestContext {
   game: GameDriver;
   /** Full-page screenshot; returns the file path. */
   screenshot(label: string): Promise<string>;
-  /** The 320x180 game buffer upscaled by `scale` (nearest neighbour); returns the file path. */
+  /** The game buffer (current view width x 180) upscaled by `scale` (nearest neighbour); returns the file path. */
   canvasShot(label: string, scale?: number): Promise<string>;
   /** Appends the current GameState (plus `extra`) to the run's state log. */
   log(label: string, extra?: unknown): Promise<void>;
@@ -85,6 +100,11 @@ export interface PlaytestContext {
   check(name: string, ok: boolean, detail?: unknown): void;
   /** Real input: Space on desktop, a touch at the screen centre on touch viewports. */
   realPress(holdMs?: number): Promise<void>;
+  /**
+   * Real pointer press at a view-pixel position (e.g. a hotspot): touch on touch
+   * viewports, mouse otherwise. Goes through the real screen->view mapping.
+   */
+  realTapView(x: number, y: number, holdMs?: number): Promise<void>;
   wait(ms: number): Promise<void>;
 }
 
@@ -108,8 +128,15 @@ export function createGameDriver(page: Page): GameDriver {
     resumeGame: () => call(() => window.__game!.resumeGame()),
     setZone: (i) => call(([v]) => window.__game!.setZone(v as number), i),
     setTimeScale: (s) => call(([v]) => window.__game!.setTimeScale(v as number), s),
+    setHealth: (h) => call(([v]) => window.__game!.setHealth(v as number), h),
+    setScore: (s) => call(([v]) => window.__game!.setScore(v as number), s),
+    setSpeed: (s) => call(([v]) => window.__game!.setSpeed(v as number | null), s),
+    endRun: () => call(() => window.__game!.endRun()),
     events: (name) => call(([n]) => window.__game!.events(n as keyof GameEvents | undefined), name),
+    eventsSince: (frame, name) =>
+      call(([f, n]) => window.__game!.eventsSince(f as number, n as keyof GameEvents | undefined), frame, name),
     clearEvents: () => call(() => window.__game!.clearEvents()),
+    display: () => call(() => window.__game!.display()),
     jumpApex: (holdFrames) =>
       call(([h]) => {
         const g = window.__game!;
@@ -132,6 +159,18 @@ export async function captureCanvas(page: Page, file: string, scale = 4): Promis
   const dataUrl = await page.evaluate((s) => window.__game!.capture(s), scale);
   await writeFile(file, Buffer.from(dataUrl.split(',')[1]!, 'base64'));
   return file;
+}
+
+/** Client (CSS px) position of the centre of view pixel (x, y), from the canvas's on-page box. */
+export async function viewToClient(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    ([vx, vy]) => {
+      const box = document.querySelector<HTMLCanvasElement>('#game')!.getBoundingClientRect();
+      const perPixel = box.height / window.__game!.display().viewHeight;
+      return { x: box.left + (vx! + 0.5) * perPixel, y: box.top + (vy! + 0.5) * perPixel };
+    },
+    [x, y],
+  );
 }
 
 /** Holds a finger on (x, y) for `ms` via CDP, so touch hold (not only tap) is testable. */

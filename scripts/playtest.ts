@@ -25,6 +25,7 @@ import {
   type Scenario,
   slug,
   touchHold,
+  viewToClient,
   VIEWPORTS,
 } from './playtest-lib';
 
@@ -112,6 +113,16 @@ async function main(): Promise<void> {
             await page.keyboard.down('Space');
             await page.waitForTimeout(holdMs);
             await page.keyboard.up('Space');
+          }
+        },
+        realTapView: async (x, y, holdMs = 60) => {
+          const p = await viewToClient(page, x, y);
+          if (viewport.touch) await touchHold(cdp, p.x, p.y, holdMs);
+          else {
+            await page.mouse.move(p.x, p.y);
+            await page.mouse.down();
+            await page.waitForTimeout(holdMs);
+            await page.mouse.up();
           }
         },
         wait: (ms) => page.waitForTimeout(ms),

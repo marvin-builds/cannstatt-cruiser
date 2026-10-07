@@ -19,6 +19,8 @@ export function startApp(systems: System[]): Game {
 
   const updateDisplay = () => {
     renderer.resize();
+    game.display.viewWidth = renderer.layout.viewWidth;
+    game.display.viewHeight = renderer.layout.viewHeight;
     game.display.portrait = window.innerHeight > window.innerWidth;
     game.display.touch = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
     game.display.fullscreen = isFullscreen();
@@ -26,6 +28,7 @@ export function startApp(systems: System[]): Game {
   updateDisplay();
   window.addEventListener('resize', updateDisplay);
   window.visualViewport?.addEventListener('resize', updateDisplay);
+  window.addEventListener('orientationchange', updateDisplay);
   document.addEventListener('fullscreenchange', updateDisplay);
 
   bindInput(game, () => renderer.layout);

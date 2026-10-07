@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GameEvents, RenderLayer, System } from '../types';
-import { BASE_SPEED, GAMEOVER_INPUT_DELAY, MAX_HEALTH, TICK_DT } from './config';
+import { BASE_SPEED, GAMEOVER_INPUT_DELAY, MAX_HEALTH, TICK_DT, VIEW_H, VIEW_W } from './config';
 import { Game } from './game';
 
 function tapAction(game: Game): void {
@@ -163,5 +163,42 @@ describe('Game', () => {
     expect(fn).not.toHaveBeenCalled();
     game.tick();
     expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it('reports the design view size until the app sets the adaptive width', () => {
+    const game = new Game({ systems: [] });
+    expect(game.ctx.display.viewWidth).toBe(VIEW_W);
+    expect(game.ctx.display.viewHeight).toBe(VIEW_H);
+    game.display.viewWidth = 422;
+    expect(game.ctx.display.viewWidth).toBe(422);
+  });
+
+  it('pins state.speed to the speed override around the system updates', () => {
+    const seen: number[] = [];
+    const difficulty: System = {
+      name: 'difficulty',
+      update: (ctx) => {
+        seen.push(ctx.state.speed);
+        if (ctx.speedOverride === null) ctx.state.speed = 100;
+      },
+    };
+    const game = new Game({ systems: [difficulty] });
+    game.commands.startRun();
+    game.setSpeedOverride(200);
+    expect(game.ctx.speedOverride).toBe(200);
+    ticks(game, 60);
+    expect(seen.every((v) => v === 200)).toBe(true);
+    expect(game.state.distance).toBeCloseTo(200, 3);
+    game.setSpeedOverride(null);
+    game.tick();
+    expect(game.ctx.speedOverride).toBeNull();
+    expect(game.state.speed).toBe(100);
+  });
+
+  it('keeps the speed override across a new run', () => {
+    const game = new Game({ systems: [] });
+    game.setSpeedOverride(150);
+    game.commands.startRun();
+    expect(game.state.speed).toBe(150);
   });
 });

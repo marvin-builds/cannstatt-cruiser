@@ -1,8 +1,9 @@
 # Architecture
 
 Vite + TypeScript (strict) + Canvas 2D, with no game engine. Everything is drawn
-into a 320x180 offscreen buffer and then presented with integer
-nearest-neighbour scaling.
+into an offscreen buffer that is 180 view pixels high and 320-427 wide
+(adaptive, see [View size](#view-size-adaptive-width)), and then presented with
+integer nearest-neighbour scaling.
 
 ## Module map
 
@@ -11,15 +12,15 @@ index.html              canvas#game, viewport/touch CSS, PWA <link>s
 src/main.ts             composition root: lists the systems in update order (do not edit from slices)
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W/H, GROUND_Y, TICK_DT, PLAYER_X, speeds, jump physics defaults, health
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds, jump physics defaults, health
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots
   state.ts              createInitialState(), createPlayer(), resetRun()
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
   loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
   input.ts              DOM binding: keys, pointer (mouse+touch), blocks scroll/zoom/menus
-  renderer.ts           offscreen buffer, integer scaling, letterbox colour, capture()
-  scaling.ts            computeLayout(), screenToView() (pure math)
+  renderer.ts           offscreen buffer (resized to the view width), integer scaling, letterbox colour, capture()
+  scaling.ts            computeLayout() (scale + adaptive view width), screenToView() (pure math)
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
   sprite.ts             Sprite / sprite(): palette + string art -> cached canvases, frames, flip
   font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation), measureText()
@@ -95,7 +96,8 @@ interface System {
 | `bus` | typed event bus (`GameEvents`) |
 | `rng` | seeded `Rng`, re-seeded with `state.seed` at every run start. Use it for all gameplay randomness (never `Math.random`), so test runs replay deterministically. |
 | `input` | this tick's `InputFrame`: `action {pressed, held, released, holdTime}`, `pausePressed`, `mutePressed` |
-| `display` | `{portrait, touch, fullscreen}` |
+| `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
+| `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
 | `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor` |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. |
 | `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
@@ -105,7 +107,7 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
-| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `player.invulnerableTimer` | gameplay |
+| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `player.invulnerableTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set) |
 | `player.*` (position, velocity, grounded, grinding, state, hitbox) | player (gameplay may set `grinding`/`state = 'crash'` through events it emits; see below) |
 | `zoneIndex` | world (and `commands.setZone`) |
 
@@ -141,6 +143,42 @@ rect from `state.entities`).
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
 
+## View size (adaptive width)
+
+The view is always `VIEW_H` = 180 view pixels high. Its width adapts to the
+screen so wide phones are filled instead of letterboxed:
+
+- The scale is the largest integer device-pixel factor at which the minimum
+  320x180 view fits. The width then becomes `floor(screenWidthDevicePx / scale)`,
+  clamped to `VIEW_W` = 320 .. `VIEW_MAX_W` = 427 (about 21:9), so spare width
+  is used whether the height or the width limits the scale. Leftover margins
+  (under one view pixel, or beyond 21:9) stay letterboxed; the spare height of
+  screens narrower than 16:9 stays letterboxed too. Examples: 1280x720 @1 ->
+  scale 4, width 320; 1440x900 @1 -> scale 4, width 360; 1512x982 @2 -> scale
+  9, width 336; 844x390 @3 (2532x1170 device px) -> scale 6, width 422;
+  3440x1440 -> scale 8, width 427; portrait 390x844 @3 -> scale 3, width 390.
+  Only a window smaller than 320x180 device px gets a fractional scale at 320.
+- Core recomputes it on `resize`, `visualViewport` resize, `orientationchange`
+  and `fullscreenchange`, resizes the buffer and updates `display.viewWidth`.
+  There is no event: read `ctx.display.viewWidth` / `r.display.viewWidth`
+  every tick or frame and never cache it.
+
+Rules for every slice:
+
+- **Never assume 320 wide.** Fill backgrounds, ground and overlays across
+  `display.viewWidth`; tile parallax layers until `x >= viewWidth`.
+- **Right-anchored UI** (pause/mute/fullscreen buttons, right-aligned HUD) is
+  placed at `display.viewWidth - margin - w`, for both drawing and the hotspot
+  rect (compute the rect inside `rect()`, not once at init). Centred text uses
+  `Math.floor(viewWidth / 2)`. Content that must always be visible fits in the
+  320 px minimum.
+- **Spawn entities off the right edge** at `x >= display.viewWidth` (plus the
+  entity width as margin), and despawn once `x + w < 0`. Because the visible
+  width differs per device, spawning depends on it; keep spawn *timing* based on
+  distance so difficulty is the same on every screen.
+- Hotspots and pointer input use view pixels; core maps client coordinates
+  with `screenToView` for any width.
+
 ## Modes
 
 ```
@@ -151,7 +189,8 @@ title --start--> playing --pause--> paused --resume--> playing
 
 Invalid commands are ignored. Restart taps on the game-over screen are ignored
 for `GAMEOVER_INPUT_DELAY` (0.75 s). P/Escape pauses and resumes, and on the
-game-over screen it goes back to the title. Losing window focus pauses the game.
+game-over screen it goes back to the title. Losing window focus (`blur`) or
+hiding the page (`visibilitychange`) releases the action and pauses a running game.
 
 ## Drawing sprites
 

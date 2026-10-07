@@ -2,20 +2,28 @@
  * PLACEHOLDER owned by the ui slice: German title, HUD, pause and game-over
  * text with the pixel font, plus a pause hotspot. Replace freely, keeping the factory name.
  */
-import { VIEW_H, VIEW_W } from '../core/config';
 import { drawText } from '../core/font';
-import type { Rect, RenderContext, System } from '../types';
+import type { DisplayInfo, Rect, RenderContext, System } from '../types';
 
-const PAUSE_BUTTON: Rect = { x: VIEW_W - 18, y: 4, w: 14, h: 14 };
 const SHADOW = '#1b1f2e';
 
+/** Anchored to the right edge of the (adaptive-width) view. */
+function pauseButton(display: DisplayInfo): Rect {
+  return { x: display.viewWidth - 18, y: 4, w: 14, h: 14 };
+}
+
+function fullView(display: DisplayInfo): Rect {
+  return { x: 0, y: 0, w: display.viewWidth, h: display.viewHeight };
+}
+
 function centred(r: RenderContext, text: string, y: number, scale = 1, color = '#ffffff'): void {
-  drawText(r.g, text, VIEW_W / 2, y, { align: 'center', scale, color, shadow: SHADOW });
+  drawText(r.g, text, Math.floor(r.display.viewWidth / 2), y, { align: 'center', scale, color, shadow: SHADOW });
 }
 
 function dim(r: RenderContext): void {
+  const v = fullView(r.display);
   r.g.fillStyle = 'rgba(16, 18, 30, 0.6)';
-  r.g.fillRect(0, 0, VIEW_W, VIEW_H);
+  r.g.fillRect(v.x, v.y, v.w, v.h);
 }
 
 export function createUiSystem(): System {
@@ -24,11 +32,11 @@ export function createUiSystem(): System {
 
     init(ctx) {
       ctx.addHotspot({
-        rect: () => (ctx.state.mode === 'playing' ? PAUSE_BUTTON : null),
+        rect: () => (ctx.state.mode === 'playing' ? pauseButton(ctx.display) : null),
         onPress: () => ctx.commands.pause(),
       });
       ctx.addHotspot({
-        rect: () => (ctx.state.mode === 'paused' ? { x: 0, y: 0, w: VIEW_W, h: VIEW_H } : null),
+        rect: () => (ctx.state.mode === 'paused' ? fullView(ctx.display) : null),
         onPress: () => ctx.commands.resume(),
       });
     },
@@ -50,11 +58,12 @@ export function createUiSystem(): System {
               g.fillStyle = i < state.health ? '#e84855' : '#4a4a55';
               g.fillRect(4 + i * 7, 26, 6, 4);
             }
+            const button = pauseButton(display);
             g.fillStyle = 'rgba(0,0,0,0.35)';
-            g.fillRect(PAUSE_BUTTON.x, PAUSE_BUTTON.y, PAUSE_BUTTON.w, PAUSE_BUTTON.h);
+            g.fillRect(button.x, button.y, button.w, button.h);
             g.fillStyle = '#ffffff';
-            g.fillRect(PAUSE_BUTTON.x + 4, PAUSE_BUTTON.y + 3, 2, 8);
-            g.fillRect(PAUSE_BUTTON.x + 8, PAUSE_BUTTON.y + 3, 2, 8);
+            g.fillRect(button.x + 4, button.y + 3, 2, 8);
+            g.fillRect(button.x + 8, button.y + 3, 2, 8);
             break;
           }
           case 'paused':
@@ -71,8 +80,9 @@ export function createUiSystem(): System {
         }
         if (display.portrait) {
           g.fillStyle = 'rgba(16, 18, 30, 0.85)';
-          g.fillRect(0, VIEW_H / 2 - 14, VIEW_W, 28);
-          centred(r, 'Bitte Gerät drehen', VIEW_H / 2 - 4, 1, '#ffd23f');
+          const mid = Math.floor(display.viewHeight / 2);
+          g.fillRect(0, mid - 14, display.viewWidth, 28);
+          centred(r, 'Bitte Gerät drehen', mid - 4, 1, '#ffd23f');
         }
       },
     },

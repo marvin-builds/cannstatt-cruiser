@@ -134,6 +134,13 @@ export interface DisplayInfo {
   /** The device has a touch screen (show touch hints instead of key hints). */
   readonly touch: boolean;
   readonly fullscreen: boolean;
+  /**
+   * Current view width in view pixels (VIEW_W..VIEW_MAX_W). Adapts to the
+   * screen aspect and changes live on resize / rotation: never assume 320.
+   */
+  readonly viewWidth: number;
+  /** View height in view pixels (always VIEW_H). */
+  readonly viewHeight: number;
 }
 
 /** Things systems may ask core to do. All are safe to call in any mode. */
@@ -159,6 +166,12 @@ export interface GameContext {
   readonly input: InputFrame;
   readonly display: DisplayInfo;
   readonly commands: GameCommands;
+  /**
+   * Speed forced by the test hook, or null. While set, core pins
+   * `state.speed` to it before and after the updates; difficulty code must
+   * leave `state.speed` alone.
+   */
+  readonly speedOverride: number | null;
   /** Registers a pointer hotspot; returns an unregister function. */
   addHotspot(hotspot: Hotspot): () => void;
   /**
@@ -173,7 +186,7 @@ export const RENDER_LAYERS = ['background', 'world', 'entities', 'player', 'fx',
 export type RenderLayer = (typeof RENDER_LAYERS)[number];
 
 export interface RenderContext {
-  /** The 320x180 offscreen buffer. Draw at integer coordinates. */
+  /** The offscreen buffer, `display.viewWidth` x `display.viewHeight`. Draw at integer coordinates. */
   readonly g: CanvasRenderingContext2D;
   readonly state: GameState;
   /** Fraction (0..1) of a tick since the last update, for optional interpolation. */

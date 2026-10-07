@@ -45,9 +45,41 @@ only available with `?test=1` in the URL.
 | `pauseGame()` / `resumeGame()` | in-game pause screen (`mode` paused / playing) |
 | `setZone(i)` | sets `state.zoneIndex` and emits `zoneChanged` |
 | `setTimeScale(x)` | real-time speed multiplier (e.g. 4 = fast forward) |
+| `setHealth(n)` | sets `state.health`; at `<= 0` core ends a running run on the next tick |
+| `setScore(n)` | sets `state.score` (gameplay keeps adding to it) |
+| `setSpeed(x)` / `setSpeed(null)` | difficulty override: pins `state.speed` to `x` (also across new runs) until cleared; gameplay sees it as `ctx.speedOverride` |
+| `endRun()` | forces game over now, emits `gameOver`; throws unless the mode is `playing` (call `resumeGame()` first when paused) |
 | `events(name?)` | `[{frame, name, payload}]` since load / `clearEvents()` |
+| `eventsSince(frame, name?)` | logged events with `frame >= frame`, oldest first |
 | `clearEvents()` | empties the event log |
-| `capture(scale = 4)` | PNG data URL of the 320x180 buffer, upscaled nearest-neighbour |
+| `display()` | copy of `DisplayInfo`: `portrait`, `touch`, `fullscreen`, `viewWidth`, `viewHeight` |
+| `capture(scale = 4)` | PNG data URL of the view buffer (current view width x 180), upscaled nearest-neighbour |
+
+Reading events since a point in time: note the frame first, then act. Events
+emitted by hook calls between ticks (e.g. `startRun`) carry the current frame,
+so they are included.
+
+```js
+const g = window.__game;
+const since = g.state().frame;
+g.startRun(); g.step(120);
+g.eventsSince(since);           // runStarted, jump, ...
+g.eventsSince(since, 'crash');  // only crashes
+```
+
+Testing game over and the HUD without waiting for gameplay:
+
+```js
+g.setScore(4200); g.setHealth(1); g.step(1);   // HUD with one heart
+g.setSpeed(220);                                // max difficulty speed
+g.endRun();                                     // game-over screen now
+```
+
+**Auto-pause:** losing window focus (`blur`) or hiding the tab
+(`visibilitychange`) releases the action and switches a running game to
+`paused`. Playwright focus changes, opening DevTools or switching tabs can
+therefore pause a run; call `resumeGame()` (or check `state().mode`) before
+asserting on gameplay.
 
 Example in the DevTools console, checking that a tap jumps lower than a hold:
 
@@ -69,19 +101,24 @@ npm run playtest -- --url http://localhost:5173/   # reuse a running `npm run de
 npm run playtest -- --headed
 ```
 
-- Viewports: `desktop` 1280x720 @1x; `phone-landscape` 844x390 @3x with touch
+- Viewports: `desktop` 1280x720 @1x; `laptop` 1440x900 @1x (16:10, width-limited
+  scale, view 360 wide); `phone-landscape` 844x390 @3x with touch
   and mobile emulation; `phone-portrait` 390x844 @3x with touch and mobile.
 - Output goes to `playtest-output/<name>/<viewport>/NN-label.png` (full page)
-  and `NN-label-canvas.png` (the 320x180 buffer at 4x), plus
+  and `NN-label-canvas.png` (the view buffer, current width x 180, at 4x), plus
   `playtest-output/<name>/state-log.json` with `checks` and the state `log`.
 - The default scenario (`scripts/scenarios/default.ts`) covers:
   - the title screen;
   - a seeded run;
   - tap vs hold apex heights, with a check that hold > tap;
   - real Space / touch input, checking that it jumps and does not scroll or zoom;
-  - no scrollbars and an integer device-pixel scale;
+  - no scrollbars, an integer device-pixel scale and a view width that fills
+    landscape screens (phone-landscape: scale 6, width 422);
   - running screenshots;
-  - the pause screen and zone 2.
+  - a real tap on the right-anchored pause button (screen -> view mapping);
+  - the pause screen and zone 2;
+  - a live rotation (viewport width and height swapped) and back, re-checking
+    the scale and view width without a reload.
 - Uncaught page errors and console errors fail the run (exit code 1). Missing
   resources (404) are only noted.
 - Playwright is pinned to 1.63.0 so that it matches the cached
@@ -103,11 +140,13 @@ export default async function (t: PlaytestContext) {
   await t.game.startRun();
   await t.game.step(120);
   await t.log('after 2s', { note: 'anything JSON' });
-  await t.canvasShot('two seconds');            // 320x180 x4
+  await t.canvasShot('two seconds');            // view buffer x4
   const apex = await t.game.jumpApex(40);       // hold 40 ticks, returns height in px
   t.check('high jump', apex > 40, { apex });
   await t.game.resume();
   await t.realPress(200);                       // real Space key / CDP touch hold
+  const { viewWidth } = await t.game.display();
+  await t.realTapView(viewWidth - 11, 11);      // real tap/click at view pixel (hotspots)
   await t.screenshot('after real input');       // full page
 }
 ```
@@ -115,7 +154,10 @@ export default async function (t: PlaytestContext) {
 The context provides:
 - `page` (the Playwright Page) and `viewport`;
 - `game`, a driver for the test hook;
-- `screenshot`, `canvasShot`, `log`, `check`, `realPress` and `wait`.
+- `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
+
+The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,
+`endRun`, `eventsSince` and `display`.
 
 `captureCanvas(page, file, scale)` from `playtest-lib.ts` saves the upscaled
 buffer from any Playwright script.

@@ -27,7 +27,9 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 - **No commits by agents:** do not run `git add/commit/stash/reset` or anything that rewrites
   history; the orchestrator commits. Work is linear on `main`.
 - Use `ctx.rng` for gameplay randomness (deterministic tests), never `Math.random`.
-- Draw at integer coordinates into the 320x180 buffer. All art comes from palette sprite strings
+- Draw at integer coordinates into the view buffer: 180 high, **width adaptive (320-427)**. Never
+  assume 320: use `display.viewWidth` for full-width fills, right-anchored UI and spawning off the
+  right edge (see "View size" in docs/ARCHITECTURE.md). All art comes from palette sprite strings
   (`core/sprite.ts`), with no image files. Text uses `core/font.ts`.
 - Keep modules small and typed. Leave no dead code. Before finishing, `npm test` and
   `npm run build` must pass.

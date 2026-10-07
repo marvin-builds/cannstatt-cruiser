@@ -10,7 +10,7 @@ import type {
 } from '../types';
 import { RENDER_LAYERS } from '../types';
 import { ActionButton, IDLE_ACTION } from './action';
-import { GAMEOVER_INPUT_DELAY, TICK_DT } from './config';
+import { GAMEOVER_INPUT_DELAY, TICK_DT, VIEW_H, VIEW_W } from './config';
 import { EventBus } from './events';
 import { type ModeCommand, nextMode } from './modes';
 import { Rng } from './rng';
@@ -43,6 +43,8 @@ export class Game {
     portrait: false,
     touch: false,
     fullscreen: false,
+    viewWidth: VIEW_W,
+    viewHeight: VIEW_H,
   };
   readonly commands: GameCommands;
   readonly ctx: GameContext;
@@ -53,6 +55,7 @@ export class Game {
   private readonly scheduled: { at: number; fn: () => void }[] = [];
   private input: InputFrame = IDLE_INPUT;
   private seedOverride: number | null = null;
+  private speedOverride: number | null = null;
 
   constructor(options: GameOptions) {
     this.systems = options.systems;
@@ -82,6 +85,9 @@ export class Game {
       },
       display: this.display,
       commands: this.commands,
+      get speedOverride() {
+        return game.speedOverride;
+      },
       addHotspot: (h) => {
         this.hotspots.add(h);
         return () => this.hotspots.delete(h);
@@ -98,6 +104,12 @@ export class Game {
   seed(n: number): void {
     this.seedOverride = n >>> 0;
     this.rng.seed(this.seedOverride);
+  }
+
+  /** Forces `state.speed` (test hook difficulty override); null hands it back to gameplay. */
+  setSpeedOverride(speed: number | null): void {
+    this.speedOverride = speed;
+    this.applySpeedOverride();
   }
 
   /** One fixed update of TICK_DT seconds. */
@@ -118,7 +130,9 @@ export class Game {
     }
     if (this.input.mutePressed) this.setMuted(!s.muted);
 
+    this.applySpeedOverride();
     for (const sys of this.systems) sys.update?.(this.ctx, TICK_DT);
+    this.applySpeedOverride();
 
     if (s.mode === 'playing') {
       s.time += TICK_DT;
@@ -140,12 +154,12 @@ export class Game {
     }
   }
 
-  /** Called by input on pointer press (view coords). True if a hotspot took it. */
   /** Called by the DOM input layer inside each key / pointer event. */
   notifyUserGesture(): void {
     for (const fn of [...this.gestureListeners]) fn();
   }
 
+  /** Called by input on pointer press (view coords). True if a hotspot took it. */
   hitHotspot(x: number, y: number): boolean {
     for (const h of [...this.hotspots].reverse()) {
       const r = h.rect();
@@ -179,6 +193,7 @@ export class Game {
     if (!this.transition('start')) return;
     const seed = this.seedOverride ?? Math.floor(Math.random() * 2 ** 32);
     resetRun(this.state, seed);
+    this.applySpeedOverride();
     this.rng.seed(seed);
     this.bus.emit('runStarted', { seed });
   }
@@ -199,6 +214,10 @@ export class Game {
     const previous = this.state.zoneIndex;
     this.state.zoneIndex = index;
     this.bus.emit('zoneChanged', { index, previous });
+  }
+
+  private applySpeedOverride(): void {
+    if (this.speedOverride !== null) this.state.speed = this.speedOverride;
   }
 
   private runScheduled(): void {

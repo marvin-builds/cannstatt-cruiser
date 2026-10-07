@@ -1,5 +1,11 @@
-/** Internal render resolution in view pixels. */
+/**
+ * View size in view pixels. The height is fixed; the width adapts to the
+ * screen between VIEW_W (16:9, the design minimum) and VIEW_MAX_W (~21:9).
+ * Systems read the current width from `display.viewWidth`; VIEW_W is only the
+ * guaranteed minimum (safe area for centred content).
+ */
 export const VIEW_W = 320;
+export const VIEW_MAX_W = 427;
 export const VIEW_H = 180;
 
 /** Y (view pixels, down is positive) of the riding surface. */

@@ -1,4 +1,4 @@
-import type { GameState, GameEvents } from '../types';
+import type { DisplayInfo, GameEvents, GameState } from '../types';
 import type { Game } from './game';
 
 export interface LoggedEvent {
@@ -43,10 +43,22 @@ export interface TestHook {
   resumeGame(): void;
   setZone(index: number): void;
   setTimeScale(scale: number): void;
+  /** Sets `state.health`; core ends a running run on the next tick when it is <= 0. */
+  setHealth(health: number): void;
+  /** Sets `state.score` (gameplay keeps adding to it). */
+  setScore(score: number): void;
+  /** Forces the scroll speed (difficulty override) until called with null. */
+  setSpeed(speed: number | null): void;
+  /** Forces game over now (emits gameOver). Throws unless the mode is `playing`. */
+  endRun(): void;
   /** Events since load or the last clearEvents(), oldest first. */
   events(name?: keyof GameEvents): LoggedEvent[];
+  /** Logged events with `frame >= frame` (read `state().frame` before acting), oldest first. */
+  eventsSince(frame: number, name?: keyof GameEvents): LoggedEvent[];
   clearEvents(): void;
-  /** PNG data URL of the 320x180 buffer upscaled by `scale`. */
+  /** Copy of the display info, including the current adaptive `viewWidth`. */
+  display(): DisplayInfo;
+  /** PNG data URL of the view buffer (current view width x 180) upscaled by `scale`. */
   capture(scale?: number): string;
 }
 
@@ -95,10 +107,25 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     resumeGame: () => game.commands.resume(),
     setZone: (i) => game.commands.setZone(i),
     setTimeScale: (s) => clock.setTimeScale(s),
-    events: (name) => (name ? log.filter((e) => e.name === name) : [...log]),
+    setHealth: (health) => void (game.state.health = health),
+    setScore: (score) => void (game.state.score = score),
+    setSpeed: (speed) => game.setSpeedOverride(speed),
+    endRun: () => {
+      if (game.state.mode !== 'playing') {
+        throw new Error(`endRun() needs mode 'playing', but the mode is '${game.state.mode}'`);
+      }
+      game.commands.gameOver();
+    },
+    events: (name) => filterEvents(log, name),
+    eventsSince: (frame, name) => filterEvents(log, name).filter((e) => e.frame >= frame),
     clearEvents: () => void log.splice(0),
+    display: () => ({ ...game.display }),
     capture: (scale = 4) => clock.capture(scale),
   };
+}
+
+function filterEvents(log: LoggedEvent[], name?: keyof GameEvents): LoggedEvent[] {
+  return name ? log.filter((e) => e.name === name) : [...log];
 }
 
 /** Enabled in dev builds, and in production only with `?test=1`. */

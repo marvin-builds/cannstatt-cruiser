@@ -6,9 +6,12 @@ and on desktop (keyboard and mouse). The UI language is German.
 
 ## Rendering
 
-- Internal resolution is 320x180. Scaling is nearest-neighbour and integer: use
-  the largest scale that stays crisp, fill the remaining space with a matching
-  colour (letterbox), keep image smoothing off and respect devicePixelRatio.
+- Internal resolution is 180 pixels high and 320 wide at minimum; the width
+  grows up to 427 (about 21:9) to use the spare screen width left by the
+  integer scale.
+  Scaling is nearest-neighbour and integer: use the largest scale that stays
+  crisp, fill the small remaining space with a matching colour (letterbox),
+  keep image smoothing off and respect devicePixelRatio.
 - Fullscreen API with a button and a fallback. On phones, landscape is the play
   orientation; in portrait the game shows a "Bitte Gerät drehen" hint (it may
   keep rendering behind it).

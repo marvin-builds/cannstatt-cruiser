@@ -1,7 +1,9 @@
 /**
  * Default playtest: title, a seeded run, tap vs hold jump heights, real
- * keyboard/touch input, page layout checks and screenshots over time.
+ * keyboard/touch input, adaptive view width (incl. live rotation), the pause
+ * hotspot at the right edge, page layout checks and screenshots over time.
  */
+import { VIEW_H, VIEW_MAX_W } from '../../src/core/config';
 import type { PlaytestContext } from '../playtest-lib';
 
 async function pageLayout(t: PlaytestContext) {
@@ -17,8 +19,24 @@ async function pageLayout(t: PlaytestContext) {
       canvasHeight: canvas.height,
       cssWidth: canvas.getBoundingClientRect().width,
       dpr: window.devicePixelRatio,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
     };
   });
+}
+
+/** Integer scale, and a view that fills the width up to less than one view pixel (or VIEW_MAX_W). */
+async function checkAdaptiveView(t: PlaytestContext, label: string): Promise<void> {
+  const layout = await pageLayout(t);
+  const { viewWidth } = await t.game.display();
+  const scale = layout.canvasHeight / VIEW_H;
+  t.check(`${label}: integer device-pixel scale`, Number.isInteger(scale) && layout.canvasWidth === viewWidth * scale, {
+    ...layout,
+    viewWidth,
+  });
+  const spareDevicePx = layout.windowWidth * layout.dpr - layout.canvasWidth;
+  const fills = viewWidth === VIEW_MAX_W || spareDevicePx < scale;
+  t.check(`${label}: view width fills the screen`, fills, { viewWidth, spareDevicePx, scale });
 }
 
 export default async function defaultScenario(t: PlaytestContext): Promise<void> {
@@ -29,7 +47,7 @@ export default async function defaultScenario(t: PlaytestContext): Promise<void>
 
   const layout = await pageLayout(t);
   t.check('no scrollbars', !layout.scrollbars, layout);
-  t.check('integer device-pixel scale', layout.canvasWidth % 320 === 0 && layout.canvasHeight % 180 === 0, layout);
+  await checkAdaptiveView(t, 'initial');
 
   // Deterministic part: frozen clock, fixed seed.
   await game.pause();
@@ -71,12 +89,30 @@ export default async function defaultScenario(t: PlaytestContext): Promise<void>
     await t.log(`running ${i}`);
   }
 
-  await game.pauseGame();
+  // Real tap on the right-anchored pause button (exercises screen -> view mapping).
   await game.pause();
+  await game.step(1);
+  const { viewWidth } = await game.display();
+  await t.realTapView(viewWidth - 11, 11);
+  const paused = await game.state();
+  t.check('pause button at the right edge pauses', paused.mode === 'paused', { mode: paused.mode, viewWidth });
   await game.step(1);
   await t.screenshot('paused');
   await game.resumeGame();
   await game.setZone(2);
   await game.step(1);
   await t.canvasShot('zone 2');
+
+  // Rotate (swap width and height) live and back, without reload.
+  const size = t.page.viewportSize()!;
+  await t.page.setViewportSize({ width: size.height, height: size.width });
+  await t.wait(200);
+  await game.step(1);
+  await checkAdaptiveView(t, 'rotated');
+  await t.screenshot('rotated');
+  await t.page.setViewportSize(size);
+  await t.wait(200);
+  await game.step(1);
+  await checkAdaptiveView(t, 'rotated back');
+  await t.screenshot('rotated back');
 }
