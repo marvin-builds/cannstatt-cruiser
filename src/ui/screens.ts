@@ -6,12 +6,29 @@ import { chillStrength } from '../core/chill';
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
 import type { RenderContext } from '../types';
-import { BUTTON, HEART, ICON_FULLSCREEN, ICON_PAUSE, ICON_PLAY, ICON_SOUND, JOINT_ICON, ROTATE, STAR, UI } from './art';
+import type { Rect } from '../types';
+import {
+  buttonPlateSprite,
+  GUM_ICON,
+  HEART,
+  ICON_FULLSCREEN,
+  ICON_PAUSE,
+  ICON_PLAY,
+  ICON_SIZE,
+  ICON_SOUND,
+  JOINT_ICON,
+  type PixelIcon,
+  ROTATE,
+  STAR,
+  UI,
+} from './art';
 import type { Banner } from './banner';
-import { blinkOn, centreX, formatNumber, hudButtons, metres } from './layout';
-import { drawLogo } from './logo';
+import { chillLook } from './chill-look';
+import { blinkOn, buttonPlate, centreX, formatNumber, hudButtons, metres, settingsLayout, type UiMetrics, uiMetrics } from './layout';
+import { drawLogo, logoRect } from './logo';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
+import type { LongPress, SettingsMenu } from './settings';
 import { CHILL_BAR_H, CHILL_BAR_W, chillBarFill, statsLayout } from './stats';
 
 export interface UiView {
@@ -25,6 +42,9 @@ export interface UiView {
   portraitDismissed: boolean;
   /** Length of the current chill effect (from chillStart), for the timer bar. */
   chillDuration: number;
+  /** The hidden settings menu and the long press on the title logo that opens it. */
+  settings: SettingsMenu;
+  logoHold: LongPress;
 }
 
 const LINE = 11;
@@ -52,24 +72,40 @@ function hint(r: RenderContext, touch: string, keys: string): string {
   return r.display.touch ? touch : keys;
 }
 
+/** One HUD button: the plate centred in its tap area, the icon centred on the plate. */
+function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame: number): void {
+  const plate = buttonPlate(hit, m);
+  buttonPlateSprite(m.plate).draw(r.g, 0, plate.x, plate.y);
+  const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
+  icon.draw(r.g, frame, plate.x + inset, plate.y + inset, m.iconScale);
+}
+
 function drawButtons(r: RenderContext, view: UiView): void {
-  const b = hudButtons(r.display.viewWidth, view.fullscreenAvailable);
+  const m = uiMetrics(r.display);
+  const b = hudButtons(r.display.viewWidth, view.fullscreenAvailable, m);
   const { mode, muted } = r.state;
-  if (mode === 'playing' || mode === 'paused') {
-    BUTTON.draw(r.g, 0, b.pause.x, b.pause.y);
-    (mode === 'playing' ? ICON_PAUSE : ICON_PLAY).draw(r.g, 0, b.pause.x + 3, b.pause.y + 3);
-  }
-  BUTTON.draw(r.g, 0, b.mute.x, b.mute.y);
-  ICON_SOUND.draw(r.g, muted ? 1 : 0, b.mute.x + 3, b.mute.y + 3);
-  if (b.fullscreen) {
-    BUTTON.draw(r.g, 0, b.fullscreen.x, b.fullscreen.y);
-    ICON_FULLSCREEN.draw(r.g, r.display.fullscreen ? 1 : 0, b.fullscreen.x + 3, b.fullscreen.y + 3);
-  }
+  if (mode === 'playing' || mode === 'paused') hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
+  hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
+  if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
+}
+
+/** A thin bar under the logo that fills while it is held (shown only after LONG_PRESS_HINT_DELAY). */
+function drawHoldProgress(r: RenderContext, progress: number): void {
+  if (progress <= 0) return;
+  const logo = logoRect(r.display.viewWidth);
+  const w = logo.w - 20;
+  const x = logo.x + 10;
+  const y = logo.y + logo.h - 1;
+  r.g.fillStyle = UI.panel;
+  r.g.fillRect(x, y, w, 3);
+  r.g.fillStyle = UI.muted;
+  r.g.fillRect(x + 1, y + 1, Math.round((w - 2) * progress), 1);
 }
 
 function drawTitle(r: RenderContext, view: UiView): void {
   const cx = centreX(r.display.viewWidth);
-  drawLogo(r.g, cx, 8);
+  drawLogo(r.g, r.display.viewWidth);
+  drawHoldProgress(r, view.logoHold.progress);
 
   panel(r, 236, 62, 80);
   centred(r, 'Mit dem Longboard durch Stuttgart', 66, { color: UI.muted });
@@ -103,6 +139,7 @@ function drawStats(r: RenderContext, view: UiView): void {
   const heartsW = state.maxHealth * 8 - 1;
   const rowW = heartsW + 6 + STAR.width + 3 + measureText(stars);
   const l = statsLayout(Math.max(scoreW, labelW, rowW), state.chillTimer > 0);
+  const look = chillLook(state.kidMode);
 
   g.fillStyle = UI.panel;
   g.fillRect(l.plate.x, l.plate.y, l.plate.w, l.plate.h);
@@ -120,25 +157,26 @@ function drawStats(r: RenderContext, view: UiView): void {
   text(r, stars, starX + STAR.width + 3, l.hearts);
 
   if (l.chill !== null) {
-    JOINT_ICON.draw(g, 0, l.x, l.chill + 1);
+    (look.icon === 'gum' ? GUM_ICON : JOINT_ICON).draw(g, 0, l.x, l.chill + 1);
     const y = l.chill + 2;
     g.fillStyle = UI.ink;
     g.fillRect(l.chillBarX, y, CHILL_BAR_W, CHILL_BAR_H);
-    g.fillStyle = UI.chillBar;
+    g.fillStyle = look.bar;
     g.fillRect(l.chillBarX + 1, y + 1, Math.max(0, chillBarFill(state.chillTimer, view.chillDuration) - 2), CHILL_BAR_H - 2);
   }
 }
 
-/** Warm, hazy look while chilled: a steady tint that fades with the effect (no flicker). */
+/** Steady tint while chilled (warm haze, or sweet pink in kid mode) that fades with the effect (no flicker). */
 function drawChillTint(r: RenderContext): void {
   const strength = chillStrength(r.state.chillTimer);
   if (strength <= 0) return;
   const { g } = r;
   const { viewWidth: w, viewHeight: h } = r.display;
-  g.fillStyle = `rgba(${UI.chillTint}, ${(0.16 * strength).toFixed(3)})`;
+  const { tint } = chillLook(r.state.kidMode);
+  g.fillStyle = `rgba(${tint}, ${(0.16 * strength).toFixed(3)})`;
   g.fillRect(0, 0, w, h);
-  // A slightly denser haze towards the edges, in three steps.
-  g.fillStyle = `rgba(${UI.chillTint}, ${(0.06 * strength).toFixed(3)})`;
+  // A slightly denser band towards the edges, in three steps.
+  g.fillStyle = `rgba(${tint}, ${(0.06 * strength).toFixed(3)})`;
   for (const inset of [0, 6, 12]) {
     g.fillRect(0, inset, w, 6);
     g.fillRect(0, h - inset - 6, w, 6);
@@ -224,6 +262,42 @@ function drawPortraitHint(r: RenderContext): void {
   centred(r, 'Tippen zum Ignorieren', 120, { color: UI.muted });
 }
 
+/** A settings menu button: rounded face with an edge and a centred label. */
+function menuButton(r: RenderContext, rect: Rect, label: string, color: string = UI.white): void {
+  const { g } = r;
+  const { x, y, w, h } = rect;
+  g.fillStyle = UI.buttonEdge;
+  g.fillRect(x + 1, y, w - 2, h);
+  g.fillRect(x, y + 1, w, h - 2);
+  g.fillStyle = UI.buttonFace;
+  g.fillRect(x + 1, y + 1, w - 2, h - 2);
+  const scale = h >= 24 ? 2 : 1;
+  text(r, label, x + Math.floor(w / 2), y + Math.floor((h - 7 * scale) / 2), { align: 'center', scale, color });
+}
+
+function drawSettings(r: RenderContext, view: UiView): void {
+  const { settings } = view;
+  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display), r.display.viewHeight);
+  fill(r, UI.ink);
+  if (settings.screen === 'menu') {
+    const on = r.state.kidMode;
+    centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
+    menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
+    centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', l.toggle.y + l.toggle.h + 6, {
+      color: UI.muted,
+    });
+    if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
+    menuButton(r, l.back, 'Zurück');
+  } else if (settings.question) {
+    const q = settings.question;
+    centred(r, 'Elternfrage: Kindermodus ausschalten?', 12, { color: UI.muted });
+    centred(r, `Wie viel ist ${q.a} × ${q.b}?`, 28, { scale: 2, color: UI.yellow });
+    q.answers.forEach((n, i) => menuButton(r, l.answers[i]!, String(n)));
+    if (!r.display.touch) centred(r, 'Tasten 1, 2, 3 = antworten, Esc = schließen', l.back.y - 14, { color: UI.muted });
+    menuButton(r, l.back, 'Zurück');
+  }
+}
+
 export function portraitHintShown(r: { display: { portrait: boolean; touch: boolean } }, view: UiView): boolean {
   return r.display.portrait && r.display.touch && !view.portraitDismissed;
 }
@@ -231,7 +305,8 @@ export function portraitHintShown(r: { display: { portrait: boolean; touch: bool
 export function drawUi(r: RenderContext, view: UiView): void {
   switch (r.state.mode) {
     case 'title':
-      drawTitle(r, view);
+      if (view.settings.open) drawSettings(r, view);
+      else drawTitle(r, view);
       break;
     case 'playing':
       drawChillTint(r);
@@ -251,5 +326,5 @@ export function drawUi(r: RenderContext, view: UiView): void {
     drawPortraitHint(r);
     return;
   }
-  drawButtons(r, view);
+  if (!view.settings.open) drawButtons(r, view);
 }

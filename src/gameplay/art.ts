@@ -176,6 +176,34 @@ const JOINT = sprite({ k: K, c: '#d8a86a', W: '#f4f1ea', L: '#5f9a4a', R: '#ff5a
   JOINT_ART.map((row, i) => (i < 3 ? ['........g..', '.........g.', '........g..'][i]! : row)),
 ]);
 
+/**
+ * Kid mode's stand-in for the joint: a pink bubble gum in a twisted wrapper,
+ * same size, with a shine that moves on the second frame.
+ */
+const GUM_ART = [
+  '..kkkkkkk..',
+  'kkkpWWppkkk',
+  'klkpWpppklk',
+  '.kkpppppkk.',
+  'klkppppdklk',
+  'kkkppdddkkk',
+  '..kkkkkkk..',
+];
+const GUM = sprite({ k: '#7a2350', p: '#ff7eb6', W: '#ffe0ef', d: '#d9508f', l: '#ffc2dc' }, [
+  GUM_ART,
+  GUM_ART.map((row, i) => (i === 1 ? 'kkkppWWpkkk' : i === 2 ? 'klkppWppklk' : row)),
+]);
+
+export interface ChillPickupArt {
+  name: 'joint' | 'gum';
+  sprite: Sprite;
+}
+
+/** The chill pickup's look: the joint for adults, a bubble gum in kid mode (state.kidMode). */
+export function chillPickupArt(kidMode: boolean): ChillPickupArt {
+  return kidMode ? { name: 'gum', sprite: GUM } : { name: 'joint', sprite: JOINT };
+}
+
 const SPARKLE = sprite({ w: '#fff6c2', y: '#ffd23f' }, [
   ['..w..', '..y..', 'wy.yw', '..y..', '..w..'],
   ['w...w', '.y.y.', '.....', '.y.y.', 'w...w'],
@@ -205,8 +233,8 @@ function drawRail(g: CanvasRenderingContext2D, e: Entity): void {
   for (let px = 0; px < e.w; px++) parts.bar.draw(g, 0, x + px, top - 1);
 }
 
-/** Draws one entity at integer coordinates; `frame` drives the star spin. */
-export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number): void {
+/** Draws one entity at integer coordinates; `frame` drives the star spin, `kidMode` the pickup's look. */
+export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number, kidMode = false): void {
   const x = Math.round(e.x);
   const y = Math.round(e.y);
   switch (e.kind) {
@@ -229,8 +257,8 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number
       drawPerson(g, e);
       return;
     case 'joint':
-      // Bobs gently like the stars; the smoke curls every 16 ticks.
-      JOINT.draw(g, Math.floor(frame / 16), x, y + (Math.floor((frame + e.id * 5) / 24) % 2));
+      // Bobs gently like the stars; the smoke curls (or the gum shines) every 16 ticks.
+      chillPickupArt(kidMode).sprite.draw(g, Math.floor(frame / 16), x, y + (Math.floor((frame + e.id * 5) / 24) % 2));
       return;
     default:
       OBSTACLE_SPRITES[e.kind].draw(g, 0, x, y);

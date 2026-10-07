@@ -31,7 +31,12 @@ than a hold. Duck works the same with `game.buttons.duck`
 Real input without a DOM: `keyDown(game, 'ArrowDown')` / `keyUp` and
 `new PointerControls(game)` with `down(id, x, y, touch)`, `move`, `up` from
 `src/core/input.ts` take the same path as the browser events
-(`src/core/input.test.ts` checks tap vs swipe down this way).
+(`src/core/input.test.ts` checks tap vs swipe down this way, incl. the
+1.2 s swipe duck and diagonal swipes). Hotspots: `game.hitHotspot(x, y)`
+presses the topmost hotspot at a view pixel; `keyDown(game, 'KeyK')` offers
+the key to active `InputHotspot`s first. `src/ui/index.test.ts` opens the
+hidden settings menu this way (3 s long press on the logo, or K held) and
+answers the parent check.
 
 ## Test hook: `window.__game`
 
@@ -49,7 +54,7 @@ only available with `?test=1` in the URL.
 | `input.press()` / `input.release()` | holds / releases the action (source `test`) |
 | `input.tap(frames = 2)` / `input.hold(frames = 30)` | press, keep down for `frames` ticks, release. When frozen this steps synchronously; when running the release is scheduled. |
 | `input.duck.press()` / `input.duck.release()` | holds / releases duck (source `test`), like ArrowDown |
-| `input.duck.hold(frames = 36)` | duck for `frames` ticks (default = one swipe down), then release; steps synchronously when frozen like `hold` |
+| `input.duck.hold(frames = 72)` | duck for `frames` ticks (default = one swipe down, `SWIPE_DUCK_TICKS`, 1.2 s), then release; steps synchronously when frozen like `hold` |
 | `pauseGame()` / `resumeGame()` | in-game pause screen (`mode` paused / playing) |
 | `setZone(i)` | sets `state.zoneIndex` and emits `zoneChanged` |
 | `setTimeScale(x)` | real-time speed multiplier (e.g. 4 = fast forward) |
@@ -103,11 +108,13 @@ g.endRun();                                     // game-over screen now
 
 | Hook | Effect |
 |---|---|
-| `window.__gameplay.place(kind, x, variant?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl) or `'joint'` |
+| `window.__gameplay.place(kind, x, variant?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__ui.hud({combo, multiplier, stars})` | overwrites HUD values like gameplay would |
 | `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
+| `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu' \| 'check', question, holdProgress}` (`question.answers[question.correct]` is the right answer) |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo}` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
 `window.__gameplay`) and `UiDebugHook` from `src/ui/debug.ts`.
@@ -165,7 +172,19 @@ npm run playtest -- --headed
 - `scripts/scenarios/ducking.ts`: duck pose, ducking under both overhead
   obstacles in all three zones, crashing into them standing / jumping, real
   ArrowDown (desktop) and a CDP touch swipe down that must duck without
-  jumping (touch viewports), and a 60 s ducking bot ride on seed 1.
+  jumping, still duck after 0.55 s and end by itself (touch viewports), and a
+  60 s ducking bot ride on seed 1.
+- `scripts/scenarios/settings.ts`: the hidden settings menu on desktop and
+  both phone viewports: title without a settings button, a short logo hold
+  (no progress, starts the run like a tap), the 3 s long press with its
+  progress bar (no run start), turning kid mode on, the parent check (wrong
+  answer keeps it, right answer turns it off), reopening with K (desktop) or
+  the long press (touch), persistence across a reload, and a kid-mode run
+  with the bubble gum, pink tint and gum HUD icon. On touch viewports it
+  checks every menu and HUD tap area is >= 44 CSS px (rect x
+  `cssPerViewPixel`).
+- `scripts/scenarios/ui.ts` taps the HUD buttons at the centres
+  `__ui.layout()` reports, so it follows the touch / desktop sizes.
 - `scripts/scenarios/chill.ts`: bench grind, VfB fans (zone 1) and Wasen
   visitors (zone 2) incl. their crash reactions, the bot jumping people, the
   joint pickup with the chill effect (speed, lower jump, tint, HUD timer) and
@@ -204,7 +223,9 @@ export default async function (t: PlaytestContext) {
 The context provides:
 - `page` (the Playwright Page) and `viewport`;
 - `game`, a driver for the test hook;
-- (as functions from `playtest-lib.ts`) `dismissRotateHint(t)` and `stepWhile(t, more, {max, frames})`;
+- (as functions from `playtest-lib.ts`) `dismissRotateHint(t)`, `stepWhile(t, more, {max, frames})`,
+  `holdViewWhile(t, x, y, during)` (a real touch / mouse press held while `during` steps the frozen
+  clock, e.g. a long press) and `cssPerViewPixel(page)` (tap sizes in CSS px);
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
 
 The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,

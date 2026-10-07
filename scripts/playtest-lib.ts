@@ -181,6 +181,35 @@ export async function touchHold(cdp: CDPSession, x: number, y: number, ms: numbe
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+/** CSS pixels per view pixel of the canvas as shown (tap sizes: a tap area should be >= ~44 CSS px). */
+export async function cssPerViewPixel(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const box = document.querySelector<HTMLCanvasElement>('#game')!.getBoundingClientRect();
+    return box.height / window.__game!.display().viewHeight;
+  });
+}
+
+/**
+ * Holds a real pointer on view pixel (x, y) (a CDP touch on touch viewports,
+ * the mouse otherwise) while `during` runs, e.g. stepping the frozen clock
+ * for a long press, then lets go.
+ */
+export async function holdViewWhile(t: PlaytestContext, x: number, y: number, during: () => Promise<void>): Promise<void> {
+  const p = await viewToClient(t.page, x, y);
+  if (t.viewport.touch) {
+    const cdp = await t.page.context().newCDPSession(t.page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...p, id: 1 }] });
+    await during();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+  } else {
+    await t.page.mouse.move(p.x, p.y);
+    await t.page.mouse.down();
+    await during();
+    await t.page.mouse.up();
+  }
+}
+
 /**
  * On a touch device in portrait the rotate hint covers the game and keeps
  * runs paused until a tap dismisses it: tap it away so scenarios also run on

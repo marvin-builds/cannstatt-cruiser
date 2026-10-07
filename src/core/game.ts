@@ -22,6 +22,22 @@ export interface Platform {
   setLetterboxColor(color: string): void;
 }
 
+/**
+ * Core extension of the shared Hotspot (src/types.ts) for hold gestures and
+ * modal screens. Pass one to `ctx.addHotspot`; every hook is optional.
+ */
+export interface InputHotspot extends Hotspot {
+  /** The pointer press this hotspot took ended (up, cancel or focus lost). */
+  onRelease?(): void;
+  /**
+   * While `rect()` is non-null, key presses (KeyboardEvent.code) are offered
+   * here before they reach a button. Return true to take the key: its button
+   * is not pressed, auto-repeats are ignored and its release goes to onKeyUp.
+   */
+  onKeyDown?(code: string): boolean;
+  onKeyUp?(code: string): void;
+}
+
 export interface GameOptions {
   /** Update order = array order. */
   systems: System[];
@@ -55,7 +71,9 @@ export class Game {
   readonly ctx: GameContext;
 
   private readonly systems: System[];
-  private readonly hotspots = new Set<Hotspot>();
+  private readonly hotspots = new Set<InputHotspot>();
+  /** Keys a hotspot took, until they are released. */
+  private readonly takenKeys = new Map<string, InputHotspot>();
   private readonly gestureListeners = new Set<() => void>();
   private readonly scheduled: { at: number; fn: () => void }[] = [];
   private input: InputFrame = IDLE_INPUT;
@@ -168,14 +186,45 @@ export class Game {
 
   /** Called by input on pointer press (view coords). True if a hotspot took it. */
   hitHotspot(x: number, y: number): boolean {
+    return this.pressHotspot(x, y) !== null;
+  }
+
+  /** Presses the topmost hotspot at (x, y) (later ones win) and returns it, or null. */
+  pressHotspot(x: number, y: number): InputHotspot | null {
     for (const h of [...this.hotspots].reverse()) {
       const r = h.rect();
       if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) {
         h.onPress();
+        return h;
+      }
+    }
+    return null;
+  }
+
+  /** Offers a key press to the active hotspots (topmost first). True if one took it (or holds it already). */
+  takeKey(code: string): boolean {
+    if (this.takenKeys.has(code)) return true;
+    for (const h of [...this.hotspots].reverse()) {
+      if (h.onKeyDown && h.rect() && h.onKeyDown(code)) {
+        this.takenKeys.set(code, h);
         return true;
       }
     }
     return false;
+  }
+
+  /** Ends a key a hotspot took. True if one had it. */
+  releaseKey(code: string): boolean {
+    const h = this.takenKeys.get(code);
+    if (!h) return false;
+    this.takenKeys.delete(code);
+    h.onKeyUp?.(code);
+    return true;
+  }
+
+  /** Focus lost: releases every key a hotspot holds. */
+  releaseKeys(): void {
+    for (const code of [...this.takenKeys.keys()]) this.releaseKey(code);
   }
 
   /** Runs `fn` at the end of the tick `ticks` ticks from now. */

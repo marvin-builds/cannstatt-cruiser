@@ -7,6 +7,13 @@ describe('pixel font', () => {
     for (const ch of required) expect(glyphFor(ch), ch).not.toBeNull();
   });
 
+  it('has a real multiplication sign, centred like the digits and unlike the letter x', () => {
+    const times = glyphFor('×')!;
+    expect(times.rows).not.toEqual(glyphFor('x')!.rows);
+    expect(times.rows[3]).toMatch(/#/);
+    expect(times.rows[5]).not.toMatch(/#/);
+  });
+
   it('sits the full stop on the baseline like the digits, so 61.234 never reads as a comma', () => {
     const rowOf = (ch: string) => Math.max(...glyphFor(ch)!.rows.map((r, i) => (r.includes('#') ? i : -1)));
     expect(rowOf('.')).toBe(FONT_BASELINE);

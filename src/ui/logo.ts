@@ -4,7 +4,9 @@
  * Rendered once into a cached canvas (the outline costs ~10 text passes).
  */
 import { drawText, FONT_LINE_HEIGHT, measureText } from '../core/font';
+import type { Rect } from '../types';
 import { UI } from './art';
+import { centreX } from './layout';
 
 const SCALE = 3;
 const PAD = 2;
@@ -14,7 +16,22 @@ const BOTTOM = 'Cruiser';
 const BOTTOM_SHIFT = 18;
 const LINE_H = FONT_LINE_HEIGHT * SCALE;
 
+/** Top of the logo on the title screen. */
+export const LOGO_Y = 8;
+
 let cached: HTMLCanvasElement | null = null;
+
+function logoSize(): { w: number; h: number } {
+  const topW = measureText(TOP, SCALE);
+  const bottomW = measureText(BOTTOM, SCALE);
+  return { w: Math.max(topW, bottomW + BOTTOM_SHIFT) + PAD * 2 + 2, h: LINE_H * 2 + 4 + PAD * 2 };
+}
+
+/** Where the title logo is drawn (centred, top at LOGO_Y): the long-press area for the hidden settings. */
+export function logoRect(viewWidth: number): Rect {
+  const { w, h } = logoSize();
+  return { x: centreX(viewWidth) - Math.floor(w / 2), y: LOGO_Y, w, h };
+}
 
 /** Draws `word` with outline, shadow and a lighter top half. */
 function word(g: CanvasRenderingContext2D, s: string, x: number, y: number, top: string, bottom: string): void {
@@ -33,13 +50,11 @@ function word(g: CanvasRenderingContext2D, s: string, x: number, y: number, top:
 }
 
 function render(): HTMLCanvasElement {
-  const topW = measureText(TOP, SCALE);
   const bottomW = measureText(BOTTOM, SCALE);
-  const width = Math.max(topW, bottomW + BOTTOM_SHIFT) + PAD * 2 + 2;
-  const height = LINE_H * 2 + 4 + PAD * 2;
+  const { w, h } = logoSize();
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = w;
+  canvas.height = h;
   const g = canvas.getContext('2d')!;
   word(g, TOP, PAD, PAD, UI.yellow, UI.orange);
   const bx = PAD + BOTTOM_SHIFT;
@@ -57,8 +72,9 @@ function render(): HTMLCanvasElement {
   return canvas;
 }
 
-/** Draws the logo centred on `cx` with its top at `y`. */
-export function drawLogo(g: CanvasRenderingContext2D, cx: number, y: number): void {
+/** Draws the logo at logoRect(viewWidth). */
+export function drawLogo(g: CanvasRenderingContext2D, viewWidth: number): void {
   cached ??= render();
-  g.drawImage(cached, cx - Math.floor(cached.width / 2), y);
+  const r = logoRect(viewWidth);
+  g.drawImage(cached, r.x, r.y);
 }

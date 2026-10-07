@@ -25,7 +25,8 @@ and on desktop (keyboard and mouse). The UI language is German.
 - Tap = small ollie, hold = higher jump (variable jump height up to a maximum
   hold time).
 - Duck: ArrowDown / S (held while the key is held), or a swipe down on touch
-  (ducks for ~0.6 s or until the next tap). A swipe down never also jumps; to
+  (ducks for ~1.2 s or until the next tap). Short swipes (~8 CSS px) and
+  diagonal swipes up to ~45° from vertical count. A swipe down never also jumps; to
   tell it from a tap, a touch during a run waits up to ~83 ms (or until the
   finger lifts) before it jumps. Ducking works on the ground only (not on
   rails, no fast fall in the air); jumping while ducked stands up and jumps.
@@ -81,6 +82,25 @@ and on desktop (keyboard and mouse). The UI language is German.
   warm hazy tint lies over the screen and the HUD shows a draining timer.
   Score and combo are unaffected.
 
+In kid mode (see Settings) the joint is a pink bubble gum ("Kaugummi") with
+exactly the same effect: the skater blows a bubble instead of smoking, the
+tint is a light, sweet pink and the HUD timer shows a gum bubble. Nothing in
+kid mode refers to drugs.
+
+## Settings (hidden)
+
+- A settings menu "Einstellungen" with one setting, "Kindermodus" (off by
+  default = adult mode, stored in localStorage).
+- It has no visible button, so kids don't find it by accident: it opens on
+  the title screen by holding the "Cannstatt Cruiser" logo for 3 s (touch or
+  mouse) or holding K for 3 s. A subtle progress bar appears only after ~1 s
+  of holding. A shorter press on the logo is a normal tap and starts the
+  run; the long press never does.
+- Kindermodus turns on at once. Turning it off asks a simple parent check:
+  "Wie viel ist 7 × 8?" (factors 6-9) with three large answer buttons; a
+  wrong answer closes the menu without change.
+- "Zurück" and Escape close the menu. All text is German.
+
 ## Difficulty
 
 - Speed ramps gently from 90 to at most 165 px/s (over ~4 min); obstacle
@@ -113,6 +133,8 @@ The art is recognisable but stylised.
 - Game Over with Punkte, Highscore, Sterne and a restart.
 - Highscore and the star total are stored in localStorage.
 - Mute button.
+- On phones the pause, mute, fullscreen and settings buttons have tap areas
+  of at least ~44 CSS px; desktop keeps small buttons.
 
 ## Audio
 

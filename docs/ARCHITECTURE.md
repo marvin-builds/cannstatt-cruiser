@@ -14,17 +14,17 @@ src/types.ts            shared contracts: GameState, System, events, context (fo
 src/core/               engine pieces (foundation-owned, slices only import from here)
   config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
-  game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots
+  game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
   loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
-  input.ts              DOM binding: keys (action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
+  input.ts              DOM binding: keys (hotspots first, then action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
   renderer.ts           offscreen buffer (resized to the view width), integer scaling, letterbox colour, capture()
   scaling.ts            computeLayout() (scale + adaptive view width), screenToView() (pure math)
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
   sprite.ts             Sprite / sprite(): palette + string art -> cached canvases, frames, flip
-  font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation), measureText()
+  font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation, ×), measureText()
   font.ts               drawText(g, text, x, y, {color, scale, align, shadow})
   rng.ts                Rng (mulberry32): next/range/int/pick/chance
   events.ts             EventBus<E>: on/onAny/emit
@@ -50,7 +50,7 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people, rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump), difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, score/combo/multiplier, health, gameplay events |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill timer), chill tint, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots), portrait hint |
+| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill timer), chill tint, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -100,7 +100,7 @@ interface System {
 | `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
 | `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor` |
-| `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. |
+| `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
 | `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
 
 ### GameState field owners
@@ -128,6 +128,22 @@ grinds and only riding into its front or side crashes. People (`vfbFan`,
 anchor) plus a motion that depends only on the distance to the player
 (`gameplay/motion.ts`), and the collision box moves with them.
 
+### InputHotspot (core/game.ts)
+
+A core extension of the shared `Hotspot` for hold gestures and modal
+screens. Every hook is optional; build it as a typed `const` and pass it to
+`ctx.addHotspot`:
+
+| Hook | Called |
+|---|---|
+| `onRelease()` | the pointer press this hotspot took ended (up, cancel, focus lost) |
+| `onKeyDown(code)` | while `rect()` is non-null, every key press (`KeyboardEvent.code`) is offered to the hotspots, topmost first, before it reaches a button. Return true to take it: its button is not pressed, auto-repeats are ignored and the release goes to `onKeyUp`. |
+| `onKeyUp(code)` | a key this hotspot took went up (or focus was lost) |
+
+The ui slice uses it for the title logo (long press by pointer or K) and for
+the open settings menu, which takes every key but M so nothing starts a run
+behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
+
 ### Events (`GameEvents`)
 
 | Event | Payload | Emitted by |
@@ -144,7 +160,7 @@ anchor) plus a motion that depends only on the distance to the player
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
 | `crash` | `{entityId, kind, health}` | gameplay |
 | `starCollected` | `{entityId, stars}` | gameplay |
-| `chillStart` | `{entityId, duration}` | gameplay (joint picked up; `state.chillTimer = duration`) |
+| `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
@@ -157,7 +173,7 @@ Emitting is synchronous.
 | Button | Sources |
 |---|---|
 | `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
-| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 36 ticks, 0.6 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck` |
+| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck` |
 
 `core/input.ts` maps DOM events through two DOM-free pieces that unit tests
 drive directly: `keyDown/keyUp(game, code)` and `PointerControls`
@@ -170,11 +186,13 @@ A touch cannot be told apart from the start of a swipe when the finger lands,
 yet a swipe down must never also jump. So a touch **during a run** stays
 undecided for at most `SWIPE_WINDOW` = 5 ticks (~83 ms):
 
-- the finger moves down `SWIPE_DISTANCE` = 5 view px (more down than
-  sideways): duck, and this touch never presses the action;
-- the finger lifts (a tap), or moves `SWIPE_DISTANCE` sideways / up: the
-  action is pressed right then (a lifted tap arrives as press + release in the
-  same tick = small ollie);
+- the finger travels `SWIPE_DISTANCE` = 4 view px (straight-line distance,
+  ~8 CSS px on a phone in landscape) roughly down, i.e. `|dx| <= dy *
+  SWIPE_SLOPE` (1.2, up to ~50 degrees from vertical, so sloppy ~45 degree
+  swipes count): duck, and this touch never presses the action;
+- the finger lifts (a tap), or travels `SWIPE_DISTANCE` any other way
+  (sideways / up): the action is pressed right then (a lifted tap arrives as
+  press + release in the same tick = small ollie);
 - the window runs out with the finger still down: the action is pressed and
   held from then on (hold = high jump).
 
@@ -282,6 +300,44 @@ The zones follow each other along the street; there is no time-based cycle.
   pattern lies in (VfB fans at the Neckar, zone 1; Wasen visitors in Bad
   Cannstatt, zone 2). Playtests import `ZONE_LENGTH` instead of hard-coding it.
 
+## Settings menu and kid mode
+
+- `state.kidMode` (default false = adult mode) is kept across runs by
+  `resetRun`. The ui loads it in `init` (`store` key `kidMode`, junk or
+  missing storage = false) and saves it on every change. Other slices only
+  read it.
+- The menu "Einstellungen" has no visible button. It opens on the title
+  after holding the logo (`logoRect`, touch or mouse) or K for
+  `LONG_PRESS_TIME` = 3 s; a thin progress bar under the logo shows only
+  after `LONG_PRESS_HINT_DELAY` = 1 s. Letting go of the logo earlier is a
+  normal tap and starts the run; K alone never does. The menu is drawn in
+  mode `title` (core modes are unchanged) and swallows all taps and keys but M.
+- Kindermodus turns on at once. Turning it off asks a parent check
+  ("Wie viel ist a × b?", factors 6-9, `parentQuestion(state.frame)`, no
+  gameplay rng) with three answers: right turns it off and returns to the
+  menu, wrong closes the menu without change. Zurück and Escape close
+  (Zurück on the check goes back to the menu). Keys: Enter / Space toggles,
+  1-3 answer.
+- Logic in `ui/settings.ts` (DOM-free: `LongPress`, `SettingsMenu`,
+  `parentQuestion`, `loadKidMode` / `saveKidMode`), layout in
+  `ui/layout.ts` (`settingsLayout`), drawing in `ui/screens.ts`.
+- What kid mode changes: gameplay draws the joint entity as a pink bubble
+  gum (`chillPickupArt`), the ui shows the gum HUD icon, a sweet pink tint and
+  the popup "Kaugummi!" (`ui/chill-look.ts`); player and audio pick their own
+  kid-mode look and sounds. No text, popup or art in kid mode refers to drugs.
+  The effect's mechanics (timer, slowdown, lower jump) are identical.
+
+### Tap sizes (ui/layout.ts `uiMetrics`)
+
+| Display | HUD tap area / plate | Menu button height | ~CSS px per view px |
+|---|---|---|---|
+| desktop (no touch) | 14 / 14 | 18 | 4 |
+| touch, landscape | 24 / 22, icons 2x | 24 | 2 |
+| touch, portrait | 44 / 22, icons 2x | 44 | 1 |
+
+So every tap area on a phone is >= ~44 CSS px; the HUD tap areas stay right
+of x = 120 (clear of the stats plate) at every width from 320 to 427.
+
 ## Chill effect (joint pickup)
 
 Contract between gameplay, player and ui:
@@ -304,7 +360,8 @@ Contract between gameplay, player and ui:
   with the chill jump at chill speed, mid-ramp and full speed, besides the
   normal check.
 - **UI** shows a warm, steady screen tint scaled by `chillStrength(timer)`
-  and a draining timer bar with a joint icon in the HUD plate.
+  and a draining timer bar with a joint icon in the HUD plate (kid mode: the
+  bubble-gum look, see [Settings menu and kid mode](#settings-menu-and-kid-mode)).
 
 ## How state flows
 
@@ -316,5 +373,5 @@ requestAnimationFrame -> FixedTimestep (0..n ticks) -> Game.render(layers) -> Re
 ```
 
 Persistence: `import { store } from '../core/storage'`. Keys are namespaced
-`cannstatt-cruiser:*`. Use `highscore` and `starsTotal` (ui) and `muted`
-(audio). Calls never throw.
+`cannstatt-cruiser:*`. Use `highscore`, `starsTotal` and `kidMode` (ui) and
+`muted` (audio). Calls never throw.

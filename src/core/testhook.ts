@@ -39,7 +39,7 @@ export interface TestHook {
     /** Press, keep down for `frames` ticks, release. Steps synchronously when frozen, otherwise schedules the release. */
     tap(frames?: number): void;
     hold(frames?: number): void;
-    /** Duck (source `test`): held until released; hold() presses for `frames` ticks (default 36 = a swipe). */
+    /** Duck (source `test`): held until released; hold() presses for `frames` ticks (default SWIPE_DUCK_TICKS = a swipe, 1.2 s). */
     duck: {
       press(): void;
       release(): void;

@@ -1,6 +1,7 @@
 /**
- * Gameplay slice: obstacles, people, rails, stars and the joint (catalogue.ts,
- * art.ts, people-art.ts, motion.ts), the distance-based spawner with
+ * Gameplay slice: obstacles, people, rails, stars and the joint, drawn as a
+ * bubble gum in kid mode (catalogue.ts, art.ts, people-art.ts, motion.ts),
+ * the distance-based spawner with
  * clearability check (spawner.ts, patterns.ts, course.ts, solver.ts,
  * jumpsim.ts), difficulty (difficulty.ts) and the chill effect (chill.ts),
  * contacts and crashes (contacts.ts, health.ts) and score/combo (scoring.ts).
@@ -99,7 +100,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         for (const e of live) if (isRail(e.kind)) drawEntity(g, e, state.frame);
         const pickup = (e: Entity) => e.kind === 'star' || e.kind === 'joint';
         for (const e of live) if (!isRail(e.kind) && !pickup(e)) drawEntity(g, e, state.frame);
-        for (const e of live) if (pickup(e)) drawEntity(g, e, state.frame);
+        for (const e of live) if (pickup(e)) drawEntity(g, e, state.frame, state.kidMode);
       },
       fx({ g }) {
         for (const s of sparkles) drawSparkle(g, s.x, s.y, s.age);

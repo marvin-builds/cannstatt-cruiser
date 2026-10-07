@@ -1,7 +1,8 @@
 /**
  * UI palette and pixel icons (palette sprites, rasterised once on first draw).
  */
-import { sprite } from '../core/sprite';
+import { type Sprite, sprite } from '../core/sprite';
+import { rowsFromString } from '../core/sprite-data';
 
 export const UI = {
   ink: '#1b1f2e',
@@ -16,6 +17,13 @@ export const UI = {
   /** Warm haze over the street while chilled (alpha scaled by the effect strength). */
   chillTint: '255, 150, 80',
   chillBar: '#ff9a3c',
+  /** Sweet pink tint while the bubble gum works (kid mode). */
+  gumTint: '255, 140, 205',
+  pink: '#ff7eb6',
+  /** Settings menu: button face and the "on" colour. */
+  buttonFace: 'rgba(16, 18, 30, 0.8)',
+  buttonEdge: 'rgba(255, 244, 224, 0.7)',
+  green: '#7bd389',
   panel: 'rgba(16, 18, 30, 0.55)',
 } as const;
 
@@ -49,28 +57,57 @@ export const HEART = sprite({ r: UI.red, w: UI.white, d: UI.empty, k: UI.ink }, 
 `,
 ]);
 
-/** Rounded 14x14 button plate drawn behind every icon. */
-export const BUTTON = sprite({ b: 'rgba(16, 18, 30, 0.55)', e: 'rgba(255, 244, 224, 0.45)' }, [`
-  ..eeeeeeeeee..
-  .ebbbbbbbbbbe.
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  ebbbbbbbbbbbbe
-  .ebbbbbbbbbbe.
-  ..eeeeeeeeee..
-`]);
+/** Rounded square plate, `size` px, drawn behind every HUD icon (14 on desktop, 22 on touch). */
+function plateArt(size: number): string[] {
+  return Array.from({ length: size }, (_, y) => {
+    const edgeRow = y === 0 || y === size - 1;
+    const nearRow = y === 1 || y === size - 2;
+    return Array.from({ length: size }, (_, x) => {
+      const edgeCol = x === 0 || x === size - 1;
+      const nearCol = x === 1 || x === size - 2;
+      if ((edgeRow && (edgeCol || nearCol)) || (nearRow && edgeCol)) return '.';
+      return edgeRow || edgeCol || (nearRow && nearCol) ? 'e' : 'b';
+    }).join('');
+  });
+}
+
+const plates = new Map<number, Sprite>();
+
+/** The button plate of the given size (cached). */
+export function buttonPlateSprite(size: number): Sprite {
+  let plate = plates.get(size);
+  if (!plate) {
+    plate = sprite({ b: 'rgba(16, 18, 30, 0.55)', e: 'rgba(255, 244, 224, 0.45)' }, [plateArt(size)]);
+    plates.set(size, plate);
+  }
+  return plate;
+}
+
+/** Every pixel of `art` as an n x n block. */
+function upscale(art: readonly string[], n: number): string[] {
+  return art.flatMap((row) => Array<string>(n).fill(row.replace(/./g, (ch) => ch.repeat(n))));
+}
+
+/** A HUD icon at 1x (desktop) and 2x (touch), both crisp. */
+export class PixelIcon {
+  private readonly sizes: Record<1 | 2, Sprite>;
+
+  constructor(palette: Record<string, string>, frames: readonly string[]) {
+    const rows = frames.map((f) => rowsFromString(f));
+    this.sizes = { 1: sprite(palette, rows), 2: sprite(palette, rows.map((r) => upscale(r, 2))) };
+  }
+
+  draw(g: CanvasRenderingContext2D, frame: number, x: number, y: number, scale: number): void {
+    this.sizes[scale >= 2 ? 2 : 1].draw(g, frame, x, y);
+  }
+}
 
 const ICON = { w: UI.white, r: UI.red };
 
-/** 8x8 icons centred on the button plate (offset 3,3). */
-export const ICON_PAUSE = sprite(ICON, [`
+/** 8x8 icons (16x16 on touch) centred on the button plate. */
+export const ICON_SIZE = 8;
+
+export const ICON_PAUSE = new PixelIcon(ICON, [`
   ........
   .ww..ww.
   .ww..ww.
@@ -81,7 +118,7 @@ export const ICON_PAUSE = sprite(ICON, [`
   ........
 `]);
 
-export const ICON_PLAY = sprite(ICON, [`
+export const ICON_PLAY = new PixelIcon(ICON, [`
   ........
   .w......
   .www....
@@ -93,7 +130,7 @@ export const ICON_PLAY = sprite(ICON, [`
 `]);
 
 /** Frame 0 sound on, frame 1 muted. */
-export const ICON_SOUND = sprite(ICON, [
+export const ICON_SOUND = new PixelIcon(ICON, [
   `
   ........
   ...w..w.
@@ -117,7 +154,7 @@ export const ICON_SOUND = sprite(ICON, [
 ]);
 
 /** Frame 0 enter fullscreen, frame 1 leave it. */
-export const ICON_FULLSCREEN = sprite(ICON, [
+export const ICON_FULLSCREEN = new PixelIcon(ICON, [
   `
   ww....ww
   w......w
@@ -174,4 +211,14 @@ export const JOINT_ICON = sprite({ k: UI.ink, c: '#d8a86a', w: '#f4f1ea', r: '#f
   kkwwwwwwwrk
   kcwwwwwwwok
   .kkkkkkkkk.
+`]);
+
+/** Kid mode's chill timer icon: a big and a small pink bubble (CHILL_ICON_W wide, like JOINT_ICON). */
+export const GUM_ICON = sprite({ k: UI.ink, p: UI.pink, W: '#ffe0ef', d: '#d9508f' }, [`
+  .kkkk......
+  kpWWpk.....
+  kpWppk..kk.
+  kpppdk.kWpk
+  kppddk.kpdk
+  .kkkk...kk.
 `]);

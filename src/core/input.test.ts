@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InputFrame, System } from '../types';
-import { Game } from './game';
+import { Game, type InputHotspot } from './game';
 import { keyDown, keyUp, PointerControls, SWIPE_DISTANCE, SWIPE_DUCK_TICKS, SWIPE_WINDOW } from './input';
 
 /** A game with a probe system that records every tick's InputFrame. */
@@ -132,6 +132,116 @@ describe('touch gestures while playing', () => {
     pointers.move(1, 100, 130);
     tick();
     expect(frames.some((f) => f.duck.held)).toBe(false);
+  });
+});
+
+describe('forgiving swipe down', () => {
+  it('a swipe duck lasts about 1.2 s', () => {
+    expect(SWIPE_DUCK_TICKS / 60).toBeGreaterThanOrEqual(1.1);
+    expect(SWIPE_DUCK_TICKS / 60).toBeLessThanOrEqual(1.3);
+  });
+
+  it('a short swipe of 4 view px already ducks', () => {
+    const { pointers, tick, presses } = setup();
+    pointers.down(1, 100, 100, true);
+    pointers.move(1, 100, 104);
+    pointers.up(1);
+    expect(tick().duck.held).toBe(true);
+    tick(SWIPE_WINDOW + 2);
+    expect(presses()).toBe(0);
+  });
+
+  for (const [dx, dy] of [[3, 4], [4, 4], [-5, 5], [6, 6]] as const) {
+    it(`a diagonal swipe down (${dx}, ${dy}) up to ~45 degrees from vertical ducks`, () => {
+      const { pointers, tick, presses } = setup();
+      pointers.down(1, 100, 100, true);
+      // The finger travels in small steps, like a real swipe.
+      for (let i = 1; i <= 4; i++) pointers.move(1, 100 + (dx * i) / 4, 100 + (dy * i) / 4);
+      pointers.up(1);
+      expect(tick().duck.held).toBe(true);
+      tick(SWIPE_WINDOW + 2);
+      expect(presses()).toBe(0);
+    });
+  }
+
+  it('a mostly sideways move (about 60 degrees from vertical) jumps', () => {
+    const { pointers, tick, frames } = setup();
+    pointers.down(1, 100, 100, true);
+    pointers.move(1, 106, 103);
+    expect(tick().action.pressed).toBe(true);
+    expect(frames.some((f) => f.duck.held)).toBe(false);
+  });
+});
+
+describe('hotspots that hold and take keys', () => {
+  function holdSpot(game: Game, active = () => true) {
+    const log: string[] = [];
+    const spot: InputHotspot = {
+      rect: () => (active() ? { x: 0, y: 0, w: 20, h: 20 } : null),
+      onPress: () => log.push('press'),
+      onRelease: () => log.push('release'),
+      onKeyDown: (code) => {
+        if (code !== 'KeyK') return false;
+        log.push('keydown');
+        return true;
+      },
+      onKeyUp: (code) => log.push(`keyup:${code}`),
+    };
+    game.ctx.addHotspot(spot);
+    return log;
+  }
+
+  it('tells a hotspot when the pointer press it took ends', () => {
+    const { game, pointers, tick, presses } = setup('title');
+    const log = holdSpot(game);
+    pointers.down(1, 5, 5, true);
+    tick(10);
+    pointers.up(1);
+    tick();
+    expect(log).toEqual(['press', 'release']);
+    expect(presses()).toBe(0);
+    expect(game.state.mode).toBe('title');
+  });
+
+  it('releaseAll and cancel also end a held hotspot press', () => {
+    const { game, pointers } = setup('title');
+    const log = holdSpot(game);
+    pointers.down(1, 5, 5, false);
+    pointers.releaseAll();
+    pointers.down(2, 5, 5, true);
+    pointers.cancel(2);
+    expect(log).toEqual(['press', 'release', 'press', 'release']);
+  });
+
+  it('routes a key to an active hotspot first and reports its release once', () => {
+    const { game, tick } = setup('title');
+    const log = holdSpot(game);
+    keyDown(game, 'KeyK');
+    keyDown(game, 'KeyK'); // auto-repeat
+    keyUp(game, 'KeyK');
+    expect(log).toEqual(['keydown', 'keyup:KeyK']);
+    keyDown(game, 'Space'); // not taken: still starts the run
+    tick();
+    expect(game.state.mode).toBe('playing');
+  });
+
+  it('a swallowed key never reaches its button, also while auto-repeating', () => {
+    const { game, tick, presses } = setup('title');
+    const modal: InputHotspot = { rect: () => ({ x: 0, y: 0, w: 1, h: 1 }), onPress: () => {}, onKeyDown: () => true };
+    game.ctx.addHotspot(modal);
+    keyDown(game, 'Space');
+    keyDown(game, 'Space');
+    tick(2);
+    expect(presses()).toBe(0);
+    expect(game.state.mode).toBe('title');
+  });
+
+  it('inactive hotspots (rect null) get no keys', () => {
+    const { game } = setup('title');
+    const log = holdSpot(game, () => false);
+    keyDown(game, 'KeyK');
+    keyUp(game, 'KeyK');
+    expect(log).toEqual([]);
   });
 });
 

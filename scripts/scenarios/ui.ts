@@ -14,8 +14,16 @@ type UiWindow = Window & { __ui?: UiDebugHook };
 const ui = <K extends keyof UiDebugHook>(t: PlaytestContext, method: K, ...args: Parameters<UiDebugHook[K]>) =>
   t.page.evaluate(([m, a]) => ((window as UiWindow).__ui![m] as (...x: unknown[]) => void)(...a), [method, args] as const);
 
-/** Button centres, mirroring src/ui/layout.ts hudButtons(): 14 px, 3 px gap, 4 px from the edge. */
-const button = (viewWidth: number, slot: number) => ({ x: viewWidth - 4 - slot * 17 - 7, y: 11 });
+/** Centre of a HUD button's tap area for this display (pause, mute, fullscreen), from src/ui/layout.ts via __ui. */
+async function button(t: PlaytestContext, name: 'pause' | 'mute' | 'fullscreen'): Promise<{ x: number; y: number }> {
+  const r = (await t.page.evaluate(() => (window as UiWindow).__ui!.layout().hud))[name]!;
+  return { x: r.x + Math.floor(r.w / 2), y: r.y + Math.floor(r.h / 2) };
+}
+
+async function tapButton(t: PlaytestContext, name: 'pause' | 'mute' | 'fullscreen'): Promise<void> {
+  const { x, y } = await button(t, name);
+  await t.realTapView(x, y);
+}
 
 async function playing(t: PlaytestContext, seed: number): Promise<void> {
   await t.game.seed(seed);
@@ -61,7 +69,7 @@ export default async function uiScenario(t: PlaytestContext): Promise<void> {
   if (!portrait) {
     const since = (await game.state()).frame;
     await game.resume();
-    await t.realTapView(button(viewWidth, 0).x, button(viewWidth, 0).y);
+    await tapButton(t, 'pause');
     await t.wait(150);
     await game.pause();
     const s = await game.state();
@@ -72,14 +80,14 @@ export default async function uiScenario(t: PlaytestContext): Promise<void> {
 
     const muted = s.muted;
     await game.resume();
-    await t.realTapView(button(viewWidth, 1).x, button(viewWidth, 1).y);
+    await tapButton(t, 'mute');
     await t.wait(150);
     await game.pause();
     t.check('mute button toggles mute', (await game.state()).muted === !muted);
     await t.canvasShot('pause muted');
 
     await game.resume();
-    await t.realTapView(button(viewWidth, 2).x, button(viewWidth, 2).y);
+    await tapButton(t, 'fullscreen');
     await t.wait(400);
     const fs = await t.page.evaluate(() => Boolean(document.fullscreenElement));
     t.check('fullscreen button enters fullscreen', fs, { fs });

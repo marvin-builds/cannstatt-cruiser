@@ -85,7 +85,9 @@ async function realInput(t: PlaytestContext): Promise<void> {
     const jumps = await game.eventsSince(since, 'jump');
     t.check('touch: swipe down ducks', s.player.state === 'duck', { state: s.player.state });
     t.check('touch: swipe down does not jump', jumps.length === 0, jumps);
-    await t.wait(900);
+    await t.wait(400);
+    t.check('touch: a swipe duck lasts longer than the old 0.6 s', (await game.state()).player.state === 'duck');
+    await t.wait(1000);
     t.check('touch: swipe duck ends by itself', (await game.state()).player.state !== 'duck');
     const tapFrom = (await game.state()).frame;
     await t.realPress(40);

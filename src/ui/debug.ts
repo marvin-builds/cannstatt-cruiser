@@ -1,12 +1,15 @@
 /**
  * Test-only tooling (enabled together with window.__game): puts the HUD into
- * states the gameplay slice would produce, for screenshots in
- * scripts/scenarios/ui.ts.
+ * states the gameplay slice would produce and reports the settings menu and
+ * button layout, for scripts/scenarios/ui.ts and settings.ts.
  */
 import { PLAYER_X } from '../core/config';
-import type { GameContext } from '../types';
+import type { GameContext, Rect } from '../types';
 import { UI } from './art';
+import { type HudButtons, hudButtons, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
+import { logoRect } from './logo';
 import type { UiView } from './screens';
+import type { ParentQuestion, SettingsScreen } from './settings';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -15,6 +18,10 @@ export interface UiDebugHook {
   samplePopups(): void;
   /** Replaces the loaded records in memory (storage follows at the next game over). */
   setRecords(highscore?: number, starsTotal?: number): void;
+  /** The hidden settings menu: screen, parent check question and the logo hold progress (0..1). */
+  settings(): { screen: SettingsScreen; question: ParentQuestion | null; holdProgress: number };
+  /** Current tap areas (view px) for this display: HUD buttons, settings buttons and the logo. */
+  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; logo: Rect };
 }
 
 declare global {
@@ -36,6 +43,19 @@ export function installUiDebug(ctx: GameContext, view: UiView): void {
     },
     setRecords(highscore = 0, starsTotal = 0) {
       view.records = { highscore, starsTotal };
+    },
+    settings() {
+      return { screen: view.settings.screen, question: view.settings.question, holdProgress: view.logoHold.progress };
+    },
+    layout() {
+      const { display } = ctx;
+      const metrics = uiMetrics(display);
+      return {
+        metrics,
+        hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics),
+        menu: settingsLayout(display.viewWidth, metrics, display.viewHeight),
+        logo: logoRect(display.viewWidth),
+      };
     },
   };
 }
