@@ -1,17 +1,29 @@
 /**
- * Spawn patterns: small street layouts (obstacles, rails, stars) in pattern
- * space, where x = 0 is the player's position when the pattern starts. Every
- * pattern is verified with the clearability solver at the given speeds and
- * rerolled (finally replaced by a safe fallback) if it cannot be passed.
+ * Spawn patterns: small street layouts (obstacles, people, rails, stars, the
+ * joint) in pattern space, where x = 0 is the player's position when the
+ * pattern starts. Every pattern is verified with the clearability solver at
+ * the given speeds (and with the chill jump at the chill speeds, where the
+ * chill effect may be active) and rerolled (finally replaced by a safe
+ * fallback) if it cannot be passed.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
-import type { Entity, ObstacleKind, RailKind } from '../types';
-import { hitBox, isObstacle, isOverhead, isRail, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
+import { CHILL_JUMP_SCALE } from '../player/tuning';
+import type { ObstacleKind, RailKind } from '../types';
+import { jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
+import { buildCourse, type Piece } from './course';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
-import { type Course, HOLDS, Solver } from './solver';
+import type { Motion } from './motion';
+import { constantPace, type Course, HOLDS, Solver } from './solver';
 
-export type Piece = Omit<Entity, 'id' | 'done'>;
+export type { Piece };
+
+export interface PlanOptions {
+  /** Zone the pattern lies in: people are themed by it (1 Neckar: VfB fans, 2 Bad Cannstatt: Wasen visitors). */
+  zone?: number;
+  /** Speeds at which the pattern must also be clearable with the chill jump (the effect may be active there). */
+  chillSpeeds?: number[];
+}
 
 export interface Pattern {
   name: string;
@@ -29,6 +41,8 @@ interface Template {
 
 /** Ground obstacles a random pick chooses from. */
 const PICKABLE: ObstacleKind[] = ['bin', 'barrier', 'bench', 'planter', 'curbGap'];
+/** People added to the pick per zone (twice: about every fourth pick there is a person). */
+const ZONE_PEOPLE: Record<number, ObstacleKind[]> = { 1: ['vfbFan', 'vfbFan'], 2: ['wasenGuest', 'wasenGuest'] };
 /** Chance that a pattern with obstacles also gets a star arc over its best jump. */
 const STAR_CHANCE = 0.45;
 const MAX_STARS = 5;
@@ -48,10 +62,15 @@ function runoutFor(speed: number): number {
 
 class Builder {
   readonly pieces: Piece[] = [];
+  private readonly pickable: ObstacleKind[];
+
   constructor(
     readonly rng: Rng,
     readonly lead: number,
-  ) {}
+    zone: number,
+  ) {
+    this.pickable = [...PICKABLE, ...(ZONE_PEOPLE[zone] ?? [])];
+  }
 
   /** Right edge of everything placed so far (or the lead). */
   get end(): number {
@@ -61,6 +80,11 @@ class Builder {
   obstacle(kind: ObstacleKind, x: number): Piece {
     const piece: Piece = { kind, ...obstacleRect(kind, Math.round(x)) };
     if (kind === 'bin') piece.data = { variant: this.rng.int(0, 2) };
+    const motion = OBSTACLES[kind].motion;
+    if (motion) {
+      const m: Motion = { walk: this.rng.range(...motion.walk), sway: this.rng.range(...motion.sway), phase: this.rng.range(0, 2 * Math.PI) };
+      piece.data = { ...m, ax: piece.x, variant: this.rng.int(0, 1) };
+    }
     this.pieces.push(piece);
     return piece;
   }
@@ -80,7 +104,7 @@ class Builder {
   }
 
   pick(maxHeight = Infinity): ObstacleKind {
-    return this.rng.pick(PICKABLE.filter((k) => OBSTACLES[k].h - OBSTACLES[k].sink <= maxHeight));
+    return this.rng.pick(this.pickable.filter((k) => OBSTACLES[k].h - OBSTACLES[k].sink <= maxHeight));
   }
 
   railKind(): RailKind {
@@ -169,35 +193,38 @@ function pickTemplate(rng: Rng, tier: number): Template {
 
 /** What the solver sees of a pattern. */
 export function courseOf(pattern: Pattern): Course {
-  const box = (p: Piece) => hitBox({ ...p, kind: p.kind as ObstacleKind });
-  const obstacles = pattern.pieces.filter((p) => isObstacle(p.kind) && !isOverhead(p.kind)).map(box);
-  const overhead = pattern.pieces.filter((p) => isOverhead(p.kind)).map(box);
-  const rails = pattern.pieces.filter((p) => isRail(p.kind));
-  const goal = Math.max(0, ...[...obstacles, ...overhead, ...rails].map((r) => r.x + r.w));
-  return { obstacles, overhead, rails, goal, limit: pattern.length };
+  return buildCourse(pattern.pieces, 0, () => pattern.length);
 }
 
 /**
  * A random pattern for this tier that is clearable at every speed in
- * `speeds` (the speed range while the player crosses it).
+ * `speeds` (the speed range while the player crosses it), and with the chill
+ * jump at every speed in `options.chillSpeeds`.
  */
-export function planPattern(rng: Rng, tier: number, speeds: number[]): Pattern {
+export function planPattern(rng: Rng, tier: number, speeds: number[], options: PlanOptions = {}): Pattern {
   const slow = Math.min(...speeds);
-  const fast = Math.max(...speeds);
+  const fast = Math.max(...speeds, ...(options.chillSpeeds ?? []));
+  const paces = [...speeds, ...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE))];
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier);
-    const builder = new Builder(rng, leadFor(fast));
+    const builder = new Builder(rng, leadFor(fast), options.zone ?? 0);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
-    const solvers = speeds.map((v) => new Solver(courseOf(pattern), v));
-    if (!solvers.every((s) => s.solvable())) continue;
+    const course = courseOf(pattern);
+    if (!paces.every((pace) => new Solver(course, pace).solvable())) continue;
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
-    else if (rng.chance(STAR_CHANCE)) addStars(pattern, solvers[speeds.indexOf(slow)]!.bestJump()?.path ?? []);
+    else if (rng.chance(STAR_CHANCE)) addStars(pattern, new Solver(course, slow).bestJump()?.path ?? []);
     return pattern;
   }
-  const builder = new Builder(rng, leadFor(fast));
+  const builder = new Builder(rng, leadFor(fast), 0);
   builder.obstacle('bench', builder.lead);
   return finish('fallback', builder.pieces, fast);
+}
+
+/** A lone joint floating at riding height: collected by riding (or ducking) through it. */
+export function jointPattern(speed: number): Pattern {
+  const lead = leadFor(speed);
+  return finish('joint', [{ kind: 'joint', ...jointRect(lead) }], speed);
 }
 
 function finish(name: string, pieces: Piece[], fast: number): Pattern {

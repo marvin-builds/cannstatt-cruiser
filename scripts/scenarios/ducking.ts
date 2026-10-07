@@ -9,7 +9,7 @@ import { PLAYER_X } from '../../src/core/config';
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import { SolverBot } from '../../src/gameplay/testing';
 import type { GameState, ObstacleKind } from '../../src/types';
-import { type PlaytestContext, viewToClient } from '../playtest-lib';
+import { dismissRotateHint, type PlaytestContext, viewToClient } from '../playtest-lib';
 
 const duck = {
   press: (t: PlaytestContext) => t.page.evaluate(() => window.__game!.input.duck.press()),
@@ -147,12 +147,7 @@ async function botRide(t: PlaytestContext): Promise<void> {
 export default async function ducking(t: PlaytestContext): Promise<void> {
   const { game } = t;
   await game.pause();
-  const { viewWidth, touch, portrait } = await game.display();
-  if (touch && portrait) {
-    // The rotate hint covers the game until a tap dismisses it (see ui.ts).
-    await t.realTapView(Math.floor(viewWidth / 2), 90);
-    await game.step(2);
-  }
+  await dismissRotateHint(t);
   await t.canvasShot('title with duck hint');
 
   await freshRun(t, 0);

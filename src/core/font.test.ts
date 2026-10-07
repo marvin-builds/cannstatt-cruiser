@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { FONT_LINE_HEIGHT, glyphFor, measureText } from './font-data';
+import { FONT_BASELINE, FONT_LINE_HEIGHT, glyphFor, measureText } from './font-data';
 
 describe('pixel font', () => {
   it('has glyphs for German letters, digits and punctuation', () => {
     const required = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüß0123456789.,:;!?-+/()\'"%*=<>#&_ ';
     for (const ch of required) expect(glyphFor(ch), ch).not.toBeNull();
+  });
+
+  it('sits the full stop on the baseline like the digits, so 61.234 never reads as a comma', () => {
+    const rowOf = (ch: string) => Math.max(...glyphFor(ch)!.rows.map((r, i) => (r.includes('#') ? i : -1)));
+    expect(rowOf('.')).toBe(FONT_BASELINE);
+    expect(rowOf('1')).toBe(FONT_BASELINE);
+    expect(rowOf(',')).toBeGreaterThan(FONT_BASELINE);
   });
 
   it('draws umlauts as their base letter plus dots above', () => {

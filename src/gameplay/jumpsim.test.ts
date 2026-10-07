@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import { addRail, createPlayerTestGame, startGrind, tick } from '../player/testing';
-import { HITBOX_H } from '../player/tuning';
+import { CHILL_JUMP_SCALE, HITBOX_H, HOLD_GRAVITY, JUMP_VELOCITY } from '../player/tuning';
 import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
 
-/** y per tick of the real player when pressing for `hold` ticks from the ground. */
-function realGroundJump(hold: number, ticks: number): number[] {
+/** y per tick of the real player when pressing for `hold` ticks from the ground (`chillTimer` > 0: chilled). */
+function realGroundJump(hold: number, ticks: number, chillTimer = 0): number[] {
   const game = createPlayerTestGame();
   tick(game, 3);
+  game.state.chillTimer = chillTimer;
   const ys: number[] = [];
   game.buttons.action.press('test');
   for (let i = 0; i < ticks; i++) {
@@ -18,11 +19,11 @@ function realGroundJump(hold: number, ticks: number): number[] {
   return ys;
 }
 
-function simGroundJump(hold: number, ticks: number): number[] {
+function simGroundJump(hold: number, ticks: number, jumpScale = 1): number[] {
   let b = groundBody();
   const ys: number[] = [];
   for (let i = 0; i < ticks; i++) {
-    b = stepBody(b, 0, i === 0, i < hold);
+    b = stepBody(b, 0, i === 0, i < hold, false, jumpScale);
     ys.push(b.y);
   }
   return ys;
@@ -96,5 +97,23 @@ describe('jump simulator mirrors the player controller', () => {
     expect(hitboxOf(groundBody(), 10)).toEqual({ x: 5, y: GROUND_Y - HITBOX_H.standing, w: 10, h: HITBOX_H.standing });
     const air = stepBody(groundBody(), 0, true, true);
     expect(hitboxOf(air, 0).h).toBe(HITBOX_H.tucked);
+  });
+
+  for (const hold of [1, 6, 20]) {
+    it(`matches the chilled player (CHILL_JUMP_SCALE) for a ${hold}-tick hold`, () => {
+      const real = realGroundJump(hold, 70, 30);
+      const sim = simGroundJump(hold, 70, CHILL_JUMP_SCALE);
+      sim.forEach((y, i) => expect(y).toBeCloseTo(real[i]!, 6));
+    });
+  }
+
+  it('takes off with JUMP_VELOCITY * CHILL_JUMP_SCALE while chilled, everything else unchanged', () => {
+    const b = stepBody(groundBody(), 0, true, true, false, CHILL_JUMP_SCALE);
+    expect(b.vy).toBeCloseTo(-JUMP_VELOCITY * CHILL_JUMP_SCALE + HOLD_GRAVITY * TICK_DT, 9);
+    const apex = (ys: number[]) => GROUND_Y - Math.min(...ys);
+    const normal = apex(simGroundJump(30, 90));
+    const chilled = apex(simGroundJump(30, 90, CHILL_JUMP_SCALE));
+    expect(chilled).toBeLessThan(normal * 0.8);
+    expect(chilled).toBeGreaterThan(30);
   });
 });

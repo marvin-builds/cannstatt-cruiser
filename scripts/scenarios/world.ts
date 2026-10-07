@@ -5,17 +5,19 @@
  * its tram crossing and the Grabkapelle on its hill in Cannstatt.
  *   npm run playtest -- --scenario scripts/scenarios/world.ts --viewports desktop,phone-landscape --name world
  */
-import type { PlaytestContext } from '../playtest-lib';
+import { MAX_SPEED } from '../../src/core/config';
+import { ZONE_LENGTH } from '../../src/world/zones';
+import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 const ZONES = ['mitte', 'neckar', 'cannstatt'];
-/** Must match ZONE_LENGTH in src/world/zones.ts (gateway k reaches the player at k * ZONE_LENGTH). */
-const ZONE_LENGTH = 3584;
-const SPEED = 220;
+// Gateway k reaches the player at k * ZONE_LENGTH.
+const SPEED = MAX_SPEED;
 /** Frames around each gateway, as ground distance relative to it. */
 const SEQUENCE = [-650, -350, -120, 0, 250, 600, 1200, 2000];
 
 export default async function world(t: PlaytestContext): Promise<void> {
   await t.game.pause();
+  await dismissRotateHint(t);
   await t.game.seed(7);
   await t.game.startRun();
   await t.game.step(30);
@@ -53,10 +55,11 @@ export default async function world(t: PlaytestContext): Promise<void> {
   await t.game.setSpeed(null);
 }
 
-/** Rides at the current speed (kept alive) until the distance reaches `target`. */
+/** Rides at the current speed (kept alive) until the distance reaches `target`; throws if the run stops. */
 async function rideTo(t: PlaytestContext, target: number) {
   let state = await t.game.state();
   while (state.distance < target) {
+    if (state.mode !== 'playing') throw new Error(`rideTo(${target}): run stopped (mode ${state.mode})`);
     const frames = Math.min(120, Math.max(1, Math.ceil(((target - state.distance) / Math.max(1, state.speed)) * 60)));
     await t.game.setHealth(5);
     state = await t.game.step(frames);

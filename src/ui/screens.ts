@@ -2,15 +2,17 @@
  * Drawing of every UI screen. Pure rendering: all state comes in through
  * `UiView` (records, popups, banner) and the RenderContext.
  */
+import { chillStrength } from '../core/chill';
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
 import type { RenderContext } from '../types';
-import { BUTTON, HEART, ICON_FULLSCREEN, ICON_PAUSE, ICON_PLAY, ICON_SOUND, ROTATE, STAR, UI } from './art';
+import { BUTTON, HEART, ICON_FULLSCREEN, ICON_PAUSE, ICON_PLAY, ICON_SOUND, JOINT_ICON, ROTATE, STAR, UI } from './art';
 import type { Banner } from './banner';
 import { blinkOn, centreX, formatNumber, hudButtons, metres } from './layout';
 import { drawLogo } from './logo';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
+import { CHILL_BAR_H, CHILL_BAR_W, chillBarFill, statsLayout } from './stats';
 
 export interface UiView {
   records: Records;
@@ -21,6 +23,8 @@ export interface UiView {
   fullscreenAvailable: boolean;
   /** The portrait hint was dismissed for the current orientation. */
   portraitDismissed: boolean;
+  /** Length of the current chill effect (from chillStart), for the timer bar. */
+  chillDuration: number;
 }
 
 const LINE = 11;
@@ -87,28 +91,58 @@ function drawTitle(r: RenderContext, view: UiView): void {
   text(r, stars, x + STAR.width + 3, 130, { color: UI.white });
 }
 
-/** Score, combo, hearts and stars in the top-left corner on a translucent plate. */
-function drawStats(r: RenderContext): void {
+/** Score, combo, hearts, stars and the chill timer in the top-left corner on a plate sized to them. */
+function drawStats(r: RenderContext, view: UiView): void {
   const { state, g } = r;
   const score = formatNumber(state.score);
+  const stars = formatNumber(state.stars);
   const combo = state.multiplier > 1 ? `x${state.multiplier}` : '';
-  const scoreW = measureText(score, 2) + (combo ? 6 + measureText(combo, 2) : 0);
   const comboLabel = state.combo > 1 && combo ? `Combo ${state.combo}` : '';
+  const scoreW = measureText(score, 2) + (combo ? 6 + measureText(combo, 2) : 0);
   const labelW = comboLabel ? measureText(score, 2) + 6 + measureText(comboLabel) : measureText('Punkte');
+  const heartsW = state.maxHealth * 8 - 1;
+  const rowW = heartsW + 6 + STAR.width + 3 + measureText(stars);
+  const l = statsLayout(Math.max(scoreW, labelW, rowW), state.chillTimer > 0);
+
   g.fillStyle = UI.panel;
-  g.fillRect(2, 2, Math.max(scoreW, labelW, state.maxHealth * 8) + 9, 49);
-  text(r, 'Punkte', 6, 4, { color: UI.muted });
-  text(r, score, 6, 13, { scale: 2 });
+  g.fillRect(l.plate.x, l.plate.y, l.plate.w, l.plate.h);
+  text(r, 'Punkte', l.x, l.label, { color: UI.muted });
+  text(r, score, l.x, l.score, { scale: 2 });
   if (combo) {
-    const x = 6 + measureText(score, 2) + 6;
-    text(r, combo, x, 13, { scale: 2, color: UI.yellow });
-    if (comboLabel) text(r, comboLabel, x, 4, { color: UI.orange });
+    const x = l.x + measureText(score, 2) + 6;
+    text(r, combo, x, l.score, { scale: 2, color: UI.yellow });
+    if (comboLabel) text(r, comboLabel, x, l.label, { color: UI.orange });
   }
 
-  for (let i = 0; i < state.maxHealth; i++) HEART.draw(g, i < state.health ? 0 : 1, 6 + i * 8, 32);
+  for (let i = 0; i < state.maxHealth; i++) HEART.draw(g, i < state.health ? 0 : 1, l.x + i * 8, l.hearts + 1);
+  const starX = l.x + heartsW + 6;
+  STAR.draw(g, 0, starX, l.hearts);
+  text(r, stars, starX + STAR.width + 3, l.hearts);
 
-  STAR.draw(g, 0, 6, 41);
-  text(r, formatNumber(state.stars), 16, 41);
+  if (l.chill !== null) {
+    JOINT_ICON.draw(g, 0, l.x, l.chill + 1);
+    const y = l.chill + 2;
+    g.fillStyle = UI.ink;
+    g.fillRect(l.chillBarX, y, CHILL_BAR_W, CHILL_BAR_H);
+    g.fillStyle = UI.chillBar;
+    g.fillRect(l.chillBarX + 1, y + 1, Math.max(0, chillBarFill(state.chillTimer, view.chillDuration) - 2), CHILL_BAR_H - 2);
+  }
+}
+
+/** Warm, hazy look while chilled: a steady tint that fades with the effect (no flicker). */
+function drawChillTint(r: RenderContext): void {
+  const strength = chillStrength(r.state.chillTimer);
+  if (strength <= 0) return;
+  const { g } = r;
+  const { viewWidth: w, viewHeight: h } = r.display;
+  g.fillStyle = `rgba(${UI.chillTint}, ${(0.16 * strength).toFixed(3)})`;
+  g.fillRect(0, 0, w, h);
+  // A slightly denser haze towards the edges, in three steps.
+  g.fillStyle = `rgba(${UI.chillTint}, ${(0.06 * strength).toFixed(3)})`;
+  for (const inset of [0, 6, 12]) {
+    g.fillRect(0, inset, w, 6);
+    g.fillRect(0, h - inset - 6, w, 6);
+  }
 }
 
 /** Popups and the zone ribbon: only while riding, never under the pause dim. */
@@ -138,7 +172,7 @@ function drawPause(r: RenderContext): void {
   fill(r, UI.dim);
   centred(r, 'Pause', 54, { scale: 3 });
   if (blinkOn(r.state.modeTime)) {
-    centred(r, hint(r, 'Tippen zum Weiterfahren', 'P drücken zum Weiterfahren'), 92, { color: UI.yellow });
+    centred(r, hint(r, 'Tippen zum Weiterfahren', 'Leertaste oder P zum Weiterfahren'), 92, { color: UI.yellow });
   }
 }
 
@@ -149,6 +183,10 @@ function row(r: RenderContext, label: string, value: string, y: number, color: s
   text(r, value, cx + 4, y, { color });
 }
 
+/** Top of the first game-over table row. */
+const TABLE_Y = 62;
+const TABLE_PAD = 4;
+
 function drawGameOver(r: RenderContext, view: UiView): void {
   fill(r, UI.dim);
   const { state } = r;
@@ -156,12 +194,18 @@ function drawGameOver(r: RenderContext, view: UiView): void {
   centred(r, 'Sturz! Runde vorbei', 16, { scale: 2, color: UI.red });
   if (run?.newRecord && blinkOn(state.modeTime * 2)) centred(r, 'Neuer Rekord!', 38, { scale: 2, color: UI.yellow });
 
-  panel(r, 180, 58, 66);
-  row(r, 'Punkte', formatNumber(state.score), 62, run?.newRecord ? UI.yellow : UI.white);
-  row(r, 'Highscore', formatNumber(view.records.highscore), 62 + LINE);
-  row(r, 'Sterne', formatNumber(state.stars), 62 + LINE * 2);
-  row(r, 'Sterne gesamt', formatNumber(view.records.starsTotal), 62 + LINE * 3);
-  row(r, 'Strecke', `${formatNumber(metres(state.distance))} m`, 62 + LINE * 4);
+  const rows: [string, string, string][] = [
+    ['Punkte', formatNumber(state.score), run?.newRecord ? UI.yellow : UI.white],
+    ['Highscore', formatNumber(view.records.highscore), UI.white],
+    ['Sterne', formatNumber(state.stars), UI.white],
+    ['Sterne gesamt', formatNumber(view.records.starsTotal), UI.white],
+    ['Strecke', `${formatNumber(metres(state.distance))} m`, UI.white],
+  ];
+  // Labels end and values start 4 px from the centre line: the plate is as wide as the longer side, twice.
+  const half = 4 + Math.max(...rows.flatMap(([label, value]) => [measureText(label), measureText(value)]));
+  const bottom = TABLE_Y + LINE * (rows.length - 1) + 8;
+  panel(r, 2 * (half + TABLE_PAD), TABLE_Y - TABLE_PAD, bottom - TABLE_Y + 2 * TABLE_PAD);
+  rows.forEach(([label, value, color], i) => row(r, label, value, TABLE_Y + LINE * i, color));
 
   if (state.modeTime >= GAMEOVER_INPUT_DELAY) {
     if (blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) {
@@ -174,9 +218,9 @@ function drawGameOver(r: RenderContext, view: UiView): void {
 function drawPortraitHint(r: RenderContext): void {
   fill(r, UI.ink);
   const cx = centreX(r.display.viewWidth);
-  ROTATE.draw(r.g, 0, cx - Math.floor(ROTATE.width / 2), 40);
-  centred(r, 'Bitte Gerät drehen', 70, { scale: 2, color: UI.yellow });
-  centred(r, 'Im Querformat fährt es sich besser.', 94);
+  ROTATE.draw(r.g, 0, cx - Math.floor(ROTATE.width / 2), 22);
+  centred(r, 'Bitte Gerät drehen', 66, { scale: 2, color: UI.yellow });
+  centred(r, 'Im Querformat fährt es sich besser.', 92);
   centred(r, 'Tippen zum Ignorieren', 120, { color: UI.muted });
 }
 
@@ -190,11 +234,13 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawTitle(r, view);
       break;
     case 'playing':
-      drawStats(r);
+      drawChillTint(r);
+      drawStats(r, view);
       drawLive(r, view);
       break;
     case 'paused':
-      drawStats(r);
+      drawChillTint(r);
+      drawStats(r, view);
       drawPause(r);
       break;
     case 'gameover':

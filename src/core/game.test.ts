@@ -76,6 +76,22 @@ describe('Game', () => {
     expect(events).toEqual(expect.arrayContaining(['pause', 'resume']));
   });
 
+  it('resumes from pause with the jump action, without the press also jumping', () => {
+    const presses: boolean[] = [];
+    const sys: System = { name: 'spy', update: (ctx) => void (ctx.state.mode === 'playing' && presses.push(ctx.input.action.pressed)) };
+    const game = new Game({ systems: [sys] });
+    const events = recordEvents(game);
+    game.commands.startRun();
+    game.commands.pause();
+    presses.length = 0;
+    game.buttons.action.press('key:Space');
+    game.tick();
+    expect(game.state.mode).toBe('playing');
+    expect(events).toContain('resume');
+    game.tick();
+    expect(presses).toEqual([false]);
+  });
+
   it('ends the run when health reaches zero and ignores early restart taps', () => {
     const game = new Game({ systems: [] });
     const events = recordEvents(game);

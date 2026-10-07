@@ -79,17 +79,38 @@ Testing game over and the HUD without waiting for gameplay:
 
 ```js
 g.setScore(4200); g.setHealth(1); g.step(1);   // HUD with one heart
-g.setSpeed(220);                                // max difficulty speed
+g.setSpeed(165);                                // max difficulty speed (MAX_SPEED)
 g.endRun();                                     // game-over screen now
 ```
 
-Ducking a bot through a run: `SolverBot` (`src/gameplay/testing.ts`) gives
-`next(state)` for the action and `duck(state)` for duck; hold duck while it
-returns true (see `scripts/scenarios/ducking.ts`).
+### Gameplay testing helpers
 
-Gameplay debug hook (same condition as `__game`): `window.__gameplay.place(kind, x)`
-puts obstacle `kind` (e.g. `'banner'`, `'stopSign'`) with its left edge at
-screen x and returns its id; `window.__gameplay.clear()` removes every entity.
+- `src/gameplay/testing.ts` (DOM-free, also used by playtests):
+  - `SolverBot`: plays like a careful human with the solver's plan. Call
+    `next(state)` before every tick and apply `'press'` / `'release'`, and hold
+    duck while `duck(state)` is true. It plans with the chill slowdown and the
+    chill jump; pass `new SolverBot(true)` when `setSpeed` pins the speed.
+  - `planJump(state)`, `courseAhead(state)` / `courseFrom(entities, originX)`
+    (live entities as a solver `Course`, incl. ledges = benches and movers =
+    people) and `paceOf(state)` (the scroll and jump scale ahead while chilled).
+- `src/gameplay/test-kit.ts` (Vitest only): `quietGame(speed)` (player +
+  gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
+  `place(game, kind, rect)`, `record(game, event)` and `playBot(game, ticks)`.
+- `Solver` (`solver.ts`) takes a speed or a `Pace`: `constantPace(speed,
+  CHILL_JUMP_SCALE)` checks a course with the chill jump.
+
+### Debug hooks for playtests (same condition as `__game`)
+
+| Hook | Effect |
+|---|---|
+| `window.__gameplay.place(kind, x, variant?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl) or `'joint'` |
+| `window.__gameplay.clear()` | removes every entity (spawning goes on) |
+| `window.__ui.hud({combo, multiplier, stars})` | overwrites HUD values like gameplay would |
+| `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
+| `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
+
+Types: `import type {} from '../../src/gameplay/debug'` (declares
+`window.__gameplay`) and `UiDebugHook` from `src/ui/debug.ts`.
 
 **Auto-pause:** losing window focus (`blur`) or hiding the tab
 (`visibilitychange`) releases the action and switches a running game to
@@ -144,8 +165,16 @@ npm run playtest -- --headed
 - `scripts/scenarios/ducking.ts`: duck pose, ducking under both overhead
   obstacles in all three zones, crashing into them standing / jumping, real
   ArrowDown (desktop) and a CDP touch swipe down that must duck without
-  jumping (touch viewports), and a 60 s ducking bot ride on seed 1. On
-  phone-portrait it first taps the rotate hint away, so it runs on all viewports.
+  jumping (touch viewports), and a 60 s ducking bot ride on seed 1.
+- `scripts/scenarios/chill.ts`: bench grind, VfB fans (zone 1) and Wasen
+  visitors (zone 2) incl. their crash reactions, the bot jumping people, the
+  joint pickup with the chill effect (speed, lower jump, tint, HUD timer) and
+  the game over with German numbers.
+- `gameplay.ts`, `world.ts`, `ducking.ts` and `chill.ts` call
+  `dismissRotateHint(t)` (`playtest-lib.ts`) first, so they also run on
+  phone-portrait, where the rotate hint would otherwise keep the run paused.
+  Loops that wait for game progress use `stepWhile(t, more, {max})` or check
+  the mode, so a stopped run fails with a message instead of hanging.
 
 ### Custom scenarios
 
@@ -175,6 +204,7 @@ export default async function (t: PlaytestContext) {
 The context provides:
 - `page` (the Playwright Page) and `viewport`;
 - `game`, a driver for the test hook;
+- (as functions from `playtest-lib.ts`) `dismissRotateHint(t)` and `stepWhile(t, more, {max, frames})`;
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
 
 The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,

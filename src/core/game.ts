@@ -144,9 +144,10 @@ export class Game {
       s.time += TICK_DT;
       s.distance += s.speed * TICK_DT;
       if (s.health <= 0) this.endRun();
-    } else if (this.input.action.pressed && this.canStartFromInput()) {
-      // Done after the systems ran, so the starting press is not also a jump.
-      this.startRun();
+    } else if (this.input.action.pressed) {
+      // Done after the systems ran, so the starting / resuming press is not also a jump.
+      if (s.mode === 'paused') this.commands.resume();
+      else if (this.canStartFromInput()) this.startRun();
     }
 
     this.runScheduled();

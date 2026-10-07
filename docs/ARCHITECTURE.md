@@ -12,7 +12,8 @@ index.html              canvas#game, viewport/touch CSS, PWA <link>s
 src/main.ts             composition root: lists the systems in update order (do not edit from slices)
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds, jump physics defaults, health
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health
+  chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots
   state.ts              createInitialState(), createPlayer(), resetRun()
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
@@ -47,9 +48,9 @@ foundation owner can extend it.
 |---|---|---|---|
 | `src/core/`, `src/types.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
-| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), zone cycling/transitions, ground, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, rails, stars (`state.entities`), spawner + clearability (jumps and ducks), difficulty (`state.speed`), collisions, score/combo/multiplier, health, gameplay events |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots), portrait hint |
+| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people, rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump), difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, score/combo/multiplier, health, gameplay events |
+| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill timer), chill tint, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots), portrait hint |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -107,7 +108,7 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
-| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set) |
+| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` at every run start) |
 | `player.*` (position, velocity, grounded, grinding, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`) |
 
@@ -120,7 +121,12 @@ Collision handoff between player and gameplay: gameplay detects collisions
 using `player.hitbox` and emits `crash` / `grindStart` / `grindEnd`. The player
 system listens to these events to play the crash animation, or to snap onto
 and ride the rail (gameplay passes the rail's entity id; the player reads its
-rect from `state.entities`).
+rect from `state.entities`). The bench is grindable the same way: its entity
+`y` (the backrest's top edge) is the rail top, so landing on it from above
+grinds and only riding into its front or side crashes. People (`vfbFan`,
+`wasenGuest`) walk or sway: their entity `x` follows `data.ax` (the street
+anchor) plus a motion that depends only on the distance to the player
+(`gameplay/motion.ts`), and the collision box moves with them.
 
 ### Events (`GameEvents`)
 
@@ -138,6 +144,7 @@ rect from `state.entities`).
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
 | `crash` | `{entityId, kind, health}` | gameplay |
 | `starCollected` | `{entityId, stars}` | gameplay |
+| `chillStart` | `{entityId, duration}` | gameplay (joint picked up; `state.chillTimer = duration`) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
@@ -223,7 +230,9 @@ title --start--> playing --pause--> paused --resume--> playing
 
 Invalid commands are ignored. Restart taps on the game-over screen are ignored
 for `GAMEOVER_INPUT_DELAY` (0.75 s). P/Escape pauses and resumes, and on the
-game-over screen it goes back to the title. Losing window focus (`blur`) or
+game-over screen it goes back to the title. An action press (Space, ArrowUp,
+W) also resumes from pause; core does it after the systems ran, so that press
+is not also a jump (a tap on the pause screen resumes through a ui hotspot). Losing window focus (`blur`) or
 hiding the page (`visibilitychange`) releases every button (action, duck, undecided touches) and pauses a running game.
 
 ## Drawing sprites
@@ -250,6 +259,52 @@ BIN.draw(r.g, frameIndex, x, y, { flip: false }); // top-left at rounded (x, y)
 Text: `drawText(g, 'Grüße', x, y, { color, scale: 2, align: 'center', shadow: '#000' })`.
 `y` is the top of the line, which is 8 font pixels tall: umlaut row,
 capitals 1-5, descenders 6-7. Measure with `measureText`.
+
+## Zones: the distance-driven route
+
+The zones follow each other along the street; there is no time-based cycle.
+`src/world/zones.ts` holds the schedule (`ZoneRoute`):
+
+- Every zone lasts `ZONE_LENGTH` (3584 px) of ground distance. The point where
+  one zone hands over to the next is a **gateway** (a landmark, see
+  `world/art/gateways.ts`), aligned to the paving grid (`SEAM_GRID`).
+- The next zone streams in through the gateway: near layers first, far
+  layers last, each parallax layer at its own scroll factor, and the sky
+  palette blends over `PALETTE_BLEND` px around the gateway.
+- When the gateway reaches the player (`distance` passes the boundary), the
+  world calls `commands.setZone(next)`, which sets `state.zoneIndex` and emits
+  `zoneChanged`. So `zoneIndex` changes exactly at the gateway.
+- A run starts in zone 0 with the first gateway `ZONE_LENGTH` away. Any other
+  `setZone` (test hook, playtests) **snaps**: the world shows that zone at once
+  and the next gateway is a full zone length further.
+- Gameplay mirrors the route (a `ZoneRoute` it snaps on the same events) so it
+  knows the zone at any street distance: people are themed by the zone their
+  pattern lies in (VfB fans at the Neckar, zone 1; Wasen visitors in Bad
+  Cannstatt, zone 2). Playtests import `ZONE_LENGTH` instead of hard-coding it.
+
+## Chill effect (joint pickup)
+
+Contract between gameplay, player and ui:
+
+- **Gameplay** spawns the rare `joint` entity (never in the first 30 s, then at
+  most one per ~45-60 s). Touching it sets `state.chillTimer = CHILL_DURATION`
+  (6 s, `core/chill.ts`) and emits `chillStart {entityId, duration}`. Gameplay
+  counts the timer down every playing tick (before it sets the speed) and the
+  speed becomes `speedAt(distance) * chillSpeedFactor(chillTimer)`: it eases to
+  60 % over `CHILL_EASE_IN` (0.5 s) and back to normal over the last
+  `CHILL_EASE_OUT` (1 s) of the timer. While `ctx.speedOverride` is set the
+  speed stays pinned (only the timer runs).
+- **Player** (`src/player`): while `state.chillTimer > 0` at the start of a
+  tick, take-off velocity is `JUMP_VELOCITY * CHILL_JUMP_SCALE` (0.8,
+  `player/tuning.ts`); gravity, hold gravity, max hold, coyote and buffer are
+  unchanged. Look: red eyes and a smoking joint in the mouth.
+- **Gameplay's jumpsim** applies the same scale (`stepBody(..., jumpScale)`),
+  checked tick by tick against the real player. The spawner verifies every
+  pattern the effect can reach (street up to `CHILL_REACH` after the joint)
+  with the chill jump at chill speed, mid-ramp and full speed, besides the
+  normal check.
+- **UI** shows a warm, steady screen tint scaled by `chillStrength(timer)`
+  and a draining timer bar with a joint icon in the HUD plate.
 
 ## How state flows
 

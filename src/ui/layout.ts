@@ -42,6 +42,11 @@ export function formatNumber(n: number): string {
   return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+/** A popup's points: "+1.250". */
+export function plusPoints(n: number): string {
+  return `+${formatNumber(n)}`;
+}
+
 export function metres(distance: number): number {
   return Math.floor(distance / PX_PER_METRE);
 }

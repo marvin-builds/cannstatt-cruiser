@@ -13,6 +13,9 @@ export const UI = {
   teal: '#3fc1c9',
   empty: '#4a4a5c',
   dim: 'rgba(16, 18, 30, 0.62)',
+  /** Warm haze over the street while chilled (alpha scaled by the effect strength). */
+  chillTint: '255, 150, 80',
+  chillBar: '#ff9a3c',
   panel: 'rgba(16, 18, 30, 0.55)',
 } as const;
 
@@ -137,21 +140,38 @@ export const ICON_FULLSCREEN = sprite(ICON, [
 `,
 ]);
 
-/** Phone turning to landscape, for the portrait hint. */
-export const ROTATE = sprite({ w: UI.white, s: UI.teal, y: UI.yellow }, [`
-  .wwwwwwww...........
-  .wssssssw...........
-  .wssssssw...........
-  .wssssssw....yy.....
-  .wssssssw......y....
-  .wssssssw.......y...
-  .wssssssw.......y...
-  .wssssssw.....y.y.y.
-  .wssssssw......yyy..
-  .wssssssw.......y...
-  .wssssssw...........
-  .wssssssw...........
-  .wwwwwwww...........
-  .www..www...........
-  .wwwwwwww...........
+const ROTATE_ART = [
+  '.wwwwwwww...........',
+  '.wssssssw...........',
+  '.wssssssw...........',
+  '.wssssssw....yy.....',
+  '.wssssssw......y....',
+  '.wssssssw.......y...',
+  '.wssssssw.......y...',
+  '.wssssssw.....y.y.y.',
+  '.wssssssw......yyy..',
+  '.wssssssw.......y...',
+  '.wssssssw...........',
+  '.wssssssw...........',
+  '.wwwwwwww...........',
+  '.www..www...........',
+  '.wwwwwwww...........',
+];
+
+/** Phone turning to landscape, for the portrait hint (drawn at twice the pixel size so it reads on a phone). */
+export const ROTATE = sprite({ w: UI.white, s: UI.teal, y: UI.yellow }, [
+  ROTATE_ART.flatMap((row) => {
+    const wide = row.replace(/./g, '$&$&');
+    return [wide, wide];
+  }),
+]);
+
+/** Small joint for the chill timer row (CHILL_ICON_W wide). */
+export const JOINT_ICON = sprite({ k: UI.ink, c: '#d8a86a', w: '#f4f1ea', r: '#ff5a2a', o: '#ffb03a', g: UI.muted }, [`
+  .........g.
+  ........g..
+  ..kkkkkkkk.
+  kkwwwwwwwrk
+  kcwwwwwwwok
+  .kkkkkkkkk.
 `]);

@@ -181,6 +181,38 @@ export async function touchHold(cdp: CDPSession, x: number, y: number, ms: numbe
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+/**
+ * On a touch device in portrait the rotate hint covers the game and keeps
+ * runs paused until a tap dismisses it: tap it away so scenarios also run on
+ * phone-portrait. Does nothing elsewhere.
+ */
+export async function dismissRotateHint(t: PlaytestContext): Promise<void> {
+  const { touch, portrait, viewWidth } = await t.game.display();
+  if (!touch || !portrait) return;
+  await t.realTapView(Math.floor(viewWidth / 2), 90);
+  await t.game.step(2);
+}
+
+/**
+ * Steps until `done(state)` or `max` ticks, and throws instead of looping on
+ * when the run stops (paused, game over): scenarios then fail with a clear
+ * message instead of hanging.
+ */
+export async function stepWhile(
+  t: PlaytestContext,
+  more: (s: GameState) => boolean,
+  options: { max?: number; frames?: number } = {},
+): Promise<GameState> {
+  const { max = 60 * 60, frames = 1 } = options;
+  let s = await t.game.state();
+  for (let n = 0; more(s); n += frames) {
+    if (s.mode !== 'playing') throw new Error(`run stopped (mode ${s.mode}) at frame ${s.frame}`);
+    if (n >= max) throw new Error(`no result after ${max} ticks at frame ${s.frame}`);
+    s = await t.game.step(frames);
+  }
+  return s;
+}
+
 export function slug(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

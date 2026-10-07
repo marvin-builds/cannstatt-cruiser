@@ -1,8 +1,9 @@
 /**
  * A branchable copy of the skater's movement (src/player/controller.ts, numbers
  * from src/player/tuning.ts) for the clearability solver: ground, variable
- * jump, ducking (on the ground only), riding a rail and rolling off its end. Jump buffer, coyote time and
- * crashes are left out, which only makes the solver more conservative.
+ * jump (take-off scaled by CHILL_JUMP_SCALE while chilled), ducking (on the
+ * ground only), riding a rail and rolling off its end. Jump buffer, coyote
+ * time and crashes are left out, which only makes the solver more conservative.
  * jumpsim.test.ts checks it against the real player tick by tick.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
@@ -36,8 +37,9 @@ export function railBody(railTop: number, railEnd: number): Body {
  * One tick of player movement at pattern x `px` (before this tick's scroll).
  * `press` is the action going down this tick, `held` whether it is down,
  * `duck` whether duck is held (it only counts on the ground, after a jump).
+ * `jumpScale` scales the take-off speed (CHILL_JUMP_SCALE while chilled).
  */
-export function stepBody(b: Body, px: number, press: boolean, held: boolean, duck = false): Body {
+export function stepBody(b: Body, px: number, press: boolean, held: boolean, duck = false, jumpScale = 1): Body {
   let { y, vy, grounded, onRail, boosting, boostTime } = b;
   if (!held) boosting = false;
   if (press && (grounded || onRail)) {
@@ -45,7 +47,7 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
     grounded = false;
     boosting = true;
     boostTime = 0;
-    vy = -T.JUMP_VELOCITY;
+    vy = -T.JUMP_VELOCITY * jumpScale;
   }
   if (onRail) {
     if (px > b.railEnd) onRail = false;

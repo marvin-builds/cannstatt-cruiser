@@ -35,10 +35,24 @@ export interface PlayerState {
   invulnerableTimer: number;
 }
 
-/** Ground obstacles, plus overhead ones (banner, stopSign) that hang above the street and are ducked under. */
-export type ObstacleKind = 'bin' | 'barrier' | 'bench' | 'planter' | 'curbGap' | 'banner' | 'stopSign';
+/**
+ * Ground obstacles (the bench can also be ground on top), people who walk or
+ * sway (vfbFan, wasenGuest), plus overhead ones (banner, stopSign) that hang
+ * above the street and are ducked under.
+ */
+export type ObstacleKind =
+  | 'bin'
+  | 'barrier'
+  | 'bench'
+  | 'planter'
+  | 'curbGap'
+  | 'vfbFan'
+  | 'wasenGuest'
+  | 'banner'
+  | 'stopSign';
 export type RailKind = 'handrail' | 'pipe';
-export type EntityKind = ObstacleKind | RailKind | 'star';
+/** `joint`: the rare pickup that starts the chill effect (state.chillTimer, event chillStart). */
+export type EntityKind = ObstacleKind | RailKind | 'star' | 'joint';
 
 /**
  * Anything gameplay spawns. Coordinates are screen space (view pixels): the

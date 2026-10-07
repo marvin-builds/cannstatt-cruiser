@@ -1,7 +1,8 @@
 /**
- * Clearability solver: decides whether a course of obstacles and rails can be
- * passed without a crash using the player's real jump arcs (jumpsim.ts) at a
- * fixed scroll speed, and picks the most forgiving first jump (used to place
+ * Clearability solver: decides whether a course of obstacles, rails, ledges
+ * (grindable obstacles) and moving people can be passed without a crash using
+ * the player's real jump arcs (jumpsim.ts) at a given pace (scroll speed and
+ * jump scale per tick), and picks the most forgiving first jump (used to place
  * guiding stars and by the playtest bot).
  *
  * Course space: x = 0 is the player's x at tick 0, so the player moves right by
@@ -12,7 +13,21 @@ import { TICK_DT } from '../core/config';
 import type { Rect } from '../types';
 import { type Body, groundBody, hitboxOf, snapToRail, stepBody } from './jumpsim';
 import { HITBOX_W } from '../player/tuning';
+import { type Motion, motionOffset } from './motion';
 import { landsOnRail, overlaps } from './rules';
+
+/** A grindable obstacle: landing on `top` from above grinds it, riding into `box` crashes. */
+export interface Ledge {
+  top: Rect;
+  box: Rect;
+}
+
+/** A moving obstacle: `box` at rest, shifted by motionOffset(motion, anchor - player x) every tick. */
+export interface Mover {
+  box: Rect;
+  anchor: number;
+  motion: Motion;
+}
 
 export interface Course {
   /** Collision boxes of ground obstacles. */
@@ -21,6 +36,8 @@ export interface Course {
   overhead: Rect[];
   /** Rails: top edge y, span x..x+w. */
   rails: Rect[];
+  ledges?: Ledge[];
+  movers?: Mover[];
   /** The player's hitbox must get fully past this x... */
   goal: number;
   /** ...and touch the ground again before its contact x passes this. */
@@ -36,6 +53,18 @@ export interface Jump {
   grinds: boolean;
   /** Hitbox centres while airborne, in course space. */
   path: { x: number; y: number }[];
+}
+
+/** How the course scrolls past the player: course x after `tick` ticks, and the jump scale at a tick. */
+export interface Pace {
+  x(tick: number): number;
+  jumpScale(tick: number): number;
+}
+
+/** A fixed scroll speed and jump scale (1 = normal, CHILL_JUMP_SCALE while chilled). */
+export function constantPace(speed: number, jumpScale = 1): Pace {
+  const step = speed * TICK_DT;
+  return { x: (tick) => tick * step, jumpScale: () => jumpScale };
 }
 
 /** Hold lengths the solver tries (1 = tap ... 20 = full hold). */
@@ -57,16 +86,22 @@ interface Flight extends Node {
 }
 
 export class Solver {
-  private readonly step: number;
+  private readonly pace: Pace;
   private readonly obstacles: Rect[];
+  private readonly ledges: Ledge[];
+  private readonly movers: Mover[];
+  private readonly rails: Rect[];
   private readonly memo = new Map<string, boolean>();
 
   constructor(
     private readonly course: Course,
-    speed: number,
+    pace: number | Pace,
   ) {
-    this.step = speed * TICK_DT;
-    this.obstacles = [...course.obstacles, ...course.overhead].map((o) => ({ x: o.x - SAFETY, y: o.y - SAFETY, w: o.w + 2 * SAFETY, h: o.h + 2 * SAFETY }));
+    this.pace = typeof pace === 'number' ? constantPace(pace) : pace;
+    this.obstacles = [...course.obstacles, ...course.overhead].map(grow);
+    this.ledges = (course.ledges ?? []).map((l) => ({ top: l.top, box: grow(l.box) }));
+    this.movers = (course.movers ?? []).map((m) => ({ ...m, box: grow(m.box) }));
+    this.rails = [...course.rails, ...this.ledges.map((l) => l.top)];
   }
 
   /** Whether the course can be passed from `start` (default: on the ground). */
@@ -92,7 +127,7 @@ export class Solver {
     // A first jump has to happen before the player is past the first piece,
     // and must not land before reaching it (a useless hop, e.g. in front of an
     // overhead obstacle, which is ducked under, not jumped).
-    const pieces = [...this.course.obstacles, ...this.course.rails];
+    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)];
     const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
     const firstStart = Math.min(...pieces.map((r) => r.x));
     const useful = (f: Flight) => f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart;
@@ -158,7 +193,7 @@ export class Solver {
   }
 
   private x(tick: number): number {
-    return tick * this.step;
+    return this.pace.x(tick);
   }
 
   /** Rides without input for `ticks` ticks; null on a crash or if the support is lost. */
@@ -201,17 +236,29 @@ export class Solver {
   }
 
   private advanceAs(node: Node, press: boolean, held: boolean, duck: boolean): Node | null {
-    let body = stepBody(node.body, this.x(node.tick), press, held, duck);
+    let body = stepBody(node.body, this.x(node.tick), press, held, duck, this.pace.jumpScale(node.tick));
     if (duck && !body.ducking) return null;
     const tick = node.tick + 1;
     const x = this.x(tick);
     const box = hitboxOf(body, x);
     if (!body.onRail) {
       const feet = { x, y: body.y, vy: body.vy, supported: body.grounded };
-      const rail = this.course.rails.find((r) => landsOnRail(feet, r));
+      const rail = this.rails.find((r) => landsOnRail(feet, r));
       if (rail) body = snapToRail(body, rail.y, rail.x + rail.w);
     }
     if (this.obstacles.some((o) => overlaps(box, o))) return null;
+    if (this.ledges.some((l) => !ridesOn(body, l.top) && overlaps(box, l.box))) return null;
+    if (this.movers.some((m) => overlaps(box, { ...m.box, x: m.box.x + motionOffset(m.motion, m.anchor - x) }))) return null;
     return { tick, body };
   }
+}
+
+/** The box grown by SAFETY on every side. */
+function grow(o: Rect): Rect {
+  return { x: o.x - SAFETY, y: o.y - SAFETY, w: o.w + 2 * SAFETY, h: o.h + 2 * SAFETY };
+}
+
+/** The body rides on this ledge's top (it never crashes into the ledge it grinds). */
+function ridesOn(body: Body, top: Rect): boolean {
+  return body.onRail && body.railTop === top.y && body.railEnd === top.x + top.w;
 }

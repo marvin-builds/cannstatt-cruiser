@@ -1,12 +1,14 @@
 /**
- * Palette sprites and drawing for obstacles, rails, stars and the pickup
- * sparkle. Every sprite has a dark outline so it reads against the busy
- * Stuttgart backgrounds. Sizes match catalogue.ts.
+ * Palette sprites and drawing for obstacles, rails, stars, the joint and the
+ * pickup sparkle (people live in people-art.ts). Every sprite has a dark
+ * outline so it reads against the busy Stuttgart backgrounds. Sizes match
+ * catalogue.ts.
  */
 import { GROUND_Y } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
 import type { Entity, ObstacleKind } from '../types';
 import { drawOverhead, isOverheadArt, overheadSize } from './overhead-art';
+import { drawPerson, personSize } from './people-art';
 
 const K = '#1a1418';
 
@@ -120,7 +122,9 @@ const CURB_GAP = sprite({ k: K, s: '#c9c3b6', S: '#e4dfd4', h: '#2b2622', d: '#4
   `,
 ]);
 
-const OBSTACLE_SPRITES: Record<Exclude<ObstacleKind, 'bin' | 'banner' | 'stopSign'>, Sprite> = {
+type SpriteKind = Exclude<ObstacleKind, 'bin' | 'banner' | 'stopSign' | 'vfbFan' | 'wasenGuest'>;
+
+const OBSTACLE_SPRITES: Record<SpriteKind, Sprite> = {
   barrier: BARRIER,
   bench: BENCH,
   planter: PLANTER,
@@ -155,6 +159,21 @@ const STAR_ART = [
 const STAR = sprite({ k: '#5a3a00', y: '#ffc928', W: '#fff6c2' }, [
   STAR_ART,
   STAR_ART.map((row, i) => (i === 4 ? '.kyWWWyk.' : row)),
+]);
+
+/** The joint: filter tip, paper, glowing tip and a curl of smoke (two frames). */
+const JOINT_ART = [
+  '.........g.',
+  '........g..',
+  '.........g.',
+  '..kkkkkkkk.',
+  'kkWWWWWWWRk',
+  'kcWWWLWWWok',
+  '.kkkkkkkkk.',
+];
+const JOINT = sprite({ k: K, c: '#d8a86a', W: '#f4f1ea', L: '#5f9a4a', R: '#ff5a2a', o: '#ffb03a', g: '#c8ccd4' }, [
+  JOINT_ART,
+  JOINT_ART.map((row, i) => (i < 3 ? ['........g..', '.........g.', '........g..'][i]! : row)),
 ]);
 
 const SPARKLE = sprite({ w: '#fff6c2', y: '#ffd23f' }, [
@@ -205,6 +224,14 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number
     case 'stopSign':
       drawOverhead(g, { ...e, kind: e.kind });
       return;
+    case 'vfbFan':
+    case 'wasenGuest':
+      drawPerson(g, e);
+      return;
+    case 'joint':
+      // Bobs gently like the stars; the smoke curls every 16 ticks.
+      JOINT.draw(g, Math.floor(frame / 16), x, y + (Math.floor((frame + e.id * 5) / 24) % 2));
+      return;
     default:
       OBSTACLE_SPRITES[e.kind].draw(g, 0, x, y);
   }
@@ -218,10 +245,15 @@ export function drawSparkle(g: CanvasRenderingContext2D, cx: number, cy: number,
 /** Art sizes must match the catalogue (checked by art.test.ts). */
 export function artSize(kind: ObstacleKind): { w: number; h: number } {
   if (isOverheadArt(kind)) return overheadSize(kind);
+  if (kind === 'vfbFan' || kind === 'wasenGuest') return personSize(kind);
   const s = kind === 'bin' ? BINS[0]! : OBSTACLE_SPRITES[kind];
   return { w: s.width, h: s.height };
 }
 
 export function starSize(): { w: number; h: number } {
   return { w: STAR.width, h: STAR.height };
+}
+
+export function jointSize(): { w: number; h: number } {
+  return { w: JOINT.width, h: JOINT.height };
 }

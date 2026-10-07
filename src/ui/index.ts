@@ -4,6 +4,7 @@
  * popups.ts, the zone ribbon in banner.ts, layout math in layout.ts and all
  * drawing in screens.ts.
  */
+import { CHILL_DURATION } from '../core/chill';
 import { PLAYER_X } from '../core/config';
 import { fullscreenSupported } from '../core/fullscreen';
 import { store as defaultStore, type Store } from '../core/storage';
@@ -12,7 +13,7 @@ import type { GameContext, Rect, System } from '../types';
 import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { installUiDebug } from './debug';
-import { hudButtons } from './layout';
+import { hudButtons, plusPoints } from './layout';
 import { PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { drawUi, portraitHintShown, type UiView } from './screens';
@@ -38,6 +39,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     banner: new Banner(),
     fullscreenAvailable: false,
     portraitDismissed: false,
+    chillDuration: CHILL_DURATION,
   };
 
   function bindEvents(ctx: GameContext): void {
@@ -48,10 +50,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.clear();
       view.banner.show(zoneName(state.zoneIndex));
     });
-    bus.on('obstacleCleared', (e) => popup(`+${e.points}`, UI.white));
+    bus.on('obstacleCleared', (e) => popup(plusPoints(e.points), UI.white));
     bus.on('grindStart', () => popup('Grind!', UI.teal));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
     bus.on('crash', () => popup('Autsch!', UI.red));
+    bus.on('chillStart', (e) => {
+      view.chillDuration = e.duration;
+      popup('Ganz entspannt...', UI.orange);
+    });
     bus.on('zoneChanged', (e) => {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });

@@ -3,12 +3,13 @@
  * and ducks under overhead obstacles rides 60 s on seed 1 through all three
  * zones, checks that nothing spawns inside the view, grinds a rail, then a run
  * without input must end in game over. Finally the same at the widest view
- * (427 px).
+ * (427 px). On phone-portrait it taps the rotate hint away first.
  *   npm run playtest -- --scenario scripts/scenarios/gameplay.ts --viewports desktop,phone-landscape --name gameplay
  */
+import { MAX_SPEED } from '../../src/core/config';
 import { SolverBot } from '../../src/gameplay/testing';
 import type { GameState } from '../../src/types';
-import type { PlaytestContext } from '../playtest-lib';
+import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 const SECONDS = 60;
 
@@ -72,6 +73,7 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
 export default async function gameplay(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
   await game.pause();
+  await dismissRotateHint(t);
   await game.setSpeed(null);
   await game.seed(1);
   await game.startRun();
@@ -87,7 +89,7 @@ export default async function gameplay(t: PlaytestContext): Promise<void> {
   t.check('bot grinds a rail (player.state grind)', ride.grindShot);
   t.check('nothing spawns inside the view', ride.popIns.length === 0, ride.popIns);
 
-  await game.setSpeed(220);
+  await game.setSpeed(MAX_SPEED);
   await game.step(240);
   await t.canvasShot('max speed');
   await game.setSpeed(null);

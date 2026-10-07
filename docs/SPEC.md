@@ -30,7 +30,7 @@ and on desktop (keyboard and mouse). The UI language is German.
   finger lifts) before it jumps. Ducking works on the ground only (not on
   rails, no fast fall in the air); jumping while ducked stands up and jumps.
 - Coyote time (~80 ms) and jump buffering (~120 ms).
-- P / Escape = pause.
+- P / Escape = pause; P / Escape, Space (the jump key) or a tap resumes.
 
 ## Skater
 
@@ -49,7 +49,13 @@ and on desktop (keyboard and mouse). The UI language is German.
   construction warning sign on a gantry, Stadtbahn-Haltestellenschild (green H
   on yellow) with timetable on a cantilever. They can only be ducked under
   (too high to jump over) and unlock at a mid difficulty tier.
-- Grindable rails: handrails and pipes.
+- People, themed by zone, about the skater's size and low enough to jump:
+  VfB fans in red and white (scarf, jersey with chest band, no club crest)
+  walking slowly at the Neckar near the Arena, and tipsy Wasen visitors in
+  Lederhosen or Dirndl with a Maßkrug, swaying, in Bad Cannstatt. Bumping into
+  one is friendly: fans cheer with their arms up, visitors spill some beer.
+- Grindable rails: handrails and pipes. The Parkbank can be ground too: landing
+  on it from above grinds it like a rail; riding into its front or side crashes.
 - Clearing an obstacle by jumping or ducking under it scores points (a duck
   on the ground does not extend a combo). Landing on a rail starts a
   grind, which scores points per tick. A combo multiplier grows for chains that
@@ -66,10 +72,22 @@ and on desktop (keyboard and mouse). The UI language is German.
 - Collectible floating stars, just for fun (no gameplay effect). The HUD shows a
   counter, and the lifetime total is persisted in localStorage.
 
+## Joint (chill effect)
+
+- A rare joint pickup (never in the first 30 s, then at most one every
+  ~45-60 s). Picking it up chills the skater for ~6 s: red eyes and a smoking
+  joint in the mouth, the street slows to ~60 % (easing in over ~0.5 s and
+  back over the last ~1 s), jumps are a bit lower (80 % take-off speed), a
+  warm hazy tint lies over the screen and the HUD shows a draining timer.
+  Score and combo are unaffected.
+
 ## Difficulty
 
-- Speed and obstacle density ramp up over time. The spawner guarantees that
-  every pattern can be cleared with the available jump.
+- Speed ramps gently from 90 to at most 165 px/s (over ~4 min); obstacle
+  density and the pattern mix keep getting harder before that. The spawner
+  guarantees that every pattern can be cleared with the available jump, also
+  with moving people and with the lower chill jump where the chill effect can
+  be active.
 
 ## Zones
 
@@ -89,7 +107,8 @@ The art is recognisable but stylised.
 ## Screens (German)
 
 - Titelbildschirm ("Tippen oder Leertaste zum Starten").
-- HUD (Punkte, Sterne, Gesundheit).
+- HUD (Punkte, Sterne, Gesundheit, chill timer while chilled). Numbers use the
+  German thousands dot (61.234).
 - Pause.
 - Game Over with Punkte, Highscore, Sterne and a restart.
 - Highscore and the star total are stored in localStorage.
