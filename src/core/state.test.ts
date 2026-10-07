@@ -13,3 +13,16 @@ describe('chill effect state', () => {
     expect(state.chillTimer).toBe(0);
   });
 });
+
+describe('kid mode state', () => {
+  it('starts in adult mode', () => {
+    expect(createInitialState().kidMode).toBe(false);
+  });
+
+  it('keeps the kid mode setting when a new run starts', () => {
+    const state = createInitialState();
+    state.kidMode = true;
+    resetRun(state, 7);
+    expect(state.kidMode).toBe(true);
+  });
+});

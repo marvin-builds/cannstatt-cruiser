@@ -33,6 +33,7 @@ export function createInitialState(): GameState {
     maxHealth: MAX_HEALTH,
     zoneIndex: 0,
     muted: false,
+    kidMode: false,
     seed: 0,
     player: createPlayer(),
     entities: [],
@@ -48,6 +49,7 @@ export function resetRun(state: GameState, seed: number): void {
     modeTime: state.modeTime,
     frame: state.frame,
     muted: state.muted,
+    kidMode: state.kidMode,
     seed,
   });
 }

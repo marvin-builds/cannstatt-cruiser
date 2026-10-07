@@ -101,6 +101,12 @@ export interface GameState {
   /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt). */
   zoneIndex: number;
   muted: boolean;
+  /**
+   * Kid-friendly mode (hidden settings menu, persisted by the UI): the joint
+   * pickup becomes a bubble gum with the same effect and no drug references.
+   * Kept across runs.
+   */
+  kidMode: boolean;
   /** Seed used for the current run (rng is re-seeded with it at run start). */
   seed: number;
   player: PlayerState;
