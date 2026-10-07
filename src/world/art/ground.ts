@@ -1,6 +1,6 @@
 import { GROUND_Y, VIEW_H } from '../../core/config';
 import { GROUND } from '../palette';
-import { baseTile, type BaseTile, noise, type Painter } from './paint';
+import { baseTile, type BaseTile, lazyCanvas, noise, type Painter } from './paint';
 
 const H = VIEW_H - GROUND_Y;
 /** Rows of the band (relative to GROUND_Y). */
@@ -71,3 +71,22 @@ const cobbles: Walk = (p) => {
 
 /** One riding-surface tile per zone. */
 export const GROUND_TILES: readonly BaseTile[] = [groundTile(71, slabs), groundTile(72, pavers), groundTile(73, cobbles)];
+
+/**
+ * Marks a paving seam: a granite strip across the sidewalk, a lowered curb
+ * and a zebra crossing over the street. The seam lies at x CROSSING_SEAM.
+ */
+export const CROSSING_W = 24;
+export const CROSSING_SEAM = 12;
+export const CROSSING = lazyCanvas(CROSSING_W, H, (p) => {
+  p.rect(GROUND.edge, 0, 0, CROSSING_W, 1);
+  p.rect(GROUND.curbTop, CROSSING_SEAM - 3, 1, 6, WALK_BOTTOM - 1);
+  p.rect(GROUND.curbFace, CROSSING_SEAM - 3, 5, 6, 1);
+  p.rect(GROUND.curbFace, CROSSING_SEAM + 2, 1, 1, WALK_BOTTOM - 1);
+  p.rect(GROUND.curbTop, 0, CURB_TOP, CROSSING_W, 4);
+  p.rect(GROUND.curbFace, 0, CURB_TOP + 4, CROSSING_W, 1);
+  for (let y = STREET_TOP; y < H; y++) {
+    const stripe = (y - STREET_TOP) % 4 < 2;
+    for (let x = 0; x < CROSSING_W; x++) p.px(stripe ? GROUND.marking : noise(x, y, 74) < 0.12 ? GROUND.asphaltDark : GROUND.asphalt, x, y);
+  }
+});

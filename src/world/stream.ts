@@ -30,6 +30,7 @@ export interface Placement {
 export class PropStream {
   private placed: Placement[] = [];
   private cursor = 0;
+  private end = Infinity;
   private queue: string[] = [];
   private bag: string[] = [];
   private fillersLeft = 0;
@@ -42,10 +43,14 @@ export class PropStream {
     private readonly rng: Rng,
   ) {}
 
-  /** Forgets all placements; the intro starts at layer x `x`. */
-  restart(x: number): void {
+  /**
+   * Forgets all placements; the intro starts at layer x `x`. No prop reaches
+   * past `end`: near it, only fillers that still fit are placed, then nothing.
+   */
+  restart(x: number, end = Infinity): void {
     this.placed = [];
     this.cursor = Math.floor(x);
+    this.end = end;
     this.queue = [...this.config.intro];
     this.fillersLeft = this.rollFillers();
     this.lastLandmark = [...this.config.intro].reverse().find((id) => this.config.landmarks.includes(id)) ?? null;
@@ -59,7 +64,12 @@ export class PropStream {
   }
 
   private place(): void {
-    const id = this.queue.shift() ?? this.pickNext();
+    let id: string | null = this.queue.shift() ?? this.pickNext();
+    if (this.cursor + this.widthOf(id) > this.end) id = this.fittingFiller();
+    if (id === null) {
+      this.cursor = Infinity;
+      return;
+    }
     const width = this.widthOf(id);
     this.placed.push({ id, x: this.cursor, width, seed: this.rng.int(0, 0xffff) });
     this.cursor += width + this.rng.int(this.config.gap[0], this.config.gap[1]);
@@ -75,6 +85,12 @@ export class PropStream {
     const options = fillers.length > 1 ? fillers.filter((id) => id !== this.lastFiller) : fillers;
     this.lastFiller = this.rng.pick(options);
     return this.lastFiller;
+  }
+
+  /** A random filler that still fits before the end bound, or null. */
+  private fittingFiller(): string | null {
+    const fits = this.config.fillers.filter((id) => this.cursor + this.widthOf(id) <= this.end);
+    return fits.length > 0 ? this.rng.pick(fits) : null;
   }
 
   private pickLandmark(): string {

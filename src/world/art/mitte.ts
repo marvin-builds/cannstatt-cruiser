@@ -2,7 +2,7 @@ import { GROUND_Y } from '../../core/config';
 import type { ZoneSpec } from '../scene';
 import type { TrainRunner } from '../train';
 import { FAR, MID, NEAR } from '../palette';
-import { CLOUD_LAYER, FAR_FACTOR, MID_FACTOR, NEAR_FACTOR, TRAIN_RAIL_Y } from './layout';
+import { TRAIN_RAIL_Y } from './layout';
 import { farHills, hillProp, housesHillProp, paintHill } from './hills';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { skyCanvas } from './sky';
@@ -153,9 +153,7 @@ export function mitteZone(train: TrainRunner): ZoneSpec {
     name: 'Stuttgart-Mitte',
     sky: skyCanvas(0),
     layers: [
-      CLOUD_LAYER,
       {
-        factor: FAR_FACTOR,
         base: farHills(108, [[7, 1, 0], [4, 3, 1.3], [1.5, 7, 0]], [[1, 2, 0.4]], 1),
         props: {
           catalogue: {
@@ -175,7 +173,6 @@ export function mitteZone(train: TrainRunner): ZoneSpec {
         },
       },
       {
-        factor: MID_FACTOR,
         props: {
           catalogue: {
             hbf: hauptbahnhof(),
@@ -197,7 +194,6 @@ export function mitteZone(train: TrainRunner): ZoneSpec {
         },
       },
       {
-        factor: NEAR_FACTOR,
         base: trackBed,
         vehicle: (g, scroll) => {
           const x = train.screenX(scroll);

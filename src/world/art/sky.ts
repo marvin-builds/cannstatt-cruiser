@@ -1,27 +1,13 @@
 import { GROUND_Y, VIEW_MAX_W } from '../../core/config';
-import { ditherCovers } from '../dither';
+import { gradientColor } from '../color';
 import { CLOUD, SKY_BANDS } from '../palette';
 import { lazyCanvas, type Painter, type Prop } from './paint';
 
-/** Banded sky with ordered-dither seams between the bands (no smooth gradient). */
+/** Smooth vertical sky gradient through the zone's colour stops (one colour per row: no dots, no bands). */
 export function skyCanvas(zone: number): () => HTMLCanvasElement {
-  const bands = SKY_BANDS[zone]!;
-  const bandH = GROUND_Y / bands.length;
+  const stops = SKY_BANDS[zone]!;
   return lazyCanvas(VIEW_MAX_W, GROUND_Y, (p) => {
-    for (let y = 0; y < GROUND_Y; y++) {
-      const pos = y / bandH;
-      const band = Math.min(bands.length - 1, Math.floor(pos));
-      const next = Math.min(bands.length - 1, band + 1);
-      const into = pos - band;
-      // The last three rows of each band dither 25/50/75% into the next one.
-      const rowsLeft = Math.ceil((1 - into) * bandH);
-      const level = band === next || rowsLeft > 3 ? 0 : (4 - rowsLeft) * 4;
-      if (level === 0) {
-        p.rect(bands[band]!, 0, y, VIEW_MAX_W, 1);
-        continue;
-      }
-      for (let x = 0; x < VIEW_MAX_W; x++) p.px(ditherCovers(level, x, y) ? bands[next]! : bands[band]!, x, y);
-    }
+    for (let y = 0; y < GROUND_Y; y++) p.rect(gradientColor(stops, y, GROUND_Y), 0, y, VIEW_MAX_W, 1);
   });
 }
 

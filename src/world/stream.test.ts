@@ -100,4 +100,17 @@ describe('PropStream', () => {
     stream.restart(0);
     expect(sequence(stream, 500).every((p) => CONFIG.fillers.includes(p.id))).toBe(true);
   });
+
+  it('never places a prop past the end bound, filling up with fillers that fit', () => {
+    for (let seed = 1; seed < 30; seed++) {
+      const stream = make(seed);
+      stream.restart(0, 300);
+      const list = sequence(stream, 1000);
+      expect(list.length).toBeGreaterThan(0);
+      for (const p of list) expect(p.x + p.width).toBeLessThanOrEqual(300);
+      const last = list.at(-1)!;
+      // Room left after the last prop is too small for even the narrowest filler (lamp, 4) plus a gap.
+      expect(300 - (last.x + last.width)).toBeLessThan(4 + 12 + 1);
+    }
+  });
 });

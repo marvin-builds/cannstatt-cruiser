@@ -1,7 +1,6 @@
 import { GROUND_Y } from '../../core/config';
 import { FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
-import { CLOUD_LAYER, FAR_FACTOR, MID_FACTOR, NEAR_FACTOR } from './layout';
 import { MID_TREE, treeCluster } from './city';
 import { farHills, hillProp, housesHillProp } from './hills';
 import { crossingX } from '../crossing';
@@ -11,9 +10,9 @@ import { stadtbahn } from './stadtbahn';
 import { STREET, tree } from './street';
 
 /** View y of the far river bank's grass; bank props stand on it. */
-const BANK_Y = 122;
+export const BANK_Y = 122;
 /** View y where the water surface starts. */
-const WATER_Y = 127;
+export const WATER_Y = 127;
 
 /** Mercedes-Benz Arena: low oval bowl with a white membrane roof on masts. */
 const arena = staticProp(88, 26, BANK_Y + 2, (p) => {
@@ -247,9 +246,7 @@ export function neckarZone(): ZoneSpec {
     name: 'Neckar',
     sky: skyCanvas(1),
     layers: [
-      CLOUD_LAYER,
       {
-        factor: FAR_FACTOR,
         base: farHills(110, [[6, 2, 0.5], [3, 5, 0], [1.5, 9, 2]], [[1, 1, 2], [0.5, 3, 0]], 2),
         props: {
           catalogue: { arena, gasometer, factory, vineHill: hillProp(80, 26, true, 6), housesHill: housesHillProp(70, 22, 8) },
@@ -264,7 +261,6 @@ export function neckarZone(): ZoneSpec {
         },
       },
       {
-        factor: MID_FACTOR,
         base: river,
         props: {
           catalogue: {
@@ -286,7 +282,6 @@ export function neckarZone(): ZoneSpec {
         },
       },
       {
-        factor: NEAR_FACTOR,
         base: railing,
         props: {
           catalogue: STREET,

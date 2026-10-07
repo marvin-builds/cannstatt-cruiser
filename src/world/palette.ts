@@ -4,7 +4,7 @@
  * the skater and obstacles always read clearly in front.
  */
 
-/** Sky bands, top to horizon, per zone (afternoon -> golden hour). */
+/** Sky colour stops, top to horizon, per zone (afternoon -> golden hour); blended into a smooth gradient. */
 export const SKY_BANDS: readonly (readonly string[])[] = [
   ['#5f95d0', '#6ea1d7', '#80addd', '#95bbe1', '#abc9e4', '#c3d6e3', '#dbdfda', '#ece2c9'],
   ['#5b8fcc', '#6a9bd2', '#7ea8d7', '#96b6da', '#b0c4da', '#cbcfd3', '#e3d5c2', '#efd6ae'],

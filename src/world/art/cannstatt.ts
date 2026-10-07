@@ -1,7 +1,6 @@
 import { GROUND_Y } from '../../core/config';
 import { FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
-import { CLOUD_LAYER, FAR_FACTOR, MID_FACTOR, NEAR_FACTOR } from './layout';
 import { treeCluster } from './city';
 import { farHills, hillProp, housesHillProp, paintHill } from './hills';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
@@ -249,9 +248,7 @@ export function cannstattZone(): ZoneSpec {
     name: 'Bad Cannstatt',
     sky: skyCanvas(2),
     layers: [
-      CLOUD_LAYER,
       {
-        factor: FAR_FACTOR,
         base: farHills(116, [[5, 1, 2], [2, 4, 0], [1, 9, 1]], [[1, 2, 1]], 3),
         props: {
           catalogue: { grabkapelle, vineHill: hillProp(70, 24, true, 9), housesHill: housesHillProp(80, 24, 10) },
@@ -266,7 +263,6 @@ export function cannstattZone(): ZoneSpec {
         },
       },
       {
-        factor: MID_FACTOR,
         props: {
           catalogue: {
             fachwerkRow: fachwerk([[24, 3, 14], [30, 3, 18], [26, 2, 16]]),
@@ -288,7 +284,6 @@ export function cannstattZone(): ZoneSpec {
         },
       },
       {
-        factor: NEAR_FACTOR,
         base: hedge,
         props: {
           catalogue: STREET,
