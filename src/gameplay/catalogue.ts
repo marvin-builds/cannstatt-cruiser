@@ -1,0 +1,85 @@
+/**
+ * Data for everything gameplay spawns: sizes, vertical placement, collision
+ * boxes and points. DOM-free (art lives in art.ts) so the spawner, the
+ * clearability solver and tests share exactly these numbers.
+ */
+import { GROUND_Y } from '../core/config';
+import type { Entity, EntityKind, ObstacleKind, RailKind, Rect } from '../types';
+
+export interface ObstacleSpec {
+  w: number;
+  h: number;
+  /**
+   * Gap between the ground and the bottom of the sprite. 0 = standing on the
+   * ground; > 0 = raised / overhead (hanging signs, branches: the place where
+   * a later ducking feature plugs in).
+   */
+  elevation: number;
+  /** Pixels the sprite reaches below GROUND_Y (gaps cut into the pavement). */
+  sink: number;
+  /** Collision box relative to the sprite's top-left corner. */
+  box: Rect;
+  /** Base points for a clean clear. */
+  points: number;
+}
+
+export const OBSTACLES: Record<ObstacleKind, ObstacleSpec> = {
+  bin: { w: 12, h: 18, elevation: 0, sink: 0, box: { x: 1, y: 1, w: 10, h: 17 }, points: 100 },
+  barrier: { w: 9, h: 21, elevation: 0, sink: 0, box: { x: 1, y: 0, w: 7, h: 21 }, points: 120 },
+  bench: { w: 24, h: 12, elevation: 0, sink: 0, box: { x: 1, y: 2, w: 22, h: 10 }, points: 80 },
+  planter: { w: 18, h: 17, elevation: 0, sink: 0, box: { x: 1, y: 5, w: 16, h: 12 }, points: 100 },
+  curbGap: { w: 20, h: 8, elevation: 0, sink: 6, box: { x: 4, y: 0, w: 12, h: 8 }, points: 60 },
+};
+
+export interface RailSpec {
+  /** Height of the rail top above the ground. */
+  minHeight: number;
+  maxHeight: number;
+  minLength: number;
+  maxLength: number;
+}
+
+export const RAILS: Record<RailKind, RailSpec> = {
+  handrail: { minHeight: 18, maxHeight: 30, minLength: 64, maxLength: 140 },
+  pipe: { minHeight: 8, maxHeight: 12, minLength: 48, maxLength: 110 },
+};
+
+export const STAR_SIZE = 9;
+
+/** Points for landing on a rail (times the multiplier). */
+export const GRIND_LANDING_POINTS = 25;
+/** Points per tick while grinding (times the multiplier). */
+export const GRIND_POINTS = 2;
+/** The multiplier equals the combo, capped here. */
+export const MAX_MULTIPLIER = 5;
+
+export function isObstacle(kind: EntityKind): kind is ObstacleKind {
+  return kind in OBSTACLES;
+}
+
+export function isRail(kind: EntityKind): kind is RailKind {
+  return kind in RAILS;
+}
+
+/** Sprite rect of an obstacle whose left edge is at x. */
+export function obstacleRect(kind: ObstacleKind, x: number): Rect {
+  const { w, h, elevation, sink } = OBSTACLES[kind];
+  return { x, y: GROUND_Y + sink - elevation - h, w, h };
+}
+
+/** Rail rect: top edge at `height` above the ground, reaching down to it. */
+export function railRect(x: number, height: number, length: number): Rect {
+  return { x, y: GROUND_Y - height, w: length, h: height };
+}
+
+/** Star rect centred on (cx, cy). */
+export function starRect(cx: number, cy: number): Rect {
+  const half = Math.floor(STAR_SIZE / 2);
+  return { x: Math.round(cx) - half, y: Math.round(cy) - half, w: STAR_SIZE, h: STAR_SIZE };
+}
+
+/** The part of an obstacle that crashes the player, in the same space as `e`. */
+export function hitBox(e: Pick<Entity, 'kind' | 'x' | 'y'> & { kind: ObstacleKind }): Rect {
+  const { box } = OBSTACLES[e.kind];
+  return { x: e.x + box.x, y: e.y + box.y, w: box.w, h: box.h };
+}
