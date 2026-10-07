@@ -76,6 +76,12 @@ export interface GameState {
   multiplier: number;
   /** Stars collected in this run. */
   stars: number;
+  /**
+   * Seconds left of the chill effect from a joint pickup (0 = off). Gameplay
+   * sets and counts it down; the player reads it for the reduced jump
+   * (CHILL_JUMP_SCALE in player/tuning.ts) and the red-eyes look.
+   */
+  chillTimer: number;
   health: number;
   maxHealth: number;
   /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt). */
@@ -98,6 +104,7 @@ export interface GameEvents {
   obstacleCleared: { entityId: number; kind: EntityKind; points: number };
   crash: { entityId: number; kind: EntityKind; health: number };
   starCollected: { entityId: number; stars: number };
+  chillStart: { entityId: number; duration: number };
   scoreChanged: { score: number; delta: number; combo: number; multiplier: number };
   zoneChanged: { index: number; previous: number };
   runStarted: { seed: number };

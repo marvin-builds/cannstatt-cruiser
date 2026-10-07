@@ -28,6 +28,7 @@ export function createInitialState(): GameState {
     combo: 0,
     multiplier: 1,
     stars: 0,
+    chillTimer: 0,
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
     zoneIndex: 0,

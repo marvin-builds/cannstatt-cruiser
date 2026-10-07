@@ -49,3 +49,9 @@ export const HITBOX_H = {
   /** Ducked on the ground: the cap is at y - 20, under overhead obstacles that end >= 21 px up. */
   ducking: 20,
 } as const;
+
+/**
+ * Jump velocity factor while `state.chillTimer > 0` (joint pickup). Gameplay's
+ * solver uses it too, so a full hold must still clear every obstacle.
+ */
+export const CHILL_JUMP_SCALE = 0.8;
