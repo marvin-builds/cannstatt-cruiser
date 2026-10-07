@@ -82,12 +82,15 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       });
       bus.on('land', ({ impact }) => play('land', 0.3 + 0.7 * Math.min(1, Math.max(0, impact) / HARD_LANDING)));
       bus.on('starCollected', () => play('star'));
-      bus.on('chillStart', () => play('chill'));
+      // Kid mode: bubble gum instead of the joint, so a sweet bubbly cue instead of the mellow one.
+      bus.on('chillStart', () => play(ctx.state.kidMode ? 'bubble' : 'chill'));
       bus.on('obstacleCleared', () => play('cleared'));
       bus.on('crash', ({ kind }) => {
         stopGrind();
         play('crash');
         if (PEOPLE.has(kind)) play('oof');
+        // The skater's bubble gum bubble pops (see player/bubble.ts).
+        if (ctx.state.kidMode && ctx.state.chillTimer > 0) play('pop');
       });
       bus.on('gameOver', () => {
         stopGrind();

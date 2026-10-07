@@ -3,7 +3,7 @@ import { TICK_DT } from '../core/config';
 import type { Game } from '../core/game';
 import type { GameEvents } from '../types';
 import { B, BODY_FRAMES, CHILL_BODY_FRAMES, HEAD_AT } from './art';
-import { chillJoint, SMOKE_PERIOD, smokePuffs } from './chill';
+import { chillJoint, chillStyle, SMOKE_PERIOD, smokePuffs } from './chill';
 import { poseAt, TIMELINES, type TimelineName } from './poses';
 import { SkaterController } from './controller';
 import { createPlayerTestGame, jumpApex, tick } from './testing';
@@ -101,6 +101,21 @@ describe('chill animation timing', () => {
     const ticks = Math.round((PUSH_TIME + 0.1) / TICK_DT);
     expect(cruise(0, ticks).anim).toBe('ride');
     expect(cruise(30, ticks).anim).toBe('push');
+  });
+});
+
+describe('chill style (adult joint vs kid bubble gum)', () => {
+  it('shows the joint and red eyes in adult mode while chilled', () => {
+    expect(chillStyle({ kidMode: false, chillTimer: 3 })).toEqual({ redEyes: true, mouth: 'joint' });
+  });
+
+  it('shows the bubble gum with normal eyes and no joint in kid mode while chilled', () => {
+    expect(chillStyle({ kidMode: true, chillTimer: 3 })).toEqual({ redEyes: false, mouth: 'bubble' });
+  });
+
+  it('shows no overlay without chill, in either mode', () => {
+    expect(chillStyle({ kidMode: false, chillTimer: 0 })).toBeNull();
+    expect(chillStyle({ kidMode: true, chillTimer: 0 })).toBeNull();
   });
 });
 

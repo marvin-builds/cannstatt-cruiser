@@ -199,7 +199,7 @@ describe('WebAudio backend', () => {
   it('plays every cue without throwing', () => {
     const { backend } = setup();
     backend.unlock();
-    for (const cue of ['jump', 'boost', 'land', 'star', 'cleared', 'crash', 'gameOver'] as const) {
+    for (const cue of ['jump', 'boost', 'land', 'star', 'cleared', 'crash', 'gameOver', 'bubble', 'pop'] as const) {
       expect(() => backend.play(cue, 0.5)).not.toThrow();
     }
   });

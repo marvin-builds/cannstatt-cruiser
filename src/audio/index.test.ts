@@ -191,6 +191,56 @@ describe('audio system: chill', () => {
   });
 });
 
+describe('audio system: kid mode bubble gum', () => {
+  function listening(kidMode: boolean) {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.state.kidMode = kidMode;
+    game.commands.startRun();
+    return { game, backend, heard };
+  }
+
+  it('plays the sweet bubble sound instead of the chill sound on chillStart in kid mode', () => {
+    const { game, heard } = listening(true);
+    game.bus.emit('chillStart', { entityId: 1, duration: 6 });
+    expect(heard).toEqual([['bubble', false]]);
+  });
+
+  it('keeps the mellow chill sound in adult mode', () => {
+    const { game, heard } = listening(false);
+    game.bus.emit('chillStart', { entityId: 1, duration: 6 });
+    expect(heard).toEqual([['chill', false]]);
+  });
+
+  it('keeps the bubble sound inaudible while muted', () => {
+    const { game, heard, backend } = listening(true);
+    game.commands.setMuted(true);
+    game.bus.emit('chillStart', { entityId: 1, duration: 6 });
+    expect(heard).toEqual([['bubble', true]]);
+    expect(backend.muted).toBe(true);
+  });
+
+  it('pops the bubble with a little pop when crashing while chewing in kid mode', () => {
+    const { game, heard } = listening(true);
+    game.state.chillTimer = 3;
+    game.bus.emit('crash', { entityId: 1, kind: 'bin', health: 2 });
+    expect(heard.map(([name]) => name)).toEqual(['crash', 'pop']);
+  });
+
+  it('adds no pop to a crash in adult mode or without chill', () => {
+    const adult = listening(false);
+    adult.game.state.chillTimer = 3;
+    adult.game.bus.emit('crash', { entityId: 1, kind: 'bin', health: 2 });
+    const sober = listening(true);
+    sober.game.bus.emit('crash', { entityId: 1, kind: 'bin', health: 2 });
+    expect(adult.heard.map(([name]) => name)).toEqual(['crash']);
+    expect(sober.heard.map(([name]) => name)).toEqual(['crash']);
+  });
+});
+
 describe('audio system: crashing into people', () => {
   it.each(['vfbFan', 'wasenGuest'] as const)('adds a soft oof when the skater hits a %s', (kind) => {
     const { game, cues } = playing();

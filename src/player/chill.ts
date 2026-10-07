@@ -1,10 +1,24 @@
 /**
- * The chill look while `state.chillTimer > 0` (joint pickup): which frames get
- * the joint, and the deterministic smoke puffs and tip glow. Pure data and
+ * The chill look while `state.chillTimer > 0` (joint pickup): which style
+ * (adult: joint + red eyes, kid mode: bubble gum, see bubble.ts), which frames
+ * get the joint, and the deterministic smoke puffs and tip glow. Pure data and
  * math; render.ts draws it. The red eyes are a sprite variant (CHILL_BODY_FRAMES).
  */
+import type { GameState } from '../types';
 import { HEAD_AT, HEAD_MOUTH } from './art';
 import type { TimelineName } from './poses';
+
+/** What the chill effect adds to the skater: red eyes or not, and what is at his mouth. */
+export interface ChillStyle {
+  redEyes: boolean;
+  mouth: 'joint' | 'bubble';
+}
+
+/** The chill style for the current state, or null while not chilled. Kid mode swaps the joint for bubble gum. */
+export function chillStyle({ kidMode, chillTimer }: Pick<GameState, 'kidMode' | 'chillTimer'>): ChillStyle | null {
+  if (chillTimer <= 0) return null;
+  return kidMode ? { redEyes: false, mouth: 'bubble' } : { redEyes: true, mouth: 'joint' };
+}
 
 export interface Point {
   x: number;

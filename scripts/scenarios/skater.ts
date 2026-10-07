@@ -2,16 +2,19 @@
  * Skater showcase: pose lineup of every animation step (normal and chill),
  * plus in-game shots of ride, push, hold-jump apex, grind (simulated through
  * the player contract), jump off the rail and the crash with recovery; then
- * the chill look (joint pickup) riding, ducking, in the air and grinding, and
- * 1x crops of the skater to judge the hair and the chill look at game scale.
+ * the chill look (joint pickup) riding, ducking, in the air and grinding, the
+ * same for the kid mode bubble gum, and 1x / 2x crops of the skater to judge
+ * the hair, the red eyes and the bubble at game scale.
  *   npm run playtest -- --scenario scripts/scenarios/skater.ts --viewports desktop,phone-landscape,phone-portrait --name skater
  */
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PLAYER_X } from '../../src/core/config';
+import type {} from '../../src/audio/debug'; // window.__audio
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import type {} from '../../src/player/debug'; // window.__player
 import type { GameState } from '../../src/types';
+import { bubbleFrame, F } from '../../src/player/bubble';
 import type { PlaytestContext } from '../playtest-lib';
 
 /** Steps until `done(state)` holds (at most `max` ticks); returns the last state. */
@@ -26,18 +29,18 @@ async function writeDataUrl(t: PlaytestContext, name: string, dataUrl: string): 
 }
 
 /**
- * Saves the 64x64 view pixels around the skater twice: at 1x (true game
- * scale) and upscaled `zoom`x without smoothing (same pixels, easier to read).
+ * Saves the 64x64 view pixels around the skater at 1x (true game scale), 2x
+ * (a phone's scale) and upscaled `zoom`x without smoothing (easier to read).
  */
 async function skaterCrop(t: PlaytestContext, name: string, zoom = 4): Promise<void> {
   const { player } = await t.game.state();
   const area = { x: PLAYER_X - 28, y: Math.round(player.y) - 54, w: 64, h: 64 };
-  const [one, big] = await t.page.evaluate(
+  const [one, two, big] = await t.page.evaluate(
     async ({ area, zoom }) => {
       const img = new Image();
       img.src = window.__game!.capture(1);
       await img.decode();
-      return [1, zoom].map((z) => {
+      return [1, 2, zoom].map((z) => {
         const c = document.createElement('canvas');
         c.width = area.w * z;
         c.height = area.h * z;
@@ -50,6 +53,7 @@ async function skaterCrop(t: PlaytestContext, name: string, zoom = 4): Promise<v
     { area, zoom },
   );
   await writeDataUrl(t, `${name}-1x.png`, one!);
+  await writeDataUrl(t, `${name}-2x.png`, two!);
   await writeDataUrl(t, `${name}-1x-pixels-zoom${zoom}.png`, big!);
 }
 
@@ -57,7 +61,10 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
 
   await writeDataUrl(t, '00-pose-lineup.png', await page.evaluate(() => window.__player!.lineup(6)));
-  await writeDataUrl(t, '00-pose-lineup-chill.png', await page.evaluate(() => window.__player!.lineup(6, true)));
+  await writeDataUrl(t, '00-pose-lineup-chill.png', await page.evaluate(() => window.__player!.lineup(6, 'chill')));
+  await writeDataUrl(t, '00-pose-lineup-kid.png', await page.evaluate(() => window.__player!.lineup(6, 'kid')));
+  await writeDataUrl(t, '00-pose-lineup-1x.png', await page.evaluate(() => window.__player!.lineup(1)));
+  await writeDataUrl(t, '00-pose-lineup-chill-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'chill')));
 
   await game.pause();
   const { viewWidth, touch, portrait } = await game.display();
@@ -136,6 +143,7 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   t.check('crash recovers and invulnerability ends', recovered.player.state !== 'crash', recovered.player);
 
   await chillShots(t);
+  await kidShots(t);
 }
 
 /** The chill look (state.chillTimer > 0) in every situation, and the lower chill jump. */
@@ -184,4 +192,65 @@ async function chillShots(t: PlaytestContext): Promise<void> {
   await page.evaluate(() => window.__player!.crash());
   await game.step(14);
   await t.canvasShot('chill crash (joint dropped)');
+}
+
+/** Steps until the kid bubble is at least `frame` big (bubbleFrame of state.time). */
+async function untilBubble(t: PlaytestContext, frame: number = F.bubble3): Promise<void> {
+  await stepUntil(t, (s) => (bubbleFrame(s.time) ?? -1) >= frame && bubbleFrame(s.time) !== F.pop, 240);
+}
+
+/** Kid mode chill look: bubble gum (no joint, no red eyes) riding, ducking, in the air, grinding; pops on a crash. */
+async function kidShots(t: PlaytestContext): Promise<void> {
+  const { game, page } = t;
+  await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
+  await page.evaluate(() => {
+    window.__player!.kidMode(true);
+    window.__player!.chill(60);
+  });
+  await game.step(10);
+  const kid = await game.state();
+  t.check('kid mode chill is on', kid.kidMode && kid.chillTimer > 0, { kidMode: kid.kidMode, chill: kid.chillTimer });
+
+  await stepUntil(t, (s) => s.player.state === 'ride');
+  await untilBubble(t);
+  await t.canvasShot('kid ride bubble');
+  await t.canvasShot('kid ride bubble 1x', 1);
+  await skaterCrop(t, 'crop-kid-ride');
+
+  await page.evaluate(() => window.__game!.input.duck.press());
+  await game.step(10);
+  await untilBubble(t);
+  await t.canvasShot('kid duck bubble');
+  await skaterCrop(t, 'crop-kid-duck');
+  await page.evaluate(() => window.__game!.input.duck.release());
+  await game.step(4);
+
+  await untilBubble(t, F.bubble1);
+  await game.press();
+  await game.step(1);
+  await stepUntil(t, (s) => s.player.vy >= 0);
+  await t.canvasShot('kid air bubble');
+  await skaterCrop(t, 'crop-kid-air');
+  await game.release();
+  await stepUntil(t, (s) => s.player.grounded);
+  await game.step(10);
+
+  const railId = await page.evaluate(() => window.__player!.grind(26));
+  await game.step(10);
+  await untilBubble(t);
+  const grinding = await game.state();
+  t.check('kid grind', grinding.player.grinding && grinding.chillTimer > 0, grinding.player);
+  await t.canvasShot('kid grind bubble');
+  await skaterCrop(t, 'crop-kid-grind');
+  await page.evaluate((id) => window.__player!.removeRail(id), railId);
+  await stepUntil(t, (s) => s.player.grounded);
+  await game.step(10);
+
+  await page.evaluate(() => window.__player!.crash());
+  await game.step(2);
+  await t.canvasShot('kid crash bubble pops');
+  await skaterCrop(t, 'crop-kid-crash-pop');
+  const sounds = await page.evaluate(() => (window.__audio?.log ?? []).map((e) => e.sound));
+  t.check('kid crash pops the bubble with a sound', sounds.includes('pop'), sounds.slice(-4));
+  await page.evaluate(() => window.__player!.kidMode(false));
 }

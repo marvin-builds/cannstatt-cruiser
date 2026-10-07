@@ -53,6 +53,12 @@ function notes(wave: OscillatorType, freqs: number[], step: number, gain: number
   }));
 }
 
+/** A bubble gum bubble bursting: a tiny bright click with a quick falling blip. */
+const POP: Voice[] = [
+  { wave: 'noise', at: 0, dur: 0.04, freq: 3500, gain: 0.3, filter: 'highpass' },
+  { wave: 'square', at: 0, dur: 0.05, freq: 1400, to: 500, gain: 0.08 },
+];
+
 export const SOUNDS: Record<Cue, Voice[]> = {
   // Quick rising square blip.
   jump: [{ wave: 'square', at: 0, dur: 0.11, freq: 300, to: 720, gain: 0.22 }],
@@ -90,6 +96,14 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'triangle', at: 0, dur: 0.7, freq: N.C5, to: N.C4, gain: 0.22 },
     ...notes('triangle', [N.G5, N.E5, N.C5, N.A4], 0.13, 0.12, 0.4),
   ],
+  // Bubble gum pickup (kid mode): a sweet, bouncy rising major arpeggio of soft
+  // triangle 'bloops' (each bends up a little), ending in the bubble's pop.
+  bubble: [
+    ...notes('triangle', [N.C5, N.E5, N.G5, N.C6, N.E6], 0.08, 0.2, 0.14).map((v) => ({ ...v, to: v.freq * 1.25 })),
+    ...notes('square', [N.G5, N.C6], 0.08, 0.04, 0.1).map((v) => ({ ...v, at: v.at + 0.16 })),
+    ...POP.map((v) => ({ ...v, at: v.at + 0.48 })),
+  ],
+  pop: POP,
 };
 
 /** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */

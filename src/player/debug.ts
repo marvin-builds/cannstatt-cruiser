@@ -7,8 +7,11 @@ import { GROUND_Y } from '../core/config';
 import { drawText } from '../core/font';
 import type { Entity, GameContext, RenderContext } from '../types';
 import { BOARD_FRAMES } from './art';
+import { chillStyle } from './chill';
 import { drawBoard, drawPose } from './render';
 import { poseAt, TIMELINES, type TimelineName } from './poses';
+
+export type LineupLook = 'normal' | 'chill' | 'kid';
 
 export interface PlayerDebugHook {
   /** Adds a static rail under the player (top `height` px above the ground) and starts a grind on it. */
@@ -19,8 +22,13 @@ export interface PlayerDebugHook {
   crash(): void;
   /** Sets `state.chillTimer` (the joint effect; gameplay counts it down while playing). */
   chill(seconds?: number): void;
-  /** PNG data URL: every animation step and board frame, upscaled by `scale`; with the chill look if `chill`. */
-  lineup(scale?: number, chill?: boolean): string;
+  /** Sets `state.kidMode` (bubble gum instead of the joint and red eyes). */
+  kidMode(on?: boolean): void;
+  /**
+   * PNG data URL: every animation step and board frame, upscaled by `scale`;
+   * `look` adds the adult chill look (joint, red eyes) or the kid one (bubble gum).
+   */
+  lineup(scale?: number, look?: LineupLook): string;
 }
 
 declare global {
@@ -60,7 +68,10 @@ export function installPlayerDebug(ctx: GameContext): void {
     chill(seconds = 60) {
       ctx.state.chillTimer = seconds;
     },
-    lineup: (scale = 6, chill = false) => renderLineup(scale, chill),
+    kidMode(on = true) {
+      ctx.state.kidMode = on;
+    },
+    lineup: (scale = 6, look = 'normal') => renderLineup(scale, look),
   };
 }
 
@@ -82,7 +93,8 @@ export function drawDebugRails({ g, state }: RenderContext): void {
 const CELL_W = 70;
 const CELL_H = 60;
 
-function renderLineup(scale: number, chill: boolean): string {
+function renderLineup(scale: number, look: LineupLook): string {
+  const style = look === 'normal' ? null : chillStyle({ kidMode: look === 'kid', chillTimer: 1 });
   const names = Object.keys(TIMELINES) as TimelineName[];
   const cols = Math.max(...names.map((n) => TIMELINES[n].steps.length));
   const canvas = document.createElement('canvas');
@@ -103,8 +115,9 @@ function renderLineup(scale: number, chill: boolean): string {
       const groundY = top + CELL_H - 6;
       g.fillStyle = '#8a8378';
       g.fillRect(x - 24, groundY, 48, 2);
-      const look = chill ? { timeline: name, time: time + col * 0.37 } : null;
-      drawPose(g, poseAt(name, time + 0.0001), x, groundY, look);
+      // Spread the loops over the columns, so the lineup shows several bubble sizes and smoke phases.
+      const chill = style && { style, timeline: name, time: 0.9 + col * 0.47, animTime: time };
+      drawPose(g, poseAt(name, time + 0.0001), x, groundY, chill);
       time += step.t;
     });
   });

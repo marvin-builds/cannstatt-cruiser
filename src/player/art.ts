@@ -16,10 +16,11 @@ export const PALETTE = {
   s: '#e3a57c', // skin
   S: '#b97456', // skin shade, ear
   b: '#8a7569', // stubble
-  h: '#5f5b5c', // hair, dark grey base
-  H: '#c9c4bb', // hair, light warm grey patches (salt and pepper)
-  e: '#f01e2c', // red eye (chill)
-  p: '#f27a8c', // pink eye rim (chill)
+  h: '#47444a', // hair, dark grey base
+  H: '#bcbcbc', // hair, light grey patches (salt and pepper)
+  e: '#ff2236', // red eye (chill)
+  p: '#ff9aae', // bloodshot pink eye (chill)
+  E: '#b0102a', // dark red lower lid line (chill)
   c: '#2c4a6e', // cap
   C: '#1b304c', // cap brim
   r: '#bf4438', // hoodie
@@ -55,31 +56,35 @@ export const BOARD_ANCHOR_X = 13;
 // ---------------------------------------------------------------- parts
 
 /**
- * Head facing right, 11 x 8. Salt-and-pepper hair under the cap: a 2x2 light
- * grey patch (H) at the back, a 2 px patch at the temple above the ear and
- * one at the nape, split by dark grey (h), so the grey reads at 1x.
+ * Head facing right, 11 x 8. Bold salt-and-pepper hair under the cap: it
+ * covers the back of the head (no outline there, the hair is the edge), runs
+ * down into a sideburn at the temple and a tuft at the nape, as three
+ * separate light-grey patches (H) split by dark grey (h) so they read at 1x.
  */
 const HEAD = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  kHHhHHsskk.
-  kHHhSskssk.
-  khHHsssssSk
-  .kHsbsssbk.
-  ..kbbbbbk..
+  hHHhhHsskk.
+  hHHhSskssk.
+  HhhHHssssSk
+  HHhHbsssbk.
+  hHkbbbbbk..
 `;
 
-/** Chill head: heavy dark lid over a 2 px red eye with a pink rim below. Same size and outline as HEAD. */
+/**
+ * Chill head: heavy dark lid over a bloodshot pink-and-red eye with a dark
+ * red lower lid line. Same size and outline as HEAD.
+ */
 const HEAD_CHILL = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  kHHhHHkkkk.
-  kHHhSseesk.
-  khHHssppSSk
-  .kHsbsssbk.
-  ..kbbbbbk..
+  hHHhhHkkkk.
+  hHHhSspesk.
+  HhhHHsEEESk
+  HHhHbsssbk.
+  hHkbbbbbk..
 `;
 
 /** Mouth pixel of the head (where the joint sits), relative to the head's top-left. */

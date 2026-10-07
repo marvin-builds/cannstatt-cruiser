@@ -78,8 +78,12 @@ in any slice's Vitest tests.
   tick: on the pickup tick the jump is still normal, and on the tick where
   gameplay counts the timer down to 0 it is still scaled (covered in
   `chill.test.ts`).
-- Look only: red eyes, a joint with smoke (dropped on a crash), and ride/push
-  animation plus push rhythm at `CHILL_ANIM_RATE` (0.7). No physics change.
+- Look only: ride/push animation plus push rhythm at `CHILL_ANIM_RATE` (0.7),
+  and a face overlay chosen by `chillStyle(state)` (`chill.ts`): adult mode
+  (`state.kidMode` false) shows red eyes and a joint with smoke (dropped on a
+  crash); kid mode shows normal eyes and bubble gum instead, a pink bubble
+  that grows and pops on a `BUBBLE_PERIOD` loop of `state.time` and pops at
+  once on a crash (`bubble.ts`). No physics change.
 
 ## Duck
 
@@ -112,6 +116,7 @@ jumpApex(game, 2);        // tap from the current support, returns apex height
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
 length)`, `removeRail(id)`, `crash()`, `chill(seconds)` (sets
-`state.chillTimer`) and `lineup(scale, chill)` for playtest
+`state.chillTimer`), `kidMode(on)` (sets `state.kidMode`) and
+`lineup(scale, look)` (`look`: `'normal'`, `'chill'` or `'kid'`) for playtest
 scenarios (see `scripts/scenarios/skater.ts`). Rails it adds carry
 `data.debugRail` and are drawn by the player slice; gameplay may ignore them.

@@ -12,19 +12,28 @@ import {
   CHILL_BODY_FRAMES,
   PALETTE,
 } from './art';
-import { chillJoint, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
+import { BUBBLE_ART, BUBBLE_PALETTE, chillBubble } from './bubble';
+import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView } from './controller';
 import { type Pose, poseAt, type TimelineName, timelineFor } from './poses';
 
 const BODY = sprite(PALETTE, BODY_FRAMES);
 const CHILL_BODY = sprite(PALETTE, CHILL_BODY_FRAMES);
 const BOARD = sprite(PALETTE, BOARD_FRAMES);
+/** One sprite per bubble frame: they differ in size. */
+const BUBBLES = BUBBLE_ART.map((art) => sprite(BUBBLE_PALETTE, [art]));
 
-/** The chill look to add to a pose: red eyes always, the joint where `chillJoint` allows it. */
+/**
+ * The chill look to add to a pose: red eyes if the style says so, and the
+ * joint (where `chillJoint` allows it) or the bubble gum (`chillBubble`).
+ */
 export interface ChillLook {
+  style: ChillStyle;
   timeline: TimelineName;
-  /** Seconds, drives the smoke and the glow. */
+  /** Seconds, drives the smoke, the glow and the bubble loop. */
   time: number;
+  /** Seconds into the current animation (the crash pops the bubble at its start). */
+  animTime: number;
 }
 
 /** Draws `pose` with the wheel contact point at (x, y); everything snaps to whole pixels together. */
@@ -35,9 +44,14 @@ export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: 
   drawBoard(g, pose.board, x0 + (pose.boardDx ?? 0), y0 + (pose.boardDy ?? 0));
   const left = x0 - BODY_ANCHOR_X + (pose.bodyDx ?? 0);
   const top = boardTop + BOARD_DECK_ROW - BODY_DECK_ROW + (pose.bodyDy ?? 0);
-  (chill ? CHILL_BODY : BODY).draw(g, pose.body, left, top);
-  const joint = chill && chillJoint(chill.timeline, pose.body);
-  if (joint) drawJoint(g, { x: left + joint.x, y: top + joint.y }, chill.time);
+  (chill?.style.redEyes ? CHILL_BODY : BODY).draw(g, pose.body, left, top);
+  if (chill?.style.mouth === 'joint') {
+    const joint = chillJoint(chill.timeline, pose.body);
+    if (joint) drawJoint(g, { x: left + joint.x, y: top + joint.y }, chill.time);
+  } else if (chill?.style.mouth === 'bubble') {
+    const bubble = chillBubble(chill.timeline, pose.body, chill.time, chill.animTime);
+    if (bubble) BUBBLES[bubble.frame]!.draw(g, 0, left + bubble.x, top + bubble.y);
+  }
 }
 
 /** Draws board frame `frame` with the wheel contact point at the whole-pixel (x, y). */
@@ -62,6 +76,7 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   if (!view.visible) return;
   const p = state.player;
   const timeline = timelineFor(view, p.vy);
-  const chill = state.chillTimer > 0 ? { timeline, time: state.time } : null;
+  const style = chillStyle(state);
+  const chill = style ? { style, timeline, time: state.time, animTime: view.time } : null;
   drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill);
 }
