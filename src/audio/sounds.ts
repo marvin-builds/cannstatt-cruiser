@@ -30,6 +30,10 @@ const N = {
   Gb4: 369.99,
   F4: 349.23,
   E4: 329.63,
+  A4: 440.0,
+  C5: 523.25,
+  E5: 659.25,
+  G5: 783.99,
   A5: 880.0,
   D6: 1174.66,
   C6: 1046.5,
@@ -75,6 +79,16 @@ export const SOUNDS: Record<Cue, Voice[]> = {
   gameOver: [
     ...notes('square', [N.G4, N.Gb4, N.F4, N.E4], 0.18, 0.12, 0.5),
     ...notes('triangle', [N.D4, N.C4, N.B3, N.C4], 0.18, 0.18, 0.5).map((v) => ({ ...v, freq: v.freq / 2 })),
+  ],
+  // Bumping into a person: a short, soft vocal-ish 'oof' (falling triangle with a hint of square).
+  oof: [
+    { wave: 'triangle', at: 0.06, dur: 0.18, freq: 330, to: 170, gain: 0.35 },
+    { wave: 'square', at: 0.06, dur: 0.12, freq: 165, to: 110, gain: 0.05 },
+  ],
+  // Joint pickup: a lazy descending triangle arpeggio over a slow, soft 'wah' slide down.
+  chill: [
+    { wave: 'triangle', at: 0, dur: 0.7, freq: N.C5, to: N.C4, gain: 0.22 },
+    ...notes('triangle', [N.G5, N.E5, N.C5, N.A4], 0.13, 0.12, 0.4),
   ],
 };
 

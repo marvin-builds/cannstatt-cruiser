@@ -37,7 +37,7 @@ export function createPlayerSystem(): System {
         if (debug) drawDebugRails(r);
       },
       player(r) {
-        if (controller) drawSkater(r.g, r.state.player, controller.view(r.state.player));
+        if (controller) drawSkater(r.g, r.state, controller.view(r.state.player));
       },
     },
   };

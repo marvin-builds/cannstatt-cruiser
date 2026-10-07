@@ -34,6 +34,8 @@ export class SkaterController {
   private standUpTimer = 0;
   private anim: PlayerAnim = 'ride';
   private animTime = 0;
+  /** state.chillTimer > 0 at the start of this tick (gameplay counts it down after the player). */
+  private chill = false;
 
   constructor(private readonly bus: GameBus) {}
 
@@ -52,6 +54,7 @@ export class SkaterController {
     this.standUpTimer = 0;
     this.anim = 'ride';
     this.animTime = 0;
+    this.chill = false;
   }
 
   get crashing(): boolean {
@@ -101,6 +104,7 @@ export class SkaterController {
 
   update(state: GameState, input: Pick<InputFrame, 'action' | 'duck'>, dt: number): void {
     const p = state.player;
+    this.chill = state.chillTimer > 0;
     if (state.mode === 'title') this.setAnim('ride', dt);
     if (state.mode !== 'playing') return;
 
@@ -133,7 +137,7 @@ export class SkaterController {
     this.crashTimer = Math.max(0, this.crashTimer - dt);
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.sinceJump += dt;
-    this.cruiseTime += dt;
+    this.cruiseTime += dt * this.cruiseRate();
   }
 
   private canJump(p: PlayerState): boolean {
@@ -149,8 +153,9 @@ export class SkaterController {
     this.boostTime = 0;
     this.sinceJump = 0;
     p.grounded = false;
-    p.vy = -T.JUMP_VELOCITY;
-    this.bus.emit('jump', { velocity: T.JUMP_VELOCITY });
+    const velocity = jumpVelocity(this.chill);
+    p.vy = -velocity;
+    this.bus.emit('jump', { velocity });
   }
 
   private ride(state: GameState): void {
@@ -204,13 +209,24 @@ export class SkaterController {
     return this.cruiseTime % T.PUSH_PERIOD < T.PUSH_TIME ? 'push' : 'ride';
   }
 
+  /** Rate of the cruise clock (push rhythm) and of the ride/push animations: lazier while chilled. */
+  private cruiseRate(): number {
+    return this.chill ? T.CHILL_ANIM_RATE : 1;
+  }
+
   private setAnim(anim: PlayerAnim, dt: number): void {
-    if (anim === this.anim) this.animTime += dt;
+    const cruising = anim === 'ride' || anim === 'push';
+    if (anim === this.anim) this.animTime += cruising ? dt * this.cruiseRate() : dt;
     else {
       this.anim = anim;
       this.animTime = 0;
     }
   }
+}
+
+/** Take-off speed: JUMP_VELOCITY, scaled by CHILL_JUMP_SCALE while chilled (nothing else changes). */
+export function jumpVelocity(chill: boolean): number {
+  return chill ? T.JUMP_VELOCITY * T.CHILL_JUMP_SCALE : T.JUMP_VELOCITY;
 }
 
 function findRail(state: GameState, id: number | null): Entity | undefined {

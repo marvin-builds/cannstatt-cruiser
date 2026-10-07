@@ -4,7 +4,7 @@
  * persists the mute flag. Sound design lives in sounds.ts, WebAudio in webaudio.ts.
  */
 import { store as defaultStore, type Store } from '../core/storage';
-import type { GameContext, System } from '../types';
+import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { exposeAudioDebug } from './debug';
 import { createWebAudioBackend } from './webaudio';
@@ -24,6 +24,8 @@ const MUTED_KEY = 'muted';
 const BOOST_TICKS = 6;
 /** Landing impact (vy in view px/s) that plays the thud at full volume. */
 const HARD_LANDING = 350;
+/** Crash kinds that are people: they get a soft 'oof' on top of the crash. */
+const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGuest']);
 
 export function createAudioSystem(options: AudioSystemOptions = {}): System {
   const backend = options.backend ?? createWebAudioBackend();
@@ -80,10 +82,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       });
       bus.on('land', ({ impact }) => play('land', 0.3 + 0.7 * Math.min(1, Math.max(0, impact) / HARD_LANDING)));
       bus.on('starCollected', () => play('star'));
+      bus.on('chillStart', () => play('chill'));
       bus.on('obstacleCleared', () => play('cleared'));
-      bus.on('crash', () => {
+      bus.on('crash', ({ kind }) => {
         stopGrind();
         play('crash');
+        if (PEOPLE.has(kind)) play('oof');
       });
       bus.on('gameOver', () => {
         stopGrind();

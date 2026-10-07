@@ -22,6 +22,7 @@ const EXPECTED_SOUND: Partial<Record<keyof GameEvents, string>> = {
   crash: 'crash',
   gameOver: 'gameOver',
   grindStart: 'grind:start',
+  chillStart: 'chill',
 };
 
 const audioLog = (t: PlaytestContext) =>

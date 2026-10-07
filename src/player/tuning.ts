@@ -55,3 +55,8 @@ export const HITBOX_H = {
  * solver uses it too, so a full hold must still clear every obstacle.
  */
 export const CHILL_JUMP_SCALE = 0.8;
+/**
+ * While chilled the ride/push animation clock and the push rhythm run at this
+ * rate (lazier pushing and idle bobbing). Looks only; physics is unaffected.
+ */
+export const CHILL_ANIM_RATE = 0.7;

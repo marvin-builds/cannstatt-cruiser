@@ -16,8 +16,10 @@ export const PALETTE = {
   s: '#e3a57c', // skin
   S: '#b97456', // skin shade, ear
   b: '#8a7569', // stubble
-  h: '#55535b', // hair, dark grey
-  H: '#b9b7bc', // hair, grey/white strands
+  h: '#5f5b5c', // hair, dark grey base
+  H: '#c9c4bb', // hair, light warm grey patches (salt and pepper)
+  e: '#f01e2c', // red eye (chill)
+  p: '#f27a8c', // pink eye rim (chill)
   c: '#2c4a6e', // cap
   C: '#1b304c', // cap brim
   r: '#bf4438', // hoodie
@@ -52,16 +54,36 @@ export const BOARD_ANCHOR_X = 13;
 
 // ---------------------------------------------------------------- parts
 
+/**
+ * Head facing right, 11 x 8. Salt-and-pepper hair under the cap: a 2x2 light
+ * grey patch (H) at the back, a 2 px patch at the temple above the ear and
+ * one at the nape, split by dark grey (h), so the grey reads at 1x.
+ */
 const HEAD = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  kHhHsssskk.
-  khHsSskssk.
-  kHhssssssSk
-  .khsbsssbk.
+  kHHhHHsskk.
+  kHHhSskssk.
+  khHHsssssSk
+  .kHsbsssbk.
   ..kbbbbbk..
 `;
+
+/** Chill head: heavy dark lid over a 2 px red eye with a pink rim below. Same size and outline as HEAD. */
+const HEAD_CHILL = `
+  ..kkkkk....
+  .kcccccck..
+  kcccccccCCk
+  kHHhHHkkkk.
+  kHHhSseesk.
+  khHHssppSSk
+  .kHsbsssbk.
+  ..kbbbbbk..
+`;
+
+/** Mouth pixel of the head (where the joint sits), relative to the head's top-left. */
+export const HEAD_MOUTH = { x: 9, y: 6 } as const;
 
 const TORSO_DOWN = `
   .kRrrrrk..
@@ -261,8 +283,8 @@ const CRASH_BALL = `
   .kRrrrrrjk
   kRrrrrrRkk
   kRrrrkkcck
-  .kRrkHhcck
-  ..kkkssCk.
+  .kRrkHHcck
+  ..kkhssCk.
   ....kkkk..
 `;
 
@@ -271,19 +293,26 @@ const CRASH_LYING = `
   ............kkkkkk.kkkk.
   .kk.kkkkkkkkRrrrrrkcccck
   kwwkjjjjjjjjrrrrrrkHcCCk
-  kwwkjJjjjJjjRrrrsrkhssSk
+  kwwkjJjjjJjjRrrrsrkHhsSk
   kWWkjjjjjjjjRRRRRRkbsbsk
   .kk.kkkkkkkkkkkkkk.kkkk.
 `;
 
 // ---------------------------------------------------------------- frames
 
-function body(parts: Part[]): string[] {
-  return composeFrame(BODY_W, BODY_H, parts);
+interface Point {
+  x: number;
+  y: number;
 }
 
-const head = (x = 7, y = 2): Part => ({ art: HEAD, x, y });
+/** One body frame: its parts and, when the head is visible, where the head goes (drawn last). */
+interface FrameSpec {
+  parts: Part[];
+  head?: Point;
+}
+
 const at = (art: string, x: number, y: number): Part => ({ art, x, y });
+const STD_HEAD: Point = { x: 7, y: 2 };
 
 /** Body frame indices (see BODY_FRAMES). */
 export const B = {
@@ -304,23 +333,34 @@ export const B = {
   duck: 14,
 } as const;
 
-export const BODY_FRAMES: string[][] = [
-  body([at(LEGS_STAND, 0, 19), at(TORSO_DOWN, 7, 10), head()]),
-  body([at(LEGS_PUSH_DOWN, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
-  body([at(LEGS_PUSH_BACK, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
-  body([at(LEGS_PUSH_SWING, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
-  body([at(LEGS_CROUCH, 0, 22), at(TORSO_CROUCH, 7, 15), head(9, 7)]),
-  body([at(LEGS_TUCK, 0, 21), at(TORSO_ARMS_OUT, 2, 12), head(8, 4)]),
-  body([at(LEGS_EXTEND, 0, 19), at(TORSO_ARMS_UP, 2, 9), head()]),
-  body([at(LEGS_CROUCH, 0, 22), at(TORSO_ARMS_OUT, 2, 14), head(8, 6)]),
-  body([at(LEGS_STAND, 0, 19), at(TORSO_ARMS_OUT, 2, 10), head()]),
-  body([at(LEGS_STAND, 0, 20), at(TORSO_ARMS_OUT, 2, 11), head(7, 3)]),
-  body([at(LEGS_TUCK, 0, 17), at(TORSO_ARMS_UP, 5, 6), head(10, 0)]),
-  body([at(CRASH_BALL, 7, BODY_GROUND_ROW - 10)]),
-  body([at(CRASH_LYING, 0, BODY_GROUND_ROW - 5)]),
-  body([at(LEGS_KNEEL, 0, BODY_GROUND_ROW - 7), at(TORSO_CROUCH, 7, 19), head(9, 11)]),
-  body([at(LEGS_DUCK, 2, 23), at(TORSO_DUCK, 2, 17), head(12, 15)]),
+const FRAME_SPECS: FrameSpec[] = [
+  { parts: [at(LEGS_STAND, 0, 19), at(TORSO_DOWN, 7, 10)], head: STD_HEAD },
+  { parts: [at(LEGS_PUSH_DOWN, 0, 19), at(TORSO_LEAN, 8, 11)], head: { x: 9, y: 3 } },
+  { parts: [at(LEGS_PUSH_BACK, 0, 19), at(TORSO_LEAN, 8, 11)], head: { x: 9, y: 3 } },
+  { parts: [at(LEGS_PUSH_SWING, 0, 19), at(TORSO_LEAN, 8, 11)], head: { x: 9, y: 3 } },
+  { parts: [at(LEGS_CROUCH, 0, 22), at(TORSO_CROUCH, 7, 15)], head: { x: 9, y: 7 } },
+  { parts: [at(LEGS_TUCK, 0, 21), at(TORSO_ARMS_OUT, 2, 12)], head: { x: 8, y: 4 } },
+  { parts: [at(LEGS_EXTEND, 0, 19), at(TORSO_ARMS_UP, 2, 9)], head: STD_HEAD },
+  { parts: [at(LEGS_CROUCH, 0, 22), at(TORSO_ARMS_OUT, 2, 14)], head: { x: 8, y: 6 } },
+  { parts: [at(LEGS_STAND, 0, 19), at(TORSO_ARMS_OUT, 2, 10)], head: STD_HEAD },
+  { parts: [at(LEGS_STAND, 0, 20), at(TORSO_ARMS_OUT, 2, 11)], head: { x: 7, y: 3 } },
+  { parts: [at(LEGS_TUCK, 0, 17), at(TORSO_ARMS_UP, 5, 6)], head: { x: 10, y: 0 } },
+  { parts: [at(CRASH_BALL, 7, BODY_GROUND_ROW - 10)] },
+  { parts: [at(CRASH_LYING, 0, BODY_GROUND_ROW - 5)] },
+  { parts: [at(LEGS_KNEEL, 0, BODY_GROUND_ROW - 7), at(TORSO_CROUCH, 7, 19)], head: { x: 9, y: 11 } },
+  { parts: [at(LEGS_DUCK, 2, 23), at(TORSO_DUCK, 2, 17)], head: { x: 12, y: 15 } },
 ];
+
+function body(spec: FrameSpec, headArt: string): string[] {
+  const parts = spec.head ? [...spec.parts, at(headArt, spec.head.x, spec.head.y)] : spec.parts;
+  return composeFrame(BODY_W, BODY_H, parts);
+}
+
+export const BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, HEAD));
+/** The same frames with the red-eyed chill head (frames without a visible head are identical). */
+export const CHILL_BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, HEAD_CHILL));
+/** Top-left of the head inside each body frame, or null when no face is visible (tumble, lying). */
+export const HEAD_AT: (Point | null)[] = FRAME_SPECS.map((spec) => spec.head ?? null);
 
 // ---------------------------------------------------------------- board
 

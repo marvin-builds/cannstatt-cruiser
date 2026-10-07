@@ -17,8 +17,10 @@ export interface PlayerDebugHook {
   removeRail(id: number): void;
   /** Emits a crash like gameplay would. */
   crash(): void;
-  /** PNG data URL: every animation step and board frame, upscaled by `scale`. */
-  lineup(scale?: number): string;
+  /** Sets `state.chillTimer` (the joint effect; gameplay counts it down while playing). */
+  chill(seconds?: number): void;
+  /** PNG data URL: every animation step and board frame, upscaled by `scale`; with the chill look if `chill`. */
+  lineup(scale?: number, chill?: boolean): string;
 }
 
 declare global {
@@ -55,7 +57,10 @@ export function installPlayerDebug(ctx: GameContext): void {
     crash() {
       ctx.bus.emit('crash', { entityId: -1, kind: 'bin', health: ctx.state.health });
     },
-    lineup: (scale = 6) => renderLineup(scale),
+    chill(seconds = 60) {
+      ctx.state.chillTimer = seconds;
+    },
+    lineup: (scale = 6, chill = false) => renderLineup(scale, chill),
   };
 }
 
@@ -77,7 +82,7 @@ export function drawDebugRails({ g, state }: RenderContext): void {
 const CELL_W = 70;
 const CELL_H = 60;
 
-function renderLineup(scale: number): string {
+function renderLineup(scale: number, chill: boolean): string {
   const names = Object.keys(TIMELINES) as TimelineName[];
   const cols = Math.max(...names.map((n) => TIMELINES[n].steps.length));
   const canvas = document.createElement('canvas');
@@ -98,7 +103,8 @@ function renderLineup(scale: number): string {
       const groundY = top + CELL_H - 6;
       g.fillStyle = '#8a8378';
       g.fillRect(x - 24, groundY, 48, 2);
-      drawPose(g, poseAt(name, time + 0.0001), x, groundY);
+      const look = chill ? { timeline: name, time: time + col * 0.37 } : null;
+      drawPose(g, poseAt(name, time + 0.0001), x, groundY, look);
       time += step.t;
     });
   });

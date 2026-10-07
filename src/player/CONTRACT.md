@@ -67,6 +67,20 @@ in any slice's Vitest tests.
 - Events: `jump { velocity }` on take-off, `land { impact }` (downward
   speed) on touching the ground.
 
+## Chill (joint pickup)
+
+- While `state.chillTimer > 0` the take-off velocity is
+  `JUMP_VELOCITY * CHILL_JUMP_SCALE` (0.8, `tuning.ts`); gravity, hold
+  gravity, `MAX_JUMP_HOLD`, coyote and buffer are unchanged, and `jump
+  { velocity }` reports the scaled value. `gameplay/jumpsim.ts` mirrors this.
+- **Tick ordering:** the player reads `chillTimer` at the start of its update,
+  before gameplay runs. So the take-off uses the value left by the previous
+  tick: on the pickup tick the jump is still normal, and on the tick where
+  gameplay counts the timer down to 0 it is still scaled (covered in
+  `chill.test.ts`).
+- Look only: red eyes, a joint with smoke (dropped on a crash), and ride/push
+  animation plus push rhythm at `CHILL_ANIM_RATE` (0.7). No physics change.
+
 ## Duck
 
 - `input.duck.held` while the player is **on the ground** (not on a rail,
@@ -97,6 +111,7 @@ jumpApex(game, 2);        // tap from the current support, returns apex height
 ```
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
-length)`, `removeRail(id)`, `crash()` and `lineup(scale)` for playtest
+length)`, `removeRail(id)`, `crash()`, `chill(seconds)` (sets
+`state.chillTimer`) and `lineup(scale, chill)` for playtest
 scenarios (see `scripts/scenarios/skater.ts`). Rails it adds carry
 `data.debugRail` and are drawn by the player slice; gameplay may ignore them.

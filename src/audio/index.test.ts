@@ -56,6 +56,7 @@ describe('audio system: event to sound mapping', () => {
     ['starCollected', { entityId: 1, stars: 3 }, 'star'],
     ['obstacleCleared', { entityId: 1, kind: 'bin', points: 10 }, 'cleared'],
     ['crash', { entityId: 1, kind: 'bin', health: 2 }, 'crash'],
+    ['chillStart', { entityId: 1, duration: 8 }, 'chill'],
   ] as const)('%s plays %s', (event, payload, cue) => {
     const { game, cues } = playing();
     game.bus.emit(event, payload as never);
@@ -168,6 +169,33 @@ describe('audio system: unlock and mute', () => {
     const { game, backend } = setup();
     expect(game.state.muted).toBe(false);
     expect(backend.muted).toBe(false);
+  });
+});
+
+describe('audio system: chill', () => {
+  it('plays the chill sound on chillStart, inaudible while muted', () => {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    game.bus.emit('chillStart', { entityId: 1, duration: 8 });
+    game.commands.setMuted(true);
+    game.bus.emit('chillStart', { entityId: 2, duration: 8 });
+    expect(heard).toEqual([
+      ['chill', false],
+      ['chill', true],
+    ]);
+    expect(backend.muted).toBe(true);
+  });
+});
+
+describe('audio system: crashing into people', () => {
+  it.each(['vfbFan', 'wasenGuest'] as const)('adds a soft oof when the skater hits a %s', (kind) => {
+    const { game, cues } = playing();
+    game.bus.emit('crash', { entityId: 1, kind, health: 2 });
+    expect(cues()).toEqual(['crash', 'oof']);
   });
 });
 
