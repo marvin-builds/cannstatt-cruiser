@@ -16,6 +16,7 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): module map, **ownership table**, contracts, events, sprites
 - [docs/TESTING.md](docs/TESTING.md): unit tests, `window.__game`, playtest harness, custom scenarios
 - [docs/SPEC.md](docs/SPEC.md): product spec
+- [docs/ROADMAP.md](docs/ROADMAP.md): waves, backlog of user wishes, status checkpoint
 
 ## Rules
 
@@ -46,7 +47,7 @@ When the user asks to continue (or resumes work on this game), always work in or
 - Before committing, the orchestrator checks `npm test` and `npm run build`, looks at the key
   playtest screenshots itself, and then commits one commit per slice on `main` (linear history)
   and pushes (the user allowed pushing after each verified slice).
-- New user wishes go into the roadmap/backlog first. They are briefed to the next fitting slice,
+- New user wishes go into `docs/ROADMAP.md` (backlog and status checkpoint) first. They are briefed to the next fitting slice,
   never patched into a slice that is already running.
 - The plan ends with a final multi-persona playtest (desktop keyboard, phone touch landscape and
   portrait, casual first-timer) plus one fix round, and then a final report with screenshots.
