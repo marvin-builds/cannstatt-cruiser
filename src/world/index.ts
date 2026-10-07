@@ -1,43 +1,100 @@
 /**
- * PLACEHOLDER owned by the world slice: sky gradient, ground line and
- * scrolling ground marks. Replace with the parallax zones, keeping the factory name.
+ * World slice: parallax Stuttgart backgrounds per zone, zone cycling with a
+ * dithered crossfade, and the riding surface at GROUND_Y. Purely visual
+ * apart from `state.zoneIndex` (see docs/ARCHITECTURE.md).
  */
-import { GROUND_Y } from '../core/config';
-import type { System } from '../types';
+import { Rng } from '../core/rng';
+import type { GameContext, RenderContext, System } from '../types';
+import { cannstattZone } from './art/cannstatt';
+import { GROUND_TILES } from './art/ground';
+import { NEAR_FACTOR } from './art/layout';
+import { MITTE_TRAIN, mitteZone } from './art/mitte';
+import { neckarZone } from './art/neckar';
+import { DitherCompositor } from './compose';
+import { Crossfade } from './crossfade';
+import { GroundStrip } from './ground';
+import { LETTERBOX } from './palette';
+import { mixSeed, ZoneScene } from './scene';
+import { TrainRunner } from './train';
+import { normalizeZone, ZoneClock } from './zones';
 
-const ZONE_SKIES = [
-  ['#5b8fd6', '#bcd8f2'],
-  ['#4f7fc4', '#cfe3ef'],
-  ['#d9875e', '#f6d6a8'],
-] as const;
+/** Zone of the near-layer Stadtbahn (Stuttgart-Mitte). */
+const TRAIN_ZONE = 0;
 
 export function createWorldSystem(): System {
+  const clock = new ZoneClock();
+  const fade = new Crossfade(0);
+  const trainRng = new Rng(0);
+  const train = new TrainRunner(trainRng, { width: MITTE_TRAIN.width, speed: 70, interval: [9, 20], firstDelay: 0.4 });
+  const scenes = [mitteZone(train), neckarZone(), cannstattZone()].map((spec, i) => new ZoneScene(spec, i));
+  const ground = new GroundStrip(GROUND_TILES);
+  const compositor = new DitherCompositor();
+  /** Animation clock (s): runs in every mode except pause. */
+  let time = 0;
+  let warmed = false;
+
+  function reset(seed: number): void {
+    clock.reset(0);
+    fade.snap(0);
+    ground.snap(0);
+    for (const scene of scenes) scene.reseed(seed);
+    scenes[0]!.restart(0, time);
+    trainRng.seed(mixSeed(seed, 99));
+    train.restart();
+  }
+
+  function enterZone(ctx: GameContext, index: number): void {
+    const zone = normalizeZone(index);
+    const { distance } = ctx.state;
+    clock.reset(distance);
+    if (zone === fade.to) return;
+    fade.start(zone);
+    scenes[zone]!.restart(distance, time);
+    ground.change(zone, distance);
+    if (zone === TRAIN_ZONE) train.restart();
+  }
+
+  function drawBackground({ g, state, display }: RenderContext): void {
+    if (!warmed) {
+      scenes.forEach((s) => s.warm());
+      ground.warm();
+      warmed = true;
+    }
+    const { viewWidth } = display;
+    const draw = (target: CanvasRenderingContext2D, zone: number) => scenes[zone]!.draw(target, state.distance, time, viewWidth);
+    if (!fade.active) {
+      draw(g, fade.to);
+      return;
+    }
+    draw(g, fade.from);
+    compositor.blend(g, fade.progress, viewWidth, (target) => draw(target, fade.to));
+  }
+
   return {
     name: 'world',
 
     init(ctx) {
-      ctx.commands.setLetterboxColor('#2b2b33');
+      ctx.commands.setLetterboxColor(LETTERBOX);
+      reset(ctx.state.seed);
+      ctx.bus.on('runStarted', ({ seed }) => reset(seed));
+      ctx.bus.on('zoneChanged', ({ index }) => enterZone(ctx, index));
+    },
+
+    update(ctx, dt) {
+      const { state } = ctx;
+      if (state.mode === 'playing') {
+        const next = clock.due(state.distance, state.zoneIndex);
+        if (next !== null) ctx.commands.setZone(next);
+      }
+      if (state.mode === 'paused') return;
+      time += dt;
+      fade.update(dt);
+      train.update(dt, state.distance * NEAR_FACTOR, ctx.display.viewWidth, fade.to === TRAIN_ZONE);
     },
 
     render: {
-      background({ g, state, display }) {
-        const [top, bottom] = ZONE_SKIES[state.zoneIndex % ZONE_SKIES.length]!;
-        const sky = g.createLinearGradient(0, 0, 0, GROUND_Y);
-        sky.addColorStop(0, top);
-        sky.addColorStop(1, bottom);
-        g.fillStyle = sky;
-        g.fillRect(0, 0, display.viewWidth, GROUND_Y);
-      },
-      world({ g, state, display }) {
-        const { viewWidth, viewHeight } = display;
-        g.fillStyle = '#5a5a66';
-        g.fillRect(0, GROUND_Y, viewWidth, viewHeight - GROUND_Y);
-        g.fillStyle = '#d8d8e0';
-        g.fillRect(0, GROUND_Y, viewWidth, 1);
-        g.fillStyle = '#44444f';
-        const offset = Math.floor(state.distance) % 32;
-        for (let x = -offset; x < viewWidth; x += 32) g.fillRect(x, GROUND_Y + 8, 12, 2);
-      },
+      background: drawBackground,
+      world: ({ g, state, display }) => ground.draw(g, state.distance, display.viewWidth),
     },
   };
 }
