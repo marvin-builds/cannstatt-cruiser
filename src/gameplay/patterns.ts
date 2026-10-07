@@ -7,7 +7,7 @@
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
 import type { Entity, ObstacleKind, RailKind } from '../types';
-import { hitBox, isObstacle, isRail, OBSTACLES, obstacleRect, RAILS, railRect, starRect } from './catalogue';
+import { hitBox, isObstacle, isOverhead, isRail, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import { type Course, HOLDS, Solver } from './solver';
 
@@ -74,6 +74,11 @@ class Builder {
     return piece;
   }
 
+  /** A random overhead obstacle (banner, stop sign) at x. */
+  overhead(x: number): Piece {
+    return this.obstacle(this.rng.pick(OVERHEAD_KINDS), x);
+  }
+
   pick(maxHeight = Infinity): ObstacleKind {
     return this.rng.pick(PICKABLE.filter((k) => OBSTACLES[k].h - OBSTACLES[k].sink <= maxHeight));
   }
@@ -96,6 +101,22 @@ const TEMPLATES: Template[] = [
     },
   },
   { name: 'rail', tier: 1, weight: 2, build: (b) => void b.rail(b.railKind(), b.lead) },
+  { name: 'duck', tier: 1, weight: 2, build: (b) => void b.overhead(b.lead) },
+  {
+    name: 'duckJump',
+    tier: 2,
+    weight: 2,
+    build: (b) => {
+      // Duck then jump, or jump then duck; the solver rejects gaps too short for either.
+      if (b.rng.chance(0.5)) {
+        b.overhead(b.lead);
+        b.obstacle(b.pick(), b.end + b.rng.int(30, 90));
+      } else {
+        b.obstacle(b.pick(), b.lead);
+        b.overhead(b.end + b.rng.int(40, 100));
+      }
+    },
+  },
   {
     name: 'railOver',
     tier: 2,
@@ -148,10 +169,12 @@ function pickTemplate(rng: Rng, tier: number): Template {
 
 /** What the solver sees of a pattern. */
 export function courseOf(pattern: Pattern): Course {
-  const obstacles = pattern.pieces.filter((p) => isObstacle(p.kind)).map((p) => hitBox({ ...p, kind: p.kind as ObstacleKind }));
+  const box = (p: Piece) => hitBox({ ...p, kind: p.kind as ObstacleKind });
+  const obstacles = pattern.pieces.filter((p) => isObstacle(p.kind) && !isOverhead(p.kind)).map(box);
+  const overhead = pattern.pieces.filter((p) => isOverhead(p.kind)).map(box);
   const rails = pattern.pieces.filter((p) => isRail(p.kind));
-  const goal = Math.max(0, ...[...obstacles, ...rails].map((r) => r.x + r.w));
-  return { obstacles, rails, goal, limit: pattern.length };
+  const goal = Math.max(0, ...[...obstacles, ...overhead, ...rails].map((r) => r.x + r.w));
+  return { obstacles, overhead, rails, goal, limit: pattern.length };
 }
 
 /**

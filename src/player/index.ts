@@ -29,7 +29,7 @@ export function createPlayerSystem(): System {
     },
 
     update(ctx, dt) {
-      controller?.update(ctx.state, ctx.input.action, dt);
+      controller?.update(ctx.state, ctx.input, dt);
     },
 
     render: {

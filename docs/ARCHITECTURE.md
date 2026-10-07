@@ -18,7 +18,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
   loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
-  input.ts              DOM binding: keys, pointer (mouse+touch), blocks scroll/zoom/menus
+  input.ts              DOM binding: keys (action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
   renderer.ts           offscreen buffer (resized to the view width), integer scaling, letterbox colour, capture()
   scaling.ts            computeLayout() (scale + adaptive view width), screenToView() (pure math)
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
@@ -46,9 +46,9 @@ foundation owner can extend it.
 | Path | Owner | Factory / content | Responsibilities |
 |---|---|---|---|
 | `src/core/`, `src/types.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
-| `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), grind riding, crash/stumble anim, `state.player` incl. `hitbox` |
+| `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), zone cycling/transitions, ground, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, rails, stars (`state.entities`), spawner + clearability, difficulty (`state.speed`), collisions, score/combo/multiplier, health, invulnerability timer, gameplay events |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, rails, stars (`state.entities`), spawner + clearability (jumps and ducks), difficulty (`state.speed`), collisions, score/combo/multiplier, health, gameplay events |
 | `src/ui/` | ui | `createUiSystem()` | title, HUD, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots), portrait hint |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
@@ -95,7 +95,7 @@ interface System {
 | `state` | the single mutable `GameState` |
 | `bus` | typed event bus (`GameEvents`) |
 | `rng` | seeded `Rng`, re-seeded with `state.seed` at every run start. Use it for all gameplay randomness (never `Math.random`), so test runs replay deterministically. |
-| `input` | this tick's `InputFrame`: `action {pressed, held, released, holdTime}`, `pausePressed`, `mutePressed` |
+| `input` | this tick's `InputFrame`: `action` and `duck` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-and-duck). |
 | `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
 | `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor` |
@@ -107,8 +107,8 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
-| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `player.invulnerableTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set) |
-| `player.*` (position, velocity, grounded, grinding, state, hitbox) | player (gameplay may set `grinding`/`state = 'crash'` through events it emits; see below) |
+| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set) |
+| `player.*` (position, velocity, grounded, grinding, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`) |
 
 Coordinates are screen space in view pixels, with y pointing down. The world
@@ -142,6 +142,40 @@ rect from `state.entities`).
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
+
+## Input: action and duck
+
+`InputFrame` has two logical buttons with the same `ActionSnapshot` shape:
+
+| Button | Sources |
+|---|---|
+| `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
+| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 36 ticks, 0.6 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck` |
+
+`core/input.ts` maps DOM events through two DOM-free pieces that unit tests
+drive directly: `keyDown/keyUp(game, code)` and `PointerControls`
+(`down/move/up/cancel(id, viewX, viewY)`). The player decides what duck does
+(on the ground only; jump wins over duck), see `src/player/CONTRACT.md`.
+
+### Touch: tap vs swipe down
+
+A touch cannot be told apart from the start of a swipe when the finger lands,
+yet a swipe down must never also jump. So a touch **during a run** stays
+undecided for at most `SWIPE_WINDOW` = 5 ticks (~83 ms):
+
+- the finger moves down `SWIPE_DISTANCE` = 5 view px (more down than
+  sideways): duck, and this touch never presses the action;
+- the finger lifts (a tap), or moves `SWIPE_DISTANCE` sideways / up: the
+  action is pressed right then (a lifted tap arrives as press + release in the
+  same tick = small ollie);
+- the window runs out with the finger still down: the action is pressed and
+  held from then on (hold = high jump).
+
+Tradeoff: a touch jump during a run starts up to ~83 ms later than the finger
+lands (a quick tap: when the finger lifts, which is usually sooner), and a
+held touch counts its hold time from the decision. Keyboard and mouse presses,
+and touches on the title, pause and game-over screens, are not delayed at all.
+Hotspots still take presses first.
 
 ## View size (adaptive width)
 
@@ -190,7 +224,7 @@ title --start--> playing --pause--> paused --resume--> playing
 Invalid commands are ignored. Restart taps on the game-over screen are ignored
 for `GAMEOVER_INPUT_DELAY` (0.75 s). P/Escape pauses and resumes, and on the
 game-over screen it goes back to the title. Losing window focus (`blur`) or
-hiding the page (`visibilitychange`) releases the action and pauses a running game.
+hiding the page (`visibilitychange`) releases every button (action, duck, undecided touches) and pauses a running game.
 
 ## Drawing sprites
 

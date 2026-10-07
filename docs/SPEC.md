@@ -21,9 +21,14 @@ and on desktop (keyboard and mouse). The UI language is German.
 
 ## Controls
 
-- There is only one action: Space / ArrowUp / W / mouse button / touch anywhere.
+- Jump: Space / ArrowUp / W / mouse button / touch anywhere.
 - Tap = small ollie, hold = higher jump (variable jump height up to a maximum
   hold time).
+- Duck: ArrowDown / S (held while the key is held), or a swipe down on touch
+  (ducks for ~0.6 s or until the next tap). A swipe down never also jumps; to
+  tell it from a tap, a touch during a run waits up to ~83 ms (or until the
+  finger lifts) before it jumps. Ducking works on the ground only (not on
+  rails, no fast fall in the air); jumping while ducked stands up and jumps.
 - Coyote time (~80 ms) and jump buffering (~120 ms).
 - P / Escape = pause.
 
@@ -40,8 +45,13 @@ and on desktop (keyboard and mouse). The UI language is German.
 
 - Obstacles: Mülltonne (bin), Absperrbake (traffic barrier), Parkbank,
   Pflanzkübel (planter), Bordstein/curb gaps.
+- Overhead obstacles hanging from posts or a pole: Absperrbanner with a
+  construction warning sign on a gantry, Stadtbahn-Haltestellenschild (green H
+  on yellow) with timetable on a cantilever. They can only be ducked under
+  (too high to jump over) and unlock at a mid difficulty tier.
 - Grindable rails: handrails and pipes.
-- Clearing an obstacle by jumping scores points. Landing on a rail starts a
+- Clearing an obstacle by jumping or ducking under it scores points (a duck
+  on the ground does not extend a combo). Landing on a rail starts a
   grind, which scores points per tick. A combo multiplier grows for chains that
   don't touch the ground or crash.
 

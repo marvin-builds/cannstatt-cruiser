@@ -11,8 +11,9 @@ export interface ObstacleSpec {
   h: number;
   /**
    * Gap between the ground and the bottom of the sprite. 0 = standing on the
-   * ground; > 0 = raised / overhead (hanging signs, branches: the place where
-   * a later ducking feature plugs in).
+   * ground; > 0 = overhead: it hangs from supports (posts, a pole) that art.ts
+   * draws down to the ground and that do not collide. Only a ducked rider
+   * fits under it, and it reaches too high to be jumped over.
    */
   elevation: number;
   /** Pixels the sprite reaches below GROUND_Y (gaps cut into the pavement). */
@@ -29,7 +30,13 @@ export const OBSTACLES: Record<ObstacleKind, ObstacleSpec> = {
   bench: { w: 24, h: 12, elevation: 0, sink: 0, box: { x: 1, y: 2, w: 22, h: 10 }, points: 80 },
   planter: { w: 18, h: 17, elevation: 0, sink: 0, box: { x: 1, y: 5, w: 16, h: 12 }, points: 100 },
   curbGap: { w: 20, h: 8, elevation: 0, sink: 6, box: { x: 4, y: 0, w: 12, h: 8 }, points: 60 },
+  // Overhead: crossbar / arm 64 px up, hanging part ending 23 px above the ground (ducked rider: 20 px).
+  banner: { w: 30, h: 41, elevation: 23, sink: 0, box: { x: 2, y: 0, w: 26, h: 41 }, points: 150 },
+  stopSign: { w: 22, h: 41, elevation: 23, sink: 0, box: { x: 2, y: 0, w: 14, h: 41 }, points: 150 },
 };
+
+/** Obstacles that hang above the street (ducked under, never jumped). */
+export const OVERHEAD_KINDS = (Object.keys(OBSTACLES) as ObstacleKind[]).filter((k) => OBSTACLES[k].elevation > 0);
 
 export interface RailSpec {
   /** Height of the rail top above the ground. */
@@ -55,6 +62,10 @@ export const MAX_MULTIPLIER = 5;
 
 export function isObstacle(kind: EntityKind): kind is ObstacleKind {
   return kind in OBSTACLES;
+}
+
+export function isOverhead(kind: EntityKind): boolean {
+  return isObstacle(kind) && OBSTACLES[kind].elevation > 0;
 }
 
 export function isRail(kind: EntityKind): kind is RailKind {

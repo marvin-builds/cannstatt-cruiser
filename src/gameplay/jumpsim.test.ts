@@ -71,6 +71,27 @@ describe('jump simulator mirrors the player controller', () => {
     }
   });
 
+  it('ducks like the player: low hitbox on the ground only, none in the air, at once on landing', () => {
+    const game = createPlayerTestGame();
+    tick(game, 3);
+    let b = groundBody();
+    // Duck 10 ticks, jump while ducked (duck stays held through the air), land ducked, stand up.
+    const script = (i: number) => ({ press: i === 10, held: i >= 10 && i < 12, duck: i < 70 });
+    for (let i = 0; i < 80; i++) {
+      const { press, held, duck } = script(i);
+      if (press) game.buttons.action.press('test');
+      if (i === 12) game.buttons.action.release('test');
+      if (duck) game.buttons.duck.press('test');
+      else game.buttons.duck.release('test');
+      game.tick();
+      b = stepBody(b, 0, press, held, duck);
+      const real = game.state.player;
+      expect(b.y).toBeCloseTo(real.y, 6);
+      expect(hitboxOf(b, real.x)).toEqual(real.hitbox);
+    }
+    expect(b.grounded).toBe(true);
+  });
+
   it('uses the standing hitbox on support and the tucked one in the air', () => {
     expect(hitboxOf(groundBody(), 10)).toEqual({ x: 5, y: GROUND_Y - HITBOX_H.standing, w: 10, h: HITBOX_H.standing });
     const air = stepBody(groundBody(), 0, true, true);

@@ -65,6 +65,24 @@ describe('test hook', () => {
     expect(hook.eventsSince(since + 4)).toHaveLength(0);
   });
 
+  it('presses, releases and holds duck', () => {
+    const { game, hook } = setup();
+    const held: boolean[] = [];
+    hook.startRun();
+    const probe = () => held.push(game.ctx.input.duck.held);
+    hook.input.duck.press();
+    hook.step(1);
+    probe();
+    hook.input.duck.release();
+    hook.step(1);
+    probe();
+    hook.input.duck.hold(5);
+    probe();
+    hook.step(1);
+    probe();
+    expect(held).toEqual([true, false, true, false]);
+  });
+
   it('reports the current display info', () => {
     const { game, hook } = setup();
     game.display.viewWidth = 422;

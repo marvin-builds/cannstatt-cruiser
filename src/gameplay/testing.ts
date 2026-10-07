@@ -3,9 +3,9 @@
  * entities into a solver course and play it with the solver's best jumps.
  * DOM-free; not used by the game itself.
  */
-import { PLAYER_X } from '../core/config';
+import { PLAYER_X, TICK_DT } from '../core/config';
 import type { Entity, GameState, ObstacleKind } from '../types';
-import { hitBox, isObstacle, isRail } from './catalogue';
+import { hitBox, isObstacle, isOverhead, isRail } from './catalogue';
 import { type Body, groundBody, railBody } from './jumpsim';
 import { type Course, type Jump, Solver } from './solver';
 
@@ -19,12 +19,20 @@ function live(e: Entity): boolean {
 /** The entities ahead of the player in course space (x = 0 at the player). */
 export function courseAhead(state: GameState): Course {
   const shift = (r: { x: number; y: number; w: number; h: number }) => ({ ...r, x: r.x - PLAYER_X });
-  const obstacles = state.entities
-    .filter((e) => live(e) && isObstacle(e.kind) && !e.done)
-    .map((e) => shift(hitBox({ ...e, kind: e.kind as ObstacleKind })));
+  const ahead = obstaclesAhead(state);
+  const obstacles = ahead.filter((e) => !isOverhead(e.kind)).map((e) => shift(boxOf(e)));
+  const overhead = ahead.filter((e) => isOverhead(e.kind)).map((e) => shift(boxOf(e)));
   const rails = state.entities.filter((e) => live(e) && isRail(e.kind)).map(shift);
-  const goal = Math.max(0, ...[...obstacles, ...rails].map((r) => r.x + r.w));
-  return { obstacles, rails, goal, limit: goal + OPEN_END };
+  const goal = Math.max(0, ...[...obstacles, ...overhead, ...rails].map((r) => r.x + r.w));
+  return { obstacles, overhead, rails, goal, limit: goal + OPEN_END };
+}
+
+function obstaclesAhead(state: GameState): Entity[] {
+  return state.entities.filter((e) => live(e) && isObstacle(e.kind) && !e.done);
+}
+
+function boxOf(e: Entity) {
+  return hitBox({ ...e, kind: e.kind as ObstacleKind });
 }
 
 /** The player's support as a solver body (ground, or the rail being ground). */
@@ -40,10 +48,14 @@ export function planJump(state: GameState): Jump | null {
   return new Solver(courseAhead(state), state.speed).bestJump(startBody(state));
 }
 
+/** Ticks of look-ahead for ducking: down a little early, like a careful human (ducked is never less safe on the ground). */
+const DUCK_LOOKAHEAD = 8;
+
 /**
  * Plays like a careful human: whenever supported and idle, plans the next
- * jump and commits to it. Call `next(state)` once before every tick and apply
- * the returned button change.
+ * jump and commits to it, and ducks while an overhead obstacle is about to
+ * pass over it. Before every tick call `next(state)` and apply the returned
+ * action change, and hold duck while `duck(state)` is true.
  */
 export class SolverBot {
   private wait = -1;
@@ -70,5 +82,16 @@ export class SolverBot {
     this.wait = -1;
     this.holding = this.hold;
     return 'press';
+  }
+
+  /** Whether duck should be held for the next tick (it only counts on the ground). */
+  duck(state: GameState): boolean {
+    const reach = state.speed * TICK_DT * DUCK_LOOKAHEAD + 1;
+    const body = state.player.hitbox;
+    return obstaclesAhead(state).some((e) => {
+      if (!isOverhead(e.kind)) return false;
+      const box = boxOf(e);
+      return box.x <= body.x + body.w + reach && box.x + box.w >= body.x - 1;
+    });
   }
 }

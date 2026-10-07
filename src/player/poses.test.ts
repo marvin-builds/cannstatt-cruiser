@@ -17,10 +17,18 @@ describe('poses', () => {
   });
 
   it('picks the rising or falling air pose from vy', () => {
-    const view = { anim: 'air' as const, time: 0, visible: true };
+    const view = { anim: 'air' as const, time: 0, visible: true, standingUp: false };
     expect(timelineFor(view, -10)).toBe('airRise');
     expect(timelineFor(view, 10)).toBe('airFall');
     expect(timelineFor({ ...view, anim: 'grind' }, 0)).toBe('grind');
+  });
+
+  it('ducks through a short crouch and stands up through it again', () => {
+    const view = { anim: 'duck' as const, time: 0, visible: true, standingUp: false };
+    expect(poseAt(timelineFor(view, 0), 0).body).toBe(B.crouch);
+    expect(poseAt(timelineFor(view, 0), 1).body).toBe(B.duck);
+    const up = { ...view, anim: 'ride' as const, standingUp: true };
+    expect(poseAt(timelineFor(up, 0), 0).body).toBe(B.crouch);
   });
 
   it('the crash ends standing on the board under the skater within CRASH_TIME', () => {

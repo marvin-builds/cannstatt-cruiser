@@ -28,7 +28,7 @@ export interface GameOptions {
   platform?: Partial<Platform>;
 }
 
-const IDLE_INPUT: InputFrame = { action: IDLE_ACTION, pausePressed: false, mutePressed: false };
+const IDLE_INPUT: InputFrame = { action: IDLE_ACTION, duck: IDLE_ACTION, pausePressed: false, mutePressed: false };
 
 /**
  * Owns the GameState, the event bus, input buttons and the mode machine, and
@@ -38,7 +38,12 @@ export class Game {
   readonly state: GameState = createInitialState();
   readonly bus = new EventBus<GameEvents>();
   readonly rng = new Rng(0);
-  readonly buttons = { action: new ActionButton(), pause: new ActionButton(), mute: new ActionButton() };
+  readonly buttons = {
+    action: new ActionButton(),
+    duck: new ActionButton(),
+    pause: new ActionButton(),
+    mute: new ActionButton(),
+  };
   readonly display: { -readonly [K in keyof DisplayInfo]: DisplayInfo[K] } = {
     portrait: false,
     touch: false,
@@ -119,6 +124,7 @@ export class Game {
     s.modeTime += TICK_DT;
     this.input = {
       action: this.buttons.action.tick(TICK_DT),
+      duck: this.buttons.duck.tick(TICK_DT),
       pausePressed: this.buttons.pause.tick(TICK_DT).pressed,
       mutePressed: this.buttons.mute.tick(TICK_DT).pressed,
     };
@@ -202,6 +208,7 @@ export class Game {
     if (!this.transition('die')) return;
     const { score, stars, distance } = this.state;
     this.buttons.action.releaseAll();
+    this.buttons.duck.releaseAll();
     this.bus.emit('gameOver', { score, stars, distance });
   }
 

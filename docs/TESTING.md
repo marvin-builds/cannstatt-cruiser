@@ -25,7 +25,13 @@ expect(game.state.player.grounded).toBe(false);
 ```
 
 `src/player/index.test.ts` uses this pattern to check that a tap jumps lower
-than a hold.
+than a hold. Duck works the same with `game.buttons.duck`
+(`src/player/duck.test.ts`).
+
+Real input without a DOM: `keyDown(game, 'ArrowDown')` / `keyUp` and
+`new PointerControls(game)` with `down(id, x, y, touch)`, `move`, `up` from
+`src/core/input.ts` take the same path as the browser events
+(`src/core/input.test.ts` checks tap vs swipe down this way).
 
 ## Test hook: `window.__game`
 
@@ -42,6 +48,8 @@ only available with `?test=1` in the URL.
 | `state()` | JSON deep copy of `GameState` |
 | `input.press()` / `input.release()` | holds / releases the action (source `test`) |
 | `input.tap(frames = 2)` / `input.hold(frames = 30)` | press, keep down for `frames` ticks, release. When frozen this steps synchronously; when running the release is scheduled. |
+| `input.duck.press()` / `input.duck.release()` | holds / releases duck (source `test`), like ArrowDown |
+| `input.duck.hold(frames = 36)` | duck for `frames` ticks (default = one swipe down), then release; steps synchronously when frozen like `hold` |
 | `pauseGame()` / `resumeGame()` | in-game pause screen (`mode` paused / playing) |
 | `setZone(i)` | sets `state.zoneIndex` and emits `zoneChanged` |
 | `setTimeScale(x)` | real-time speed multiplier (e.g. 4 = fast forward) |
@@ -74,6 +82,14 @@ g.setScore(4200); g.setHealth(1); g.step(1);   // HUD with one heart
 g.setSpeed(220);                                // max difficulty speed
 g.endRun();                                     // game-over screen now
 ```
+
+Ducking a bot through a run: `SolverBot` (`src/gameplay/testing.ts`) gives
+`next(state)` for the action and `duck(state)` for duck; hold duck while it
+returns true (see `scripts/scenarios/ducking.ts`).
+
+Gameplay debug hook (same condition as `__game`): `window.__gameplay.place(kind, x)`
+puts obstacle `kind` (e.g. `'banner'`, `'stopSign'`) with its left edge at
+screen x and returns its id; `window.__gameplay.clear()` removes every entity.
 
 **Auto-pause:** losing window focus (`blur`) or hiding the tab
 (`visibilitychange`) releases the action and switches a running game to
@@ -125,6 +141,11 @@ npm run playtest -- --headed
   `~/.cache/ms-playwright/chromium-1243`. When upgrading, run
   `npx playwright install chromium`.
 - Open the PNGs with an image viewer, or have agents use the Read tool.
+- `scripts/scenarios/ducking.ts`: duck pose, ducking under both overhead
+  obstacles in all three zones, crashing into them standing / jumping, real
+  ArrowDown (desktop) and a CDP touch swipe down that must duck without
+  jumping (touch viewports), and a 60 s ducking bot ride on seed 1. On
+  phone-portrait it first taps the rotate hint away, so it runs on all viewports.
 
 ### Custom scenarios
 

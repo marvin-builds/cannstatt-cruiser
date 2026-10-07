@@ -3,7 +3,7 @@ import { GROUND_Y, MAX_HEALTH, PLAYER_X, TICK_DT } from '../core/config';
 import type { Game } from '../core/game';
 import { createPlayerTestGame, tick } from '../player/testing';
 import type { Entity, EntityKind, GameEvents, ObstacleKind } from '../types';
-import { GRIND_POINTS, OBSTACLES, obstacleRect, railRect, starRect } from './catalogue';
+import { GRIND_POINTS, isOverhead, OBSTACLES, obstacleRect, railRect, starRect } from './catalogue';
 import { speedAt } from './difficulty';
 import { createGameplaySystem } from './index';
 import { SolverBot } from './testing';
@@ -40,6 +40,8 @@ function playBot(game: Game, ticks: number, done: () => boolean = () => false): 
     const move = bot.next(game.state);
     if (move === 'press') game.buttons.action.press('bot');
     if (move === 'release') game.buttons.action.release('bot');
+    if (bot.duck(game.state)) game.buttons.duck.press('bot');
+    else game.buttons.duck.release('bot');
     game.tick();
   }
 }
@@ -192,12 +194,14 @@ describe('full runs with the spawner (seed 1)', () => {
     expect(game.state.mode).toBe('gameover');
   });
 
-  it('a bot jumping by the real arcs survives 90 s without a crash and scores', () => {
+  it('a bot jumping by the real arcs and ducking survives 90 s without a crash and scores', () => {
     const game = createPlayerTestGame([createGameplaySystem()]);
     const crashes = record(game, 'crash');
     const grinds = record(game, 'grindStart');
+    const clears = record(game, 'obstacleCleared');
     playBot(game, 90 * 60);
     expect(crashes).toEqual([]);
+    expect(clears.some((c) => isOverhead(c.kind))).toBe(true);
     expect(game.state.mode).toBe('playing');
     expect(game.state.score).toBeGreaterThan(1000);
     expect(grinds.length).toBeGreaterThan(0);

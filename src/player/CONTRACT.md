@@ -14,10 +14,10 @@ in any slice's Vitest tests.
   and before gameplay runs (update order: world, player, gameplay). It covers
   the body above the wheels, centred on `x`, `HITBOX_W` (10 px) wide, so the
   long deck does not count. Its bottom is `y`, its height depends on the pose
-  (`HITBOX_H` in `tuning.ts`: 30 standing, 26 in the air tuck, 18 crashed).
-  The cap peak is left out on purpose (slightly forgiving).
+  (`HITBOX_H` in `tuning.ts`: 30 standing, 26 in the air tuck, 20 ducked,
+  18 crashed). The cap peak is left out on purpose (slightly forgiving).
 - `player.state` is the animation state: `push`, `ride`, `jump` (ollie
-  pop), `air`, `land`, `grind`, `crash`.
+  pop), `air`, `land`, `grind`, `crash`, `duck`.
 
 ## (a) Grinding a rail
 
@@ -67,6 +67,21 @@ in any slice's Vitest tests.
 - Events: `jump { velocity }` on take-off, `land { impact }` (downward
   speed) on touching the ground.
 
+## Duck
+
+- `input.duck.held` while the player is **on the ground** (not on a rail,
+  not in the air, not crashing) puts it in state `duck`: crouched on the
+  board, cap low, hitbox `HITBOX_H.ducking` = 20 px (cap top at `y - 20`),
+  from the same tick on. Overhead obstacles end at least 22 px above the
+  ground, so a ducked rider passes under them and a standing (30) or tucked
+  (26) one does not.
+- On a rail and in the air ducking does nothing (no fast fall). Holding duck
+  while landing ducks on the landing tick.
+- Pressing jump while ducked stands up and jumps in the same tick, exactly
+  like a jump from riding. Releasing duck stands up at once (hitbox back to
+  standing); a short crouch frame (`DUCK_TRANSITION`) smooths the pose in and
+  out but does not change the hitbox.
+
 ## Testing helpers
 
 ```ts
@@ -76,6 +91,7 @@ const game = createPlayerTestGame([createGameplaySystem()]); // run started, see
 const rail = addRail(game, { x: 60, y: GROUND_Y - 30, w: 120, h: 4 });
 startGrind(game, rail);   // emits grindStart like gameplay
 tick(game, 10);
+game.buttons.duck.press('test'); // duck (release with .release('test'))
 crash(game);              // health - 1, emits crash
 jumpApex(game, 2);        // tap from the current support, returns apex height
 ```

@@ -1,10 +1,11 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
- * rail riding, crash/invulnerability and the animation state. One instance
+ * rail riding, ducking (on the ground only), crash/invulnerability and the
+ * animation state. One instance
  * per player system; `reset()` at every run start.
  */
 import { GROUND_Y } from '../core/config';
-import type { ActionSnapshot, Entity, GameBus, GameState, PlayerAnim, PlayerState, Rect } from '../types';
+import type { Entity, GameBus, GameState, InputFrame, PlayerAnim, PlayerState, Rect } from '../types';
 import * as T from './tuning';
 
 /** What the renderer needs besides PlayerState. */
@@ -14,6 +15,8 @@ export interface AnimView {
   time: number;
   /** False on the "off" half of an invulnerability blink. */
   visible: boolean;
+  /** Just stood up from a duck (show the short crouch). */
+  standingUp: boolean;
 }
 
 export class SkaterController {
@@ -27,6 +30,8 @@ export class SkaterController {
   private cruiseTime = 0;
   private railId: number | null = null;
   private grindTicks = 0;
+  private ducking = false;
+  private standUpTimer = 0;
   private anim: PlayerAnim = 'ride';
   private animTime = 0;
 
@@ -43,6 +48,8 @@ export class SkaterController {
     this.cruiseTime = 0;
     this.railId = null;
     this.grindTicks = 0;
+    this.ducking = false;
+    this.standUpTimer = 0;
     this.anim = 'ride';
     this.animTime = 0;
   }
@@ -54,7 +61,7 @@ export class SkaterController {
   view(p: PlayerState): AnimView {
     const blinking = p.invulnerableTimer > 0 && !this.crashing;
     const visible = !blinking || Math.floor(p.invulnerableTimer / (T.BLINK_PERIOD / 2)) % 2 === 0;
-    return { anim: this.anim, time: this.animTime, visible };
+    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0 };
   }
 
   /** Gameplay put the player on rail `entityId` (grindStart). */
@@ -92,11 +99,12 @@ export class SkaterController {
     p.vy = Math.min(p.vy, -T.CRASH_HOP_VELOCITY);
   }
 
-  update(state: GameState, action: ActionSnapshot, dt: number): void {
+  update(state: GameState, input: Pick<InputFrame, 'action' | 'duck'>, dt: number): void {
     const p = state.player;
     if (state.mode === 'title') this.setAnim('ride', dt);
     if (state.mode !== 'playing') return;
 
+    const { action } = input;
     this.countDown(p, dt);
     if (action.pressed && !this.crashing) this.buffer = T.JUMP_BUFFER;
     if (!action.held) this.boosting = false;
@@ -105,14 +113,23 @@ export class SkaterController {
     if (p.grinding) this.ride(state);
     else if (!p.grounded) this.fall(p, dt);
     this.buffer = Math.max(0, this.buffer - dt);
+    // After the physics, so a jump (even from a duck) stands up and a landing with duck held ducks at once.
+    this.setDucking(input.duck.held && p.grounded && !this.crashing);
 
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
     p.hitbox = hitboxFor(p);
   }
 
+  private setDucking(ducking: boolean): void {
+    if (this.ducking && !ducking) this.standUpTimer = T.DUCK_TRANSITION;
+    this.ducking = ducking;
+    if (ducking) this.standUpTimer = 0;
+  }
+
   private countDown(p: PlayerState, dt: number): void {
     p.invulnerableTimer = Math.max(0, p.invulnerableTimer - dt);
+    this.standUpTimer = Math.max(0, this.standUpTimer - dt);
     this.crashTimer = Math.max(0, this.crashTimer - dt);
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.sinceJump += dt;
@@ -182,6 +199,7 @@ export class SkaterController {
     if (this.crashing) return 'crash';
     if (p.grinding) return 'grind';
     if (!p.grounded) return this.sinceJump < T.OLLIE_TIME ? 'jump' : 'air';
+    if (this.ducking) return 'duck';
     if (this.landTimer > 0) return 'land';
     return this.cruiseTime % T.PUSH_PERIOD < T.PUSH_TIME ? 'push' : 'ride';
   }
@@ -199,9 +217,16 @@ function findRail(state: GameState, id: number | null): Entity | undefined {
   return id === null ? undefined : state.entities.find((e) => e.id === id);
 }
 
-/** Body box above the wheel contact point; lower in the tuck and while tumbling. */
+/** Body box above the wheel contact point; lower in the tuck, while ducking and while tumbling. */
 function hitboxFor(p: PlayerState): Rect {
-  const { HITBOX_H: H, HITBOX_W: w } = T;
-  const h = p.state === 'crash' ? H.crashed : p.state === 'jump' || p.state === 'air' ? H.tucked : H.standing;
+  const { HITBOX_W: w } = T;
+  const h = hitboxHeight(p.state);
   return { x: p.x - w / 2, y: p.y - h, w, h };
+}
+
+function hitboxHeight(anim: PlayerAnim): number {
+  const H = T.HITBOX_H;
+  if (anim === 'crash') return H.crashed;
+  if (anim === 'duck') return H.ducking;
+  return anim === 'jump' || anim === 'air' ? H.tucked : H.standing;
 }

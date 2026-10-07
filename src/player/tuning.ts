@@ -21,6 +21,8 @@ export const JUMP_BUFFER = 0.12;
 
 /** Seconds of the ollie pose (crouch -> pop) after take-off before the air pose. */
 export const OLLIE_TIME = 0.12;
+/** Seconds of the crouch shown when ducking down and when standing up again (looks only). */
+export const DUCK_TRANSITION = 0.06;
 /** Seconds of the landing squash. */
 export const LAND_TIME = 0.15;
 
@@ -44,4 +46,6 @@ export const HITBOX_H = {
   standing: 30,
   tucked: 26,
   crashed: 18,
+  /** Ducked on the ground: the cap is at y - 20, under overhead obstacles that end >= 21 px up. */
+  ducking: 20,
 } as const;

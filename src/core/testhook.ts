@@ -1,5 +1,7 @@
 import type { DisplayInfo, GameEvents, GameState } from '../types';
+import type { ActionButton } from './action';
 import type { Game } from './game';
+import { SWIPE_DUCK_TICKS } from './input';
 
 export interface LoggedEvent {
   frame: number;
@@ -37,6 +39,12 @@ export interface TestHook {
     /** Press, keep down for `frames` ticks, release. Steps synchronously when frozen, otherwise schedules the release. */
     tap(frames?: number): void;
     hold(frames?: number): void;
+    /** Duck (source `test`): held until released; hold() presses for `frames` ticks (default 36 = a swipe). */
+    duck: {
+      press(): void;
+      release(): void;
+      hold(frames?: number): void;
+    };
   };
   /** Game-mode pause / resume (the in-game pause screen), unlike pause()/resume(). */
   pauseGame(): void;
@@ -77,15 +85,16 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     clock.redraw();
     return snapshot();
   };
-  const pressFor = (frames: number) => {
-    game.buttons.action.press('test');
+  const pressFor = (button: ActionButton, frames: number) => {
+    button.press('test');
     if (clock.frozen) {
       step(frames);
-      game.buttons.action.release('test');
+      button.release('test');
     } else {
-      game.after(frames, () => game.buttons.action.release('test'));
+      game.after(frames, () => button.release('test'));
     }
   };
+  const { action, duck } = game.buttons;
 
   return {
     seed: (n) => game.seed(n),
@@ -98,10 +107,15 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     step,
     state: snapshot,
     input: {
-      press: () => game.buttons.action.press('test'),
-      release: () => game.buttons.action.release('test'),
-      tap: (frames = 2) => pressFor(frames),
-      hold: (frames = 30) => pressFor(frames),
+      press: () => action.press('test'),
+      release: () => action.release('test'),
+      tap: (frames = 2) => pressFor(action, frames),
+      hold: (frames = 30) => pressFor(action, frames),
+      duck: {
+        press: () => duck.press('test'),
+        release: () => duck.release('test'),
+        hold: (frames = SWIPE_DUCK_TICKS) => pressFor(duck, frames),
+      },
     },
     pauseGame: () => game.commands.pause(),
     resumeGame: () => game.commands.resume(),

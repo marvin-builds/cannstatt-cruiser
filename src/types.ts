@@ -17,7 +17,7 @@ export interface Rect {
 }
 
 /** Animation / logic state of the skater. */
-export type PlayerAnim = 'push' | 'ride' | 'jump' | 'air' | 'land' | 'grind' | 'crash';
+export type PlayerAnim = 'push' | 'ride' | 'jump' | 'air' | 'land' | 'grind' | 'crash' | 'duck';
 
 export interface PlayerState {
   /** Screen x of the board contact point (centre of the deck). */
@@ -35,7 +35,8 @@ export interface PlayerState {
   invulnerableTimer: number;
 }
 
-export type ObstacleKind = 'bin' | 'barrier' | 'bench' | 'planter' | 'curbGap';
+/** Ground obstacles, plus overhead ones (banner, stopSign) that hang above the street and are ducked under. */
+export type ObstacleKind = 'bin' | 'barrier' | 'bench' | 'planter' | 'curbGap' | 'banner' | 'stopSign';
 export type RailKind = 'handrail' | 'pipe';
 export type EntityKind = ObstacleKind | RailKind | 'star';
 
@@ -112,6 +113,12 @@ export type GameBus = EventBus<GameEvents>;
 export interface InputFrame {
   /** The single game action (Space / ArrowUp / W / mouse / touch). */
   readonly action: ActionSnapshot;
+  /**
+   * Duck (ArrowDown / S held, or a swipe down on touch, which holds it for
+   * SWIPE_DUCK_TICKS or until the next tap jumps). A swipe down never also
+   * presses the action.
+   */
+  readonly duck: ActionSnapshot;
   /** P or Escape went down this tick. */
   readonly pausePressed: boolean;
   /** M went down this tick. */

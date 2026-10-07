@@ -1,7 +1,7 @@
 /**
  * A branchable copy of the skater's movement (src/player/controller.ts, numbers
  * from src/player/tuning.ts) for the clearability solver: ground, variable
- * jump, riding a rail and rolling off its end. Jump buffer, coyote time and
+ * jump, ducking (on the ground only), riding a rail and rolling off its end. Jump buffer, coyote time and
  * crashes are left out, which only makes the solver more conservative.
  * jumpsim.test.ts checks it against the real player tick by tick.
  */
@@ -20,10 +20,12 @@ export interface Body {
   readonly railEnd: number;
   readonly boosting: boolean;
   readonly boostTime: number;
+  /** Ducked on the ground (low hitbox). */
+  readonly ducking: boolean;
 }
 
 export function groundBody(): Body {
-  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0 };
+  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false };
 }
 
 export function railBody(railTop: number, railEnd: number): Body {
@@ -32,9 +34,10 @@ export function railBody(railTop: number, railEnd: number): Body {
 
 /**
  * One tick of player movement at pattern x `px` (before this tick's scroll).
- * `press` is the action going down this tick, `held` whether it is down.
+ * `press` is the action going down this tick, `held` whether it is down,
+ * `duck` whether duck is held (it only counts on the ground, after a jump).
  */
-export function stepBody(b: Body, px: number, press: boolean, held: boolean): Body {
+export function stepBody(b: Body, px: number, press: boolean, held: boolean, duck = false): Body {
   let { y, vy, grounded, onRail, boosting, boostTime } = b;
   if (!held) boosting = false;
   if (press && (grounded || onRail)) {
@@ -59,12 +62,13 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean): Bo
       grounded = true;
     }
   }
-  return { ...b, y, vy, grounded, onRail, boosting, boostTime };
+  return { ...b, y, vy, grounded, onRail, boosting, boostTime, ducking: duck && grounded };
 }
 
 /** The player's hitbox for this body at pattern x `px` (same shape as the player's own). */
 export function hitboxOf(b: Body, px: number): Rect {
-  const h = b.grounded || b.onRail ? T.HITBOX_H.standing : T.HITBOX_H.tucked;
+  const H = T.HITBOX_H;
+  const h = b.ducking ? H.ducking : b.grounded || b.onRail ? H.standing : H.tucked;
   return { x: px - T.HITBOX_W / 2, y: b.y - h, w: T.HITBOX_W, h };
 }
 

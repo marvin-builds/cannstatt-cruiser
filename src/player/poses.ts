@@ -5,6 +5,7 @@
 import type { PlayerAnim } from '../types';
 import { B, BD } from './art';
 import type { AnimView } from './controller';
+import { DUCK_TRANSITION } from './tuning';
 
 /** One drawn pose; offsets are view pixels relative to the resting position. */
 export interface Pose {
@@ -26,7 +27,7 @@ interface Timeline {
   loop: boolean;
 }
 
-export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall';
+export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp';
 
 /** Board sits with its trucks on the rail top (wheels hang either side). */
 const GRIND_DY = 2;
@@ -64,6 +65,15 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.crouch, board: BD.flat },
     ],
   },
+  // Down through the ollie crouch into the low tuck (cap down, chest on the knees), and back up.
+  duck: {
+    loop: false,
+    steps: [
+      { t: DUCK_TRANSITION, body: B.crouch, board: BD.flat },
+      { t: 1, body: B.duck, board: BD.flat },
+    ],
+  },
+  standUp: { loop: false, steps: [{ t: 1, body: B.crouch, board: BD.flat }] },
   grind: {
     loop: true,
     steps: [
@@ -90,6 +100,7 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
 
 export function timelineFor(view: AnimView, vy: number): TimelineName {
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
+  if (view.standingUp && (view.anim === 'ride' || view.anim === 'push')) return 'standUp';
   return view.anim;
 }
 

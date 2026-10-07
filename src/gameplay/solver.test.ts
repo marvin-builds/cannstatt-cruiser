@@ -9,7 +9,7 @@ function block(x: number, w: number, h: number) {
 
 function course(obstacles: Course['obstacles'], rails: Course['rails'] = []): Course {
   const goal = Math.max(0, ...[...obstacles, ...rails].map((r) => r.x + r.w));
-  return { obstacles, rails, goal, limit: goal + 400 };
+  return { obstacles, overhead: [], rails, goal, limit: goal + 400 };
 }
 
 describe('clearability solver', () => {

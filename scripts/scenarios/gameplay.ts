@@ -1,8 +1,9 @@
 /**
  * Gameplay showcase: a bot that jumps by the solver's plan (real jump arcs)
- * rides 60 s on seed 1 through all three zones, checks that nothing spawns
- * inside the view, grinds a rail, then a run without input must end in game
- * over. Finally the same at the widest view (427 px).
+ * and ducks under overhead obstacles rides 60 s on seed 1 through all three
+ * zones, checks that nothing spawns inside the view, grinds a rail, then a run
+ * without input must end in game over. Finally the same at the widest view
+ * (427 px).
  *   npm run playtest -- --scenario scripts/scenarios/gameplay.ts --viewports desktop,phone-landscape --name gameplay
  */
 import { SolverBot } from '../../src/gameplay/testing';
@@ -28,10 +29,16 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
   const stats: RideStats = { crashes: 0, popIns: [], grindShot: false, state: await game.state() };
   const startFrame = stats.state.frame;
   for (const e of stats.state.entities) seen.add(e.id);
+  let ducked = false;
   for (let i = 0; i < ticks && stats.state.mode === 'playing'; i++) {
     const move = bot.next(stats.state);
     if (move === 'press') await game.press();
     if (move === 'release') await game.release();
+    const wantDuck = bot.duck(stats.state);
+    if (wantDuck !== ducked) {
+      await t.page.evaluate((d) => (d ? window.__game!.input.duck.press() : window.__game!.input.duck.release()), wantDuck);
+      ducked = wantDuck;
+    }
     stats.state = await game.step(1);
     const { viewWidth } = await game.display();
     for (const e of stats.state.entities) {
@@ -57,6 +64,7 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
       stats.grindShot = true;
     }
   }
+  if (ducked) await t.page.evaluate(() => window.__game!.input.duck.release());
   stats.crashes = (await game.eventsSince(startFrame, 'crash')).length;
   return stats;
 }

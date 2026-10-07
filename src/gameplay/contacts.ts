@@ -7,7 +7,7 @@ import type { Entity, GameContext, ObstacleKind } from '../types';
 import { GRIND_LANDING_POINTS, hitBox, isObstacle, isRail, OBSTACLES } from './catalogue';
 import { crashInto } from './health';
 import { landsOnRail, overlaps } from './rules';
-import { addTrick } from './scoring';
+import { addPoints, addTrick } from './scoring';
 
 export function isLive(e: Entity): boolean {
   return !e.data?.debugRail;
@@ -40,7 +40,9 @@ function checkObstacles(ctx: GameContext): void {
       crashInto(ctx, e);
     } else if (box.x + box.w <= body.x) {
       e.done = true;
-      const points = addTrick(state, ctx.bus, OBSTACLES[e.kind as ObstacleKind].points);
+      // Ducked under on the ground: points, but no trick in an airborne chain.
+      const base = OBSTACLES[e.kind as ObstacleKind].points;
+      const points = state.player.grounded ? addPoints(state, ctx.bus, base) : addTrick(state, ctx.bus, base);
       ctx.bus.emit('obstacleCleared', { entityId: e.id, kind: e.kind, points });
     }
   }

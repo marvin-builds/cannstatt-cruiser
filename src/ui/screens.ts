@@ -74,6 +74,7 @@ function drawTitle(r: RenderContext, view: UiView): void {
   }
   centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Kurz drücken = kleiner Sprung'), 96);
   centred(r, 'halten = hoher Sprung', 96 + LINE - 1);
+  centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), 96 + 2 * LINE - 2);
 
   const best = `Highscore ${formatNumber(view.records.highscore)}`;
   const stars = `${formatNumber(view.records.starsTotal)} gesamt`;

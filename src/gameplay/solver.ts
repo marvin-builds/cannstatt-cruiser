@@ -11,11 +11,14 @@
 import { TICK_DT } from '../core/config';
 import type { Rect } from '../types';
 import { type Body, groundBody, hitboxOf, snapToRail, stepBody } from './jumpsim';
+import { HITBOX_W } from '../player/tuning';
 import { landsOnRail, overlaps } from './rules';
 
 export interface Course {
-  /** Collision boxes. */
+  /** Collision boxes of ground obstacles. */
   obstacles: Rect[];
+  /** Collision boxes of overhead obstacles (passed by ducking on the ground). */
+  overhead: Rect[];
   /** Rails: top edge y, span x..x+w. */
   rails: Rect[];
   /** The player's hitbox must get fully past this x... */
@@ -63,7 +66,7 @@ export class Solver {
     speed: number,
   ) {
     this.step = speed * TICK_DT;
-    this.obstacles = course.obstacles.map((o) => ({ x: o.x - SAFETY, y: o.y - SAFETY, w: o.w + 2 * SAFETY, h: o.h + 2 * SAFETY }));
+    this.obstacles = [...course.obstacles, ...course.overhead].map((o) => ({ x: o.x - SAFETY, y: o.y - SAFETY, w: o.w + 2 * SAFETY, h: o.h + 2 * SAFETY }));
   }
 
   /** Whether the course can be passed from `start` (default: on the ground). */
@@ -86,9 +89,13 @@ export class Solver {
    */
   bestJump(start: Body = groundBody()): Jump | null {
     let best: { score: number; tick: number; hold: number } | null = null;
-    // A first jump has to happen before the player is past the first piece.
+    // A first jump has to happen before the player is past the first piece,
+    // and must not land before reaching it (a useless hop, e.g. in front of an
+    // overhead obstacle, which is ducked under, not jumped).
     const pieces = [...this.course.obstacles, ...this.course.rails];
     const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
+    const firstStart = Math.min(...pieces.map((r) => r.x));
+    const useful = (f: Flight) => f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart;
     for (const hold of HOLDS) {
       let run: number[] = [];
       let grinds = false;
@@ -100,7 +107,7 @@ export class Solver {
       let node: Node | null = { tick: 0, body: start };
       while (node && !this.passed(node) && this.x(node.tick) <= lastTakeoff) {
         const flight = this.fly(node, hold);
-        if (flight && this.solve(flight)) {
+        if (flight && useful(flight) && this.solve(flight)) {
           const flightGrinds = flight.body.onRail;
           if (run.length > 0 && flightGrinds !== grinds) close();
           grinds = flightGrinds;
@@ -184,9 +191,18 @@ export class Solver {
     return null;
   }
 
-  /** One tick in the live order: player movement, scroll, rail landing, obstacle check. */
+  /**
+   * One tick in the live order: player movement, scroll, rail landing,
+   * obstacle check. Ducks when standing would crash (a ducked body on the
+   * ground is never hit where a standing one is not).
+   */
   private advance(node: Node, press: boolean, held: boolean): Node | null {
-    let body = stepBody(node.body, this.x(node.tick), press, held);
+    return this.advanceAs(node, press, held, false) ?? (press ? null : this.advanceAs(node, press, held, true));
+  }
+
+  private advanceAs(node: Node, press: boolean, held: boolean, duck: boolean): Node | null {
+    let body = stepBody(node.body, this.x(node.tick), press, held, duck);
+    if (duck && !body.ducking) return null;
     const tick = node.tick + 1;
     const x = this.x(tick);
     const box = hitboxOf(body, x);

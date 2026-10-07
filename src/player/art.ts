@@ -231,6 +231,26 @@ const LEGS_KNEEL = `
   ............kWWWWWk.....
 `;
 
+/** Duck: hunched back, folded forward over the knees. */
+const TORSO_DUCK = `
+  ..kkkkkkk...
+  .kRrrrrrrkk.
+  kRrrrrrrrrrk
+  kRrrrrRrrrrk
+  kRrrrrrRRRsk
+  kRRRRRRRRkk.
+  kjjjjjjjk...
+`;
+
+/** Duck: deep squat, thighs level. */
+const LEGS_DUCK = `
+  .kjjjjjjjjjjjk..........
+  .kjjjJjjjjjjjjjk........
+  ..kjJk.....kjjjk........
+  .kwwwk.....kwwwwk.......
+  kWWWWWk....kWWWWWk......
+`;
+
 /** Crash: curled up mid-tumble (upside down, cap at the bottom right). */
 const CRASH_BALL = `
   .kkk......
@@ -281,6 +301,7 @@ export const B = {
   crashBall: 11,
   crashLying: 12,
   crashKneel: 13,
+  duck: 14,
 } as const;
 
 export const BODY_FRAMES: string[][] = [
@@ -298,6 +319,7 @@ export const BODY_FRAMES: string[][] = [
   body([at(CRASH_BALL, 7, BODY_GROUND_ROW - 10)]),
   body([at(CRASH_LYING, 0, BODY_GROUND_ROW - 5)]),
   body([at(LEGS_KNEEL, 0, BODY_GROUND_ROW - 7), at(TORSO_CROUCH, 7, 19), head(9, 11)]),
+  body([at(LEGS_DUCK, 2, 23), at(TORSO_DUCK, 2, 17), head(12, 15)]),
 ];
 
 // ---------------------------------------------------------------- board

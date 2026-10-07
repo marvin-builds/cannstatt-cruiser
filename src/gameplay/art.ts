@@ -6,6 +6,7 @@
 import { GROUND_Y } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
 import type { Entity, ObstacleKind } from '../types';
+import { drawOverhead, isOverheadArt, overheadSize } from './overhead-art';
 
 const K = '#1a1418';
 
@@ -119,7 +120,7 @@ const CURB_GAP = sprite({ k: K, s: '#c9c3b6', S: '#e4dfd4', h: '#2b2622', d: '#4
   `,
 ]);
 
-const OBSTACLE_SPRITES: Record<Exclude<ObstacleKind, 'bin'>, Sprite> = {
+const OBSTACLE_SPRITES: Record<Exclude<ObstacleKind, 'bin' | 'banner' | 'stopSign'>, Sprite> = {
   barrier: BARRIER,
   bench: BENCH,
   planter: PLANTER,
@@ -200,6 +201,10 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number
     case 'bin':
       BINS[Number(e.data?.variant ?? 0) % BINS.length]!.draw(g, 0, x, y);
       return;
+    case 'banner':
+    case 'stopSign':
+      drawOverhead(g, { ...e, kind: e.kind });
+      return;
     default:
       OBSTACLE_SPRITES[e.kind].draw(g, 0, x, y);
   }
@@ -212,6 +217,7 @@ export function drawSparkle(g: CanvasRenderingContext2D, cx: number, cy: number,
 
 /** Art sizes must match the catalogue (checked by art.test.ts). */
 export function artSize(kind: ObstacleKind): { w: number; h: number } {
+  if (isOverheadArt(kind)) return overheadSize(kind);
   const s = kind === 'bin' ? BINS[0]! : OBSTACLE_SPRITES[kind];
   return { w: s.width, h: s.height };
 }

@@ -5,10 +5,12 @@
  * (contacts.ts, health.ts) and score/combo (scoring.ts).
  */
 import { Rng } from '../core/rng';
+import { testHookEnabled } from '../core/testhook';
 import type { Entity, GameContext, System } from '../types';
 import { drawEntity, drawSparkle, SPARKLE_TICKS } from './art';
 import { GRIND_POINTS, isRail } from './catalogue';
 import { isLive, resolveContacts } from './contacts';
+import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
 import { addPoints, breakCombo } from './scoring';
 import { Spawner } from './spawner';
@@ -48,6 +50,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
     name: 'gameplay',
 
     init(ctx) {
+      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx);
       ctx.bus.on('runStarted', () => {
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));
         sparkles = [];
