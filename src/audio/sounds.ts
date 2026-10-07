@@ -1,0 +1,89 @@
+/**
+ * Sound design as data: every cue is a list of short chiptune voices
+ * (square / triangle / saw oscillators or filtered noise) with a pitch sweep
+ * and a fast attack, exponential decay envelope. webaudio.ts plays them.
+ */
+import type { Cue } from './backend';
+
+export interface Voice {
+  wave: OscillatorType | 'noise';
+  /** Start offset in seconds from the cue's trigger time. */
+  at: number;
+  /** Length in seconds (attack + decay). */
+  dur: number;
+  /** Start frequency in Hz (filter cutoff for noise). */
+  freq: number;
+  /** End frequency in Hz (exponential sweep); defaults to `freq`. */
+  to?: number;
+  /** Peak gain before the master gain. */
+  gain: number;
+  /** Optional filter, e.g. to darken noise. */
+  filter?: BiquadFilterType;
+}
+
+/** Note frequencies (equal temperament, A4 = 440 Hz). */
+const N = {
+  B3: 246.94,
+  C4: 261.63,
+  D4: 293.66,
+  G4: 392.0,
+  Gb4: 369.99,
+  F4: 349.23,
+  E4: 329.63,
+  A5: 880.0,
+  D6: 1174.66,
+  C6: 1046.5,
+  E6: 1318.51,
+  G6: 1567.98,
+  C7: 2093.0,
+} as const;
+
+/** Evenly spaced notes of one wave, e.g. an arpeggio. */
+function notes(wave: OscillatorType, freqs: number[], step: number, gain: number, last = step): Voice[] {
+  return freqs.map((freq, i) => ({
+    wave,
+    at: i * step,
+    dur: i === freqs.length - 1 ? last : step * 1.1,
+    freq,
+    gain,
+  }));
+}
+
+export const SOUNDS: Record<Cue, Voice[]> = {
+  // Quick rising square blip.
+  jump: [{ wave: 'square', at: 0, dur: 0.11, freq: 300, to: 720, gain: 0.22 }],
+  // Held jump: a higher, airy second sweep on top of the jump blip.
+  boost: [
+    { wave: 'triangle', at: 0, dur: 0.16, freq: 600, to: 1300, gain: 0.3 },
+    { wave: 'square', at: 0.02, dur: 0.1, freq: 1200, to: 1800, gain: 0.06 },
+  ],
+  // Soft thud: low triangle drop plus a dull noise tap.
+  land: [
+    { wave: 'triangle', at: 0, dur: 0.09, freq: 150, to: 55, gain: 0.55 },
+    { wave: 'noise', at: 0, dur: 0.05, freq: 500, gain: 0.25, filter: 'lowpass' },
+  ],
+  // Bright major arpeggio.
+  star: notes('square', [N.C6, N.E6, N.G6, N.C7], 0.045, 0.13, 0.12),
+  // Short positive two-note blip.
+  cleared: notes('square', [N.A5, N.D6], 0.04, 0.12, 0.07),
+  // Noise burst and a falling tone.
+  crash: [
+    { wave: 'noise', at: 0, dur: 0.28, freq: 1800, gain: 0.5, filter: 'lowpass' },
+    { wave: 'square', at: 0, dur: 0.38, freq: 420, to: 70, gain: 0.18 },
+  ],
+  // Sad descending jingle that ends on a long low note.
+  gameOver: [
+    ...notes('square', [N.G4, N.Gb4, N.F4, N.E4], 0.18, 0.12, 0.5),
+    ...notes('triangle', [N.D4, N.C4, N.B3, N.C4], 0.18, 0.18, 0.5).map((v) => ({ ...v, freq: v.freq / 2 })),
+  ],
+};
+
+/** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */
+export const GRIND = {
+  noise: { freq: 2600, q: 1.5, gain: 0.14 },
+  buzz: { freq: 82, gain: 0.05, wobbleHz: 14, wobbleDepth: 6 },
+  fade: 0.04,
+} as const;
+
+/** Overall volume: chiptune square waves are loud, keep it modest. */
+export const MASTER_GAIN = 0.35;
