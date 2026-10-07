@@ -26,3 +26,16 @@ describe('kid mode state', () => {
     expect(state.kidMode).toBe(true);
   });
 });
+
+describe('carried item state', () => {
+  it('starts with empty hands', () => {
+    expect(createInitialState().carriedItem).toBeNull();
+  });
+
+  it('drops the carried item when a new run starts', () => {
+    const state = createInitialState();
+    state.carriedItem = 'football';
+    resetRun(state, 7);
+    expect(state.carriedItem).toBeNull();
+  });
+});

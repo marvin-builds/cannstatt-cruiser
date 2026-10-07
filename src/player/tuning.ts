@@ -60,3 +60,6 @@ export const CHILL_JUMP_SCALE = 0.8;
  * rate (lazier pushing and idle bobbing). Looks only; physics is unaffected.
  */
 export const CHILL_ANIM_RATE = 0.7;
+
+/** Upward velocity of the bounce after landing on a person (stomp event). */
+export const STOMP_BOUNCE_VELOCITY = 150;

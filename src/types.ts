@@ -71,6 +71,9 @@ export interface Entity {
   data?: Record<string, number | string | boolean>;
 }
 
+/** Loot the skater carries after landing on a person (see the stomp event). */
+export type CarriedItem = 'football' | 'pretzel' | 'beer' | 'gingerbread';
+
 export interface GameState {
   mode: GameMode;
   /** Seconds spent in the current mode (title animations, game-over delays). */
@@ -96,6 +99,11 @@ export interface GameState {
    * (CHILL_JUMP_SCALE in player/tuning.ts) and the red-eyes look.
    */
   chillTimer: number;
+  /**
+   * Item under the skater's arm after a stomp + catch, or null. Gameplay sets
+   * it on itemCaught and clears it on crash; the player draws it.
+   */
+  carriedItem: CarriedItem | null;
   health: number;
   maxHealth: number;
   /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt). */
@@ -125,6 +133,14 @@ export interface GameEvents {
   crash: { entityId: number; kind: EntityKind; health: number };
   starCollected: { entityId: number; stars: number };
   chillStart: { entityId: number; duration: number };
+  /**
+   * Gameplay: the falling skater landed on a person's head. The player bounces
+   * up with STOMP_BOUNCE_VELOCITY (player/tuning.ts) on the next tick, like a
+   * jump take-off without hold; gameplay's jumpsim mirrors it.
+   */
+  stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
+  /** Gameplay: the tossed item reached the skater's hands. */
+  itemCaught: { item: CarriedItem };
   scoreChanged: { score: number; delta: number; combo: number; multiplier: number };
   zoneChanged: { index: number; previous: number };
   runStarted: { seed: number };
