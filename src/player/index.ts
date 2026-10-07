@@ -1,76 +1,43 @@
 /**
- * PLACEHOLDER owned by the player slice: a box with a variable-height jump.
- * Replace freely, keeping the factory name and the PlayerState contract.
+ * Player slice: the middle-aged cruiser on his longboard. Logic lives in
+ * controller.ts (tunables in tuning.ts), art in art.ts, timelines in poses.ts,
+ * drawing in render.ts. The contract for gameplay (grind, crash, hitbox) is
+ * documented in CONTRACT.md; test helpers are in testing.ts.
  */
-import { GRAVITY, GROUND_Y, HOLD_GRAVITY, JUMP_VELOCITY, MAX_JUMP_HOLD } from '../core/config';
-import type { PlayerState, System } from '../types';
-
-const BOX_W = 12;
-const BOX_H = 28;
-
-function updateHitbox(p: PlayerState): void {
-  p.hitbox = { x: p.x - BOX_W / 2, y: p.y - BOX_H, w: BOX_W, h: BOX_H };
-}
+import { testHookEnabled } from '../core/testhook';
+import type { System } from '../types';
+import { SkaterController } from './controller';
+import { drawDebugRails, installPlayerDebug } from './debug';
+import { drawSkater } from './render';
 
 export function createPlayerSystem(): System {
-  /** Seconds the current jump has been boosted by holding. */
-  let boostTime = 0;
-  let boosting = false;
+  let controller: SkaterController | null = null;
+  let debug = false;
 
   return {
     name: 'player',
 
     init(ctx) {
-      ctx.bus.on('runStarted', () => {
-        boostTime = 0;
-        boosting = false;
-      });
+      const c = new SkaterController(ctx.bus);
+      controller = c;
+      ctx.bus.on('runStarted', () => c.reset());
+      ctx.bus.on('grindStart', (e) => c.startGrind(ctx.state, e.entityId));
+      ctx.bus.on('grindEnd', (e) => c.endGrindExternally(ctx.state, e.entityId));
+      ctx.bus.on('crash', () => c.crash(ctx.state));
+      debug = typeof window !== 'undefined' && testHookEnabled();
+      if (debug) installPlayerDebug(ctx);
     },
 
     update(ctx, dt) {
-      const { state, input, bus } = ctx;
-      const p = state.player;
-      if (state.mode !== 'playing') return;
-
-      if (input.action.pressed && p.grounded) {
-        p.vy = -JUMP_VELOCITY;
-        p.grounded = false;
-        boosting = true;
-        boostTime = 0;
-        bus.emit('jump', { velocity: JUMP_VELOCITY });
-      }
-      if (!input.action.held) boosting = false;
-
-      if (!p.grounded) {
-        const boosted = boosting && p.vy < 0 && boostTime < MAX_JUMP_HOLD;
-        if (boosted) boostTime += dt;
-        p.vy += (boosted ? HOLD_GRAVITY : GRAVITY) * dt;
-        p.y += p.vy * dt;
-        if (p.y >= GROUND_Y) {
-          bus.emit('land', { impact: p.vy });
-          p.y = GROUND_Y;
-          p.vy = 0;
-          p.grounded = true;
-        }
-      }
-      p.state = p.grounded ? 'ride' : p.vy < 0 ? 'jump' : 'air';
-      updateHitbox(p);
+      controller?.update(ctx.state, ctx.input.action, dt);
     },
 
     render: {
-      player({ g, state }) {
-        const p = state.player;
-        const x = Math.round(p.x - BOX_W / 2);
-        const y = Math.round(p.y - BOX_H);
-        g.fillStyle = '#e8d6b0';
-        g.fillRect(x, y, BOX_W, BOX_H - 4);
-        g.fillStyle = '#5b5f6b';
-        g.fillRect(x, y, BOX_W, 6);
-        g.fillStyle = '#7a4a2a';
-        g.fillRect(x - 5, y + BOX_H - 4, BOX_W + 10, 2);
-        g.fillStyle = '#222';
-        g.fillRect(x - 3, y + BOX_H - 2, 3, 2);
-        g.fillRect(x + BOX_W, y + BOX_H - 2, 3, 2);
+      entities(r) {
+        if (debug) drawDebugRails(r);
+      },
+      player(r) {
+        if (controller) drawSkater(r.g, r.state.player, controller.view(r.state.player));
       },
     },
   };

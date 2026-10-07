@@ -1,0 +1,339 @@
+/**
+ * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
+ * salt-and-pepper hair, stubble, red hoodie, jeans, white sneakers) and his
+ * longboard. Body frames are composed from shared parts (see compose.ts).
+ *
+ * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
+ * above BODY_DECK_ROW, the pushing foot and the crash poses reach down to
+ * BODY_GROUND_ROW. Board frame: BOARD_W x BOARD_H, the wheel bottom is the
+ * last row. Both are centred on the contact point at *_ANCHOR_X.
+ */
+import { rowsFromString } from '../core/sprite-data';
+import { composeFrame, type Part, shearColumns } from './compose';
+
+export const PALETTE = {
+  k: '#241c24', // outline
+  s: '#e3a57c', // skin
+  S: '#b97456', // skin shade, ear
+  b: '#8a7569', // stubble
+  h: '#55535b', // hair, dark grey
+  H: '#b9b7bc', // hair, grey/white strands
+  c: '#2c4a6e', // cap
+  C: '#1b304c', // cap brim
+  r: '#bf4438', // hoodie
+  R: '#86292b', // hoodie shade, arms
+  j: '#4b6d9c', // jeans
+  J: '#33507a', // jeans shade
+  w: '#efe9dc', // sneaker
+  W: '#9c9384', // sneaker sole
+  g: '#2e2b33', // grip tape
+  d: '#b97a43', // deck wood
+  D: '#8a5530', // deck wood shade
+  t: '#a9afb8', // truck
+  T: '#6c717b', // truck shade
+  o: '#f0902a', // wheel
+  O: '#b45d16', // wheel shade
+} as const;
+
+export const BODY_W = 24;
+export const BODY_H = 35;
+/** Row just below the soles of a foot standing on the deck (= the grip tape row). */
+export const BODY_DECK_ROW = 28;
+/** Ground row (same as the board's wheel bottom) when the board is flat under the body. */
+export const BODY_GROUND_ROW = 34;
+export const BODY_ANCHOR_X = 12;
+
+export const BOARD_W = 26;
+/** Board art is 8 rows; the frame has headroom above it for the tilted frames. */
+export const BOARD_H = 14;
+/** Row of the grip tape (deck surface) in the flat board frame. */
+export const BOARD_DECK_ROW = BOARD_H - 7;
+export const BOARD_ANCHOR_X = 13;
+
+// ---------------------------------------------------------------- parts
+
+const HEAD = `
+  ..kkkkk....
+  .kcccccck..
+  kcccccccCCk
+  kHhHsssskk.
+  khHsSskssk.
+  kHhssssssSk
+  .khsbsssbk.
+  ..kbbbbbk..
+`;
+
+const TORSO_DOWN = `
+  .kRrrrrk..
+  kRrrrrrrk.
+  kRrrRrrrk.
+  kRrrRrrrrk
+  kRrrRrrrrk
+  kRrrRrrrrk
+  kRrrsSrrk.
+  kRRRRRRRk.
+  kjjjjjjk..
+`;
+
+const TORSO_LEAN = `
+  ..kRrrrk..
+  .kRrrrrrk.
+  kRrrrRrrrk
+  kRrrrRrrrk
+  kRrrrRRrk.
+  kRrrrrRsk.
+  kRrrrrrkk.
+  kRRRRRRk..
+  kjjjjjjk..
+`;
+
+const TORSO_ARMS_OUT = `
+  ......kRrrrrk......
+  .....kRrrrrrrk.....
+  kkkkkkRrrrrrrkkkkkk
+  sRRRRRRrrrrrrRRRRRs
+  kkkkkkRrrrrrrkkkkkk
+  .....kRrrrrrk......
+  .....kRrrrrrk......
+  .....kRRRRRRk......
+  .....kjjjjjjk......
+`;
+
+const TORSO_ARMS_UP = `
+  ks...............sk
+  .kRk...........kRk.
+  ..kRk.kRrrrrk.kRk..
+  ...kRkRrrrrrrkRk...
+  ....kRRrrrrrrRk....
+  .....kRrrrrrrk.....
+  .....kRrrrrrk......
+  .....kRrrrrrk......
+  .....kRRRRRRk......
+  .....kjjjjjjk......
+`;
+
+const TORSO_CROUCH = `
+  .kRrrrrk...
+  kRrrrrrrk..
+  kRrrrRrrrk.
+  kRrrrrRRrrk
+  kRrrrrrkRsk
+  kRRRRRRk.k.
+  kjjjjjjk...
+`;
+
+const LEGS_STAND = `
+  ........kjjjjjjk........
+  .......kjjJkjjjjk.......
+  ......kjjJk.kjjjjk......
+  ......kjJk...kjjjk......
+  .....kjJk.....kjjjk.....
+  .....kjjk.....kjjjk.....
+  ....kjJk.......kjjk.....
+  ...kwwwk.......kwwwwk...
+  ..kWWWWWk......kWWWWWk..
+`;
+
+const LEGS_CROUCH = `
+  ........kjjjjjjk........
+  ......kjjjJJkjjjjjk.....
+  ....kjjjJk...kjjjjjk....
+  ...kjjJk......kkjjk.....
+  ..kwwwk.......kwwwwk....
+  .kWWWWWk......kWWWWWk...
+`;
+
+const LEGS_TUCK = `
+  ........kjjjjjjk........
+  .......kjjjJjjjjjk......
+  ......kjjJkkjjjjjjk.....
+  ......kjJk..kkjjjjk.....
+  .....kwwwk....kjjk......
+  ....kWWWWWk..kwwwwk.....
+  ............kWWWWWk.....
+`;
+
+const LEGS_EXTEND = `
+  ........kjjjjjjk........
+  .......kjjJkjjjjk.......
+  .......kjJk.kjjjk.......
+  ......kjJk...kjjjk......
+  ......kjJk....kjjk......
+  .....kjJk.....kjjk......
+  .....kjJk.....kjjk......
+  ....kwwwk.....kwwwwk....
+  ...kWWWWWk....kWWWWWk...
+`;
+
+/** Push: back foot on the ground under the hips. */
+const LEGS_PUSH_DOWN = `
+  .........kjjjjjjk.......
+  .........kjjjJjjjk......
+  .........kjJkkjjjjk.....
+  .........kjJk.kjjjjk....
+  .........kjJk..kjjjk....
+  .........kjJk...kjjk....
+  .........kjJk...kjjk....
+  .........kjJk..kwwwwk...
+  .........kjJk..kWWWWWk..
+  .........kjJk...........
+  .........kjJk...........
+  .........kjJk...........
+  .........kjJk...........
+  .........kjjk...........
+  ........kwwwwk..........
+  .......kWWWWWk..........
+`;
+
+/** Push: back foot shoved back along the ground. */
+const LEGS_PUSH_BACK = `
+  .........kjjjjjjk.......
+  ........kjjjjJjjjk......
+  .......kjjJkkjjjjjk.....
+  ......kjjJk..kjjjjjk....
+  .....kjjJk....kjjjjk....
+  ....kjjJk......kjjjk....
+  ....kjJk.......kjjjk....
+  ...kjJk.......kwwwwk....
+  ...kjJk.......kWWWWWk...
+  ..kjJk..................
+  ..kjJk..................
+  ..kjJk..................
+  .kjjk...................
+  .kwwk...................
+  kwwwk...................
+  kWWWk...................
+`;
+
+/** Push: back foot swinging forward above the ground. */
+const LEGS_PUSH_SWING = `
+  .........kjjjjjjk.......
+  ........kjjjjJjjjk......
+  ........kjJkkjjjjjk.....
+  .......kjJk..kjjjjjk....
+  .......kjJk...kjjjjk....
+  .......kjJk.....kjjk....
+  ........kjJk....kjjk....
+  .........kjJk..kwwwwk...
+  ..........kjk..kWWWWWk..
+  .........kwwwwk.........
+  ........kWWWWWk.........
+`;
+
+const LEGS_KNEEL = `
+  ........kjjjjjjk........
+  .......kjjjJjjjjk.......
+  ......kjjJk.kjjjjk......
+  .....kjjJk...kjjjk......
+  ....kwwJk....kjjk.......
+  ...kwwwjjjjk.kjjk.......
+  ..kWWWkkkkkk.kwwwwk.....
+  ............kWWWWWk.....
+`;
+
+/** Crash: curled up mid-tumble (upside down, cap at the bottom right). */
+const CRASH_BALL = `
+  .kkk......
+  kwwwk.....
+  kWwwkkkk..
+  .kkjjjjjk.
+  ..kjjjjjjk
+  .kRrrrrrjk
+  kRrrrrrRkk
+  kRrrrkkcck
+  .kRrkHhcck
+  ..kkkssCk.
+  ....kkkk..
+`;
+
+/** Crash: sprawled on the ground, head first. */
+const CRASH_LYING = `
+  ............kkkkkk.kkkk.
+  .kk.kkkkkkkkRrrrrrkcccck
+  kwwkjjjjjjjjrrrrrrkHcCCk
+  kwwkjJjjjJjjRrrrsrkhssSk
+  kWWkjjjjjjjjRRRRRRkbsbsk
+  .kk.kkkkkkkkkkkkkk.kkkk.
+`;
+
+// ---------------------------------------------------------------- frames
+
+function body(parts: Part[]): string[] {
+  return composeFrame(BODY_W, BODY_H, parts);
+}
+
+const head = (x = 7, y = 2): Part => ({ art: HEAD, x, y });
+const at = (art: string, x: number, y: number): Part => ({ art, x, y });
+
+/** Body frame indices (see BODY_FRAMES). */
+export const B = {
+  ride: 0,
+  pushDown: 1,
+  pushBack: 2,
+  pushSwing: 3,
+  crouch: 4,
+  airRise: 5,
+  airFall: 6,
+  landSquash: 7,
+  grindA: 8,
+  grindB: 9,
+  crashThrown: 10,
+  crashBall: 11,
+  crashLying: 12,
+  crashKneel: 13,
+} as const;
+
+export const BODY_FRAMES: string[][] = [
+  body([at(LEGS_STAND, 0, 19), at(TORSO_DOWN, 7, 10), head()]),
+  body([at(LEGS_PUSH_DOWN, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
+  body([at(LEGS_PUSH_BACK, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
+  body([at(LEGS_PUSH_SWING, 0, 19), at(TORSO_LEAN, 8, 11), head(9, 3)]),
+  body([at(LEGS_CROUCH, 0, 22), at(TORSO_CROUCH, 7, 15), head(9, 7)]),
+  body([at(LEGS_TUCK, 0, 21), at(TORSO_ARMS_OUT, 2, 12), head(8, 4)]),
+  body([at(LEGS_EXTEND, 0, 19), at(TORSO_ARMS_UP, 2, 9), head()]),
+  body([at(LEGS_CROUCH, 0, 22), at(TORSO_ARMS_OUT, 2, 14), head(8, 6)]),
+  body([at(LEGS_STAND, 0, 19), at(TORSO_ARMS_OUT, 2, 10), head()]),
+  body([at(LEGS_STAND, 0, 20), at(TORSO_ARMS_OUT, 2, 11), head(7, 3)]),
+  body([at(LEGS_TUCK, 0, 17), at(TORSO_ARMS_UP, 5, 6), head(10, 0)]),
+  body([at(CRASH_BALL, 7, BODY_GROUND_ROW - 10)]),
+  body([at(CRASH_LYING, 0, BODY_GROUND_ROW - 5)]),
+  body([at(LEGS_KNEEL, 0, BODY_GROUND_ROW - 7), at(TORSO_CROUCH, 7, 19), head(9, 11)]),
+];
+
+// ---------------------------------------------------------------- board
+
+/** Side view, facing right: kicktail at the left, big soft wheels. */
+const BOARD_ART = rowsFromString(`
+  gk......................k.
+  kdggggggggggggggggggggggdk
+  .kDdddddddddddddddddddddk.
+  ....kTk............kTk....
+  ....ooo............ooo....
+  ...ootoO..........ootoO...
+  ...ooooO..........ooooO...
+  ....OOO............OOO....
+`);
+
+/** Board frame indices (see BOARD_FRAMES). */
+export const BD = {
+  flat: 0,
+  pop: 1,
+  noseUp: 2,
+  noseDown: 3,
+  upsideDown: 4,
+  spinA: 5,
+  spinB: 6,
+} as const;
+
+const REAR_WHEEL_X = 5;
+const upsideDown = [...BOARD_ART].reverse();
+
+export const BOARD_FRAMES: string[][] = [
+  shearColumns(BOARD_ART, 0, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(BOARD_ART, 0.15, REAR_WHEEL_X, BOARD_H),
+  shearColumns(BOARD_ART, 0.12, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(BOARD_ART, -0.12, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(upsideDown, 0, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(upsideDown, 0.2, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(BOARD_ART, -0.2, BOARD_ANCHOR_X, BOARD_H),
+];

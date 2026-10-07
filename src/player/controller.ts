@@ -1,0 +1,207 @@
+/**
+ * DOM-free skater logic: variable jump with coyote time and jump buffer,
+ * rail riding, crash/invulnerability and the animation state. One instance
+ * per player system; `reset()` at every run start.
+ */
+import { GROUND_Y } from '../core/config';
+import type { ActionSnapshot, Entity, GameBus, GameState, PlayerAnim, PlayerState, Rect } from '../types';
+import * as T from './tuning';
+
+/** What the renderer needs besides PlayerState. */
+export interface AnimView {
+  anim: PlayerAnim;
+  /** Seconds since `anim` started. */
+  time: number;
+  /** False on the "off" half of an invulnerability blink. */
+  visible: boolean;
+}
+
+export class SkaterController {
+  private boosting = false;
+  private boostTime = 0;
+  private coyote = 0;
+  private buffer = 0;
+  private sinceJump = Infinity;
+  private landTimer = 0;
+  private crashTimer = 0;
+  private cruiseTime = 0;
+  private railId: number | null = null;
+  private grindTicks = 0;
+  private anim: PlayerAnim = 'ride';
+  private animTime = 0;
+
+  constructor(private readonly bus: GameBus) {}
+
+  reset(): void {
+    this.boosting = false;
+    this.boostTime = 0;
+    this.coyote = 0;
+    this.buffer = 0;
+    this.sinceJump = Infinity;
+    this.landTimer = 0;
+    this.crashTimer = 0;
+    this.cruiseTime = 0;
+    this.railId = null;
+    this.grindTicks = 0;
+    this.anim = 'ride';
+    this.animTime = 0;
+  }
+
+  get crashing(): boolean {
+    return this.crashTimer > 0;
+  }
+
+  view(p: PlayerState): AnimView {
+    const blinking = p.invulnerableTimer > 0 && !this.crashing;
+    const visible = !blinking || Math.floor(p.invulnerableTimer / (T.BLINK_PERIOD / 2)) % 2 === 0;
+    return { anim: this.anim, time: this.animTime, visible };
+  }
+
+  /** Gameplay put the player on rail `entityId` (grindStart). */
+  startGrind(state: GameState, entityId: number): void {
+    const rail = findRail(state, entityId);
+    if (!rail || this.crashing) return;
+    const p = state.player;
+    this.railId = entityId;
+    this.grindTicks = 0;
+    this.boosting = false;
+    this.coyote = 0;
+    p.grinding = true;
+    p.grounded = false;
+    p.y = rail.y;
+    p.vy = 0;
+  }
+
+  /** Gameplay ended the grind itself (grindEnd it emitted): drop off without re-emitting. */
+  endGrindExternally(state: GameState, entityId: number): void {
+    if (this.railId !== entityId) return;
+    this.leaveRail(state.player, false);
+  }
+
+  /** Gameplay reported a collision (crash). Ignored while invulnerable. */
+  crash(state: GameState): void {
+    const p = state.player;
+    if (p.invulnerableTimer > 0 || this.crashing) return;
+    if (p.grinding) this.leaveRail(p, true);
+    this.crashTimer = T.CRASH_TIME;
+    p.invulnerableTimer = T.INVULNERABLE_TIME;
+    this.boosting = false;
+    this.buffer = 0;
+    this.coyote = 0;
+    p.grounded = false;
+    p.vy = Math.min(p.vy, -T.CRASH_HOP_VELOCITY);
+  }
+
+  update(state: GameState, action: ActionSnapshot, dt: number): void {
+    const p = state.player;
+    if (state.mode === 'title') this.setAnim('ride', dt);
+    if (state.mode !== 'playing') return;
+
+    this.countDown(p, dt);
+    if (action.pressed && !this.crashing) this.buffer = T.JUMP_BUFFER;
+    if (!action.held) this.boosting = false;
+    this.tryJump(p);
+
+    if (p.grinding) this.ride(state);
+    else if (!p.grounded) this.fall(p, dt);
+    this.buffer = Math.max(0, this.buffer - dt);
+
+    this.setAnim(this.pickAnim(p), dt);
+    p.state = this.anim;
+    p.hitbox = hitboxFor(p);
+  }
+
+  private countDown(p: PlayerState, dt: number): void {
+    p.invulnerableTimer = Math.max(0, p.invulnerableTimer - dt);
+    this.crashTimer = Math.max(0, this.crashTimer - dt);
+    this.landTimer = Math.max(0, this.landTimer - dt);
+    this.sinceJump += dt;
+    this.cruiseTime += dt;
+  }
+
+  private canJump(p: PlayerState): boolean {
+    return !this.crashing && (p.grounded || p.grinding || this.coyote > 0);
+  }
+
+  private tryJump(p: PlayerState): void {
+    if (this.buffer <= 0 || !this.canJump(p)) return;
+    if (p.grinding) this.leaveRail(p, true);
+    this.buffer = 0;
+    this.coyote = 0;
+    this.boosting = true;
+    this.boostTime = 0;
+    this.sinceJump = 0;
+    p.grounded = false;
+    p.vy = -T.JUMP_VELOCITY;
+    this.bus.emit('jump', { velocity: T.JUMP_VELOCITY });
+  }
+
+  private ride(state: GameState): void {
+    const p = state.player;
+    const rail = findRail(state, this.railId);
+    if (!rail || p.x > rail.x + rail.w) {
+      this.leaveRail(p, true);
+      this.coyote = T.COYOTE_TIME;
+      return;
+    }
+    this.grindTicks++;
+    p.y = rail.y;
+    p.vy = 0;
+  }
+
+  private leaveRail(p: PlayerState, emit: boolean): void {
+    const entityId = this.railId;
+    this.railId = null;
+    p.grinding = false;
+    if (emit && entityId !== null) this.bus.emit('grindEnd', { entityId, ticks: this.grindTicks });
+  }
+
+  private fall(p: PlayerState, dt: number): void {
+    this.coyote = Math.max(0, this.coyote - dt);
+    const boosted = this.boosting && p.vy < 0 && this.boostTime < T.MAX_JUMP_HOLD;
+    if (boosted) this.boostTime += dt;
+    else this.boosting = false;
+    p.vy = Math.min(T.MAX_FALL_SPEED, p.vy + (boosted ? T.HOLD_GRAVITY : T.GRAVITY) * dt);
+    p.y += p.vy * dt;
+    if (p.y >= GROUND_Y) this.land(p);
+  }
+
+  private land(p: PlayerState): void {
+    const impact = p.vy;
+    p.y = GROUND_Y;
+    p.vy = 0;
+    p.grounded = true;
+    this.coyote = 0;
+    this.landTimer = T.LAND_TIME;
+    this.cruiseTime = 0;
+    this.bus.emit('land', { impact });
+    this.tryJump(p);
+  }
+
+  private pickAnim(p: PlayerState): PlayerAnim {
+    if (this.crashing) return 'crash';
+    if (p.grinding) return 'grind';
+    if (!p.grounded) return this.sinceJump < T.OLLIE_TIME ? 'jump' : 'air';
+    if (this.landTimer > 0) return 'land';
+    return this.cruiseTime % T.PUSH_PERIOD < T.PUSH_TIME ? 'push' : 'ride';
+  }
+
+  private setAnim(anim: PlayerAnim, dt: number): void {
+    if (anim === this.anim) this.animTime += dt;
+    else {
+      this.anim = anim;
+      this.animTime = 0;
+    }
+  }
+}
+
+function findRail(state: GameState, id: number | null): Entity | undefined {
+  return id === null ? undefined : state.entities.find((e) => e.id === id);
+}
+
+/** Body box above the wheel contact point; lower in the tuck and while tumbling. */
+function hitboxFor(p: PlayerState): Rect {
+  const { HITBOX_H: H, HITBOX_W: w } = T;
+  const h = p.state === 'crash' ? H.crashed : p.state === 'jump' || p.state === 'air' ? H.tucked : H.standing;
+  return { x: p.x - w / 2, y: p.y - h, w, h };
+}
