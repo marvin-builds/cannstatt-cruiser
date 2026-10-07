@@ -1,6 +1,7 @@
 /**
  * World slice showcase: every zone after its crossfade, one mid-crossfade
- * frame, a later stretch of each zone, and a natural distance-driven zone change.
+ * frame, the Neckar bridge with its tram crossing (both ends), a later stretch
+ * of each zone, and a natural distance-driven zone change.
  *   npm run playtest -- --scenario scripts/scenarios/world.ts --viewports desktop,phone-landscape --name world
  */
 import type { PlaytestContext } from '../playtest-lib';
@@ -29,6 +30,7 @@ export default async function world(t: PlaytestContext): Promise<void> {
     const events = await t.game.eventsSince(since, 'zoneChanged');
     t.check(`setZone(${zone}) emits zoneChanged`, events.length === 1, events);
     await t.canvasShot(`zone ${zone} ${ZONES[zone]}`);
+    if (zone === 1) await bridgeCrossing(t);
   }
 
   // Ride on at top speed: scenery keeps varying, then the zone advances by distance.
@@ -44,5 +46,15 @@ export default async function world(t: PlaytestContext): Promise<void> {
   await t.canvasShot('natural transition to mitte');
   await t.game.step(600);
   await t.canvasShot('mitte later');
+  await t.game.setSpeed(null);
+}
+
+/** Slow ride past the Neckar bridge: the tram leaves one grove, crosses and enters the other. */
+async function bridgeCrossing(t: PlaytestContext): Promise<void> {
+  await t.game.setSpeed(40);
+  for (let i = 1; i <= 6; i++) {
+    await t.game.step(75);
+    await t.canvasShot(`neckar bridge ${i}`);
+  }
   await t.game.setSpeed(null);
 }

@@ -38,10 +38,13 @@ export function farHills(baseline: number, terms: Terms, vineTerms: Terms, salt:
   });
 }
 
-/** A single hill rising `rise` px above the bottom edge (for landmarks to stand on). */
-export function paintHill(p: Painter, w: number, h: number, rise: number, vine: boolean, salt: number): (col: number) => number {
+/**
+ * A single hill rising `rise` px above the bottom edge (for landmarks to stand
+ * on). With `vine`, vineyards cover the left `vineShare` of it.
+ */
+export function paintHill(p: Painter, w: number, h: number, rise: number, vine: boolean, salt: number, vineShare = 0.6): (col: number) => number {
   const top = (col: number) => h - Math.round(rise * bump(col, w));
-  for (let x = 0; x < w; x++) hillColumn(p, x, top(x), h, vine && x < w * 0.6, salt);
+  for (let x = 0; x < w; x++) hillColumn(p, x, top(x), h, vine && x < w * vineShare, salt);
   return top;
 }
 

@@ -4,7 +4,8 @@ import type { ZoneSpec } from '../scene';
 import { CLOUD_LAYER, FAR_FACTOR, MID_FACTOR, NEAR_FACTOR } from './layout';
 import { MID_TREE, treeCluster } from './city';
 import { farHills, hillProp, housesHillProp } from './hills';
-import { baseTile, lazyCanvas, noise, type Prop, staticProp } from './paint';
+import { crossingX } from '../crossing';
+import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { skyCanvas } from './sky';
 import { stadtbahn } from './stadtbahn';
 import { STREET, tree } from './street';
@@ -84,60 +85,116 @@ const river = baseTile(
   3,
 );
 
-const BRIDGE_W = 212;
-const BRIDGE_H = 52;
+/** Arched river part of the bridge. */
+const SPANS_W = 212;
+/** Embankment with a tree grove at each end, where the track meets the bank. */
+const RAMP_W = 36;
+const BRIDGE_W = SPANS_W + RAMP_W * 2;
+/** Rows above the catenary for the grove crowns. */
+const BRIDGE_H = 60;
+/** Local y of the deck (track bed top + 2), view y 108. */
+const DECK = 18;
+/** Local x where the tram is clipped; the grove fully hides it there. */
+const GROVE_CLIP = 22;
 const BRIDGE_TRAIN = stadtbahn(22, 7, false);
 
-/** Stone arch bridge with catenary; a small Stadtbahn crosses it now and then. */
+/** Stone arches between the abutments, catenary masts above the deck. */
+function paintSpans(p: Painter, sx: number): void {
+  const spanCount = 4;
+  const abut = 10;
+  const pier = 6;
+  const span = (SPANS_W - abut * 2 - pier * (spanCount - 1)) / spanCount;
+  const waterTop = WATER_Y - (GROUND_Y - BRIDGE_H);
+  for (let i = 0; i < SPANS_W; i++) {
+    const x = sx + i;
+    const inner = i - abut;
+    const slot = Math.floor(inner / (span + pier));
+    const within = inner - slot * (span + pier);
+    let openTop = BRIDGE_H;
+    if (inner >= 0 && i < SPANS_W - abut && within < span) {
+      const u = ((within + 0.5) / span) * 2 - 1;
+      openTop = Math.round(DECK + 10 + (BRIDGE_H - DECK - 10) * (1 - Math.sqrt(Math.max(0, 1 - u * u))) * 0.9);
+      openTop = Math.max(openTop, DECK + 10);
+    }
+    p.rect(MID.sand, x, DECK, 1, openTop - DECK);
+    if (openTop < BRIDGE_H) p.rect(MID.sandShade, x, openTop - 2, 1, 2);
+    else p.rect(MID.stoneShade, x, waterTop, 1, BRIDGE_H - waterTop);
+    if (noise(i, 0, 21) < 0.15) p.px(MID.sandShade, x, DECK + 3 + Math.floor(noise(i, 1, 21) * 6));
+  }
+  p.rect(MID.sandLight, sx, DECK, SPANS_W, 1);
+  p.rect(MID.sandShade, sx, DECK + 5, SPANS_W, 1);
+  for (let x = sx + 4; x < sx + SPANS_W; x += 28) {
+    p.rect(NEAR.iron, x, DECK - 13, 1, 11);
+    p.rect(NEAR.iron, x, DECK - 12, 4, 1);
+  }
+}
+
+/** Grassy embankment from the bank up to the deck; `dir` 1 rises to the right, -1 to the left. */
+function paintEmbankment(p: Painter, x0: number, dir: 1 | -1): void {
+  const bank = BANK_Y - (GROUND_Y - BRIDGE_H);
+  const slope = 20;
+  for (let i = 0; i < RAMP_W; i++) {
+    const x = dir === 1 ? x0 + i : x0 + RAMP_W - 1 - i;
+    const top = i < slope ? Math.round(bank - ((bank - (DECK - 2)) * (i + 1)) / slope) : DECK - 2;
+    p.rect(MID.green, x, top, 1, bank + 2 - top);
+    p.px(MID.greenDark, x, top);
+    for (let y = top + 1; y < bank + 2; y++) if (noise(x, y, 23) < 0.18) p.px(MID.greenShade, x, y);
+  }
+}
+
+/** Tree grove on an embankment, painted over the tram so it drives in and out behind it. */
+function paintGrove(p: Painter, x0: number, dir: 1 | -1): void {
+  const at = (x: number) => (dir === 1 ? x0 + x : x0 + RAMP_W - 1 - x);
+  for (const [x, y, r] of [[9, DECK - 4, 7], [28, DECK - 4, 6], [19, DECK - 8, 9]] as const) {
+    p.rect(MID.stoneShade, at(x), y + r - 1, 1, 5);
+    p.disc(MID.greenDark, at(x), y, r);
+    p.disc(MID.green, at(x) - 1, y - 1, r - 2);
+    p.disc(MID.greenShade, at(x) - Math.round(r * 0.4), y - Math.round(r * 0.4), Math.round(r * 0.35));
+    for (let i = 0; i < r * 2; i++) {
+      const a = i * 2.39996;
+      const d = r * 0.7 * Math.sqrt((i + 1) / (r * 2));
+      p.px(i % 3 === 0 ? MID.greenShade : MID.greenDark, at(x) + Math.round(Math.cos(a) * d), y + Math.round(Math.sin(a) * d));
+    }
+  }
+}
+
+/**
+ * Stone arch bridge with catenary, reached over a grassy embankment at each
+ * end. A small Stadtbahn crosses now and then, coming out of the tree grove on
+ * one embankment and disappearing into the grove on the other.
+ */
 function bridge(): Prop {
-  const deck = 10;
   const body = lazyCanvas(BRIDGE_W, BRIDGE_H, (p) => {
-    const spanCount = 4;
-    const abut = 10;
-    const pier = 6;
-    const span = (BRIDGE_W - abut * 2 - pier * (spanCount - 1)) / spanCount;
-    const waterTop = WATER_Y - (GROUND_Y - BRIDGE_H);
-    for (let x = 0; x < BRIDGE_W; x++) {
-      const inner = x - abut;
-      const slot = Math.floor(inner / (span + pier));
-      const within = inner - slot * (span + pier);
-      let openTop = BRIDGE_H;
-      if (inner >= 0 && x < BRIDGE_W - abut && within < span) {
-        const u = (within + 0.5) / span * 2 - 1;
-        openTop = Math.round(deck + 10 + (BRIDGE_H - deck - 10) * (1 - Math.sqrt(Math.max(0, 1 - u * u))) * 0.9);
-        openTop = Math.max(openTop, deck + 10);
-      }
-      p.rect(MID.sand, x, deck, 1, openTop - deck);
-      if (openTop < BRIDGE_H) p.rect(MID.sandShade, x, openTop - 2, 1, 2);
-      else p.rect(MID.stoneShade, x, waterTop, 1, BRIDGE_H - waterTop);
-      if (noise(x, 0, 21) < 0.15) p.px(MID.sandShade, x, deck + 3 + Math.floor(noise(x, 1, 21) * 6));
-    }
-    p.rect(MID.sandLight, 0, deck, BRIDGE_W, 1);
-    p.rect(MID.stone, 0, deck - 2, BRIDGE_W, 2);
-    p.rect(MID.sandShade, 0, deck + 5, BRIDGE_W, 1);
-    for (let x = 4; x < BRIDGE_W; x += 28) {
-      p.rect(NEAR.iron, x, 0, 1, deck - 2);
-      p.rect(NEAR.iron, x, 1, 4, 1);
-    }
-    p.rect(NEAR.ironLight, 0, 1, BRIDGE_W, 1);
+    paintEmbankment(p, 0, 1);
+    paintEmbankment(p, BRIDGE_W - RAMP_W, -1);
+    paintSpans(p, RAMP_W);
+    p.rect(MID.stone, GROVE_CLIP - 6, DECK - 2, BRIDGE_W - (GROVE_CLIP - 6) * 2, 2);
+    p.rect(NEAR.ironLight, GROVE_CLIP - 6, DECK - 13, BRIDGE_W - (GROVE_CLIP - 6) * 2, 1);
   });
+  const groves = lazyCanvas(BRIDGE_W, BRIDGE_H, (p) => {
+    paintGrove(p, 0, 1);
+    paintGrove(p, BRIDGE_W - RAMP_W, -1);
+  });
+  const run = { period: 10, duration: 8, from: BRIDGE_W - GROVE_CLIP, to: GROVE_CLIP - BRIDGE_TRAIN.width };
   return {
     width: BRIDGE_W,
     draw: (g, x, time) => {
       const top = GROUND_Y - BRIDGE_H;
       g.drawImage(body(), x, top);
-      const cycle = time % 9;
-      if (cycle > 7) return;
-      const tx = x + Math.round(BRIDGE_W + 4 - (cycle / 7) * (BRIDGE_W + 8 + BRIDGE_TRAIN.width));
-      g.save();
-      g.beginPath();
-      g.rect(x, top, BRIDGE_W, deck);
-      g.clip();
-      g.drawImage(BRIDGE_TRAIN.canvas(), tx, top + deck - 2 - BRIDGE_TRAIN.height + 1);
-      g.restore();
+      const tx = crossingX(time, run);
+      if (tx !== null) {
+        g.save();
+        g.beginPath();
+        g.rect(x + GROVE_CLIP, top, BRIDGE_W - GROVE_CLIP * 2, DECK);
+        g.clip();
+        g.drawImage(BRIDGE_TRAIN.canvas(), x + tx, top + DECK - 2 - BRIDGE_TRAIN.height + 1);
+        g.restore();
+      }
+      g.drawImage(groves(), x, top);
     },
     warm: () => {
       body();
+      groves();
       BRIDGE_TRAIN.canvas();
     },
   };

@@ -3,7 +3,7 @@ import { FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
 import { CLOUD_LAYER, FAR_FACTOR, MID_FACTOR, NEAR_FACTOR } from './layout';
 import { treeCluster } from './city';
-import { farHills, hillProp, housesHillProp } from './hills';
+import { farHills, hillProp, housesHillProp, paintHill } from './hills';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { skyCanvas } from './sky';
 import { STREET } from './street';
@@ -110,29 +110,42 @@ function wasen(): Prop {
   };
 }
 
-/** Wilhelma hint: Moorish glasshouse with a ribbed dome and slim corner towers. */
-const wilhelma = staticProp(70, 44, GROUND_Y - 18, (p) => {
-  const glass = '#b4cac8';
-  const rib = '#98b1b0';
-  const wall = '#ddd3bf';
-  p.ellipse(FAR.forest, 35, 44, 36, 6);
-  p.rect(wall, 8, 26, 54, 14);
-  for (let x = 11; x < 60; x += 6) {
-    p.rect(glass, x, 30, 4, 8);
-    p.px(wall, x, 30);
-    p.px(wall, x + 3, 30);
-  }
-  p.rect(wall, 25, 20, 20, 6);
-  p.ellipse(glass, 35, 20, 10, 11);
-  p.rect(wall, 24, 20, 22, 7);
-  for (let x = 27; x < 44; x += 3) p.line(rib, x, 19, 35, 9);
-  p.rect(wall, 34, 6, 2, 4);
-  p.px(FAR.antennaRed, 35, 5);
-  for (const x of [5, 63]) {
-    p.rect(wall, x, 16, 3, 24);
-    p.disc(glass, x + 1, 15, 2);
-    p.px(wall, x + 1, 12);
-  }
+const CHAPEL_HILL_W = 120;
+const CHAPEL_HILL_RISE = 48;
+/** Height of the chapel above the hill top, lantern included. */
+const CHAPEL_H = 25;
+
+/**
+ * Grabkapelle auf dem Württemberg: pale neoclassical rotunda with a low dome,
+ * a small lantern and a columned portico, on a round hill striped with vines.
+ */
+const grabkapelle = staticProp(CHAPEL_HILL_W, CHAPEL_HILL_RISE + 2 + CHAPEL_H, GROUND_Y, (p) => {
+  const h = CHAPEL_HILL_RISE + 2 + CHAPEL_H;
+  paintHill(p, CHAPEL_HILL_W, h, CHAPEL_HILL_RISE, true, 11, 1);
+  const cx = CHAPEL_HILL_W / 2;
+  const base = h - CHAPEL_HILL_RISE + 1;
+  // Dome with a lantern, then the round drum (lit left, shaded right) in front of its lower half.
+  p.ellipse(FAR.concreteShade, cx, base - 14, 10, 6);
+  p.ellipse(FAR.concrete, cx - 2, base - 15, 7, 4);
+  p.rect(FAR.white, cx - 1, base - 23, 3, 4);
+  p.px(FAR.concreteShade, cx + 1, base - 22);
+  p.rect(FAR.concreteShade, cx - 2, base - 24, 5, 1);
+  p.px(FAR.concreteShade, cx, base - 25);
+  p.rect(FAR.white, cx - 11, base - 14, 23, 12);
+  p.rect(FAR.wall, cx + 6, base - 14, 6, 12);
+  p.rect(FAR.concreteShade, cx + 10, base - 14, 2, 12);
+  p.rect(FAR.concrete, cx - 12, base - 14, 25, 1);
+  for (const x of [cx - 9, cx + 8]) p.rect(FAR.glass, x, base - 10, 1, 3);
+  // Portico: shaded hall behind four columns, entablature and pediment.
+  p.rect(FAR.concreteShade, cx - 5, base - 10, 11, 8);
+  for (let x = cx - 4; x <= cx + 5; x += 3) p.rect(FAR.white, x, base - 10, 1, 8);
+  p.rect(FAR.white, cx - 6, base - 11, 13, 1);
+  p.gable(FAR.white, cx - 6, base - 16, 13, 5);
+  p.gable(FAR.wall, cx - 3, base - 14, 7, 2);
+  // Podium on the hilltop.
+  p.rect(FAR.concrete, cx - 13, base - 2, 27, 2);
+  p.rect(FAR.concreteShade, cx - 13, base - 1, 27, 1);
+  p.rect(FAR.hill, cx - 13, base, 27, 2);
 });
 
 /** Half-timbered house: stone ground floor, jettied plaster floors with beams and braces, steep gable. */
@@ -241,10 +254,10 @@ export function cannstattZone(): ZoneSpec {
         factor: FAR_FACTOR,
         base: farHills(116, [[5, 1, 2], [2, 4, 0], [1, 9, 1]], [[1, 2, 1]], 3),
         props: {
-          catalogue: { wilhelma, vineHill: hillProp(70, 24, true, 9), housesHill: housesHillProp(80, 24, 10) },
+          catalogue: { grabkapelle, vineHill: hillProp(70, 24, true, 9), housesHill: housesHillProp(80, 24, 10) },
           stream: {
-            intro: ['housesHill', 'wilhelma'],
-            landmarks: ['wilhelma'],
+            intro: ['housesHill', 'grabkapelle'],
+            landmarks: ['grabkapelle'],
             fillers: ['vineHill', 'housesHill'],
             gap: [-10, 24],
             fillersBetween: [5, 7],

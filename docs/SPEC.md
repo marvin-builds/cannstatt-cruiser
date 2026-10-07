@@ -72,7 +72,7 @@ with smooth transitions:
 2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette.
 3. **Bad Cannstatt:** Altstadt half-timbered houses, Kursaal, Mineralbad /
    mineral water fountain, Cannstatter Wasen with Fruchtsäule, Riesenrad (Ferris
-   wheel) and beer tents (Volksfest), a hint of Wilhelma.
+   wheel) and beer tents (Volksfest), the Grabkapelle on the vineyard-covered Württemberg in the distance.
 
 The art is recognisable but stylised.
 
