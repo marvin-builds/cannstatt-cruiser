@@ -33,3 +33,20 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
   (`core/sprite.ts`), with no image files. Text uses `core/font.ts`.
 - Keep modules small and typed. Leave no dead code. Before finishing, `npm test` and
   `npm run build` must pass.
+
+## Orchestration mode (main session)
+
+When the user asks to continue (or resumes work on this game), always work in orchestration mode:
+
+- The main session only orchestrates. It does not implement features itself, apart from tiny shared
+  contract edits (types, tuning constants) that let slices run in parallel, made test-first.
+- Work is cut into feature slices that each own disjoint paths. Run them with the saved workflow
+  `.claude/workflows/skate-slice-wave.js` (args `{spec, slices: [{name, owns[], brief, acceptance[]}]}`):
+  one implementer per slice, then a combined Sonnet reviewer/play-tester, with at most 2 fix rounds.
+- Before committing, the orchestrator checks `npm test` and `npm run build`, looks at the key
+  playtest screenshots itself, and then commits one commit per slice on `main` (linear history)
+  and pushes (the user allowed pushing after each verified slice).
+- New user wishes go into the roadmap/backlog first. They are briefed to the next fitting slice,
+  never patched into a slice that is already running.
+- The plan ends with a final multi-persona playtest (desktop keyboard, phone touch landscape and
+  portrait, casual first-timer) plus one fix round, and then a final report with screenshots.
