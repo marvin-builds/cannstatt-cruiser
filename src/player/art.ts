@@ -235,31 +235,33 @@ const TORSO_GRAB = `
   kjjjjjjk..
 `;
 
-/** Grab: the front arm from the shoulder down across the knee, the hand on the deck edge by the toes. */
+/**
+ * Grab: the front arm (a 2 px sleeve) from the shoulder down in front of the
+ * knee, the hand (2 x 2) gripping the deck edge just ahead of the toes.
+ */
 const GRAB_ARM = `
-  ..kRk.....
-  ..kRk.....
-  ...kRk....
-  ...kRk....
-  ....kRk...
-  ....kRk...
-  .....kRk..
-  .....kRk..
-  ......kRk.
-  ......kRk.
-  .......kRk
-  .......ksk
+  kRrk....
+  kRrk....
+  .kRrk...
+  .kRrk...
+  ..kRrk..
+  ..kRrk..
+  ...kRrk.
+  ...kRrk.
+  ...kRrk.
+  ...kssk.
+  ...kssk.
 `;
 
-/** Grab: the back arm thrown up behind the head for balance. */
+/** Grab: the back arm (2 px sleeve) thrown up and back behind the head for balance, open hand. */
 const GRAB_BACK_ARM = `
-  ks.....
-  kRk....
-  .kRk...
-  ..kRk..
-  ...kRk.
-  ....kRk
-  .....kR
+  kssk....
+  kssk....
+  kRrk....
+  kRrrk...
+  .kRrrk..
+  ..kRrrk.
+  ...kRrrk
 `;
 
 /** Torso art -> the same torso with the front arm off (torsos not listed keep their arms close to the body). */
@@ -269,6 +271,15 @@ const ONE_ARM: ReadonlyMap<string, string> = new Map([
   [TORSO_FRONT, TORSO_FRONT_ONE],
   [GRAB_ARM, ''],
 ]);
+
+/** Hard landing: deep squat, the knees out in front of the hips (thighs nearly level), soles on the deck. */
+const LEGS_SQUAT = `
+  .....kjjjjjjjjjjk.......
+  ....kjjjJjjjjjjjjjk.....
+  ...kjjJk.....kkjjjk.....
+  ..kwwwk.......kwwwwk....
+  .kWWWWWk......kWWWWWk...
+`;
 
 const TORSO_CROUCH = `
   .kRrrrrk...
@@ -573,6 +584,7 @@ export const B = {
   grindTurn: 18,
   grindFront: 19,
   grab: 20,
+  landDeep: 21,
 } as const;
 
 const FRAME_SPECS: FrameSpec[] = [
@@ -597,9 +609,10 @@ const FRAME_SPECS: FrameSpec[] = [
   { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_ARMS_OUT, 2, 10)], head: { x: 7, y: 2 }, view: 'turn' },
   { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_FRONT, 2, 10)], head: { x: 6, y: 1 }, view: 'front' },
   {
-    parts: [at(LEGS_TUCK, 0, 21), at(TORSO_GRAB, 7, 15), at(GRAB_BACK_ARM, 2, 10), at(GRAB_ARM, 13, 17)],
+    parts: [at(LEGS_TUCK, 0, 21), at(TORSO_GRAB, 7, 15), at(GRAB_BACK_ARM, 1, 10), at(GRAB_ARM, 15, 18)],
     head: { x: 9, y: 7 },
   },
+  { parts: [at(LEGS_SQUAT, 0, 23), at(TORSO_ARMS_OUT, 2, 16)], head: { x: 8, y: 8 } },
 ];
 
 function body(spec: FrameSpec, look: 'normal' | 'chill', oneArm = false): string[] {
@@ -652,7 +665,33 @@ export const BD = {
   upsideDown: 4,
   spinA: 5,
   spinB: 6,
+  /** Kickflip, a quarter turn: the deck on edge, the grip tape facing the camera. */
+  edgeGrip: 7,
+  /** Kickflip, three quarters: the deck on edge, the bottom with trucks and wheels facing the camera. */
+  edgeBottom: 8,
 } as const;
+
+/** The deck on edge (kickflip), grip side: a band at about the trucks' height, the wheels behind it. */
+const EDGE_GRIP_ART = rowsFromString(`
+  .kkkkkkkkkkkkkkkkkkkkkkkk.
+  kddddddddddddddddddddddddk
+  kdggggggggggggggggggggggdk
+  kDDDDDDDDDDDDDDDDDDDDDDDDk
+  .kkkkkkkkkkkkkkkkkkkkkkkk.
+  ..........................
+  ..........................
+`);
+
+/** The deck on edge (kickflip), bottom side: wood with the trucks and the near wheels on it. */
+const EDGE_BOTTOM_ART = rowsFromString(`
+  .kkkkkkkkkkkkkkkkkkkkkkkk.
+  kDdooTTooddddddddooTToodDk
+  kDdOOTTOOddddddddOOTTOODDk
+  .kkkkkkkkkkkkkkkkkkkkkkkk.
+  ..........................
+  ..........................
+  ..........................
+`);
 
 const REAR_WHEEL_X = 5;
 const upsideDown = [...BOARD_ART].reverse();
@@ -665,4 +704,6 @@ export const BOARD_FRAMES: string[][] = [
   shearColumns(upsideDown, 0, BOARD_ANCHOR_X, BOARD_H),
   shearColumns(upsideDown, 0.2, BOARD_ANCHOR_X, BOARD_H),
   shearColumns(BOARD_ART, -0.2, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(EDGE_GRIP_ART, 0, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(EDGE_BOTTOM_ART, 0, BOARD_ANCHOR_X, BOARD_H),
 ];

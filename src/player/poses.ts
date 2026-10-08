@@ -38,6 +38,7 @@ export type TimelineName =
   | 'grindTurn'
   | 'grindTrick'
   | 'grab'
+  | 'kickflip'
   | 'hardLand'
   | 'kicker';
 
@@ -79,6 +80,18 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.grab, board: BD.flat, bodyDy: -2, boardDy: -2 },
     ],
   },
+  // Air trick (AIR_TRICK_TICKS = 0.35 s): the skater tucks high (arms out) while the board flips once
+  // around its long axis under his feet (on edge, upside down, on edge), then he catches it flat.
+  kickflip: {
+    loop: false,
+    steps: [
+      { t: 0.05, body: B.airRise, board: BD.noseUp, bodyDy: -2 },
+      { t: 0.06, body: B.airRise, board: BD.edgeGrip, bodyDy: -2, boardDy: -1 },
+      { t: 0.06, body: B.airRise, board: BD.upsideDown, bodyDy: -2, boardDy: -1 },
+      { t: 0.06, body: B.airRise, board: BD.edgeBottom, bodyDy: -2, boardDy: -1 },
+      { t: 1, body: B.airRise, board: BD.flat, bodyDy: -1 },
+    ],
+  },
   land: {
     loop: false,
     steps: [
@@ -86,11 +99,13 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.crouch, board: BD.flat },
     ],
   },
-  // Touch-down after a big drop (upper level, launch): a deeper, longer squash (render.ts adds dust).
+  // Touch-down after a big drop (upper level, launch): a deep squat, then the normal squash and
+  // the crouch (render.ts adds dust); clearly deeper and longer than a normal landing.
   hardLand: {
     loop: false,
     steps: [
-      { t: 0.1, body: B.landSquash, board: BD.flat, bodyDy: 1 },
+      { t: 0.09, body: B.landDeep, board: BD.flat },
+      { t: 0.06, body: B.landSquash, board: BD.flat },
       { t: 1, body: B.crouch, board: BD.flat },
     ],
   },
@@ -163,12 +178,15 @@ export function isCrashTimeline(name: TimelineName): boolean {
 }
 
 export function timelineFor(
-  view: Pick<AnimView, 'anim' | 'standingUp'> & Partial<Pick<AnimView, 'binCrash' | 'trick' | 'grab' | 'hardLanding' | 'onKicker'>>,
+  view: Pick<AnimView, 'anim' | 'standingUp'> &
+    Partial<Pick<AnimView, 'binCrash' | 'trick' | 'grab' | 'hardLanding' | 'onKicker' | 'airTrick'>>,
   vy: number,
 ): TimelineName {
   if (view.anim === 'crash' && view.binCrash) return 'binCrash';
   if (view.anim === 'grind' && view.trick) return view.trick === 'turn' ? 'grindTurn' : 'grindTrick';
-  if ((view.anim === 'air' || view.anim === 'jump') && view.grab) return 'grab';
+  const airborne = view.anim === 'air' || view.anim === 'jump';
+  if (airborne && view.airTrick != null) return 'kickflip';
+  if (airborne && view.grab) return 'grab';
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
   if (view.anim === 'land' && view.hardLanding) return 'hardLand';
   if (view.onKicker && (view.anim === 'ride' || view.anim === 'push' || view.anim === 'land')) return 'kicker';

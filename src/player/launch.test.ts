@@ -3,7 +3,7 @@ import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Game } from '../core/game';
 import { timelineFor } from './poses';
 import { addRail, crash, createPlayerTestGame, jumpApex, playerController, startGrind, tick } from './testing';
-import { GRAB_HEIGHT, GRAB_RELEASE_HEIGHT, GRAVITY, HARD_LANDING_IMPACT } from './tuning';
+import { GRAB_HEIGHT, GRAB_RELEASE_HEIGHT, GRAVITY, HARD_LANDING_IMPACT, KICKER_WHEEL_REACH } from './tuning';
 
 /** A kicker launch like gameplay's for a ~50 px stunt jump. */
 const VELOCITY = 360;
@@ -248,6 +248,18 @@ describe('high ledge (upper level)', () => {
     expect(timelineFor(view(game), 0)).toBe('hardLand');
   });
 
+  it('a drop of more than 30 px lands hard, a 25 px drop does not', () => {
+    for (const [height, hard] of [[31, true], [25, false]] as const) {
+      const game = createPlayerTestGame();
+      const ledge = addRail(game, { x: game.state.player.x - 20, y: GROUND_Y - height, w: 60, h: 4 }, 'ledge');
+      startGrind(game, ledge);
+      tick(game);
+      ledge.x = -200;
+      for (let i = 0; i < 120 && !game.state.player.grounded; i++) tick(game);
+      expect(view(game).hardLanding, `drop ${height}`).toBe(hard);
+    }
+  });
+
   it('a normal tap landing is no hard landing', () => {
     const game = createPlayerTestGame();
     const lands: { impact: number }[] = [];
@@ -271,5 +283,29 @@ describe('kicker ride-up look', () => {
     kicker.x = game.state.player.x + 30;
     tick(game);
     expect(view(game).onKicker).toBe(false);
+  });
+
+  it('lifts the skater with the ramp surface under the front wheel (look only), from its low end to its lip', () => {
+    const game = createPlayerTestGame();
+    tick(game);
+    expect(view(game).kickerLift).toBe(0);
+    const x = game.state.player.x;
+    const kicker = addRail(game, { x: x + 30, y: GROUND_Y - 7, w: 18, h: 7 }, 'kicker');
+    tick(game);
+    expect(view(game).kickerLift).toBe(0);
+    const lifts: number[] = [];
+    for (let dx = -KICKER_WHEEL_REACH; dx <= 18; dx += 2) {
+      kicker.x = x - dx;
+      tick(game);
+      lifts.push(view(game).kickerLift);
+      expect(game.state.player.y).toBe(GROUND_Y);
+    }
+    expect(lifts[0]).toBe(0);
+    expect(lifts[Math.ceil(KICKER_WHEEL_REACH / 2)]!).toBeGreaterThan(0); // the front wheel is up the ramp already
+    expect(lifts.at(-1)).toBeGreaterThanOrEqual(6);
+    for (let i = 1; i < lifts.length; i++) expect(lifts[i]!).toBeGreaterThanOrEqual(lifts[i - 1]!);
+    kicker.x = x + 30;
+    tick(game);
+    expect(view(game).kickerLift).toBe(0);
   });
 });

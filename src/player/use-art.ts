@@ -23,6 +23,7 @@ SHOULDER_AT[B.crouch] = { x: 12, y: 16 };
 SHOULDER_AT[B.airRise] = { x: 15, y: 15 };
 SHOULDER_AT[B.airFall] = { x: 15, y: 13 };
 SHOULDER_AT[B.landSquash] = { x: 15, y: 17 };
+SHOULDER_AT[B.landDeep] = { x: 15, y: 19 };
 SHOULDER_AT[B.grindA] = { x: 15, y: 13 };
 SHOULDER_AT[B.grindB] = { x: 15, y: 14 };
 SHOULDER_AT[B.duck] = { x: 10, y: 19 };

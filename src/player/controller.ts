@@ -1,13 +1,15 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
  * rail riding, ducking (on the ground only), the grind trick (down on a
- * rail), the stomp bounce and the kicker launch, crash/invulnerability and
- * the animation state (incl. the catch reach, the item use, the grab pose of
- * big air, the hard landing and the board tilt on a kicker). One instance per player system;
+ * rail), the air trick (down in the air), the stomp bounce and the kicker
+ * launch, crash/invulnerability and the animation state (incl. the catch
+ * reach, the item use, the grab pose of big air, the hard landing and the
+ * board tilt on a kicker). One instance per player system;
  * `reset()` at every run start.
  */
-import { GROUND_Y } from '../core/config';
+import { GROUND_Y, TICK_DT } from '../core/config';
 import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, ItemAction, PlayerAnim, PlayerState, Rect } from '../types';
+import { canStartAirTrick } from './air-trick';
 import { BinCrash } from './bin';
 import * as T from './tuning';
 import { ITEM_USE_TIME, MugToss, TOSS_AT } from './use';
@@ -33,6 +35,10 @@ export interface AnimView {
   hardLanding: boolean;
   /** Rolling over a kicker on the street (before the launch): the board tilts up the ramp. */
   onKicker: boolean;
+  /** Px the ramp surface lifts the drawn skater while onKicker (0 elsewhere); y stays GROUND_Y. */
+  kickerLift: number;
+  /** Seconds since the air trick (kickflip) started, or null when none runs. */
+  airTrick: number | null;
   /** The item being used (itemUsed) and the seconds since, or null. */
   use: ItemUse | null;
 }
@@ -79,6 +85,9 @@ export class SkaterController {
   private bigAir = false;
   private hardLanding = false;
   private onKicker = false;
+  private kickerLift = 0;
+  /** Ticks since the air trick started, or -1 when none runs. */
+  private airTrickTick = -1;
   private catchTimer = 0;
   /** Grind trick held (down on the rail) and seconds since it started. */
   private tricking = false;
@@ -114,6 +123,8 @@ export class SkaterController {
     this.bigAir = false;
     this.hardLanding = false;
     this.onKicker = false;
+    this.kickerLift = 0;
+    this.airTrickTick = -1;
     this.catchTimer = 0;
     this.tricking = false;
     this.trickTime = 0;
@@ -142,6 +153,8 @@ export class SkaterController {
       grab: this.bigAir && !(p.vy > 0 && GROUND_Y - p.y < T.GRAB_RELEASE_HEIGHT),
       hardLanding: this.hardLanding && this.anim === 'land',
       onKicker: this.onKicker,
+      kickerLift: this.kickerLift,
+      airTrick: this.airTrickTick >= 0 ? this.airTrickTick * TICK_DT : null,
     };
   }
 
@@ -187,6 +200,7 @@ export class SkaterController {
     this.coyote = 0;
     p.grinding = true;
     p.grounded = false;
+    this.endAirTrick(p);
     p.y = rail.y;
     p.vy = 0;
   }
@@ -212,6 +226,7 @@ export class SkaterController {
     this.catchTimer = 0;
     this.use = null;
     this.setTrick(p, false);
+    this.endAirTrick(p);
     p.invulnerableTimer = T.INVULNERABLE_TIME;
     this.boosting = false;
     this.buffer = 0;
@@ -233,6 +248,7 @@ export class SkaterController {
 
     const { action } = input;
     this.countDown(p, dt);
+    this.advanceAirTrick(p);
     if (action.pressed && !this.crashing) this.buffer = T.JUMP_BUFFER;
     if (!action.held) this.boosting = false;
     if (p.grounded || p.grinding) this.takeOffY = p.y;
@@ -247,7 +263,12 @@ export class SkaterController {
     // Down on a rail is the grind trick instead (no duck, the grind goes on).
     this.setTrick(p, input.duck.held && p.grinding && !this.crashing);
     this.updateBigAir(p);
-    this.onKicker = p.grounded && !this.crashing && overKicker(state);
+    // After the physics, from the post-move y/vy: down in the air is the air trick (never a duck).
+    if (input.duck.pressed) this.tryAirTrick(p);
+    // The front wheel reaches the ramp first: lift from there on, crouch once the contact point is over it.
+    const kicker = p.grounded && !this.crashing ? kickerAhead(state) : null;
+    this.onKicker = kicker !== null && kicker.x <= p.x;
+    this.kickerLift = kicker ? rampLift(kicker, p.x + T.KICKER_WHEEL_REACH) : 0;
 
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
@@ -262,6 +283,27 @@ export class SkaterController {
     if (!on && this.tricking) this.turnBack = p.grinding ? T.TRICK_TURN_TIME : 0;
     this.tricking = on;
     p.grindTrick = on;
+  }
+
+  /** Starts the air trick if none runs and canStartAirTrick allows it (airborne, not on a rail, not crashing). */
+  private tryAirTrick(p: PlayerState): void {
+    if (this.airTrickTick >= 0 || p.grounded || p.grinding || this.crashing) return;
+    if (!canStartAirTrick(p.y, p.vy, this.bigAir)) return;
+    this.airTrickTick = 0;
+    p.airTrick = true;
+  }
+
+  /** Counts the running air trick on; it ends after AIR_TRICK_TICKS (before the landing tick, see air-trick.ts). */
+  private advanceAirTrick(p: PlayerState): void {
+    if (this.airTrickTick < 0) return;
+    this.airTrickTick++;
+    if (this.airTrickTick >= T.AIR_TRICK_TICKS) this.endAirTrick(p);
+  }
+
+  /** Ends the air trick at once: done, or cut short by a rail / ledge catch or a crash. */
+  private endAirTrick(p: PlayerState): void {
+    this.airTrickTick = -1;
+    p.airTrick = false;
   }
 
   /** Runs the item use clock; the drink tosses the empty mug at TOSS_AT. */
@@ -407,10 +449,17 @@ export function jumpVelocity(chill: boolean): number {
   return chill ? T.JUMP_VELOCITY * T.CHILL_JUMP_SCALE : T.JUMP_VELOCITY;
 }
 
-/** A kicker entity spans the wheel contact point (the skater rolls over it on the street). */
-function overKicker(state: GameState): boolean {
+/** The kicker under the board: from its front wheel (KICKER_WHEEL_REACH ahead) to the contact point past its end, or null. */
+function kickerAhead(state: GameState): Entity | null {
   const { x } = state.player;
-  return state.entities.some((e) => e.kind === 'kicker' && e.x <= x && x <= e.x + e.w);
+  for (const e of state.entities) if (e.kind === 'kicker' && e.x <= x + T.KICKER_WHEEL_REACH && x <= e.x + e.w) return e;
+  return null;
+}
+
+/** Lift for the front wheel at `wheelX`: the ramp surface there (street at its left end, full height from the lip on), minus the board tilt. */
+function rampLift(kicker: Rect, wheelX: number): number {
+  const surface = Math.max(0, Math.min(kicker.h, Math.round((kicker.h * (wheelX - kicker.x)) / kicker.w)));
+  return Math.max(0, surface - 1);
 }
 
 function findRail(state: GameState, id: number | null): Entity | undefined {
