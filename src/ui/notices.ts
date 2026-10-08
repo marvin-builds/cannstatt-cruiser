@@ -15,9 +15,9 @@ export function reloadOffered(state: { mode: GameMode; updateReady: boolean }): 
 export type InstallHintKind = 'prompt' | 'ios';
 
 /** Visits from which on the install hint shows (the first visit is for playing). */
-export const INSTALL_HINT_MIN_VISITS = 2;
+export const INSTALL_HINT_MIN_VISITS = 1;
 
-/** Which install hint a touch device gets, or null: never installed, running installed, dismissed or before the 2nd visit. */
+/** Which install hint a touch device gets, or null when installed, running installed or dismissed. */
 export function installHintKind(install: InstallState, touch: boolean): InstallHintKind | null {
   if (!touch || install.standalone || install.installed || install.dismissed) return null;
   if (install.visits < INSTALL_HINT_MIN_VISITS) return null;

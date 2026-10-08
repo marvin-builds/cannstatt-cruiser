@@ -312,7 +312,7 @@ The art is recognisable but stylised.
   normal title. "Weiter", a tap anywhere or any key (but M) continues to the
   title and stores the new version as seen.
 - **Install hint:** on phones and tablets only, when the game is not
-  already running installed, from the 2nd visit on, on title and game over
+  already running installed, from the first visit on, on title and game over
   (never in pause or mid-run): "Als App: Vollbild und offline" with an
   "Installieren" button where the browser offers an install prompt
   (Android / Chromium), or "Teilen [share icon] -> Zum Home-Bildschirm" on
