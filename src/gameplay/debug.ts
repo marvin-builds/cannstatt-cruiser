@@ -2,14 +2,16 @@
  * Test-only tooling (enabled together with window.__game): lets playtest
  * scenarios put a specific obstacle, person, the joint or stunt pieces on the
  * street, see the dropped items (they are no entities, so window.__game
- * misses them) and the running stunt line.
- * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts and stunts.ts.
+ * misses them) and the running stunt line, and plan a NorDIY park right ahead.
+ * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts and nordiy.ts.
  */
+import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
-import type { CarriedItem, Entity, GameContext, ObstacleKind, Rect, StuntKind } from '../types';
+import type { CarriedItem, Entity, GameContext, ObstacleKind, ParkPlan, Rect, StuntKind } from '../types';
 import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect } from './catalogue';
 import type { DroppedItems } from './drop';
 import { withMotion } from './motion';
+import { parkPiecesOf, planParkLine } from './park-line';
 import { planStuntLine } from './stunt-line';
 import { DEFAULT_LEDGE_HEIGHT, type StuntLines, type StuntLineView } from './stunts';
 
@@ -44,6 +46,17 @@ export interface GameplayDebugHook {
   stuntLine(x: number, seed?: number): number[];
   /** The running stunt line (steps, made, multiplier, points), or null; read-only. */
   stunts(): StuntLineView | null;
+  /**
+   * Plans the NorDIY park for the current speed with its start `offset` run
+   * distance ahead of the player (default: just beyond the widest view's
+   * right edge), puts it into state.park and lays its line and high fiver,
+   * removing whatever stood there (and an earlier debug park). Run distance
+   * d is at screen x `PLAYER_X + d - state.distance`. The spawner keeps the
+   * park's street free and the speed ramp pauses there, like a planned park.
+   */
+  park(offset?: number, seed?: number): ParkPlan;
+  /** The planned park (state.park), or null; read-only. */
+  parkPlan(): ParkPlan | null;
   /** Removes every entity (spawning goes on as planned). */
   clear(): void;
   /** Snapshot of the items knocked out of people's hands (drop.ts), falling or lying; read-only. */
@@ -63,7 +76,10 @@ const mid = ([a, b]: [number, number]) => (a + b) / 2;
 /** Ids of debug-placed stunt lines (negative, apart from the spawner's street-based ids). */
 let nextLine = -1;
 
-export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, stunts: StuntLines): void {
+/** Keeps run distances [start, end) free of spawned patterns (spawner.reserve), given the current distance. */
+export type ReserveStreet = (start: number, end: number, distance: number) => void;
+
+export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, stunts: StuntLines, reserve: ReserveStreet = () => {}): void {
   /** The line placed last: its id and pieces. */
   let line = { id: 0, pieces: [] as Entity[] };
   function placeStunt(kind: StuntKind, x: number, variant: number): number {
@@ -105,6 +121,29 @@ export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, st
     },
     stunts() {
       return stunts.view();
+    },
+    park(offset = VIEW_MAX_W + 16 - PLAYER_X, seed = 1) {
+      const { state } = ctx;
+      const steps = planParkLine(new Rng(seed), [state.speed], nextLine--);
+      let result = steps.next();
+      while (!result.done) result = steps.next();
+      const line = result.value;
+      const start = state.distance + offset;
+      const plan: ParkPlan = { start, end: start + line.length, pieces: parkPiecesOf(line, start) };
+      const from = PLAYER_X + offset;
+      const to = from + line.length;
+      const entities = state.entities;
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const e = entities[i]!;
+        if ((e.x < to && e.x + e.w > from) || e.data?.park !== undefined || e.kind === 'highFiver') entities.splice(i, 1);
+      }
+      for (const p of line.pieces) entities.push({ ...p, data: p.data && { ...p.data }, id: nextId++, x: from + p.x, done: false });
+      reserve(plan.start, plan.end, state.distance);
+      state.park = plan;
+      return plan;
+    },
+    parkPlan() {
+      return ctx.state.park;
     },
     clear() {
       ctx.state.entities.splice(0);

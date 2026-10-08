@@ -81,6 +81,13 @@ export const KICKER = { w: 18, h: 7 } as const;
  */
 export const LEDGE = { minHeight: 42, maxHeight: 58, minLength: 40, maxLength: 120, deck: 4 } as const;
 
+/**
+ * The NorDIY high fiver (ROADMAP 36): a skater standing at the street edge
+ * with a hand up, about the player's height. Never an obstacle, never
+ * collides; the use press near it gives a high five (high-five.ts).
+ */
+export const HIGH_FIVER = { w: 15, h: 27 } as const;
+
 export const STAR_SIZE = 9;
 /** The joint pickup: small, floating where a riding (or ducking) skater's body passes. */
 export const JOINT_W = 11;
@@ -144,6 +151,11 @@ export function kickerRect(x: number): Rect {
 /** Ledge deck rect: top edge (the grind surface) `height` above the street. */
 export function ledgeRect(x: number, height: number, length: number): Rect {
   return { x, y: GROUND_Y - height, w: length, h: LEDGE.deck };
+}
+
+/** High fiver rect with its left edge at x, standing on the street. */
+export function highFiverRect(x: number): Rect {
+  return { x, y: GROUND_Y - HIGH_FIVER.h, w: HIGH_FIVER.w, h: HIGH_FIVER.h };
 }
 
 /** Joint rect with its left edge at x. */

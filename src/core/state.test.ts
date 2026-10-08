@@ -110,3 +110,24 @@ describe('changelog and install state', () => {
     expect(state.install).toBe(install);
   });
 });
+
+describe('NorDIY park state', () => {
+  it('starts without a planned park', () => {
+    expect(createInitialState().park).toBeNull();
+  });
+
+  it('forgets the planned park when a new run starts', () => {
+    const state = createInitialState();
+    state.park = {
+      start: 1000,
+      end: 1900,
+      pieces: [
+        { kind: 'bank', from: 1100, to: 1118, height: 7 },
+        { kind: 'container', from: 1200, to: 1290, height: 46 },
+        { kind: 'crane', from: 1420, to: 1550, height: 60 },
+      ],
+    };
+    resetRun(state, 7);
+    expect(state.park).toBeNull();
+  });
+});

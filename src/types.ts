@@ -79,7 +79,35 @@ export type RailKind = 'handrail' | 'pipe';
  * back to the street.
  */
 export type StuntKind = 'kicker' | 'ledge';
-export type EntityKind = ObstacleKind | RailKind | StuntKind | 'star' | 'joint' | 'ball';
+/**
+ * `highFiver`: a NorDIY skater at the street edge holding up a hand (ROADMAP
+ * 36). Never an obstacle: pressing use near it gives a high five (event
+ * `highFive`); it never crashes the skater.
+ */
+export type ParkKind = 'highFiver';
+/**
+ * One structure of the NorDIY park line, in run distances (view px) like
+ * ParkPlan. Gameplay places the matching stunt entity (a `kicker` for a bank,
+ * a `ledge` for a container roof or the crane boom) exactly over [from, to)
+ * at `height` px above the street, drawing it plainly or not at all; the
+ * world draws the structure itself so its top edge is that surface:
+ * - `bank`: a concrete bank or quarter (the kicker's ramp), `height` its lip;
+ * - `container`: a shipping container whose roof edge is the ledge;
+ * - `crane`: the self-built crane whose boom is the ledge (tower behind `from`).
+ */
+export interface ParkPiece {
+  kind: 'bank' | 'container' | 'crane';
+  from: number;
+  to: number;
+  height: number;
+}
+/** The planned NorDIY park (state.park): its span and its line's structures in order. */
+export interface ParkPlan {
+  start: number;
+  end: number;
+  pieces: ParkPiece[];
+}
+export type EntityKind = ObstacleKind | RailKind | StuntKind | ParkKind | 'star' | 'joint' | 'ball';
 
 /**
  * Anything gameplay spawns. Coordinates are screen space (view pixels): the
@@ -148,6 +176,17 @@ export interface GameState {
   zoneIndex: number;
   /** Foreground traffic in Stuttgart-Mitte, 0..1. The world writes it each tick; audio reads it for traffic noise. */
   trafficDensity: number;
+  /**
+   * The NorDIY skatepark section (ROADMAP 36) gameplay has planned, as run
+   * distances (`state.distance` values, view px): the park spans [start, end).
+   * Gameplay sets it once per Bad Cannstatt visit when it lays the park line
+   * (well before `start` comes on screen) and clears it after `end` has
+   * passed. The world draws the NorDIY scenery on its street-speed layer over
+   * that span (containers, crane and banks exactly under `pieces`) and keeps
+   * traffic off there; audio places the boombox and the
+   * park sounds by it; ui may read it. null when no park is planned.
+   */
+  park: ParkPlan | null;
   muted: boolean;
   /**
    * Kid-friendly mode (hidden settings menu, persisted by the UI): the joint
@@ -225,6 +264,20 @@ export interface GameEvents {
    * pass-by whoosh from it, so even light traffic is heard.
    */
   vehiclePassed: { kind: 'car' | 'van' | 'bus' | 'truck'; front: boolean; light: boolean };
+  /**
+   * Gameplay: the use press (E / item button) inside the high five window of
+   * a `highFiver` (entity `entityId`) gave a high five. Inside that window the
+   * use press never uses the carried item.
+   */
+  highFive: { entityId: number; points: number };
+  /**
+   * Gameplay: the NorDIY crowd cheers for a trick inside the park. `level`
+   * (0..1) is the session's cheering so far; the world animates the crowd by
+   * it (raised bottles), audio scales the cheering.
+   */
+  sessionCheer: { level: number };
+  /** Gameplay: the skater left the park; `points` is the "Session!" bonus scaled by the cheering (0 if none). */
+  sessionEnd: { level: number; points: number };
   /** Gameplay: an air trick (player.airTrick) was completed and the skater landed or caught a ledge, scoring points. */
   airTrick: { ticks: number; points: number };
   /** Gameplay: a grind trick (player.grindTrick) ended while still on the rail or bench, scoring points. */

@@ -72,13 +72,13 @@ export function gapHolds(ledge: Rect): number[] {
 /** Ledge before the earliest launch landing (looks: the skater comes down onto the deck, not its corner). */
 const FRONT_ROOM = 12;
 /** Seconds of grind on a ledge before a gap (room for the take-off window)... */
-const GAP_RUNUP_SECONDS = 0.55;
+export const GAP_RUNUP_SECONDS = 0.55;
 /** ...seconds of ledge a gap jump lands on... */
-const GAP_LANDING_SECONDS = 0.35;
+export const GAP_LANDING_SECONDS = 0.35;
 /** ...and seconds of grind on a ledge before a drop or the line's end. */
-const FINAL_GRIND_SECONDS = 0.3;
+export const FINAL_GRIND_SECONDS = 0.3;
 /** A gap usually climbs: the next ledge this much higher (px)... */
-const GAP_STEP_UP: [number, number] = [6, 8];
+export const GAP_STEP_UP: [number, number] = [6, 8];
 /** ...across this much air (px). */
 const GAP_UP_PX: [number, number] = [8, 14];
 /** At the top of the level it steps down this much (px)... */
@@ -149,10 +149,11 @@ export function drawShape(rng: Rng, bag: readonly StuntShape[], last: StuntShape
   return { shape: next[0]!, bag: next.slice(1) };
 }
 
-const clampLength = (w: number): number => Math.max(LEDGE.minLength, Math.min(LEDGE.maxLength, Math.round(w)));
+export const clampLength = (w: number): number => Math.max(LEDGE.minLength, Math.min(LEDGE.maxLength, Math.round(w)));
 const endOf = (r: Rect): number => r.x + r.w;
 
-class LineBuilder {
+/** Builds one line piece by piece (stunt lines here, the NorDIY park line in park-line.ts), counting the simulated ticks. */
+export class LineBuilder {
   readonly pieces: Piece[] = [];
   readonly stars: Piece[] = [];
   readonly slow: number;
@@ -208,11 +209,63 @@ class LineBuilder {
     return [lo, hi];
   }
 
-  /** The ledge a kicker launches onto, long enough for `runup` seconds of grind after the latest landing. */
-  launchLedge(kicker: Piece, height: number, runup: number): Piece {
+  /** The ledge a kicker launches onto, long enough for `runup` seconds of grind after the latest landing (and at least `minLength`). */
+  launchLedge(kicker: Piece, height: number, runup: number, minLength = 0): Piece {
     const [lo, hi] = this.launchLandings(kicker, height);
     const x = Math.floor(lo) - FRONT_ROOM;
-    return this.ledge(ledgeRect(x, height, clampLength(hi - x + runup * this.fast)));
+    return this.ledge(ledgeRect(x, height, clampLength(Math.max(minLength, hi - x + runup * this.fast))));
+  }
+
+  /** A kicker for a ledge `height` up, after the street landing of rolling off `ledge` and a short run-up. */
+  dropKicker(ledge: Rect, height: number): Piece {
+    return this.kicker(this.dropLanding(ledge) + Math.max(KICKER_RUNUP_MIN, KICKER_RUNUP_SECONDS * this.fast), height);
+  }
+
+  /** The gap jump's ledge `up` px above `from` (`length` long, after a short gap), or null if not fair. */
+  stepUpLedge(from: Rect, up: number, length: number): Rect | null {
+    const next = ledgeRect(endOf(from) + this.rng.int(...GAP_UP_PX), GROUND_Y - from.y + up, length);
+    return this.fairGap(from, next) ? next : null;
+  }
+
+  /**
+   * The gap jump's ledge `height` up (at most `from`'s height) and `length`
+   * long, across a gap wide enough that rolling off `from` falls past it, or
+   * null if not fair.
+   */
+  stepDownLedge(from: Rect, height: number, length: number): Rect | null {
+    let gap = Math.round(this.rng.range(...GAP_DOWN_SECONDS) * this.mid);
+    while (this.rollsOnto(from, ledgeRect(endOf(from) + gap, height, length))) gap += GAP_WIDEN_PX;
+    const next = ledgeRect(endOf(from) + gap, height, length);
+    return this.fairGap(from, next) ? next : null;
+  }
+
+  /** Records the jump from `from` onto `to` at the middle speed's window as a star trail. */
+  gapTrail(from: Rect, to: Rect): void {
+    const w = this.window(from, to, this.mid)!;
+    this.trail(flightPath(onLedge(from), from.x + Math.round(from.w * ARRIVAL_SHARE), stepOf(this.mid), windowMiddle(w), w.hold));
+  }
+
+  /**
+   * Finishes the line: a star trail off the last ledge, stars along every
+   * ledge, the step numbers, and the pattern `name` long enough for every
+   * way off the line plus the runout.
+   */
+  finish(name: string, extra: Piece[] = []): Pattern {
+    const last = this.pieces[this.pieces.length - 1]!;
+    this.trail(flightPath(onLedge(last), endOf(last) - 1, stepOf(this.mid)));
+    for (const piece of this.pieces) if (piece.kind === 'ledge') this.ledgeStars(piece);
+    const steps = this.pieces.length;
+    this.pieces.forEach((p, i) => Object.assign(p.data!, { step: i + 1, steps }));
+    const worst = stuntWorstLanding(this.pieces, this.fast);
+    return { name, pieces: [...extra, ...this.pieces, ...this.stars], length: worst + runoutFor(this.fast) };
+  }
+
+  /** Charges the simulated ticks to `budget`; a generator step that yields once the budget is used up. */
+  *spend(budget?: WorkBudget): Generator<void> {
+    if (!budget) return;
+    budget.left -= this.work;
+    this.work = 0;
+    if (budget.left <= 0) yield;
   }
 
   /** The widest take-off window from `from` (arriving ARRIVAL_SHARE into it) onto `to` at `speed` (or the first `enough` long). */
@@ -234,15 +287,8 @@ class LineBuilder {
   gapLedge(from: Rect, height: number, runup: number): Rect | null {
     const length = clampLength((GAP_LANDING_SECONDS + runup) * this.fast);
     const up = this.rng.int(...GAP_STEP_UP);
-    if (height + up <= LEDGE.maxHeight) {
-      const next = ledgeRect(endOf(from) + this.rng.int(...GAP_UP_PX), height + up, length);
-      return this.fairGap(from, next) ? next : null;
-    }
-    const lower = Math.max(LEDGE.minHeight, height - this.rng.int(...GAP_STEP_DOWN));
-    let gap = Math.round(this.rng.range(...GAP_DOWN_SECONDS) * this.mid);
-    while (this.rollsOnto(from, ledgeRect(endOf(from) + gap, lower, length))) gap += GAP_WIDEN_PX;
-    const next = ledgeRect(endOf(from) + gap, lower, length);
-    return this.fairGap(from, next) ? next : null;
+    if (height + up <= LEDGE.maxHeight) return this.stepUpLedge(from, up, length);
+    return this.stepDownLedge(from, Math.max(LEDGE.minHeight, height - this.rng.int(...GAP_STEP_DOWN)), length);
   }
 
   /** Whether rolling off the end of `from` (no jump) still comes down onto `to` at some speed. */
@@ -311,12 +357,6 @@ export function stuntWorstLanding(pieces: readonly Piece[], fast: number): numbe
  */
 export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: number, budget?: WorkBudget, shape?: StuntShape): Generator<void, Pattern> {
   const b = new LineBuilder(rng, speeds, zone, line);
-  function* spend(): Generator<void> {
-    if (!budget) return;
-    budget.left -= b.work;
-    b.work = 0;
-    if (budget.left <= 0) yield;
-  }
   const designs = DESIGNS[shape ?? STUNT_SHAPES[rng.int(0, STUNT_SHAPES.length - 1)]!];
   const segments = designs[rng.int(0, designs.length - 1)]!;
   const runupFor = (i: number) => (segments[i] === 'gap' ? GAP_RUNUP_SECONDS : FINAL_GRIND_SECONDS);
@@ -330,32 +370,24 @@ export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: n
   const piecesFrom = (i: number) => segments.slice(i).reduce((n, seg) => n + (seg === 'gap' ? 1 : 2), 0);
   let height = launchHeight(0);
   let ledge = b.launchLedge(b.kicker(leadFor(b.fast), height), height, runupFor(0));
-  yield* spend();
+  yield* b.spend(budget);
   for (let i = 0; i < segments.length; i++) {
     const runup = runupFor(i + 1);
     if (segments[i] === 'gap') {
       const next = b.gapLedge(ledge, height, runup);
-      yield* spend();
+      yield* b.spend(budget);
       if (next) {
-        const from = ledge;
+        b.gapTrail(ledge, next);
         ledge = b.ledge(next);
         height = GROUND_Y - next.y;
-        const w = b.window(from, ledge, b.mid)!;
-        b.trail(flightPath(onLedge(from), from.x + Math.round(from.w * ARRIVAL_SHARE), stepOf(b.mid), windowMiddle(w), w.hold));
         continue;
       }
       // No fair gap here: drop to the street onto a kicker instead, unless the line would get too long.
       if (b.pieces.length + 2 + piecesFrom(i + 1) > MAX_PIECES) break;
     }
     height = launchHeight(i + 1);
-    const kickerX = b.dropLanding(ledge) + Math.max(KICKER_RUNUP_MIN, KICKER_RUNUP_SECONDS * b.fast);
-    ledge = b.launchLedge(b.kicker(kickerX, height), height, runup);
-    yield* spend();
+    ledge = b.launchLedge(b.dropKicker(ledge, height), height, runup);
+    yield* b.spend(budget);
   }
-  b.trail(flightPath(onLedge(ledge), endOf(ledge) - 1, stepOf(b.mid)));
-  for (const piece of b.pieces) if (piece.kind === 'ledge') b.ledgeStars(piece);
-  const steps = b.pieces.length;
-  b.pieces.forEach((p, i) => Object.assign(p.data!, { step: i + 1, steps }));
-  const worst = stuntWorstLanding(b.pieces, b.fast);
-  return { name: 'stunt', pieces: [...b.pieces, ...b.stars], length: worst + runoutFor(b.fast) };
+  return b.finish('stunt');
 }
