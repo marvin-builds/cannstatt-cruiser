@@ -13,8 +13,8 @@
  * drunk, or a Maßkrug in hand or flying there; and the street a quick
  * drinker reaches after a Wasen visitor with a Maßkrug, BEER_REACH) only easy
  * patterns come, fair for the drunk input delay, with a wider gap. When the
- * situation turns drunk, patterns planned ahead but not yet on the street are
- * planned again.
+ * situation turns drunk, sober patterns planned ahead but not yet on the
+ * street are planned again (and every plan after them).
  *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
@@ -44,10 +44,15 @@ const SPEED_SPAN = 500;
 /** ...plus the most empty street that can come before it while its plan finishes. */
 const PLAN_DELAY_MAX = 160;
 
-/** Solver units the live game spends on planning per tick (~1 ms on a desktop, see docs/TESTING.md Frame times). */
-export const PLAN_WORK_PER_TICK = 1000;
-/** Patterns planned ahead of the one due next. */
-const PLAN_AHEAD = 2;
+/**
+ * Solver units the live game spends on planning per tick (~0.4 ms on a
+ * desktop, ~1 ms on a phone at 4x CPU throttling, see docs/TESTING.md Frame
+ * times). A pattern takes about 10 000 units (drunk ones about 25 000), the
+ * street needs about 100 per tick on average: plenty of headroom.
+ */
+export const PLAN_WORK_PER_TICK = 400;
+/** Patterns planned ahead of the one due next (enough that a small budget catches up after drunk replans). */
+const PLAN_AHEAD = 3;
 
 /** Street distance before the first joint can come: over 30 s even at the start speed ramp. */
 export const JOINT_FIRST_DISTANCE = 3300;
@@ -232,11 +237,16 @@ export class Spawner {
     return (this.job !== null && !this.job.drunk) || this.queue.some((p) => !p.drunk);
   }
 
-  /** Throws away every plan not on the street yet (the rng stays where it is: still deterministic). */
+  /**
+   * Throws away the plans not on the street yet from the first sober one on;
+   * drunk plans before it stay, so the next pattern is usually ready while
+   * the rest is planned again (the rng stays where it is: still deterministic).
+   */
   private discardPlans(): void {
-    const first = this.queue[0]?.before ?? this.job?.before;
-    if (first) this.cursor = { ...first };
-    this.queue = [];
+    const sober = this.queue.findIndex((p) => !p.drunk);
+    // No sober plan in the queue: then the job is sober (hasSoberPlans).
+    this.cursor = { ...(sober >= 0 ? this.queue[sober]!.before : this.job!.before) };
+    if (sober >= 0) this.queue.length = sober;
     this.job = null;
   }
 

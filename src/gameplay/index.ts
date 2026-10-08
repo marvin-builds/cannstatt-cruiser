@@ -6,7 +6,8 @@
  * jumpsim.ts), difficulty (difficulty.ts) and the chill effect (chill.ts),
  * contacts and crashes (contacts.ts, health.ts), stomps on people with the
  * tossed item (stomp.ts, items.ts, toss.ts, item-art.ts), using the carried
- * item (use.ts: drink, eat, throw the ball, ball.ts), grind tricks
+ * item (use.ts: drink, eat, throw the ball, ball.ts; a Maßkrug kept too
+ * long is drunk by itself, auto-drink.ts), grind tricks
  * (grind-trick.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts) and score/combo (scoring.ts).
  */
@@ -16,6 +17,7 @@ import { testHookEnabled } from '../core/testhook';
 import type { CarriedItem, Entity, GameContext, System } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS } from './art';
+import { AutoDrink } from './auto-drink';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
@@ -64,6 +66,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const sparkles: Sparkle[] = [];
   const toss = new ItemToss();
   const trick = new GrindTrick();
+  const autoDrink = new AutoDrink();
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
   const hands: Point = { x: 0, y: 0 };
   let nextBallId = BALL_IDS;
@@ -147,6 +150,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         sparkles.length = 0;
         toss.reset();
         trick.reset();
+        autoDrink.reset();
       });
       ctx.bus.on('gameOver', () => {
         ctx.state.drunkTimer = 0;
@@ -168,6 +172,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         if (person) toss.launch(e.item, { x: person.x + person.w / 2, y: person.y + 2 }, handsOf(ctx));
       });
       ctx.bus.on('crash', () => toss.cancel());
+      ctx.bus.on('itemCaught', () => autoDrink.reset());
+      ctx.bus.on('itemUsed', () => autoDrink.reset());
     },
 
     update(ctx, dt) {
@@ -180,7 +186,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       scroll(ctx, dx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
       trick.update(ctx);
-      useCarriedItem(ctx, ballThrower);
+      useCarriedItem(ctx, ballThrower, autoDrink.due(state));
       updateBalls(ctx, dt, freeStreet);
       // Before the contacts, so an item tossed by this tick's stomp starts flying next tick.
       catchItem(ctx, toss.update(handsOf(ctx), dt));

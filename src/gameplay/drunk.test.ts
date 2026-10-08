@@ -80,7 +80,7 @@ describe('resumable planning (planSteps)', () => {
 });
 
 describe('the gameplay system plans for a drunk player', () => {
-  it('while a Maßkrug is carried, everything that comes onto the street is easy', () => {
+  it('while a Maßkrug is carried or drunk, everything that comes onto the street is easy', () => {
     const game = new Game({ systems: [createGameplaySystem()] });
     game.seed(3);
     game.commands.startRun();
@@ -90,6 +90,8 @@ describe('the gameplay system plans for a drunk player', () => {
     game.state.player.invulnerableTimer = Infinity;
     const kinds = new Set<string>();
     for (let i = 0; i < 60 * 25; i++) {
+      // It is drunk by itself after a while (auto-drink.ts): hand over the next one.
+      game.state.carriedItem ??= 'beer';
       game.tick();
       for (const e of game.state.entities) kinds.add(e.kind);
     }

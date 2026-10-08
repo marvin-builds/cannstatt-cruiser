@@ -5,7 +5,7 @@
  * core/drunk.ts), a Brezel or Lebkuchenherz is eaten (+1 health, or bonus
  * points at full health), the football is thrown (ball.ts). Kid mode never
  * yields a Maßkrug (items.ts); should one be carried anyway, it is eaten,
- * never drunk.
+ * never drunk. A Maßkrug kept too long is drunk by itself (auto-drink.ts).
  */
 import type { CarriedItem, GameContext, ItemAction } from '../types';
 import { addPoints } from './scoring';
@@ -25,11 +25,14 @@ export function countDownDrunk(ctx: GameContext, dt: number): void {
   ctx.state.drunkTimer = Math.max(0, ctx.state.drunkTimer - dt);
 }
 
-/** On a use press with an item in hand: uses it. `throwBall` launches the football and emits ballThrown. */
-export function useCarriedItem(ctx: GameContext, throwBall: () => void): void {
+/**
+ * On a use press (or `auto`: the auto drink, auto-drink.ts) with an item in
+ * hand: uses it. `throwBall` launches the football and emits ballThrown.
+ */
+export function useCarriedItem(ctx: GameContext, throwBall: () => void, auto = false): void {
   const { state } = ctx;
   const item = state.carriedItem;
-  if (!ctx.input.use.pressed || !item) return;
+  if (!(ctx.input.use.pressed || auto) || !item) return;
   state.carriedItem = null;
   const action = actionOf(item, state.kidMode);
   ctx.bus.emit('itemUsed', { item, action });

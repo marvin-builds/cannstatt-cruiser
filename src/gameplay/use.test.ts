@@ -92,6 +92,16 @@ describe('using the carried item (use button)', () => {
     expect(scores.map((s) => s.delta)).toEqual([EAT_BONUS_POINTS]);
   });
 
+  it('the eat bonus is scored in the same tick as itemUsed (ui: "Lecker! +N")', () => {
+    const game = carrying('pretzel');
+    const seen: string[] = [];
+    game.bus.on('itemUsed', (e) => seen.push(`used:${e.action}@${game.state.frame}`));
+    game.bus.on('scoreChanged', (e) => seen.push(`score:${e.delta}@${game.state.frame}`));
+    use(game);
+    const frame = game.state.frame;
+    expect(seen).toEqual([`used:eat@${frame}`, `score:${EAT_BONUS_POINTS}@${frame}`]);
+  });
+
   it('football: throws it as a ball entity (itemUsed, then ballThrown)', () => {
     const game = carrying('football');
     const seen: string[] = [];

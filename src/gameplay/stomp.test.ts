@@ -55,6 +55,16 @@ describe('stomp: landing on a person while falling', () => {
     expect(cleared).toHaveLength(1);
   });
 
+  it('obstacleCleared and stomp come in the same tick for the same person (ui: "Stomp! +N")', () => {
+    const { game, person } = dropOnto('wasenGuest');
+    const seen: string[] = [];
+    game.bus.on('obstacleCleared', (e) => seen.push(`cleared:${e.entityId}@${game.state.frame}`));
+    game.bus.on('stomp', (e) => seen.push(`stomp:${e.entityId}@${game.state.frame}`));
+    for (let i = 0; i < 30 && seen.length === 0; i++) game.tick();
+    const frame = game.state.frame;
+    expect(seen).toEqual([`cleared:${person.id}@${frame}`, `stomp:${person.id}@${frame}`]);
+  });
+
   it('the skater bounces up on the next tick (player contract)', () => {
     const { game } = dropOnto('vfbFan');
     const stomps = record(game, 'stomp');

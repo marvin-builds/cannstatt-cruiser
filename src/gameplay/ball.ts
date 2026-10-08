@@ -2,11 +2,12 @@
  * The thrown football (entity kind 'ball'): it leaves the skater's hands
  * flying forward in a flat arc. If it reaches a person (VfB fan, Wasen
  * visitor), the person tumbles like after a stomp (knockOver), gameplay
- * scores BALL_HIT_POINTS and emits ballHit, and the ball drops away. If it
- * lands without a hit, the seeded gameplay rng decides (RICOCHET_CHANCE)
- * whether it ricochets back: a low, bouncing ball rolling at the skater
- * that knocks him off the board (a normal crash of kind 'ball') unless he
- * jumps over it or is invulnerable. It only ricochets onto free street (no
+ * scores BALL_HIT_POINTS, emits obstacleCleared and ballHit for the person
+ * (same tick), and the ball drops away. If it lands without a hit, the
+ * seeded gameplay rng decides (RICOCHET_CHANCE) whether it ricochets back:
+ * a low, bouncing ball rolling at the skater that knocks him off the board
+ * (a normal crash of kind 'ball') unless he jumps over it or is
+ * invulnerable. It only ricochets onto free street (no
  * obstacle within RICOCHET_ROOM_SECONDS of riding around where it meets the
  * skater, see ricochetRoom) and never while he is drunk; otherwise it rolls
  * away harmlessly.
@@ -123,7 +124,9 @@ function hitPerson(ctx: GameContext, ball: Entity): boolean {
     const e = entities[i]!;
     if (e.done || !isPerson(e.kind) || !overlaps(ball, hitBoxInto(e as Entity & { kind: ObstacleKind }, personBox))) continue;
     knockOver(e, state.time);
-    addPoints(state, ctx.bus, BALL_HIT_POINTS);
+    const points = addPoints(state, ctx.bus, BALL_HIT_POINTS);
+    // Scored like a clear, in the same tick, so the ui merges both into one popup.
+    ctx.bus.emit('obstacleCleared', { entityId: e.id, kind: e.kind, points });
     ctx.bus.emit('ballHit', { entityId: e.id, kind: e.kind });
     rollAway(ball, 0, Math.max(0, ball.data!.vy as number));
     return true;

@@ -97,6 +97,18 @@ describe('thrown football', () => {
     expect(hits).toHaveLength(1);
   });
 
+  it('scores the hit like a clear: obstacleCleared for the person with the points, in the same tick as ballHit', () => {
+    const game = withBall();
+    const person = obstacle(game, 'vfbFan', PLAYER_X + 90, still);
+    const seen: string[] = [];
+    game.bus.on('obstacleCleared', (e) => seen.push(`cleared:${e.entityId}:${e.kind}:${e.points}@${game.state.frame}`));
+    game.bus.on('ballHit', (e) => seen.push(`hit:${e.entityId}@${game.state.frame}`));
+    throwIt(game);
+    for (let i = 0; i < 60 && seen.length === 0; i++) game.tick();
+    const frame = game.state.frame;
+    expect(seen).toEqual([`cleared:${person.id}:vfbFan:${BALL_HIT_POINTS}@${frame}`, `hit:${person.id}@${frame}`]);
+  });
+
   it('a hit person no longer crashes the skater', () => {
     const game = withBall();
     obstacle(game, 'vfbFan', PLAYER_X + 90, still);

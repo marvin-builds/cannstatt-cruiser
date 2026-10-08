@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TICK_DT, VIEW_MAX_W, VIEW_W } from '../core/config';
+import { PLAYER_X, TICK_DT, VIEW_MAX_W, VIEW_W } from '../core/config';
 import { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { ZoneRoute } from '../world/zones';
@@ -7,7 +7,10 @@ import { isOverhead, isPerson, isRail } from './catalogue';
 import { speedAt } from './difficulty';
 import { itemOf } from './items';
 import { anchorOf } from './motion';
+import { BEER_AUTO_DRINK } from './auto-drink';
 import { BEER_REACH, PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
+import { TOSS_TIME } from './toss';
+import { DRUNK_DURATION } from './use';
 
 interface Spawned {
   kind: Entity['kind'];
@@ -24,10 +27,16 @@ interface RideOptions {
   workPerTick?: number;
   /** The situation at `time` seconds (default: sober, adult mode). */
   situation?: (time: number) => SpawnSituation;
-  /** Background zone (themes the people). */
+  /** Background zone (themes the people) at the start; the route goes on from there. */
   zone?: number;
+  /** Background zone all the way instead (no route). */
+  fixedZone?: number;
   /** Called with the spawner's work after every tick. */
   work?: (units: number) => void;
+  /** Street distance the ride starts at (default 0). */
+  from?: number;
+  /** Every Wasen visitor with a Maßkrug is stomped as it reaches the player, and the player may be drunk for this many seconds after. */
+  beerSeconds?: number;
 }
 
 /** Scrolls a spawner like the live system does, recording every new entity. */
@@ -35,19 +44,29 @@ function ride(seed: number, viewWidth: number, seconds: number, options: RideOpt
   // Without a zone: Stuttgart-Mitte all the way (no people), like a plain Spawner.
   const route = new ZoneRoute();
   route.snap(options.zone ?? 0, 0);
-  const zoneAt = options.zone === undefined ? undefined : (street: number) => route.zoneAt(street);
+  const fixed = options.fixedZone;
+  const zoneAt = fixed !== undefined ? () => fixed : options.zone === undefined ? undefined : (street: number) => route.zoneAt(street);
   const spawner = new Spawner(zoneAt, { workPerTick: options.workPerTick });
   spawner.reset(new Rng(seed));
   const entities: Entity[] = [];
   const seen: Spawned[] = [];
-  let distance = 0;
+  let distance = options.from ?? 0;
+  let drunkUntil = -Infinity;
   for (let t = 0; t < seconds / TICK_DT; t++) {
     const dx = speedAt(distance) * TICK_DT;
     for (const e of entities) e.x -= dx;
     spawner.scroll(dx);
     const before = entities.length;
     distance += dx;
-    spawner.spawn(entities, distance, viewWidth, null, options.situation?.(t * TICK_DT));
+    if (options.beerSeconds !== undefined) {
+      for (const e of entities) {
+        if (e.done || e.kind !== 'wasenGuest' || itemOf(e, false) !== 'beer' || e.x > PLAYER_X) continue;
+        e.done = true;
+        drunkUntil = t * TICK_DT + options.beerSeconds;
+      }
+    }
+    const beer = t * TICK_DT < drunkUntil ? { drunk: true, kidMode: false } : undefined;
+    spawner.spawn(entities, distance, viewWidth, null, beer ?? options.situation?.(t * TICK_DT));
     options.work?.(spawner.lastWork);
     for (const e of entities.slice(before)) {
       seen.push({ kind: e.kind, data: e.data, street: anchorOf(e) + distance, y: e.y, spawnX: e.x, time: t * TICK_DT });
@@ -108,6 +127,22 @@ describe('spawner planning ahead with a work budget', () => {
       expect(budgeted.length).toBeGreaterThan(plain.length * 0.85);
     }
   }, 60_000);
+
+  it('stays within its budget late in a run where every Maßkrug is stomped and drunk (plans thrown away for drunk ones)', () => {
+    const beerSeconds = TOSS_TIME + BEER_AUTO_DRINK + DRUNK_DURATION;
+    let most = 0;
+    let stomps = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const seen = ride(seed, VIEW_MAX_W, 100, { workPerTick: PLAN_WORK_PER_TICK, fixedZone: 2, from: 14000, beerSeconds, work: (u) => (most = Math.max(most, u)) });
+      stomps += seen.filter((e) => e.kind === 'wasenGuest' && itemOf(e, false) === 'beer').length;
+    }
+    expect(stomps).toBeGreaterThan(3);
+    expect(most).toBeLessThanOrEqual(PLAN_WORK_PER_TICK);
+  }, 60_000);
+
+  it('a tick plans little enough for a slow phone (~1 ms at 4x CPU throttling)', () => {
+    expect(PLAN_WORK_PER_TICK).toBeLessThanOrEqual(400);
+  });
 
   it('with a budget large enough to never wait, lays exactly the unbudgeted street', () => {
     const plain = ride(5, VIEW_MAX_W, 90, { zone: 2 });
