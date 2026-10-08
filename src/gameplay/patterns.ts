@@ -10,7 +10,9 @@
  * Gaps and the runout after the last piece leave room for a human landing a
  * little early or late. People come alone. While the player may be drunk
  * (`options.drunk`) only DRUNK_TEMPLATES come, checked with the drunk margin
- * (fairness.ts drunkFairness).
+ * (fairness.ts drunkFairness). While an effect may be on (`options.effect`)
+ * no empty star pattern comes, and instead of empty street the fallback is a
+ * lone low obstacle (EFFECT_FALLBACK).
  *
  * planSteps is the same planning as a resumable generator: with a work
  * budget (`options.budget`) it yields whenever the solvers run out of it and
@@ -27,7 +29,7 @@ import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFa
 import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
-import { constantPace, type Course, HOLDS, OUT_OF_WORK, type WorkBudget } from './solver';
+import { constantPace, type Course, HOLDS, OUT_OF_WORK, type Solver, type WorkBudget } from './solver';
 
 export type { Piece };
 
@@ -42,6 +44,8 @@ export interface PlanOptions {
   window?: number;
   /** The player may ride it drunk: easy templates only, fair with the drunk margin. */
   drunk?: boolean;
+  /** An effect (drunk, chill) may be on: no empty star pattern, there is always something to jump. */
+  effect?: boolean;
   /** Work budget of the solvers (planSteps yields when it runs out). Default: unlimited. */
   budget?: WorkBudget;
 }
@@ -85,6 +89,15 @@ const JUMP_THEN_DUCK: [number, number] = [52, 130];
 /** Street between an obstacle and a rail (obstacleRail), and between a rail and an obstacle (railObstacle). */
 const OBSTACLE_TO_RAIL: [number, number] = [26, 78];
 const RAIL_TO_OBSTACLE: [number, number] = [26, 91];
+
+/**
+ * While an effect may be on, a pattern that finds nothing fair in ATTEMPTS
+ * falls back to one of these lone low obstacles (the bench is fair even drunk
+ * and chilled at once)...
+ */
+const EFFECT_FALLBACK: ObstacleKind[] = ['curbGap', 'bench'];
+/** ...pushed out by these seconds of riding until it is fair after the previous pattern (drunk landings scatter far). */
+const EFFECT_PUSH_SECONDS = [0, 0.5, 1];
 
 /** Extra run-up while the player may be drunk, in seconds of riding: the late, full drunk jumps take off far before the piece. */
 const DRUNK_LEAD_SECONDS = 0.4;
@@ -242,8 +255,10 @@ export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
 
 const isDrunkTemplate = (t: Template) => (DRUNK_TEMPLATES as readonly string[]).includes(t.name);
 
-function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean): Template {
-  const open = TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)));
+function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean, effect: boolean): Template {
+  const open = TEMPLATES.filter(
+    (t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)) && (!effect || t.name !== 'stars'),
+  );
   let roll = rng.next() * open.reduce((sum, t) => sum + t.weight, 0);
   for (const t of open) {
     roll -= t.weight;
@@ -298,17 +313,24 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   const human = options.window ?? LATE_TAKEOFF_WINDOW;
   const margin = drunk ? drunkFairness(human) : soberFairness(human);
   const budget = options.budget;
+  const effect = options.effect ?? false;
+  /** The pattern's solvers when it is fair, also across the boundary (unless `alone`); null otherwise. */
+  function* fairSolvers(pattern: Pattern, alone = false): Generator<void, Solver[] | null> {
+    const solvers = solversFor(courseOf(pattern), paces, budget);
+    if (!(yield* resumable(() => humanFair(solvers, margin)))) return null;
+    if (before.length > 0 && !alone) {
+      const across = solversFor(courseAfter(pattern, before, leadFor(fast, drunk)), paces, budget);
+      if (!(yield* resumable(() => humanFair(across, margin)))) return null;
+    }
+    return solvers;
+  }
   for (let i = 0; i < ATTEMPTS; i++) {
-    const template = pickTemplate(rng, tier, zone, drunk);
+    const template = pickTemplate(rng, tier, zone, drunk, effect);
     const builder = new Builder(rng, fast, zone, drunk);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
-    const solvers = solversFor(courseOf(pattern), paces, budget);
-    if (!(yield* resumable(() => humanFair(solvers, margin)))) continue;
-    if (before.length > 0) {
-      const across = solversFor(courseAfter(pattern, before, leadFor(fast, drunk)), paces, budget);
-      if (!(yield* resumable(() => humanFair(across, margin)))) continue;
-    }
+    const solvers = yield* fairSolvers(pattern);
+    if (!solvers) continue;
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
     // Stars mark a jump a human can repeat (one of the margin's holds: the full jump while drunk).
     else if (rng.chance(STAR_CHANCE)) {
@@ -316,6 +338,30 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
       addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), margin.holds)))?.path ?? []);
     }
     return pattern;
+  }
+  // While an effect may be on: a lone low obstacle, further out if the previous pattern needs a longer run-up.
+  if (effect) {
+    const lone = (kind: ObstacleKind, push: number) => {
+      const builder = new Builder(rng, fast, zone, drunk);
+      builder.obstacle(kind, builder.lead + Math.round(push * fast));
+      return finish('single', builder.pieces, fast);
+    };
+    for (const push of EFFECT_PUSH_SECONDS) {
+      for (const kind of EFFECT_FALLBACK) {
+        const pattern = lone(kind, push);
+        if (yield* fairSolvers(pattern)) return pattern;
+      }
+    }
+    // The previous pieces may be unfair themselves with this margin (planned sober, or fair only at the speeds they were checked at): then the boundary cannot be judged, and the obstacle only has to be fair itself (the previous runout and the gap leave the landing room).
+    const previous = before.length > 0 ? solversFor(courseAfter(finish('previous', [], fast), before, leadFor(fast, drunk)), paces, budget) : null;
+    if (previous && !(yield* resumable(() => humanFair(previous, margin)))) {
+      for (const push of EFFECT_PUSH_SECONDS) {
+        for (const kind of EFFECT_FALLBACK) {
+          const pattern = lone(kind, push);
+          if (yield* fairSolvers(pattern, true)) return pattern;
+        }
+      }
+    }
   }
   // Nothing fair found: a stretch of empty street (always fair, also after any previous pattern).
   return finish('fallback', [], fast);

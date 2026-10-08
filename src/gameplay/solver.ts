@@ -361,11 +361,12 @@ export class Solver {
   }
 
   private findTakeoffs(from: Node): Takeoffs {
-    const behind = hitboxOf(from.body, this.x(from.tick)).x;
+    const feet = this.x(from.tick);
+    const behind = hitboxOf(from.body, feet).x;
     const ridden = (b: Body, r: Rect) => b.onRail && r.y === b.railTop && r.x + r.w === b.railEnd;
-    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)].filter(
-      (r) => r.x + r.w > behind && !ridden(from.body, r),
-    );
+    // A support the board is past can no longer be landed on (pastLedge), even with the body's rear still over it (landed behind a bench).
+    const supports = this.rails.filter((r) => !pastLedge(feet, r) && !ridden(from.body, r));
+    const pieces = [...this.course.obstacles, ...supports, ...this.movers.map((m) => m.box)].filter((r) => r.x + r.w > behind);
     const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
     const firstStart = Math.min(...pieces.map((r) => r.x));
     const sameRail = (f: Flight) => from.body.onRail && f.body.onRail && f.body.railTop === from.body.railTop && f.body.railEnd === from.body.railEnd;

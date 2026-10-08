@@ -14,7 +14,13 @@
  * drinker reaches after a Wasen visitor with a Maßkrug, BEER_REACH) only easy
  * patterns come, fair for the drunk input, with a longer run-up. When the
  * situation turns drunk, sober patterns planned ahead but not yet on the
- * street are planned again (and every plan after them).
+ * street are planned again (and every plan after them). No joint comes while
+ * the player may be drunk: it waits until sober.
+ *
+ * Effects (ROADMAP 26): while the player may be drunk or is chilled, there is
+ * always something to jump: no empty star patterns, and the gap after a
+ * pattern only fills up its free street to EFFECT_FREE_SECONDS. While
+ * chilled only easy patterns come (up to CHILLED_TIER).
  *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
@@ -27,9 +33,10 @@ import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
 import type { Rng } from '../core/rng';
 import type { Entity } from '../types';
-import { CHILL_SPEED_SCALE } from './chill';
+import { CHILL_SPEED_SCALE, chillStreet } from './chill';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { takeoffWindowAt } from './fairness';
+import { isObstacle, isRail } from './catalogue';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
@@ -69,6 +76,15 @@ export const CHILL_REACH = Math.ceil(CHILL_DURATION * TOP_SPEED);
  */
 export const BEER_REACH = VIEW_MAX_W + SPAWN_MARGIN + 100;
 
+/**
+ * Free street after a pattern while an effect may be on, in seconds of riding
+ * at its fastest speed: the least every pattern leaves anyway (runout plus
+ * gap, patterns.test.ts), so a person still has PERSON_ROOM_SECONDS.
+ */
+const EFFECT_FREE_SECONDS = 1.1;
+/** Highest pattern tier while chilled: lone pieces and pairs, no combos. */
+const CHILLED_TIER = 1;
+
 /** What the player may do while riding what is planned now. */
 export interface SpawnSituation {
   /** The player is drunk or may soon be (a Maßkrug in hand or on its way). */
@@ -91,8 +107,10 @@ interface Cursor {
   previous: Piece[];
   /** Street distance from which the next joint pattern is laid. */
   nextJoint: number;
-  /** Patterns starting before this street distance may be ridden while chilled. */
+  /** Patterns starting before this street distance may be ridden while chilled (checked with the chill jump). */
   chillUntil: number;
+  /** Patterns starting before this street distance are ridden while chilled (the effect's street at most). */
+  chilledUntil: number;
   /** Patterns starting before this street distance may be ridden drunk. */
   drunkUntil: number;
 }
@@ -117,7 +135,7 @@ export class Spawner {
   /** Screen x of the next pattern not on the street yet. */
   private nextStart = 0;
   private nextId = 1;
-  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, drunkUntil: -Infinity };
+  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity };
   /** Planned patterns, in street order, starting at nextStart. */
   private queue: Planned[] = [];
   /** The plan in progress (the pattern after the queue). */
@@ -145,7 +163,7 @@ export class Spawner {
     this.rng = rng;
     this.nextStart = PLAYER_X + FIRST_START;
     this.nextId = 1;
-    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, drunkUntil: -Infinity };
+    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity };
     this.queue = [];
     this.job = null;
     this.delayed = 0;
@@ -255,21 +273,28 @@ export class Spawner {
     const pinned = speedOverride !== null;
     const speeds = pinned ? [speedOverride] : [speedAt(street), speedAt(street + SPEED_SPAN + PLAN_DELAY_MAX)];
     let pattern: Pattern;
-    if (street >= this.cursor.nextJoint) {
-      pattern = jointPattern(Math.max(...speeds));
+    const fast = Math.max(...speeds);
+    if (street >= this.cursor.nextJoint && !drunk) {
+      pattern = jointPattern(fast);
       this.cursor.nextJoint = street + JOINT_SPACING + rng.int(0, JOINT_JITTER);
       this.cursor.chillUntil = street + pattern.length + CHILL_REACH;
+      this.cursor.chilledUntil = street + pattern.length + chillStreet(fast);
     } else {
-      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, budget: this.budget };
+      const chilled = street < this.cursor.chilledUntil;
+      const effect = drunk || chilled;
+      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, effect, budget: this.budget };
       if (street < this.cursor.chillUntil) {
         // A pinned speed stays pinned while chilled; otherwise from the slowest chill speed through the ramp back up.
         const low = Math.min(...speeds) * CHILL_SPEED_SCALE;
         const high = Math.max(...speeds);
         options.chillSpeeds = pinned ? speeds : [low, (low + high) / 2, high];
       }
-      pattern = yield* planSteps(rng, tierAt(street), speeds, options);
+      const tier = chilled ? Math.min(tierAt(street), CHILLED_TIER) : tierAt(street);
+      pattern = yield* planSteps(rng, tier, speeds, options);
     }
-    const advance = pattern.length + gapAt(street);
+    // After a joint too: the next pattern is ridden chilled.
+    const gap = drunk || street < this.cursor.chilledUntil ? effectGap(pattern, fast, gapAt(street)) : gapAt(street);
+    const advance = pattern.length + gap;
     this.cursor.previous = pattern.pieces.map((p) => shifted(p, -advance));
     if (!kidMode) {
       for (const p of pattern.pieces) {
@@ -278,6 +303,13 @@ export class Spawner {
     }
     return { pattern, advance, drunk, before };
   }
+}
+
+/** The gap after a pattern while an effect is on: just enough for EFFECT_FREE_SECONDS of free street after its last piece, never more than `gap`. */
+function effectGap(pattern: Pattern, fast: number, gap: number): number {
+  const ends = pattern.pieces.filter((p) => isObstacle(p.kind) || isRail(p.kind)).map((p) => p.x + p.w);
+  const free = pattern.length - Math.max(0, ...ends);
+  return Math.min(gap, Math.max(0, Math.ceil(EFFECT_FREE_SECONDS * fast) - free));
 }
 
 /** The piece moved by dx along the street (its motion anchor too). */

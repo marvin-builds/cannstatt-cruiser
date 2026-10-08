@@ -171,6 +171,13 @@ describe('spawner while the player may be drunk', () => {
     }, 60_000);
   }
 
+  it('lays no joint while the player may be drunk (the chill effect waits until sober)', () => {
+    const sober = ride(1, VIEW_MAX_W, 120);
+    expect(sober.some((e) => e.kind === 'joint')).toBe(true);
+    const drunk = ride(1, VIEW_MAX_W, 120, { situation: () => ({ drunk: true, kidMode: false }) });
+    expect(drunk.filter((e) => e.kind === 'joint')).toEqual([]);
+  }, 60_000);
+
   it('after a Wasen visitor with a Maßkrug, the street a quick drinker reaches drunk is easy (adult mode)', () => {
     let guests = 0;
     for (const seed of [1, 2, 3, 4, 5, 6]) {
