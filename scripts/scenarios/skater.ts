@@ -6,9 +6,13 @@
  * same for the kid mode bubble gum, and 1x / 2x crops of the skater to judge
  * the hair, the red eyes and the bubble at game scale. Finally the carried
  * items: lineups with each item (incl. catch reaches), the
- * stomp bounce, the catch reach and 1x / 2x crops with every item. Last the
+ * stomp bounce, the catch reach and 1x / 2x crops with every item. Then the
  * bin crash: head first into the bin, legs kicking, popping out, the bin
- * tumbling away, and a normal crash after it.
+ * tumbling away, and a normal crash after it. Last the item use lineup
+ * (drink, eat, throw in ride / air / grind / trick poses, drunk rows), the
+ * grind trick (turn to the camera, front view, drinking in it, turn back),
+ * the empty mug tossed away, eating on the ground, throwing in the air and
+ * the drunk wobble.
  *   npm run playtest -- --scenario scripts/scenarios/skater.ts --viewports desktop,phone-landscape,phone-portrait --name skater
  */
 import { writeFile } from 'node:fs/promises';
@@ -79,6 +83,8 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   await writeDataUrl(t, '00-pose-lineup-kid-gingerbread.png', await page.evaluate(() => window.__player!.lineup(6, 'kid', 'gingerbread')));
   await writeDataUrl(t, '00-pose-lineup-pretzel-1x.png', await page.evaluate(() => window.__player!.lineup(1, 'normal', 'pretzel')));
   await writeDataUrl(t, '00-pose-lineup-football-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'normal', 'football')));
+  await writeDataUrl(t, '00-use-lineup.png', await page.evaluate(() => window.__player!.useLineup(4)));
+  await writeDataUrl(t, '00-use-lineup-1x.png', await page.evaluate(() => window.__player!.useLineup(1)));
 
   await game.pause();
   const { viewWidth, touch, portrait } = await game.display();
@@ -98,9 +104,11 @@ export default async function skater(t: PlaytestContext): Promise<void> {
     mode: moving.mode,
     distance: moving.distance,
   });
-  // Freeze an empty world: no obstacle can crash the skater during the pose shots.
+  // Nearly freeze an empty world: no obstacle reaches the skater during the pose shots.
+  // 1 px/s, not 0: works around a known gameplay bug (docs/TESTING.md, skater.ts):
+  // at speed 0 with a Maßkrug in hand, drunk planning overflows the call stack.
   await page.evaluate(() => window.__gameplay!.clear());
-  await game.setSpeed(0);
+  await game.setSpeed(1);
   await stepUntil(t, (s) => s.player.state === 'ride');
   await game.step(10);
   await t.canvasShot('ride');
@@ -160,6 +168,59 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   await kidShots(t);
   await carryShots(t);
   await binCrashShots(t);
+  await trickAndUseShots(t);
+}
+
+/** Grind trick (down held on a rail) with a drink in it, the mug toss, eating, throwing in the air and the drunk wobble. */
+async function trickAndUseShots(t: PlaytestContext): Promise<void> {
+  const { game, page } = t;
+  await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
+  const railId = await page.evaluate(() => window.__player!.grind(26));
+  await game.step(10);
+  await skaterCrop(t, 'crop-trick-grind');
+  await page.evaluate(() => window.__game!.input.duck.press());
+  let s = await game.step(2);
+  await skaterCrop(t, 'crop-trick-turn');
+  t.check('down on a rail starts the grind trick', s.player.grindTrick && s.player.grinding && s.player.state === 'grind', s.player);
+  await game.step(12);
+  await t.canvasShot('grind trick front view');
+  await skaterCrop(t, 'crop-trick-front');
+  await page.evaluate(() => window.__player!.useItem('beer', 'drink'));
+  await game.step(20);
+  await skaterCrop(t, 'crop-trick-drink');
+  await page.evaluate(() => window.__game!.input.duck.release());
+  s = await game.step(2);
+  t.check('releasing down ends the trick but not the grind', !s.player.grindTrick && s.player.grinding, s.player);
+  await skaterCrop(t, 'crop-trick-turn-back');
+  await game.step(50);
+  await t.canvasShot('mug toss');
+  await skaterCrop(t, 'crop-mug-toss');
+  await page.evaluate((id) => window.__player!.removeRail(id), railId);
+  await stepUntil(t, (st) => st.player.grounded);
+  await game.step(20);
+  await skaterCrop(t, 'crop-mug-landed');
+
+  await page.evaluate(() => window.__player!.useItem('pretzel', 'eat'));
+  await game.step(14);
+  await skaterCrop(t, 'crop-eat');
+  await stepUntil(t, (st) => st.player.state === 'ride');
+  await game.press();
+  await game.step(4);
+  await page.evaluate(() => window.__player!.useItem('football', 'throw'));
+  await game.step(8);
+  await t.canvasShot('throw in the air');
+  await skaterCrop(t, 'crop-throw-air');
+  await game.release();
+  await stepUntil(t, (st) => st.player.grounded);
+  await game.step(20);
+
+  await page.evaluate(() => window.__player!.drunk(10));
+  for (let i = 0; i < 4; i++) {
+    await game.step(17);
+    await skaterCrop(t, `crop-drunk-${i}`);
+  }
+  await t.canvasShot('drunk wobble');
+  await page.evaluate(() => window.__player!.drunk(0));
 }
 
 /** Bin crash (`crash('bin')`) step by step with crops, then a normal crash that still throws the skater off. */

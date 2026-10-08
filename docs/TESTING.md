@@ -12,6 +12,14 @@ npx vitest run src/core/rng.test.ts
 - Write the failing test first for logic: physics, rules, state, parsing.
 - Keep logic in DOM-free modules so it can be tested. Canvas drawing needs no
   unit tests; check it with the playtest harness instead.
+- Draw and update code runs every frame / tick: use index loops
+  (`for (let i = 0; i < a.length; i++)`), not `for-of` (it allocates an
+  iterator per loop), and no closures, spreads or object literals in hot
+  paths. Check allocation with `npm run frametimes` (heap rise per frame).
+- The spawner plans on a work budget only when built with
+  `new Spawner(zoneAt, { workPerTick: PLAN_WORK_PER_TICK })` (as the game
+  does); without it every pattern is planned when due, which keeps unit tests
+  simple. See ARCHITECTURE, Planning budget.
 - To test a system end to end without a browser, build a `Game` from it and tick:
 
 ```ts
@@ -138,11 +146,16 @@ g.endRun();                                     // game-over screen now
 | `window.__player.crash(kind = 'barrier')` | emits a crash into `kind` like gameplay would; `'bin'` plays the bin crash (head first into the bin) |
 | `window.__player.grind(height?, length?)` / `removeRail(id)` | a static rail under the player with a grind on it / removes it (the player falls off) |
 | `window.__player.chill(s)`, `kidMode(on)`, `carry(item)`, `stomp(item?)`, `catchItem(item)`, `lineup(scale?, look?, item?)` | player-side effects and the pose lineup PNG, see `src/player/debug.ts` |
+| `window.__player.useItem(item, action)` / `drunk(s)` | emits `itemUsed` (the use animation plays, `state.carriedItem` cleared) / sets `state.drunkTimer` (drunk wobble) |
+| `window.__player.useLineup(scale = 4)` | PNG data URL: item use (drink, eat, throw) in the ride, air, grind and grind-trick poses, then rows of the drunk wobble |
 | `window.__ui.hud({combo, multiplier, stars})` | overwrites HUD values like gameplay would |
 | `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
+| `window.__ui.itemPopups(...kinds)` | feeds sample item events to the popup feed (shown on the next tick): `'drink'`, `'eat'` (+1 health), `'throw'`, `'hit'` (ball hit with points), `'back'` (ricochet), `'stomp'` (with points), `'trick'` |
+| `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu' \| 'check', question, holdProgress}` (`question.answers[question.correct]` is the right answer) |
-| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo}` |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo}`; the touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (Mitte rumble starts / stops); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
 `window.__gameplay`; likewise `src/world/debug` for `window.__world` and
@@ -238,14 +251,34 @@ npm run playtest -- --headed
   the Neckar, the Mitte traffic (dense, never above `TRAFFIC_TOP`, with
   obstacles in front; wider views on desktop), `setZone` snaps, the Neckar
   bridge and the Grabkapelle.
-- `scripts/scenarios/skater.ts` ends with the bin crash (`__player.crash('bin')`):
+- `scripts/scenarios/skater.ts` has the bin crash (`__player.crash('bin')`):
   canvas shots and skater crops of the dive, kicking legs, pop out and the
-  tumbling bin, then a normal crash that still throws the skater off.
+  tumbling bin, then a normal crash that still throws the skater off. It
+  ends with the item use lineup (`00-use-lineup*.png`), the grind trick
+  (turn, front view, drinking in it, turn back while still grinding), the
+  empty mug toss, eating, throwing in the air and the drunk wobble (crops).
+  Its pose shots pin the speed to 1 px/s, not 0. This works around a known
+  gameplay bug (reported for the ROADMAP backlog): at speed 0 with a Maßkrug
+  in hand, drunk planning overflows the call stack in the solver
+  (`RangeError` from `solve` / `solveFresh`). Go back to 0 once it is fixed.
+- `scripts/scenarios/items.ts` (gameplay item use, all three viewports):
+  throw at a Wasen visitor (hit, tumble), a miss that ricochets back (first
+  seed whose rng says so) and knocks the skater off, eating a Brezel
+  (+1 health), and drinking while the `SolverBot` rides at a pinned 150 px/s:
+  drunk for ~`DRUNK_DURATION`, and every entity that comes onto the street
+  from the catch on is from an easy pattern (no people, overhead obstacles
+  or rails).
+- `scripts/scenarios/items-ui.ts` (ui, all three viewports): title and
+  pause key hints, the item control while carrying each item (desktop "E"
+  chip; touch: the first-catch hint once the zone banner is gone, and a real
+  tap on the item button uses the item and does not jump), the merged item popups via `__ui.itemPopups`, the drunk look from
+  easing in to easing out (`setDrunk`), and kid mode with a drunk timer
+  (no drunk look).
 - `scripts/scenarios/final-phone-touch.ts`: a held touch only jumps after the
   swipe window, so its bench-grind bot plans `SWIPE_WINDOW` ticks ahead
   (`ahead(state)`), like a player who learnt the lag.
-- `default.ts`, `gameplay.ts`, `world.ts`, `ducking.ts`, `chill.ts` and
-  `final-phone-touch.ts` call `dismissRotateHint(t)`
+- `default.ts`, `gameplay.ts`, `world.ts`, `ducking.ts`, `chill.ts`,
+  `items.ts`, `items-ui.ts` and `final-phone-touch.ts` call `dismissRotateHint(t)`
   (`playtest-lib.ts`) first (and after a reload), so they also run on
   phone-portrait, where the rotate hint takes the first tap and would
   otherwise keep the run paused.
@@ -340,3 +373,27 @@ Remaining hot spots are in other slices (heap rise is total, measured per system
 by heap deltas): gameplay update ~7 KB per frame plus spikes of 10-86 ms when
 the spawner plans a pattern (a missed frame each time), world render ~6 KB per
 frame, gameplay render ~1.8 KB, ui render ~1.8 KB. See the Wave 5b backlog.
+
+### Wave 5c measurements (2026-10-08, seed 1, 20 s, `PLAN_WORK_PER_TICK` 400)
+
+Measured on the Wave 5b commit plus the Wave 5c work in the working tree
+(planning budget 400, `PLAN_AHEAD` 3, auto-drink, ui / audio polish),
+headless, against a preview build (`--url`):
+
+| Run | 0 / 1 / 2+ updates per frame | Long frames > 20 ms | Frame work mean / p99 / max | Scroll steps (px per frame) | Heap rise per frame | GC count / longest |
+|---|---|---|---|---|---|---|
+| desktop | 0 / **100 %** / 0 | 0 | 0.63 / 1.4 / 3.9 ms | 1: 528, 2: 678 | 18.2 KB (20.4 KB on a second run) | 27 / 2.2 ms |
+| phone-landscape, CPU x4 | 0 / **100 %** / 0 | 0 | 2.5 / 6.6 / 17.3 ms | 1: 531, 2: 681 | 19.2 KB | 30 / 12.8 ms |
+
+- The planning budget removed the 10-86 ms spawner spikes of Wave 5a: the
+  longest gameplay update is now 2.3 ms (desktop) / 6.5 ms (phone, CPU x4),
+  gameplay update mean 0.08 / 0.31 ms. With the budget at 400 no frame
+  missed a vsync in either run (an earlier run with 1000 units per tick had
+  a few single missed frames, longest gameplay update 7.7 ms).
+- Heap rise per frame is back at the Wave 5a level (18.5-20.4 KB); a run
+  during the 5b / 5c work in progress had shown 10.6 KB. GC pauses stay
+  short (longest 2.2 ms desktop, 12.8 ms phone x4).
+- Per-system render means (desktop / phone x4): world 0.18 / 0.83 ms, ui
+  0.18 / 0.67 ms, gameplay 0.09 / 0.37 ms, player 0.03 / 0.11 ms. The
+  longest phone frame work (17.3 ms) is a single render spike, mostly
+  gameplay render (max 9.3 ms), the next place to look.

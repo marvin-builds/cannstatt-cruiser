@@ -75,8 +75,9 @@ and on desktop (keyboard and mouse). The UI language is German.
   don't touch the ground or crash.
 - Grind trick: holding down while grinding turns the skater to face the player
   (front view, the only view that shows his moustache) for as long as down is
-  held. It ends when down is released or the grind ends and scores trick points
-  with a popup.
+  held. It ends when down is released or the grind ends and scores 3 trick
+  points per tick (times the multiplier) on top of the grind, with the popup
+  "Grind-Trick! +…".
 
 ## Stomp and carried items
 
@@ -89,8 +90,10 @@ and on desktop (keyboard and mouse). The UI language is German.
   the hands); a flying Maßkrug spills a few foam drops. Popup: "Ball
   geschnappt!", "Brezel!", "Prost!" or "Lebkuchenherz!" (kid mode never shows
   "Prost!"), plus bonus points.
-- The skater carries the item under the arm until the next crash (a crash
-  while it flies loses it too); a new run starts empty-handed.
+- The skater carries the item under the arm until he uses it or the next
+  crash (a crash while it flies loses it too); a new run starts empty-handed.
+  A Maßkrug is drunk by itself after ~6 s in hand (Wave 5c), so beer cannot
+  be carried around forever.
 - A stomp counts as a trick in the combo. Patterns never require a stomp.
 
 ## Using items
@@ -98,15 +101,24 @@ and on desktop (keyboard and mouse). The UI language is German.
 The carried item can be used (E, or the item button on touch); using it
 empties the hands:
 
-- **Maßkrug** (never in kid mode): the skater drinks it ("gluck gluck gluck")
-  and is drunk for ~6 s: jump and duck react a few ticks late (a
-  deterministic random delay), the skater and the screen sway. Meanwhile the
-  spawner places only easy patterns that are clearable with that delay.
-- **Brezel / Lebkuchenherz**: eating it gives +1 health (bonus points instead
-  when health is full).
-- **Football**: thrown forward. Hitting a person makes them tumble (points,
-  "Treffer!"). A miss can ricochet back (deterministic chance) and knock the
-  skater off the board (crash, -1 health) unless he jumps or ducks it.
+- **Maßkrug** (never in kid mode): the skater drinks it (popup "Prost! Gluck
+  gluck gluck", glug sound) and is drunk for 6 s: jump and duck react 3-8
+  ticks late (a deterministic random delay), the skater and the screen sway
+  and the HUD shows a draining Maßkrug timer. Meanwhile (and already while a
+  Maßkrug is in hand or within reach) the spawner places only easy patterns
+  (single or paired ground obstacles and stars, no people, nothing overhead,
+  no rails, wider gaps) that are clearable with that delay. Not used within
+  ~6 s, it is drunk by itself.
+- **Brezel / Lebkuchenherz**: eating it gives +1 health ("Lecker! +1"); at
+  full health 150 bonus points instead (times the multiplier).
+- **Football**: thrown forward ("Wurf!"). Hitting a person makes them tumble
+  (150 points times the multiplier, "Treffer!"). A miss ricochets back with a
+  deterministic 50 % chance ("Achtung, der Ball!"), but only onto free street
+  (no obstacle within 1 s of riding around where it meets the skater) and
+  never while he is drunk; it bounces low and knocks the skater off the board
+  (crash, -1 health) unless he jumps over it. Otherwise it rolls away.
+- Popups of one moment are merged: a stomp and its points become one
+  "Stomp! +150".
 
 ## Health
 

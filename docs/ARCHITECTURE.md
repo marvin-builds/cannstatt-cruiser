@@ -41,6 +41,16 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   world/debug.ts        window.__world (test only): trafficDensity(), traffic()
   gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins
   gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead)
+  gameplay/use.ts       the use button: drink / eat / throw the carried item (DRUNK_DURATION, EAT_BONUS_POINTS)
+  gameplay/auto-drink.ts  a carried Maßkrug is drunk by itself after BEER_AUTO_DRINK (6 s)
+  gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
+  gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
+  gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning
+  ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
+  ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
+  ui/item-button.ts     touch item button / desktop "E" chip, first-catch hint (storage key itemHintSeen)
+  ui/drunk-look.ts      drunk HUD row and woozy screen (sway, vignette); ui/item-look.ts catch popups
+  audio/traffic.ts      Mitte traffic rumble level and rng-free honks from state.trafficDensity
   player/bin.ts         bin crash: the bin the player draws around the skater
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
@@ -60,7 +70,7 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps and the tossed item (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill timer), chill tint, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
+| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -297,7 +307,8 @@ Hotspots still take presses first.
   `drawText` draws cached glyph canvases (one `drawImage` per character
   instead of one `fillRect` per font pixel). Keep slices allocation-free in
   render and update too: no template strings, spreads, `map`/`filter`,
-  closures or object literals per frame in hot paths.
+  closures or object literals per frame in hot paths, and index loops
+  (`for (let i = 0; ...)`) instead of `for-of`, which allocates an iterator.
 
 ## View size (adaptive width)
 
@@ -426,7 +437,10 @@ street (`world/traffic.ts`, art in `world/art/traffic.ts`), with exhaust puffs:
 - Traffic ramps in shortly before the Mitte gateway and out after it
   (`trafficDensity(route, distance)`, 0..1). The world writes it to
   `state.trafficDensity` every tick (0 outside a run); audio reads it for the rumble and the odd
-  honk (only in Mitte). No other slice writes it.
+  honk (only in Mitte; `audio/traffic.ts`: smoothed rumble level, honks
+  from a hash of the run time, no rng). No other slice writes it. The audio
+  test log `window.__audio.log` records `traffic:start` / `traffic:stop` when
+  the rumble starts and stops.
 - Fixed pools, no allocation while driving. Test hook: `window.__world`
   (`world/debug.ts`, see docs/TESTING.md).
 
@@ -474,7 +488,15 @@ All UI plates (HUD, buttons, zone banner, pause prompt, panels) are opaque.
 ### Popups (ui/popups.ts)
 
 At most 3 popups show at once. A repeat of a live popup merges into it
-("Stern! x3"). No popup rises above the HUD stats plate (`PopupPool.ceiling`;
+("Stern! x3"). Events of one tick are collected by `ui/popup-feed.ts` and
+flushed once per tick, so events that belong together become one popup:
+a stomp with the points of its `obstacleCleared` "Stomp! +150" (a ball hit
+"Treffer!", merged the same way with an `obstacleCleared` of the same person;
+`ball.ts` scores through `addPoints` only, so it shows without points),
+eating "Lecker! +1" with a heart (or "Lecker! +…" with the bonus at full
+health), "Prost! Gluck gluck gluck" (never in kid mode), "Wurf!",
+"Achtung, der Ball!" on a ricochet, "Autsch!" on a crash and
+"Grind-Trick! +…". No popup rises above the HUD stats plate (`PopupPool.ceiling`;
 stacks then grow downwards). Every popup has a 1 px ink outline; catch popups
 and all popups in portrait are drawn at scale 2 (`popupScale`). The ui slice
 shows "Stomp!" on `stomp`; gameplay adds the points.
@@ -512,18 +534,36 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   `state.carriedItem`, adds `ITEM_POINTS` and emits `itemCaught {item}`.
 - **Losing it**: a crash clears `state.carriedItem` (`health.ts`) and cancels
   an item in flight; `resetRun` clears it at every run start.
-- **Using it** (gameplay, on `input.use.pressed` with an item in hand, see
-  [Input](#input-action-duck-and-use)): gameplay clears `state.carriedItem` and
-  emits `itemUsed {item, action}`, then by item:
-  - `beer` (Maßkrug, `drink`, never in kid mode): `state.drunkTimer` = ~6 s and
-    `drunkStart {duration}`; core delays the input ([Drunk input](#drunk-input)),
-    the player and ui sway, the spawner places only easy patterns meanwhile;
-  - `pretzel` / `gingerbread` (`eat`): +1 health and `healthGained {health}`
-    (bonus points instead when health is full);
-  - `football` (`throw`): a `ball` entity flies forward (`ballThrown`); hitting a
-    person makes them tumble (`ballHit`, points, "Treffer!"); a miss may
-    ricochet back (deterministic chance, `ballBack`) and crashes the skater
-    unless he jumps or ducks it.
+- **Using it** (gameplay, `use.ts`, on `input.use.pressed` with an item in
+  hand, see [Input](#input-action-duck-and-use)): gameplay clears
+  `state.carriedItem` and emits `itemUsed {item, action}`, then by item
+  (`actionOf(item, kidMode)`):
+  - `beer` (Maßkrug, `drink`, never in kid mode; a beer carried in kid mode
+    is eaten): `state.drunkTimer = DRUNK_DURATION` (6 s) and `drunkStart
+    {duration}`; core delays the input ([Drunk input](#drunk-input)), the
+    player and ui sway, and the spawner plans only easy patterns
+    ([Drunk planning](#drunk-planning)). Gameplay counts the timer down every
+    playing tick (`countDownDrunk`).
+  - **Auto-drink** (`auto-drink.ts`, Wave 5c): a Maßkrug still in hand after
+    `BEER_AUTO_DRINK` (6 s of playing time) is drunk by itself, exactly like a
+    use press (same `itemUsed` / `drunkStart`), so carrying beer never stays a
+    free pass for easy streets. Only a Maßkrug that would be drunk counts
+    (never in kid mode); catching or using an item restarts the clock, a crash
+    or a new run resets it.
+  - `pretzel` / `gingerbread` (`eat`): +1 health and `healthGained {health}`;
+    at full health `EAT_BONUS_POINTS` (150, times the multiplier) instead.
+  - `football` (`throw`, `ball.ts`): a `ball` entity leaves the hands
+    forward in a flat arc (`ballThrown`). Reaching a person knocks them over
+    like a stomp (`knockOver`), scores `BALL_HIT_POINTS` (150, times the
+    multiplier) and emits `ballHit`. A miss that lands draws
+    `RICOCHET_CHANCE` (0.5) from `ctx.rng` (always drawn, so the rng sequence
+    does not depend on the street) and ricochets back (`ballBack`) only when
+    the street is free: no obstacle or rail within `RICOCHET_ROOM_SECONDS`
+    (1 s of riding) on both sides of where it meets the skater
+    (`ricochetRoom(ballX, speed)`), and **never while drunk**
+    (`drunkTimer > 0`). Otherwise it rolls away harmlessly. The ricochet hops
+    low (one jump clears it) and crashes the skater (kind `'ball'`, -1
+    health) unless he jumps over it or is invulnerable.
 - **UI**: "Stomp!" on the stomp, then a big popup per item above the raised
   item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
   "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
@@ -554,8 +594,46 @@ pattern:
 - **Across pattern boundaries**: the spawner passes the previous pattern's
   pieces (`PlanOptions.before`, shifted by its length plus the gap) and the
   combined course must be clearable at every pace, with real people motion.
-- **Drunk**: while drunk the spawner only places easy patterns, validated with
-  the input delay (`drunkWindow`, see [Drunk input](#drunk-input)).
+- **Drunk**: see [Drunk planning](#drunk-planning).
+
+### Drunk planning
+
+The spawner treats a pattern as possibly ridden drunk (`SpawnSituation.drunk`)
+while `state.drunkTimer > 0`, a Maßkrug is in hand or flying there, or the
+pattern starts within `BEER_REACH` (`VIEW_MAX_W + SPAWN_MARGIN + 100` px of
+street) after a Wasen visitor holding a Maßkrug (a quick drinker could catch
+and drink it). Such patterns:
+
+- come only from `DRUNK_TEMPLATES` (`single`, `stars`, `pair`: no people,
+  nothing overhead, no rails; `fairness.ts`), with `DRUNK_GAP_SECONDS` (0.8 s)
+  of extra gap;
+- must stay human-fair for the worst-case drunk input: `drunkFairness(window)`
+  widens the take-off window by `drunkWindow`'s `pressMax - pressMin` and lets
+  every hold come out `holdMax - hold` ticks shorter or longer (`spread`);
+- replace sober plans: when the situation turns drunk, patterns planned ahead
+  but not yet on the street are thrown away and planned again (the rng stays
+  where it is, so runs still replay).
+
+## Planning budget
+
+Planning a pattern (solver + human-fairness checks) can cost tens of
+milliseconds, so the live game never plans a whole pattern in one tick:
+
+- `PLAN_WORK_PER_TICK` = 400 solver units per tick (one unit = one simulated
+  tick; ~0.4 ms on a desktop, ~1 ms on a phone at 4x CPU throttling). A
+  pattern takes about 10 000 units (a drunk one about 25 000), the street
+  needs about 100 per tick on average. The solver is resumable: when the shared
+  `WorkBudget` runs out it throws `OUT_OF_WORK` and the next tick continues
+  where it stopped (`patterns.ts` `planSteps` is a generator).
+- **Plan ahead:** up to `PLAN_AHEAD` = 3 patterns are planned ahead of the
+  one due next, so plans are usually ready long before they reach the edge,
+  and the small budget catches up after drunk replans.
+- **Late plan = empty street:** if a pattern is due while its plan is still
+  running, empty street comes first (up to `PLAN_DELAY_MAX` = 160 px), and
+  only after that the plan is finished at once. The speed range a pattern is
+  checked for includes that delay.
+- Units are deterministic, so runs replay exactly. Without `workPerTick`
+  (unit tests, `new Spawner(zoneAt)`) every pattern is planned when due.
 
 ### Fair people
 
@@ -609,7 +687,9 @@ top. Rules in `gameplay/rules.ts`, shared by contacts and the solver:
 - The trick ends when down is released or the grind ends (jump off, rail end,
   crash). **Gameplay** reads `player.grindTrick`, scores the trick and emits
   `grindTrick {entityId, ticks, points}` when it ends while the skater is
-  still on the rail or bench; the ui shows a popup and audio plays a sound.
+  still on the rail or bench (`grind-trick.ts`: `GRIND_TRICK_POINTS` = 3 per
+  tick, times the multiplier, on top of the grind points); the ui shows
+  "Grind-Trick! +…" and audio plays a sound.
 - Ducking on the ground is unchanged; a grind trick never ducks.
 
 ## Chill effect (joint pickup)
@@ -647,5 +727,6 @@ requestAnimationFrame -> FixedTimestep (0..n ticks) -> Game.render(layers) -> Re
 ```
 
 Persistence: `import { store } from '../core/storage'`. Keys are namespaced
-`cannstatt-cruiser:*`. Use `highscore`, `starsTotal` and `kidMode` (ui) and
-`muted` (audio). Calls never throw.
+`cannstatt-cruiser:*`. Use `highscore`, `starsTotal`, `kidMode` and
+`itemHintSeen` (ui; the first-catch touch hint was shown) and `muted`
+(audio). Calls never throw.
