@@ -6,7 +6,7 @@ import type { Entity } from '../types';
 import { isObstacle, isPerson, isRail, obstacleRect } from './catalogue';
 import { CHILL_SPEED_SCALE } from './chill';
 import { speedAt } from './difficulty';
-import { HUMAN_HOLDS, humanFairAtAll, MIN_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS } from './fairness';
+import { EARLY_TAKEOFF_WINDOW, EARLY_WINDOW_DISTANCE, HUMAN_HOLDS, humanFairAtAll, LATE_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS, takeoffWindowAt } from './fairness';
 import { ZoneRoute } from '../world/zones';
 import { anchorOf, motionOf, moveTo } from './motion';
 import { courseOf, type Pattern, type Piece, planPattern } from './patterns';
@@ -24,17 +24,31 @@ const PACES = [
 
 const blocking = (p: Pick<Piece, 'kind'>) => isObstacle(p.kind) || isRail(p.kind);
 
-function personPatterns(speeds: number[], chillSpeeds?: number[], count = 120): Pattern[] {
+function personPatterns(speeds: number[], chillSpeeds?: number[], count = 120, window = LATE_TAKEOFF_WINDOW, seeds = 40): Pattern[] {
   const out: Pattern[] = [];
-  for (let seed = 1; out.length < count && seed <= 40; seed++) {
+  for (let seed = 1; out.length < count && seed <= seeds; seed++) {
     const rng = new Rng(seed);
     for (let i = 0; i < 12; i++) {
-      const p = planPattern(rng, 3, speeds, { zone: 1 + (i % 2), chillSpeeds });
+      const p = planPattern(rng, 3, speeds, { zone: 1 + (i % 2), chillSpeeds, window });
       if (p.pieces.some((x) => isPerson(x.kind))) out.push(p);
     }
   }
   return out;
 }
+
+describe('human take-off window', () => {
+  it(`is ${EARLY_TAKEOFF_WINDOW} ticks (+-6) in the first ~90 s and ${LATE_TAKEOFF_WINDOW} ticks (+-5) after`, () => {
+    expect(EARLY_TAKEOFF_WINDOW).toBeGreaterThanOrEqual(14);
+    expect(LATE_TAKEOFF_WINDOW).toBeGreaterThanOrEqual(12);
+    let d = 0;
+    for (let t = 0; t < 88 / TICK_DT; t++) d += speedAt(d) * TICK_DT;
+    expect(EARLY_WINDOW_DISTANCE).toBeGreaterThan(d);
+    expect(takeoffWindowAt(0)).toBe(EARLY_TAKEOFF_WINDOW);
+    expect(takeoffWindowAt(EARLY_WINDOW_DISTANCE - 1)).toBe(EARLY_TAKEOFF_WINDOW);
+    expect(takeoffWindowAt(EARLY_WINDOW_DISTANCE)).toBe(LATE_TAKEOFF_WINDOW);
+    expect(takeoffWindowAt(1e6)).toBe(LATE_TAKEOFF_WINDOW);
+  });
+});
 
 describe('fair people: patterns', () => {
   it('a person always comes alone: no other obstacle or rail in its pattern', () => {
@@ -44,18 +58,29 @@ describe('fair people: patterns', () => {
   }, 30_000);
 
   for (const { name, pace } of PACES) {
-    it(`every person pattern leaves a human take-off window of >= ${MIN_TAKEOFF_WINDOW} ticks (${name} speed)`, () => {
+    it(`every person pattern leaves a human take-off window of >= ${LATE_TAKEOFF_WINDOW} ticks (${name} speed)`, () => {
       const chill = name.startsWith('chill');
       const v = pace.x(1) / TICK_DT;
-      const patterns = chill ? personPatterns([v], [v], 40) : personPatterns([v], undefined, 40);
-      // Chilled at the slowest speed the low jump hangs over a person too briefly: the planner leaves people out there.
+      // Chilled at the slowest speed the low jump hangs over a person too briefly: the planner leaves people out there
+      // (so a few seeds suffice to check that any it does place are fair).
+      const patterns = chill ? personPatterns([v], [v], 40, LATE_TAKEOFF_WINDOW, name === 'chill min' ? 6 : 40) : personPatterns([v], undefined, 40);
       if (name !== 'chill min') expect(patterns.length).toBeGreaterThan(20);
       for (const p of patterns) {
         const window = new Solver(courseOf(p), pace).takeoffWindow(HUMAN_HOLDS);
-        expect(window, JSON.stringify(p.pieces)).toBeGreaterThanOrEqual(MIN_TAKEOFF_WINDOW);
+        expect(window, JSON.stringify(p.pieces)).toBeGreaterThanOrEqual(LATE_TAKEOFF_WINDOW);
       }
     }, 30_000);
   }
+
+  it(`early in the run every person pattern leaves >= ${EARLY_TAKEOFF_WINDOW} ticks`, () => {
+    const patterns = personPatterns([BASE_SPEED, speedAt(EARLY_WINDOW_DISTANCE)], undefined, 20, EARLY_TAKEOFF_WINDOW);
+    expect(patterns.length).toBeGreaterThan(12);
+    for (const p of patterns) {
+      for (const v of [BASE_SPEED, speedAt(EARLY_WINDOW_DISTANCE)]) {
+        expect(new Solver(courseOf(p), v).takeoffWindow(HUMAN_HOLDS), JSON.stringify(p.pieces)).toBeGreaterThanOrEqual(EARLY_TAKEOFF_WINDOW);
+      }
+    }
+  }, 30_000);
 
   it('a pattern is checked together with the end of the previous one (across the boundary)', () => {
     // A previous piece reaching into this pattern's run-up (an overhead sign at x 20) rules out jumping right after it.
@@ -79,7 +104,7 @@ describe('fair for humans: every pattern, not only people', () => {
     ];
     const course = courseOf({ name: 'tight', pieces, length: 240 });
     expect(new Solver(course, 98).solvable()).toBe(true);
-    expect(new Solver(course, 98).takeoffWindow(HUMAN_HOLDS)).toBeLessThan(MIN_TAKEOFF_WINDOW);
+    expect(new Solver(course, 98).takeoffWindow(HUMAN_HOLDS)).toBeLessThan(LATE_TAKEOFF_WINDOW);
     expect(humanFairAtAll(course, [98])).toBe(false);
   });
 
@@ -88,23 +113,25 @@ describe('fair for humans: every pattern, not only people', () => {
     expect(humanFairAtAll(course, [BASE_SPEED, MAX_SPEED, constantPace(MAX_SPEED, CHILL_JUMP_SCALE)])).toBe(true);
   });
 
-  it(`every take-off a pattern asks for, also after landing, has a human window of >= ${MIN_TAKEOFF_WINDOW} ticks (all tiers, 96-165 px/s)`, () => {
-    const tight: string[] = [];
-    for (let seed = 1; seed <= 12; seed++) {
-      const rng = new Rng(seed);
-      for (const v of [96, 110, 135, MAX_SPEED]) {
-        for (let i = 0; i < 10; i++) {
-          const p = planPattern(rng, 1 + (i % 3), [v], { zone: i % 3 });
-          const course = courseOf(p);
-          const window = new Solver(course, v).takeoffWindow(HUMAN_HOLDS);
-          const jumps = course.obstacles.length + course.rails.length + course.ledges!.length + course.movers!.length > 0;
-          const first = jumps && window < MIN_TAKEOFF_WINDOW;
-          if (first || !humanFairAtAll(course, [v])) tight.push(`${v} ${p.name} ${window}: ${JSON.stringify(p.pieces.map((x) => [x.kind, x.x]))}`);
+  for (const [stage, window, speeds] of [
+    ['early', EARLY_TAKEOFF_WINDOW, [96, 110]],
+    ['later', LATE_TAKEOFF_WINDOW, [135, MAX_SPEED]],
+  ] as const) {
+    it(`every take-off a pattern asks for, also after landing, has a human window of >= ${window} ticks (${stage}, all tiers, ${speeds.join('-')} px/s)`, () => {
+      const tight: string[] = [];
+      for (let seed = 1; seed <= 12; seed++) {
+        const rng = new Rng(seed);
+        for (const v of speeds) {
+          for (let i = 0; i < 10; i++) {
+            const p = planPattern(rng, 1 + (i % 3), [v], { zone: i % 3, window });
+            // fair() checks the first take-off too (a run may mix grind and ground landings, which takeoffWindow splits).
+            if (!humanFairAtAll(courseOf(p), [v], window)) tight.push(`${v} ${p.name}: ${JSON.stringify(p.pieces.map((x) => [x.kind, x.x]))}`);
+          }
         }
       }
-    }
-    expect(tight).toEqual([]);
-  }, 30_000);
+      expect(tight).toEqual([]);
+    }, 30_000);
+  }
 });
 
 interface Seen {
@@ -182,14 +209,17 @@ function rampPace(): Pace {
 }
 
 describe('fair for humans: the whole street of a run (spawner rides, real speed ramp)', () => {
-  it(`every take-off of a 3 min run, across all pattern boundaries, has a human window of >= ${MIN_TAKEOFF_WINDOW} ticks`, () => {
+  it(`every take-off of a 3 min run, across all pattern boundaries, has a human window of >= ${EARLY_TAKEOFF_WINDOW} ticks in the first ~90 s and >= ${LATE_TAKEOFF_WINDOW} after`, () => {
     for (const seed of [1, 2, 3]) {
       // Street x of every piece, so x = 0 is the player at the run start.
       const pieces: Piece[] = ride(seed, 180, () => {})
         .filter((s) => blocking(s.e))
         .map((s) => ({ ...s.e, x: s.street - PLAYER_X, data: s.e.data && { ...s.e.data, ax: s.street - PLAYER_X } }));
+      const early = pieces.filter((p) => p.x + p.w < EARLY_WINDOW_DISTANCE);
+      const earlyCourse = buildCourse(early, 0, (goal) => goal + 400);
+      expect(new Solver(earlyCourse, rampPace()).fair(HUMAN_HOLDS, EARLY_TAKEOFF_WINDOW), `seed ${seed} early`).toBe(true);
       const course = buildCourse(pieces, 0, (goal) => goal + 400);
-      expect(new Solver(course, rampPace()).fair(HUMAN_HOLDS, MIN_TAKEOFF_WINDOW), `seed ${seed}`).toBe(true);
+      expect(new Solver(course, rampPace()).fair(HUMAN_HOLDS, LATE_TAKEOFF_WINDOW), `seed ${seed}`).toBe(true);
     }
   }, 60_000);
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_SPEED, GROUND_Y, MAX_SPEED } from '../core/config';
 import { Rng } from '../core/rng';
 import { isObstacle, isRail } from './catalogue';
+import { gapAt, speedAt, tierAt } from './difficulty';
 import { courseOf, planPattern, TEMPLATE_NAMES } from './patterns';
 import { Solver } from './solver';
 
@@ -41,6 +42,33 @@ describe('spawn patterns', () => {
       for (let i = 0; i < 400; i++) names.push(planPattern(rng, 3, [speed], { zone: i % 3 }).name);
       for (const name of TEMPLATE_NAMES) expect(names).toContain(name);
       expect(names.filter((n) => n === 'fallback').length).toBeLessThan(20);
+    }
+  }, 30_000);
+
+  it('leaves >= 1.1 s of free street after every pattern (its runout plus the gap to the next), at every distance', () => {
+    const rng = new Rng(9);
+    for (let d = 0; d <= 40_000; d += 1000) {
+      const v = speedAt(d);
+      for (let i = 0; i < 6; i++) {
+        const p = planPattern(rng, tierAt(d), [v], { zone: i % 3 });
+        const end = Math.max(0, ...p.pieces.filter((x) => isObstacle(x.kind) || isRail(x.kind)).map((x) => x.x + x.w));
+        expect((p.length - end + gapAt(d)) / v, `${d}: ${p.name}`).toBeGreaterThanOrEqual(1.1);
+      }
+    }
+  }, 30_000);
+
+  it('obstacles in a row are either close (one jump for both) or >= 0.7 s apart (land, then jump again)', () => {
+    for (const speed of [BASE_SPEED, 130, MAX_SPEED]) {
+      const rng = new Rng(17);
+      for (let i = 0; i < 200; i++) {
+        const p = planPattern(rng, 3, [speed]);
+        if (p.name !== 'pair' && p.name !== 'triple') continue;
+        const row = p.pieces.filter((x) => isObstacle(x.kind)).sort((a, b) => a.x - b.x);
+        for (let j = 1; j < row.length; j++) {
+          const gap = row[j]!.x - (row[j - 1]!.x + row[j - 1]!.w);
+          expect(gap <= 25 || gap >= 0.7 * speed, `${speed} ${p.name} gap ${gap}`).toBe(true);
+        }
+      }
     }
   }, 30_000);
 

@@ -13,6 +13,7 @@ import { hitBox, isGrindable, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
 import { HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
+import { LEDGE_FRONT_REACH } from './rules';
 import { type Course, HOLDS, type Jump, type Pace, Solver } from './solver';
 
 /** Room after the last entity the plan may use for landing. */
@@ -45,7 +46,7 @@ function boxOf(e: Entity) {
 function startBody(state: GameState): Body {
   const p = state.player;
   if (!p.grinding) return groundBody();
-  const rail = state.entities.find((e) => isGrindable(e.kind) && e.y === p.y && e.x <= p.x && p.x <= e.x + e.w);
+  const rail = state.entities.find((e) => isGrindable(e.kind) && e.y === p.y && e.x - LEDGE_FRONT_REACH <= p.x && p.x <= e.x + e.w);
   return rail ? railBody(rail.y, rail.x + rail.w - PLAYER_X) : groundBody();
 }
 

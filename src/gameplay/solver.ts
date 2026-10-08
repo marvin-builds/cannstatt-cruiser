@@ -17,7 +17,7 @@ import type { Rect } from '../types';
 import { type Body, groundBody, hitboxOf, snapToRail, stepBody, stompBody } from './jumpsim';
 import { HITBOX_W } from '../player/tuning';
 import { type Motion, motionOffset } from './motion';
-import { landsOnHead, landsOnRail, overlaps } from './rules';
+import { landsOnHead, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
 
 /** A grindable obstacle: landing on `top` from above grinds it, riding into `box` crashes. */
 export interface Ledge {
@@ -392,7 +392,7 @@ export class Solver {
     let stomped = node.stomped;
     if (!body.onRail) {
       const feet = { x, y: body.y, vy: body.vy, supported: body.grounded };
-      const rail = this.rails.find((r) => landsOnRail(feet, r));
+      const rail = this.course.rails.find((r) => landsOnRail(feet, r)) ?? this.ledges.find((l) => landsOnLedge(feet, l.top))?.top;
       if (rail) body = snapToRail(body, rail.y, rail.x + rail.w);
       else if (this.stomps) {
         const i = this.movers.findIndex((m, j) => !(stomped & (1 << j)) && landsOnHead(feet, box, at(m.rest, m, x)));
@@ -403,7 +403,7 @@ export class Solver {
       }
     }
     if (this.obstacles.some((o) => overlaps(box, o))) return null;
-    if (this.ledges.some((l) => !ridesOn(body, l.top) && overlaps(box, l.box))) return null;
+    if (this.ledges.some((l) => !ridesOn(body, l.top) && !pastLedge(x, l.top) && overlaps(box, l.box))) return null;
     if (this.movers.some((m, j) => !(stomped & (1 << j)) && overlaps(box, at(m.box, m, x)))) return null;
     return { tick, body, stomped };
   }

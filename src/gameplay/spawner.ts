@@ -6,7 +6,8 @@
  * People are themed by the zone the pattern lies in (`zoneAt`), and every so
  * often a joint pattern comes; the patterns the chill effect can reach after
  * it are also verified with the chill jump at chill speed. Each pattern is
- * verified together with the previous one's pieces, across the gap.
+ * verified together with the previous one's pieces, across the gap, with the
+ * human take-off window of its street distance (wider early in the run).
  */
 import { MAX_SPEED, PLAYER_X } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
@@ -14,6 +15,7 @@ import type { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { CHILL_SPEED_SCALE } from './chill';
 import { gapAt, speedAt, tierAt } from './difficulty';
+import { takeoffWindowAt } from './fairness';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planPattern } from './patterns';
 
@@ -92,7 +94,7 @@ export class Spawner {
       this.chillUntil = street + pattern.length + CHILL_REACH;
       return pattern;
     }
-    const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.previous };
+    const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.previous, window: takeoffWindowAt(street) };
     if (street < this.chillUntil) {
       // A pinned speed stays pinned while chilled; otherwise from the slowest chill speed through the ramp back up.
       const low = Math.min(...speeds) * CHILL_SPEED_SCALE;

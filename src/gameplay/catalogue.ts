@@ -24,12 +24,18 @@ export interface ObstacleSpec {
   points: number;
   /** Landing on its top edge (the entity's y) from above grinds it like a rail (the bench). */
   grindable?: boolean;
+  /**
+   * A crash into it sticks the skater head-first into it (the bin): the
+   * player draws it around the skater from the crash on, so gameplay removes
+   * the hit entity at once.
+   */
+  swallows?: boolean;
   /** People: ranges the spawner draws their walk / sway from (see motion.ts). */
   motion?: { walk: [number, number]; sway: [number, number] };
 }
 
 export const OBSTACLES: Record<ObstacleKind, ObstacleSpec> = {
-  bin: { w: 12, h: 18, elevation: 0, sink: 0, box: { x: 1, y: 1, w: 10, h: 17 }, points: 100 },
+  bin: { w: 12, h: 18, elevation: 0, sink: 0, box: { x: 1, y: 1, w: 10, h: 17 }, points: 100, swallows: true },
   barrier: { w: 9, h: 21, elevation: 0, sink: 0, box: { x: 1, y: 0, w: 7, h: 21 }, points: 120 },
   // Grind top = the backrest's top edge (entity y); the box below it starts 2 px lower.
   bench: { w: 24, h: 12, elevation: 0, sink: 0, box: { x: 1, y: 2, w: 22, h: 10 }, points: 80, grindable: true },

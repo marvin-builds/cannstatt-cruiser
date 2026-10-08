@@ -7,6 +7,7 @@
 import { GROUND_Y } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
 import type { Entity, GameState, ObstacleKind } from '../types';
+import { ITEM_SPRITES } from './item-art';
 import { drawOverhead, isOverheadArt, overheadSize } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
 
@@ -259,6 +260,10 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
     case 'vfbFan':
     case 'wasenGuest':
       drawPerson(g, e, state.time, kidMode);
+      return;
+    case 'ball':
+      // The thrown football (types.ts): the same art as the carried and tossed one.
+      ITEM_SPRITES.football.draw(g, 0, x, y);
       return;
     case 'joint':
       // Bobs gently like the stars; the smoke curls (or the gum shines) every 16 ticks.

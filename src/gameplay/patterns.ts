@@ -6,7 +6,9 @@
  * chill effect may be active), together with the end of the previous pattern
  * (`before`), and rerolled (finally replaced by empty street) if it cannot
  * be passed, or if any take-off on the way (also across the boundary) leaves
- * a human less than the take-off window of fairness.ts. People come alone.
+ * a human less than the take-off window of fairness.ts (`options.window`).
+ * Gaps and the runout after the last piece leave room for a human landing a
+ * little early or late. People come alone.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
@@ -14,7 +16,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
 import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
-import { HUMAN_HOLDS, humanFair, humanFairAtAll } from './fairness';
+import { HUMAN_HOLDS, humanFair, humanFairAtAll, LATE_TAKEOFF_WINDOW } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
@@ -29,6 +31,8 @@ export interface PlanOptions {
   chillSpeeds?: number[];
   /** The previous pattern's pieces in this pattern's space (x < 0): the course across the boundary must be clearable too. */
   before?: Piece[];
+  /** Human take-off window (ticks) every take-off must leave (fairness.ts takeoffWindowAt). Default LATE_TAKEOFF_WINDOW. */
+  window?: number;
 }
 
 export interface Pattern {
@@ -51,8 +55,8 @@ interface Template {
 const PICKABLE: ObstacleKind[] = ['bin', 'barrier', 'bench', 'planter', 'curbGap'];
 /** The people of a zone: VfB fans at the Neckar, Wasen visitors in Bad Cannstatt. */
 const ZONE_PEOPLE: Record<number, ObstacleKind> = { 1: 'vfbFan', 2: 'wasenGuest' };
-/** Chance that a pattern with obstacles also gets a star arc over its best jump. */
-const STAR_CHANCE = 0.45;
+/** Chance that a pattern with obstacles also gets a star arc over its best jump (keeps the wider street lively). */
+const STAR_CHANCE = 0.6;
 const MAX_STARS = 5;
 /** Minimum horizontal distance between stars of an arc. */
 const STAR_SPACING = 13;
@@ -61,18 +65,24 @@ const ATTEMPTS = 10;
 const CLOSE_CHANCE = 0.3;
 const CLOSE_GAP: [number, number] = [10, 25];
 /** An open gap is at least this many seconds of riding (it scales with the speed)... */
-const OPEN_GAP_SECONDS = 0.55;
+const OPEN_GAP_SECONDS = 0.72;
 /** ...plus up to this much street. */
-const OPEN_GAP_SPREAD = 50;
+const OPEN_GAP_SPREAD = 65;
+/** Street between an overhead obstacle and a ground obstacle (duckJump), either order. */
+const DUCK_THEN_JUMP: [number, number] = [40, 117];
+const JUMP_THEN_DUCK: [number, number] = [52, 130];
+/** Street between an obstacle and a rail (obstacleRail), and between a rail and an obstacle (railObstacle). */
+const OBSTACLE_TO_RAIL: [number, number] = [26, 78];
+const RAIL_TO_OBSTACLE: [number, number] = [26, 91];
 
 /** Free run-up before the first piece, growing with speed. */
 function leadFor(speed: number): number {
   return Math.round(20 + 0.3 * speed);
 }
 
-/** Room after the last piece in which the player must be back on the ground. */
+/** Room after the last piece in which the player must be back on the ground (a late landing still lands here). */
 function runoutFor(speed: number): number {
-  return Math.round(24 + 0.35 * speed);
+  return Math.round(32 + 0.45 * speed);
 }
 
 class Builder {
@@ -168,10 +178,10 @@ const TEMPLATES: Template[] = [
       // Duck then jump, or jump then duck; the solver rejects gaps too short for either.
       if (b.rng.chance(0.5)) {
         b.overhead(b.lead);
-        b.obstacle(b.pick(), b.end + b.rng.int(30, 90));
+        b.obstacle(b.pick(), b.end + b.rng.int(...DUCK_THEN_JUMP));
       } else {
         b.obstacle(b.pick(), b.lead);
-        b.overhead(b.end + b.rng.int(40, 100));
+        b.overhead(b.end + b.rng.int(...JUMP_THEN_DUCK));
       }
     },
   },
@@ -191,7 +201,7 @@ const TEMPLATES: Template[] = [
     weight: 2,
     build: (b) => {
       b.obstacle(b.pick(), b.lead);
-      b.rail(b.railKind(), b.end + b.rng.int(20, 60));
+      b.rail(b.railKind(), b.end + b.rng.int(...OBSTACLE_TO_RAIL));
     },
   },
   {
@@ -200,7 +210,7 @@ const TEMPLATES: Template[] = [
     weight: 2,
     build: (b) => {
       b.rail(b.railKind(), b.lead);
-      b.obstacle(b.pick(), b.end + b.rng.int(20, 70));
+      b.obstacle(b.pick(), b.end + b.rng.int(...RAIL_TO_OBSTACLE));
     },
   },
   {
@@ -258,14 +268,15 @@ export function planPattern(rng: Rng, tier: number, speeds: number[], options: P
   const paces = [...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE)), ...speeds];
   const zone = options.zone ?? 0;
   const before = lastPieces((options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind)));
+  const window = options.window ?? LATE_TAKEOFF_WINDOW;
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone);
     const builder = new Builder(rng, fast, zone);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = paces.map((pace) => new Solver(courseOf(pattern), pace));
-    if (!humanFair(solvers)) continue;
-    if (before.length > 0 && !clearableAfter(pattern, before, leadFor(fast), paces)) continue;
+    if (!humanFair(solvers, window)) continue;
+    if (before.length > 0 && !clearableAfter(pattern, before, leadFor(fast), paces, window)) continue;
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
     // Stars mark a jump a human can repeat (one of the human holds).
     else if (rng.chance(STAR_CHANCE)) addStars(pattern, solvers[paces.indexOf(slow)]!.bestJump(groundBody(), HUMAN_HOLDS)?.path ?? []);
@@ -276,8 +287,8 @@ export function planPattern(rng: Rng, tier: number, speeds: number[], options: P
 }
 
 /** The previous pattern's pieces followed by `pattern` are fair for a human at every pace. */
-function clearableAfter(pattern: Pattern, before: Piece[], lead: number, paces: (number | Pace)[]): boolean {
-  return humanFairAtAll(courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead)), paces);
+function clearableAfter(pattern: Pattern, before: Piece[], lead: number, paces: (number | Pace)[], window: number): boolean {
+  return humanFairAtAll(courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead)), paces, window);
 }
 
 /** A lone joint floating at riding height: collected by riding (or ducking) through it. */

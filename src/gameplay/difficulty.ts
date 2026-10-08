@@ -15,8 +15,8 @@ export const TOP_SPEED = Math.min(MAX_SPEED, 160);
 /** Ease-out exponent of the speed ramp (1 = linear; higher = faster start, softer end). */
 const SPEED_EASE = 1.6;
 /** Empty pavement between patterns at the start and at full difficulty. */
-const GAP_START = 160;
-const GAP_END = 56;
+const GAP_START = 208;
+const GAP_END = 73;
 /** Ramp progress at which pattern tiers 1, 2 and 3 unlock (~12 s, ~50 s, ~1.5 min). */
 const TIER_STEPS = [0.05, 0.2, 0.4];
 
