@@ -8,8 +8,10 @@ import {
   installParts,
   type MenuInput,
   type MenuLayout,
+  PANEL_PAD,
   pauseLayout,
   reloadParts,
+  SKATER_CLEAR,
   titleLayout,
   whatsNewLayout,
 } from './menu-layout';
@@ -23,9 +25,9 @@ interface Variant {
 }
 
 const VARIANTS: Variant[] = [
-  { name: 'desktop', touch: false, portrait: false, widths: [320, 360, 427] },
-  { name: 'phone landscape', touch: true, portrait: false, widths: [320, 422, 427] },
-  { name: 'phone portrait', touch: true, portrait: true, widths: [320, 360, 390, 427] },
+  { name: 'desktop', touch: false, portrait: false, widths: [320, 360, 384, 427] },
+  { name: 'phone landscape', touch: true, portrait: false, widths: [320, 384, 422, 427] },
+  { name: 'phone portrait', touch: true, portrait: true, widths: [320, 360, 384, 390, 427] },
 ];
 
 function* inputs(): Generator<MenuInput & { label: string }> {
@@ -91,6 +93,47 @@ describe('menu screen layouts', () => {
       expect(!!l.buttons.install, input.label).toBe(input.install === 'prompt');
       expect(l.buttons.toTitle).toBeNull();
       expect(l.blocks.has('prompt'), input.label).toBe(true);
+    }
+  });
+
+  it('title: the panel pads every row and button on the sides and at the bottom', () => {
+    for (const input of inputs()) {
+      const l = titleLayout(input);
+      const p = l.panel!;
+      for (const [id, r] of [...l.blocks.entries(), ...buttons(l).map((b) => ['button', b] as const)]) {
+        const at = `${input.label}: ${id} ${JSON.stringify(r)} in ${JSON.stringify(p)}`;
+        expect(r.x - p.x, at).toBeGreaterThanOrEqual(PANEL_PAD);
+        expect(p.x + p.w - (r.x + r.w), at).toBeGreaterThanOrEqual(PANEL_PAD);
+        expect(p.y + p.h - (r.y + r.h), at).toBeGreaterThanOrEqual(PANEL_PAD);
+      }
+      expect(inside(p, input.viewWidth), `${input.label}: panel inside`).toBe(true);
+    }
+  });
+
+  it('title: notices never take all the control help, a condensed line stays', () => {
+    for (const input of inputs()) {
+      const l = titleLayout(input);
+      const help = l.blocks.has('help');
+      const controls = l.blocks.has('controls');
+      expect(help !== controls, `${input.label}: full help xor the condensed line`).toBe(true);
+      if (input.reload || input.install) continue;
+      expect(help, `${input.label}: no notices, full help`).toBe(true);
+    }
+  });
+
+  it('pause and game over keep the skater and its ground clear on desktop and phone landscape', () => {
+    for (const input of inputs()) {
+      if (input.portrait) continue;
+      const screens = [
+        ['pause', pauseLayout({ ...input, install: null })],
+        ['game over', gameOverLayout({ ...input, newRecord: false })],
+        ['game over record', gameOverLayout({ ...input, newRecord: true })],
+      ] as const;
+      for (const [name, l] of screens) {
+        for (const [id, r] of l.blocks) {
+          expect(overlap(r, SKATER_CLEAR), `${input.label} ${name}: ${id} ${JSON.stringify(r)} covers the skater`).toBe(false);
+        }
+      }
     }
   });
 

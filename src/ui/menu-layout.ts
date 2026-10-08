@@ -4,14 +4,15 @@
  * "Zum Startbildschirm", "Weiter" and the pause logo. One pure function per
  * screen, used by both the hotspots (index.ts) and the drawing
  * (menu-screens.ts), so what is drawn is what can be tapped. Optional text
- * rows give way when the buttons need the room (fitColumn), and nothing
- * overlaps the HUD button row.
+ * rows give way when the buttons need the room (fitColumn), nothing
+ * overlaps the HUD button row, and pause and game over keep the skater
+ * visible outside portrait.
  */
-import { VIEW_H } from '../core/config';
+import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { ARROW_RIGHT, SHARE_ICON } from './art';
-import { type Block, fitColumn } from './column';
+import { type Block, type ColumnBounds, fitColumn } from './column';
 import { centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { InstallHintKind } from './notices';
@@ -70,6 +71,11 @@ export const toTitleLabel = (touch: boolean) => (touch ? 'Zum Startbildschirm' :
 
 export const pausePrompt = (touch: boolean) => (touch ? 'Tippen zum Weiterfahren' : 'Leertaste, P oder Esc zum Weiterfahren');
 export const PAUSE_KEYS = 'E = Gegenstand benutzen, M = Ton aus';
+/** The title prompt. */
+export const startPrompt = (touch: boolean) => (touch ? 'Tippen zum Starten' : 'Leertaste zum Starten');
+/** The title's controls in one line, when notices leave no room for the full help. */
+export const controlsLine = (touch: boolean) =>
+  touch ? 'Tippen = springen, runterwischen = ducken' : 'Leertaste = springen, S = ducken';
 export const trickKeysHint = (touch: boolean) =>
   touch ? 'Beim Grinden runterwischen = Trick' : 'Beim Grinden: Pfeil runter / S = Trick';
 export const gameOverPrompt = (touch: boolean) => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde');
@@ -96,6 +102,13 @@ export const STEP_GAP = 3;
 /** The title's text panel: top just under the logo, at least this wide. */
 export const TITLE_PANEL_Y = 66;
 const TITLE_PANEL_W = 236;
+/** Space between the title panel's edges and its rows and buttons (sides and bottom). */
+export const PANEL_PAD = 4;
+/**
+ * Where the skater rides (and its board meets the ground) in pause and game
+ * over: no text or button covers it outside portrait.
+ */
+export const SKATER_CLEAR: Rect = { x: PLAYER_X - 16, y: GROUND_Y - 36, w: 32, h: 40 };
 /** Results table rows are this wide at most (label and value split at the centre). */
 const TABLE_W = 150;
 const BOTTOM = VIEW_H - 2;
@@ -190,24 +203,49 @@ function headline(text: string, input: MenuInput, hudLeft: number): Rect {
   return { x: cx - Math.ceil(w / 2), y: HEADLINE_Y, w, h: 14 };
 }
 
-function bounds(input: MenuInput, top: number) {
+function bounds(input: MenuInput, top: number): ColumnBounds {
   return { top, bottom: BOTTOM, centre: centreX(input.viewWidth), maxWidth: input.viewWidth - 8 };
 }
 
-/** The title under the logo: tagline, start prompt, controls help, notices, records. Help gives way to notices. */
+/** Pause and game over: like bounds, but keeping the skater clear outside portrait. */
+function skaterBounds(input: MenuInput, top: number): ColumnBounds {
+  return { ...bounds(input, top), clear: input.portrait ? undefined : SKATER_CLEAR };
+}
+
+/** The title under the logo: tagline, start prompt, controls help, notices, records. */
 export function titleLayout(input: MenuInput): MenuLayout {
   const m = uiMetrics(input);
   const row = (id: string, gap: number, drop?: number, lines = 1): Block => ({ id, w: TITLE_PANEL_W - 8, h: lines * LINE, gap, drop });
-  const blocks: Block[] = [row('tagline', 3, 2), row('prompt', 2), row('help', 3, 4, 5)];
-  if (!input.touch) blocks.push(row('keys', 1, 5));
-  blocks.push(...noticeBlocks(input, m), row('records', 3, 3));
-  const placed = fitColumn(blocks, bounds(input, TITLE_PANEL_Y));
+  const tagline = row('tagline', 3, 2);
+  const prompt: Block = { id: 'prompt', w: measureText(startPrompt(input.touch)), h: LINE, gap: 2 };
+  const tail = [...noticeBlocks(input, m), row('records', 3, 3)];
+  const column = { ...bounds(input, TITLE_PANEL_Y), bottom: BOTTOM - PANEL_PAD, maxWidth: input.viewWidth - 2 * PANEL_PAD - 4 };
+  const help = [row('help', 3, 4, 5), ...(input.touch ? [] : [row('keys', 1, 5)])];
+  let placed = fitColumn([tagline, prompt, ...help, ...tail], column);
+  if (!placed.has('help')) placed = condensedTitle([tagline, prompt], tail, input, column);
   const buttons = noButtons();
   cardButtons(input, m, placed, buttons);
-  const all = [...placed.values()];
-  const w = Math.max(TITLE_PANEL_W, ...all.map((r) => r.w + 8));
-  const bottom = Math.max(...all.map((r) => r.y + r.h));
-  return { blocks: placed, buttons, panel: { x: centreX(input.viewWidth) - Math.floor(w / 2), y: TITLE_PANEL_Y, w, h: bottom - TITLE_PANEL_Y } };
+  return { blocks: placed, buttons, panel: titlePanel(input.viewWidth, [...placed.values()]) };
+}
+
+/**
+ * The title when notices push the full help out: the one-line controls under
+ * the prompt, or beside it when its own line would cost another row.
+ */
+function condensedTitle(head: Block[], tail: Block[], input: MenuInput, column: ColumnBounds): Map<string, Rect> {
+  const line: Block = { id: 'controls', w: measureText(controlsLine(input.touch)), h: LINE, gap: 0 };
+  const below = fitColumn([...head, line, ...tail], column);
+  const beside = fitColumn([...head, { ...line, inline: true }, ...tail], column);
+  const fits = Math.max(...[...below.values()].map((r) => r.y + r.h)) <= column.bottom;
+  return fits && [...beside.keys()].every((id) => below.has(id)) ? below : beside;
+}
+
+/** The opaque plate behind the title's rows: centred, PANEL_PAD around them (none above, it meets the logo). */
+function titlePanel(viewWidth: number, rows: Rect[]): Rect {
+  const cx = centreX(viewWidth);
+  const half = Math.max(TITLE_PANEL_W / 2, ...rows.map((r) => Math.max(cx - r.x, r.x + r.w - cx) + PANEL_PAD));
+  const bottom = Math.max(...rows.map((r) => r.y + r.h)) + PANEL_PAD;
+  return { x: cx - half, y: TITLE_PANEL_Y, w: 2 * half, h: bottom - TITLE_PANEL_Y };
 }
 
 /** "Zum Startbildschirm" and, beside it when there is room, the reload card. */
@@ -230,7 +268,7 @@ export function pauseLayout(input: MenuInput): MenuLayout {
   ];
   if (!input.touch) blocks.push(text('keys', PAUSE_KEYS, 3, 2));
   blocks.push(text('trick', trickKeysHint(input.touch), input.touch ? 3 : 0, 2), ...navBlocks(input, m, 4));
-  const placed = fitColumn(blocks, bounds(input, Math.max(logo.y + logo.h, hud.bottom)));
+  const placed = fitColumn(blocks, skaterBounds(input, Math.max(logo.y + logo.h, hud.bottom)));
   const buttons = noButtons();
   buttons.logo = logo;
   cardButtons(input, m, placed, buttons);
@@ -250,7 +288,7 @@ export function gameOverLayout(input: MenuInput & { newRecord: boolean }): MenuL
   blocks.push({ id: 'prompt', w: measureText(gameOverPrompt(input.touch)), h: LINE, gap: 6 });
   if (!input.touch) blocks.push({ id: 'keys', w: measureText(GAMEOVER_KEYS), h: LINE, gap: 2, drop: 3 });
   blocks.push(...noticeBlocks({ ...input, reload: false }, m, INSTALL_DROP_GAMEOVER), ...navBlocks(input, m, 4));
-  const placed = fitColumn(blocks, bounds(input, Math.max(title.y + title.h, hud.bottom)));
+  const placed = fitColumn(blocks, skaterBounds(input, Math.max(title.y + title.h, hud.bottom)));
   placed.set('title', title);
   const buttons = noButtons();
   cardButtons(input, m, placed, buttons);
