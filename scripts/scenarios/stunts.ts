@@ -6,8 +6,11 @@
  * Neckar, Mitte) a kicker and a ledge there are placed together as one line
  * on an empty street: riding over the kicker launches the skater (`launch`),
  * the ledge is ground (`grindStart` on the ledge), and the line reports its
- * pieces (`stuntStep`) and its end (`stuntEnd`), never with a crash or lost
- * health. On desktop a 100 s ride without input checks that the spawner
+ * pieces (`stuntStep`: the first piece starts the line quietly, so the ledge
+ * is step 2 at x2) and its end (`stuntEnd`), never with a crash or lost
+ * health. An air trick (Stunt Wave B): down pressed in the air after a
+ * kicker launch sets `player.airTrick` and scores `airTrick` on the street
+ * landing. On desktop a 100 s ride without input checks that the spawner
  * brings stunt lines by itself (about one per 30-45 s of riding) and that no
  * stunt piece ever crashes the skater.
  *
@@ -111,6 +114,38 @@ async function missedLedge(t: PlaytestContext): Promise<number | null> {
   return ledgeOffset;
 }
 
+/** Holds duck (like ArrowDown / a swipe down) for `ticks` ticks of the frozen clock; the state after it. */
+async function duckFor(t: PlaytestContext, ticks: number): Promise<GameState> {
+  await t.page.evaluate(() => window.__game!.input.duck.press());
+  const s = await t.game.step(ticks);
+  await t.page.evaluate(() => window.__game!.input.duck.release());
+  return s;
+}
+
+/** Ticks after `launch` before pressing down: the skater has left the kicker and climbs. */
+const AIR_TRICK_PRESS_DELAY = 4;
+
+/** A kicker alone, down pressed in the air: the kickflip runs (player.airTrick) and scores `airTrick` on the landing. */
+async function airTrick(t: PlaytestContext): Promise<void> {
+  await freshRun(t, 2);
+  const start = await t.game.state();
+  const kicker = await placeStunt(t, 'kicker', PLAYER_X + KICKER_AHEAD);
+  t.check('air trick: hook places a kicker', kicker !== null);
+  if (kicker === null) return;
+  await until(t, start.frame, 'launch', 120);
+  await t.game.step(AIR_TRICK_PRESS_DELAY);
+  const tricking = await duckFor(t, 2);
+  t.check('air trick: down in the air starts the kickflip (player.airTrick)', tricking.player.airTrick && !tricking.player.grounded, tricking.player);
+  await t.game.step(6);
+  await t.canvasShot('air trick kickflip');
+  const tricks = await until(t, start.frame, 'airTrick', 240);
+  t.check('air trick: the landing scores one airTrick', tricks.length === 1 && tricks[0]!.ticks > 0 && tricks[0]!.points > 0, tricks);
+  await t.game.step(4);
+  await t.canvasShot('air trick popup');
+  const harm = await noStuntHarm(t, start.frame, start.health);
+  t.check('air trick: no crash, no health lost', harm.ok, harm.crashes);
+}
+
 /** A kicker and its ledge `ledgeOffset` px after it, placed as one line: launch, ledge grind, stuntStep, stuntEnd. */
 async function placedLine(t: PlaytestContext, zone: number, ledgeOffset: number): Promise<void> {
   const label = `zone ${zone}`;
@@ -138,9 +173,10 @@ async function placedLine(t: PlaytestContext, zone: number, ledgeOffset: number)
 
   const ends = await until(t, start.frame, 'stuntEnd', 600);
   const steps = await payloads(t, start.frame, 'stuntStep');
+  // The first piece made starts the line quietly (no "Combo x1!"); the ledge grind is step 2 at x2.
   t.check(
-    `${label}: stuntStep counts the kicker air and the ledge grind`,
-    steps.length === 2 && steps.every((s, i) => s.step === i + 1 && s.steps === 2 && s.multiplier === s.step && s.points > 0),
+    `${label}: one stuntStep for the ledge grind (step 2 of 2, x2)`,
+    steps.length === 1 && steps[0]!.step === 2 && steps[0]!.steps === 2 && steps[0]!.multiplier === 2 && steps[0]!.points > 0,
     steps,
   );
   t.check(`${label}: stuntEnd reports the completed line`, ends.length === 1 && ends[0]!.made === 2 && ends[0]!.completed && ends[0]!.points > 0, ends);
@@ -186,6 +222,7 @@ export default async function stunts(t: PlaytestContext): Promise<void> {
   const route = new ZoneRoute();
   const zones = [route.zoneOf(0), route.zoneOf(1), route.zoneOf(2)];
   const ledgeOffset = await missedLedge(t);
+  await airTrick(t);
   if (ledgeOffset !== null) for (const zone of zones) await placedLine(t, zone, ledgeOffset);
   if (!t.viewport.touch) await spawnedLines(t);
   await t.game.setSpeed(null);
