@@ -39,6 +39,7 @@ import {
   type HudButtons,
   hudButtons,
   metres,
+  popupLeft,
   popupScale,
   riding,
   settingsLayout,
@@ -393,12 +394,12 @@ function drawLive(r: RenderContext, view: UiView): void {
 
   for (const p of view.popups.active()) {
     g.globalAlpha = p.age > 0.7 ? (1 - p.age) / 0.3 : 1;
-    // Keep wide popups (portrait, catch texts, an icon after them) inside the left edge.
+    // Text and icon form one box (1 px outline on both sides) centred on the popup, kept off the view edges.
     const w = measureText(p.text, p.scale);
     const iconW = p.icon ? (HEART_ICON.width + 2) * p.scale : 0;
-    const x = Math.max(p.x, 2 + Math.ceil(w / 2) + iconW);
-    outlined(r, p.text, x - (iconW >> 1), p.y, p.color, p.scale);
-    if (p.icon) HEART_ICON.draw(g, 0, x - (iconW >> 1) + Math.ceil(w / 2) + 2 * p.scale, p.y + p.scale, p.scale);
+    const left = popupLeft(p.x, w + 2 + iconW, r.display.viewWidth);
+    outlined(r, p.text, left + 1 + (w >> 1), p.y, p.color, p.scale);
+    if (p.icon) HEART_ICON.draw(g, 0, left + 1 + w + 2 * p.scale, p.y + p.scale, p.scale);
   }
   g.globalAlpha = 1;
 

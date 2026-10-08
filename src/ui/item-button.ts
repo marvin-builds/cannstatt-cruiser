@@ -29,11 +29,16 @@ const BUTTON_PORTRAIT = 48;
 /** Gap between the HUD button row and the item button. */
 const BELOW_HUD = 4;
 
-/** Tap area (and plate) of the touch item button: right-anchored under the HUD buttons. */
+/**
+ * Tap area (and plate) of the touch item button: under the HUD buttons, its
+ * right edge in line with their visible plates, so it keeps their edge margin
+ * (the HUD tap areas themselves touch the edge in portrait).
+ */
 export function itemButtonRect(viewWidth: number, display: { touch: boolean; portrait: boolean }): Rect {
   const m = uiMetrics(display);
   const size = display.portrait ? BUTTON_PORTRAIT : BUTTON_LANDSCAPE;
-  return { x: rightAnchor(viewWidth, size, m.margin), y: m.margin + m.hit + BELOW_HUD, w: size, h: size };
+  const edge = m.margin + Math.floor((m.hit - m.plate) / 2);
+  return { x: rightAnchor(viewWidth, size, edge), y: m.margin + m.hit + BELOW_HUD, w: size, h: size };
 }
 
 /** Desktop chip: item icon + "E" key cap, as tall as a HUD button. */

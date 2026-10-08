@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
-import { hudButtons, uiMetrics } from './layout';
+import { buttonPlate, hudButtons, uiMetrics } from './layout';
 import { ITEM_HINT_TIME, ItemHint, itemButtonRect, itemControl, keycapChip } from './item-button';
 
 const TOUCH_LANDSCAPE = { touch: true, portrait: false };
@@ -46,6 +46,23 @@ describe('item control', () => {
         for (const hud of [b.pause, b.mute, b.fullscreen!]) expect(overlaps(r, hud)).toBe(false);
         // Above the street: overhead obstacles hang lower than this.
         expect(r.y + r.h).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it('the touch button plate keeps the edge margin of the HUD plates and never overlaps a HUD button', () => {
+    for (const display of [TOUCH_LANDSCAPE, TOUCH_PORTRAIT]) {
+      const m = uiMetrics(display);
+      for (const w of [320, 384, 427]) {
+        const r = itemButtonRect(w, display);
+        for (const withPause of [true, false]) {
+          const b = hudButtons(w, true, m, withPause);
+          const hud = [b.pause, b.mute, b.fullscreen!];
+          const plateRight = Math.max(...hud.map((h) => buttonPlate(h, m)).map((p) => p.x + p.w));
+          if (withPause) expect(r.x + r.w).toBe(plateRight);
+          for (const h of hud) expect(overlaps(r, h)).toBe(false);
+        }
+        expect(w - (r.x + r.w)).toBeGreaterThanOrEqual(4);
       }
     }
   });

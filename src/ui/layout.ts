@@ -113,6 +113,17 @@ export function popupScale(display: { portrait: boolean }, big: boolean): number
   return big || display.portrait ? 2 : 1;
 }
 
+/** Least gap (view px) between a popup (outline and icon included) and either view edge. */
+export const POPUP_MARGIN = 4;
+
+/**
+ * Left x of a popup `w` wide (outline and icon included) centred on `cx`,
+ * kept POPUP_MARGIN from both view edges; the left margin wins if it cannot fit.
+ */
+export function popupLeft(cx: number, w: number, viewWidth: number): number {
+  return Math.max(POPUP_MARGIN, Math.min(cx - Math.floor(w / 2), viewWidth - POPUP_MARGIN - w));
+}
+
 /** A parent-check answer labelled with the key that picks it: "1: 48". */
 export function answerLabel(index: number, answer: number): string {
   return `${index + 1}: ${answer}`;

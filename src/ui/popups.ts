@@ -39,7 +39,8 @@ interface Slot extends Popup {
 /**
  * Fixed-size pool of floating texts: spawning reuses slots (the oldest when
  * full), so the HUD allocates nothing per frame. A repeat of a live popup
- * ("Stern!") merges into it ("Stern! x2") instead of stacking. Live popups
+ * ("Stern!") merges into it ("Stern! x2") instead of stacking, and moves to
+ * the newest slot as if just spawned. Live popups
  * form one column above the skater: each rises on its own, but the newest
  * sits at the bottom and older ones are pushed up so no two ever overlap,
  * and the whole column is pushed down so none rises above `ceiling` (the
@@ -61,18 +62,17 @@ export class PopupPool {
   }
 
   spawn(text: string, x: number, y: number, color: string, scale = 1, icon: Popup['icon'] = null): void {
+    const baseY = Math.max(Math.round(y), this.ceiling + RISE);
+    const seq = ++this.spawned;
+    // A repeat merges and then counts as just spawned: newest slot at the bottom, rising again from the new spot.
     const repeat = this.slots.find((s) => s.alive && s.base === text && s.color === color);
     if (repeat) {
       repeat.count++;
-      repeat.text = `${text} x${repeat.count}`;
-      repeat.time = 0;
-      repeat.age = 0;
+      Object.assign(repeat, { text: `${text} x${repeat.count}`, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, seq });
       this.layout();
       return;
     }
     const slot = this.slots.find((s) => !s.alive) ?? this.oldest();
-    const baseY = Math.max(Math.round(y), this.ceiling + RISE);
-    const seq = ++this.spawned;
     Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, alive: true, icon, seq });
     this.layout();
   }

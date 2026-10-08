@@ -57,6 +57,23 @@ describe('PopupPool', () => {
     expect(live[0]!.age).toBe(0);
   });
 
+  it('moves a merged repeat to the newest (bottom) slot and restarts its rise from the new spot', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 20;
+    pool.spawn('Achtung, der Ball!', 64, 100, '#f00');
+    pool.update(0.2);
+    pool.spawn('Treffer!', 64, 100, '#fff');
+    pool.update(0.2);
+    pool.spawn('Achtung, der Ball!', 64, 110, '#f00');
+    const find = (t: string) => pool.active().find((p) => p.text === t)!;
+    expect(find('Achtung, der Ball! x2').y).toBeGreaterThan(find('Treffer!').y);
+    expect(find('Achtung, der Ball! x2').y).toBe(110);
+    expectApart(pool.active());
+    pool.update(0.2);
+    expect(find('Achtung, der Ball! x2').y).toBeLessThan(110);
+    expect(find('Achtung, der Ball! x2').y).toBeGreaterThan(find('Treffer!').y);
+  });
+
   it('starts counting again once the merged popup is gone', () => {
     const pool = new PopupPool(4);
     pool.spawn('Stern!', 50, 100, '#ff0');

@@ -272,16 +272,17 @@ const ITEM_PALETTE = {
 
 /** Item icons for the touch item button (3x) and the desktop chip (1x); the beer also marks the drunk timer row. */
 export const ITEM_ICONS: Record<CarriedItem, PixelIcon> = {
-  // A round white ball with a black pentagon (point up) in the middle and cut-off patches inside a light rim.
+  // A round white ball inside a light rim: a round black patch in the middle (no point or stem, so it never
+  // reads as a spade) and five patches cut off by the rim around it.
   football: new PixelIcon(ITEM_PALETTE, [`
     ..ccccc..
-    .cqbbbqc.
-    cbbbqbbbc
-    cbbqqqbbc
-    cqbqqqbqc
+    .cbbqbbc.
     cqbbbbbqc
-    cbbbqbbbc
-    .cbqqqbc.
+    cqbqqqbqc
+    cbqqqqqbc
+    cbbqqqbbc
+    cqbbbbbqc
+    .cqbbbqc.
     ..ccccc..
   `]),
   pretzel: new PixelIcon(ITEM_PALETTE, [`

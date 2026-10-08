@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rect } from '../types';
-import { answerLabel, blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
+import { answerLabel, blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -154,5 +154,28 @@ describe('layout helpers', () => {
     expect(blinkOn(0)).toBe(true);
     expect(blinkOn(0.6)).toBe(false);
     expect(blinkOn(1.0)).toBe(true);
+  });
+});
+
+describe('popup placement', () => {
+  it('centres a popup on its spot when it fits', () => {
+    expect(popupLeft(64, 40, 320)).toBe(44);
+  });
+
+  it('keeps every popup at least 4 px from both edges at every view width', () => {
+    expect(POPUP_MARGIN).toBeGreaterThanOrEqual(4);
+    for (const viewWidth of [320, 384, 427]) {
+      for (const w of [10, 60, 120, 240, viewWidth - 2 * POPUP_MARGIN]) {
+        for (const cx of [0, 64, 160, viewWidth - 10, viewWidth]) {
+          const left = popupLeft(cx, w, viewWidth);
+          expect(left).toBeGreaterThanOrEqual(POPUP_MARGIN);
+          expect(left + w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
+        }
+      }
+    }
+  });
+
+  it('a popup wider than the view keeps the left margin', () => {
+    expect(popupLeft(64, 400, 320)).toBe(POPUP_MARGIN);
   });
 });
