@@ -128,4 +128,40 @@ describe('PropStream', () => {
       expect(p.x).toBeLessThan(600);
     }
   });
+
+  it('keeps every prop off a kept-clear span, carrying on right after it', () => {
+    for (let seed = 1; seed < 30; seed++) {
+      const stream = make(seed);
+      stream.restart(0);
+      stream.keepClear(100, 400);
+      const list = sequence(stream, 1500);
+      for (const p of list) expect(p.x + p.width <= 100 || p.x >= 400).toBe(true);
+      expect(list.some((p) => p.x === 400)).toBe(true);
+      expect(list.some((p) => p.x > 400)).toBe(true);
+    }
+  });
+
+  it('pushes intro props past a kept-clear span in order', () => {
+    const stream = make(2);
+    stream.restart(0);
+    stream.keepClear(-10, 50);
+    const [first, second] = sequence(stream, 300);
+    expect(first).toMatchObject({ id: 'tower', x: 50 });
+    expect(second!.id).toBe('hill');
+  });
+
+  it('tells where an intro prop sits, even once it has scrolled past', () => {
+    const stream = make(3);
+    stream.restart(30);
+    expect(stream.introX('hill')).toBe(sequence(make3At30(), 300)[1]!.x);
+    stream.visible(5000, 5400);
+    expect(stream.introX('hill')).toBe(sequence(make3At30(), 300)[1]!.x);
+    expect(stream.introX('lamp')).toBeNull();
+  });
 });
+
+function make3At30(): PropStream {
+  const stream = make(3);
+  stream.restart(30);
+  return stream;
+}

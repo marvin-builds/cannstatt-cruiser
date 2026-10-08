@@ -1,4 +1,4 @@
-import { VIEW_H } from '../core/config';
+import { VIEW_H, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
 import type { BaseTile, Prop } from './art/paint';
 import { type Placement, PropStream, type StreamConfig } from './stream';
@@ -13,6 +13,8 @@ export interface LayerSpec {
     readonly stream: StreamConfig;
     /** Screen x of the first prop after a snap (run start, setZone). */
     readonly startAt: number;
+    /** Keeps this layer's props off a scene on the layer behind while it passes the screen. */
+    readonly uncover?: Uncover;
   };
   /**
    * Moving things drawn above the base and below the props (e.g. a train),
@@ -21,6 +23,21 @@ export interface LayerSpec {
    */
   readonly vehicle?: (g: CanvasRenderingContext2D, scroll: number, ahead: number) => void;
 }
+
+/**
+ * A part of an intro prop on the layer behind (prop-local x range [from, to))
+ * that this layer's props never cover, whatever the view width: this layer
+ * scrolls faster, so it keeps a stretch free of props for as long as that
+ * part is on screen.
+ */
+export interface Uncover {
+  readonly id: string;
+  readonly from: number;
+  readonly to: number;
+}
+
+/** Extra px kept clear on both sides of an uncovered span (scroll rounding). */
+const UNCOVER_MARGIN = 2;
 
 /** A zone: its sky and its far, mid and near layers (same order as the world's depths). */
 export interface ZoneSpec {
@@ -57,6 +74,7 @@ export class DepthLayer {
   /** Reused every frame, so drawing allocates nothing. */
   private readonly legs = new LegList();
   private readonly placements: Placement[] = [];
+  private readonly lookup = new LegList();
 
   constructor(
     private readonly depth: Depth,
@@ -64,6 +82,8 @@ export class DepthLayer {
     private readonly specs: readonly LayerSpec[],
     private readonly gateways: GatewayTable,
     private readonly salt: number,
+    /** The layer behind this one (for LayerSpec uncover). */
+    private readonly behind?: DepthLayer,
   ) {}
 
   scroll(distance: number): number {
@@ -89,7 +109,7 @@ export class DepthLayer {
     const scroll = this.scroll(distance);
     const s = Math.floor(scroll);
     const legs = route.legs(this.depth, s, s + viewWidth, this.legs);
-    for (let i = 0; i < legs.count; i++) this.drawLeg(g, legs.at(i), scroll, time, ahead, viewWidth);
+    for (let i = 0; i < legs.count; i++) this.drawLeg(g, route, legs.at(i), scroll, time, ahead, viewWidth);
     for (let i = 0; i < legs.count; i++) {
       const leg = legs.at(i);
       if (leg.index === 0) continue;
@@ -105,6 +125,14 @@ export class DepthLayer {
       for (const prop of Object.values(spec.props?.catalogue ?? {})) prop.warm();
     }
     for (const row of this.gateways) for (const gate of row) gate?.prop.warm();
+  }
+
+  /** Layer x of intro prop `id` on route leg `k` of this layer, or null if that leg's zone has none. */
+  introX(route: ZoneRoute, k: number, id: string): number | null {
+    this.lookup.clear();
+    const leg = route.leg(this.depth, k, this.lookup.next());
+    if (!this.specs[leg.zone]!.props?.stream.intro.includes(id)) return null;
+    return this.stream(route, leg).introX(id);
   }
 
   private gateway(from: number, to: number): Gateway {
@@ -125,7 +153,7 @@ export class DepthLayer {
     this.oldestLeg = firstLeg;
   }
 
-  private drawLeg(g: CanvasRenderingContext2D, leg: Leg, scroll: number, time: number, ahead: number, viewWidth: number): void {
+  private drawLeg(g: CanvasRenderingContext2D, route: ZoneRoute, leg: Leg, scroll: number, time: number, ahead: number, viewWidth: number): void {
     const s = Math.floor(scroll);
     const left = Math.max(0, leg.from - s);
     const right = Math.min(viewWidth, leg.to - s);
@@ -144,7 +172,7 @@ export class DepthLayer {
     }
     vehicle?.(g, scroll, ahead);
     if (props) {
-      const visible = this.stream(leg).visible(s, s + viewWidth, this.placements);
+      const visible = this.stream(route, leg).visible(s, s + viewWidth, this.placements);
       for (let i = 0; i < visible.length; i++) {
         const p = visible[i]!;
         propOf(props.catalogue, p.id).draw(g, p.x - s, time, p.seed);
@@ -153,7 +181,7 @@ export class DepthLayer {
     if (clipped) g.restore();
   }
 
-  private stream(leg: Leg): PropStream {
+  private stream(route: ZoneRoute, leg: Leg): PropStream {
     let stream = this.streams.get(leg.index);
     if (stream) return stream;
     const props = this.specs[leg.zone]!.props!;
@@ -164,8 +192,24 @@ export class DepthLayer {
     const rng = new Rng(mixSeed(mixSeed(this.seed, this.salt), leg.index));
     stream = new PropStream(props.stream, (id) => propOf(props.catalogue, id).width, rng);
     stream.restart(start, end);
+    if (props.uncover) this.uncover(stream, route, leg.index, props.uncover);
     this.streams.set(leg.index, stream);
     return stream;
+  }
+
+  /**
+   * Keeps `stream` off the layer x range in which a prop would pass over the
+   * uncovered part [x + from, x + to) of the scene behind while that part is
+   * on screen. With r = this factor / behind factor, a prop at layer x n
+   * (width w) and the part meet on screen only if n + w > r (x + from) -
+   * (r - 1) viewWidth and n < r (x + to); the widest view bounds it.
+   */
+  private uncover(stream: PropStream, route: ZoneRoute, k: number, { id, from, to }: Uncover): void {
+    if (!this.behind) throw new Error(`Layer uncovers "${id}" but has no layer behind it`);
+    const x = this.behind.introX(route, k, id);
+    if (x === null) return;
+    const r = this.depth.factor / this.behind.depth.factor;
+    stream.keepClear(r * (x + from) - (r - 1) * VIEW_MAX_W - UNCOVER_MARGIN, r * (x + to) + UNCOVER_MARGIN);
   }
 }
 

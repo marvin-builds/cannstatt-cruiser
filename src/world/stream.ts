@@ -36,6 +36,11 @@ export class PropStream {
   private fillersLeft = 0;
   private lastLandmark: string | null = null;
   private lastFiller: string | null = null;
+  /** Layer x range [clearFrom, clearTo) no prop may overlap (see keepClear). */
+  private clearFrom = Infinity;
+  private clearTo = -Infinity;
+  /** Layer x of each intro prop placed since the restart. */
+  private readonly introPlaced = new Map<string, number>();
 
   constructor(
     private readonly config: StreamConfig,
@@ -54,6 +59,25 @@ export class PropStream {
     this.queue = [...this.config.intro];
     this.fillersLeft = this.rollFillers();
     this.lastLandmark = [...this.config.intro].reverse().find((id) => this.config.landmarks.includes(id)) ?? null;
+    this.clearFrom = Infinity;
+    this.clearTo = -Infinity;
+    this.introPlaced.clear();
+  }
+
+  /**
+   * After a restart: no prop overlaps layer x range [from, to); the prop that
+   * would is placed right after it instead (intro props keep their order).
+   */
+  keepClear(from: number, to: number): void {
+    this.clearFrom = Math.floor(from);
+    this.clearTo = Math.ceil(to);
+  }
+
+  /** Layer x of intro prop `id` since the restart (placing the intro if needed), or null if it is not in the intro. */
+  introX(id: string): number | null {
+    if (!this.config.intro.includes(id)) return null;
+    while (!this.introPlaced.has(id) && this.queue.length > 0 && this.cursor < Infinity) this.place();
+    return this.introPlaced.get(id) ?? null;
   }
 
   /**
@@ -77,13 +101,21 @@ export class PropStream {
   }
 
   private place(): void {
+    const intro = this.queue.length > 0;
     let id: string | null = this.queue.shift() ?? this.pickNext();
+    if (this.cursor < this.clearTo && this.cursor + this.widthOf(id) > this.clearFrom) {
+      // Jump the kept-clear span; this prop comes first right after it.
+      this.cursor = this.clearTo;
+      this.queue.unshift(id);
+      return;
+    }
     if (this.cursor + this.widthOf(id) > this.end) id = this.fittingFiller();
     if (id === null) {
       this.cursor = Infinity;
       return;
     }
     const width = this.widthOf(id);
+    if (intro && !this.introPlaced.has(id)) this.introPlaced.set(id, this.cursor);
     this.placed.push({ id, x: this.cursor, width, seed: this.rng.int(0, 0xffff) });
     this.cursor += width + this.rng.int(this.config.gap[0], this.config.gap[1]);
   }

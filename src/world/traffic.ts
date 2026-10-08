@@ -1,11 +1,12 @@
 /**
- * Stuttgart-Mitte traffic on the foreground street, close to the camera: a
+ * Traffic on the foreground street, close to the camera. Stuttgart-Mitte: a
  * back lane of cars and vans driving with the skater (drawn behind gameplay)
  * and an oncoming front lane that adds city buses and trucks (drawn in front
  * of gameplay, so it starts below everything gameplay draws). Vehicles leave
  * big exhaust clouds that drift up behind gameplay, flash their headlights
  * now and then (honk) and make the street rumble by 1 px while a bus or truck
- * passes. DOM-free and allocation-free while driving (fixed pools); the art
+ * passes. Everywhere else light traffic: now and then a single car or van
+(rarely a bus) with long empty stretches between. DOM-free and allocation-free while driving (fixed pools); the art
  * lives in art/traffic.ts.
  */
 import { GROUND_Y, VIEW_H } from '../core/config';
@@ -22,8 +23,17 @@ export const FRONT_TOP = GROUND_Y + 7;
 /** Exhaust clouds (drawn behind gameplay) never rise above this view y. */
 export const EXHAUST_TOP = GROUND_Y - 44;
 
-/** Zone that has traffic. */
+/** Zone that has dense traffic. */
 const TRAFFIC_ZONE = 0;
+/**
+ * Density away from Mitte (light traffic; also what audio hears there, so the
+ * rumble stays quiet). The Mitte ramps lift it to 1.
+ */
+export const LIGHT_TRAFFIC = 0.05;
+/** Below this density the street has light traffic: one vehicle at a time. */
+const DENSE_FROM = 0.2;
+/** Seconds of empty street before the next vehicle of light traffic. */
+const LIGHT_GAP: readonly [number, number] = [4, 11];
 /** Ground distance before the Mitte gateway where traffic starts ramping in (and after it leaves, out). */
 const RAMP_LEAD = 160;
 /** Ground distance the ramp takes from no traffic to full traffic ("auf einmal"). */
@@ -67,6 +77,8 @@ export interface Lane {
   readonly interval: readonly [number, number];
   /** Weighted bag the lane's next vehicle is drawn from. */
   readonly kinds: readonly VehicleKind[];
+  /** The bag for light traffic away from Mitte (no trucks, a bus rarely). */
+  readonly lightKinds: readonly VehicleKind[];
   /** Drawn in front of gameplay (its vehicles start at FRONT_TOP or lower). */
   readonly front: boolean;
 }
@@ -82,6 +94,7 @@ export const LANES: readonly Lane[] = [
     speed: [35, 95],
     interval: [0.3, 0.75],
     kinds: ['hatch', 'hatch', 'sedan', 'sedan', 'sedan', 'van', 'van'],
+    lightKinds: ['hatch', 'hatch', 'sedan', 'sedan', 'van'],
     front: false,
   },
   {
@@ -90,6 +103,7 @@ export const LANES: readonly Lane[] = [
     speed: [40, 105],
     interval: [0.25, 0.7],
     kinds: ['hatch', 'sedan', 'sedan', 'van', 'van', 'bus', 'bus', 'truck', 'truck'],
+    lightKinds: ['hatch', 'hatch', 'sedan', 'sedan', 'sedan', 'van', 'van', 'van', 'bus'],
     front: true,
   },
 ];
@@ -143,12 +157,13 @@ export interface Puff {
 }
 
 /**
- * Traffic density 0..1 at a ground distance: 1 inside Stuttgart-Mitte, ramping
- * in quickly around the gateway into Mitte and out around the one leaving it.
+ * Traffic density LIGHT_TRAFFIC..1 at a ground distance: 1 inside
+ * Stuttgart-Mitte, ramping in quickly around the gateway into Mitte and out
+ * around the one leaving it; LIGHT_TRAFFIC everywhere else.
  */
 export function trafficDensity(route: ZoneRoute, distance: number): number {
   const k = route.legAt(distance);
-  let density = 0;
+  let density = LIGHT_TRAFFIC;
   for (let leg = k - 1; leg <= k + 1; leg++) {
     if (leg < 0 || route.zoneOf(leg) !== TRAFFIC_ZONE) continue;
     const enter = leg === 0 ? 1 : ramp((distance - (route.boundary(leg) - RAMP_LEAD)) / RAMP_LENGTH);
@@ -156,6 +171,11 @@ export function trafficDensity(route: ZoneRoute, distance: number): number {
     density = Math.max(density, Math.min(enter, leave));
   }
   return density;
+}
+
+/** How much of a density is Mitte's (0 at light traffic or less, 1 in Mitte), e.g. for the smog haze. */
+export function mitteShare(density: number): number {
+  return ramp((density - LIGHT_TRAFFIC) / (1 - LIGHT_TRAFFIC));
 }
 
 /**
@@ -184,6 +204,8 @@ export class Traffic {
   shake = 0;
   /** Seconds (scaled by density) until each lane's next vehicle. */
   private readonly timers: number[];
+  /** Light traffic: seconds of empty street left until the next vehicle. */
+  private lightTimer = LIGHT_GAP[0];
   private ticks = 0;
 
   constructor(private readonly rng: Rng) {
@@ -208,6 +230,7 @@ export class Traffic {
     for (let i = 0; i < this.vehicles.length; i++) this.vehicles[i]!.active = false;
     for (let i = 0; i < this.puffs.length; i++) this.puffs[i]!.active = false;
     for (let i = 0; i < this.timers.length; i++) this.timers[i] = 0;
+    this.lightTimer = LIGHT_GAP[0];
     this.shake = 0;
     this.ticks = 0;
   }
@@ -217,6 +240,7 @@ export class Traffic {
     this.movePuffs(dt, scroll);
     this.follow();
     let heavy = false;
+    let onStreet = 0;
     for (let i = 0; i < this.vehicles.length; i++) {
       const v = this.vehicles[i]!;
       if (!v.active) continue;
@@ -226,13 +250,15 @@ export class Traffic {
         v.active = false;
         continue;
       }
+      onStreet++;
       if (VEHICLES[v.kind].heavy && v.x < viewWidth && v.x + w > 0) heavy = true;
       v.puffTimer -= dt;
       if (v.puffTimer <= 0) this.puff(v);
       this.blink(v, dt);
     }
     this.keepApart();
-    if (density > 0) this.spawn(dt, density, viewWidth);
+    if (density >= DENSE_FROM) this.spawn(dt, density, viewWidth);
+    else if (density > 0) this.spawnLight(dt, onStreet === 0, viewWidth);
     this.ticks++;
     this.shake = heavy ? Math.floor(this.ticks / SHAKE_TICKS) % 2 : 0;
   }
@@ -292,31 +318,48 @@ export class Traffic {
     return LANES[v.lane]!.dir === 1 ? ahead.x - (v.x + VEHICLES[v.kind].w) : v.x - (ahead.x + VEHICLES[ahead.kind].w);
   }
 
+  /** Mitte: every lane sends its next vehicle when its timer (running at `density`) is due and there is room. */
   private spawn(dt: number, density: number, viewWidth: number): void {
     for (let lane = 0; lane < LANES.length; lane++) {
       this.timers[lane]! -= dt * density;
       if (this.timers[lane]! > 0) continue;
-      const slot = firstInactive(this.vehicles);
-      if (!slot) return;
       const spec = LANES[lane]!;
-      const kind = this.rng.pick(spec.kinds);
-      const { w, h, puffEvery } = VEHICLES[kind];
-      const speed = Math.round(this.rng.range(spec.speed[0], spec.speed[1]));
-      const x = spec.dir === 1 ? -w - 1 : viewWidth + 1;
-      if (!this.clear(lane, x, w)) continue;
-      slot.active = true;
-      slot.kind = kind;
-      slot.variant = this.rng.int(0, VEHICLE_VARIANTS - 1);
-      slot.lane = lane;
-      slot.x = x;
-      slot.top = spec.bottom - h + 1;
-      slot.speed = speed;
-      slot.pace = speed;
-      slot.puffTimer = this.rng.range(0, puffEvery[1]);
-      slot.flash = 0;
-      slot.flashTimer = this.rng.range(0.5, FLASH_EVERY[1]);
+      if (!this.launch(lane, this.rng.pick(spec.kinds), viewWidth)) continue;
       this.timers[lane] = this.rng.range(spec.interval[0], spec.interval[1]);
     }
+  }
+
+  /** Light traffic: one vehicle in a random lane once the street has been empty for a while. */
+  private spawnLight(dt: number, empty: boolean, viewWidth: number): void {
+    if (!empty) return;
+    this.lightTimer -= dt;
+    if (this.lightTimer > 0) return;
+    const lane = this.rng.int(0, LANES.length - 1);
+    this.launch(lane, this.rng.pick(LANES[lane]!.lightKinds), viewWidth);
+    this.lightTimer = this.rng.range(LIGHT_GAP[0], LIGHT_GAP[1]);
+  }
+
+  /** Sends a `kind` into `lane` from its entry edge; false if there is no room (or no free slot). */
+  private launch(lane: number, kind: VehicleKind, viewWidth: number): boolean {
+    const slot = firstInactive(this.vehicles);
+    if (!slot) return false;
+    const spec = LANES[lane]!;
+    const { w, h, puffEvery } = VEHICLES[kind];
+    const speed = Math.round(this.rng.range(spec.speed[0], spec.speed[1]));
+    const x = spec.dir === 1 ? -w - 1 : viewWidth + 1;
+    if (!this.clear(lane, x, w)) return false;
+    slot.active = true;
+    slot.kind = kind;
+    slot.variant = this.rng.int(0, VEHICLE_VARIANTS - 1);
+    slot.lane = lane;
+    slot.x = x;
+    slot.top = spec.bottom - h + 1;
+    slot.speed = speed;
+    slot.pace = speed;
+    slot.puffTimer = this.rng.range(0, puffEvery[1]);
+    slot.flash = 0;
+    slot.flashTimer = this.rng.range(0.5, FLASH_EVERY[1]);
+    return true;
   }
 
   /** True if a vehicle `w` wide fits at `x` in `lane` with room to spare. */

@@ -77,6 +77,11 @@ const BASIN_W = 32;
 /** Boulders per half ring, 5 px apart. */
 const RING = 6;
 const BASIN_CX = BASIN_X + BASIN_W / 2;
+/**
+ * Local x span with the people, the stair and the basin (flat area to the
+ * basin's ripples): near-layer props never cover it (LayerSpec uncover).
+ */
+export const MOMBACH_FOCUS = { from: FLAT_X, to: BASIN_X + BASIN_W + 4 } as const;
 /** Culvert mouth (the water's exit), below the upper bench. */
 const CULVERT_X = BASIN_CX - 3;
 const CULVERT_Y = TERRACE_Y + 7;

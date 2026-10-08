@@ -6,7 +6,7 @@ import { farHills, hillProp, housesHillProp } from './hills';
 import { crossingX } from '../crossing';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { BANK_Y, WATER_Y } from './layout';
-import { mombachquelle } from './mombach';
+import { MOMBACH_FOCUS, mombachquelle } from './mombach';
 import { skyCanvas } from './sky';
 import { stadtbahn } from './stadtbahn';
 import { STREET, tree } from './street';
@@ -293,6 +293,8 @@ export function neckarZone(): ZoneSpec {
             fillersBetween: [0, 0],
           },
           startAt: 4,
+          // Lamps and trees pass the spring scene behind twice as fast: they leave it uncovered.
+          uncover: { id: 'mombachquelle', ...MOMBACH_FOCUS },
         },
       },
     ],

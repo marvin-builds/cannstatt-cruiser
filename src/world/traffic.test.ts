@@ -2,7 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, TICK_DT } from '../core/config';
 import { Rng } from '../core/rng';
 import { OBSTACLES } from '../gameplay/catalogue';
-import { EXHAUST_TOP, FRONT_TOP, LANES, PUFF_LIFE, Traffic, TRAFFIC_TOP, trafficDensity, vehicleScreenX, VEHICLES, type VehicleKind } from './traffic';
+import {
+  EXHAUST_TOP,
+  FRONT_TOP,
+  LANES,
+  LIGHT_TRAFFIC,
+  mitteShare,
+  PUFF_LIFE,
+  Traffic,
+  TRAFFIC_TOP,
+  trafficDensity,
+  vehicleScreenX,
+  VEHICLES,
+  type VehicleKind,
+} from './traffic';
 import { ZONE_LENGTH, ZoneRoute } from './zones';
 
 /** Runs `seconds` of traffic at a constant scroll speed (px/s) and density. */
@@ -18,14 +31,16 @@ function active(traffic: Traffic) {
 }
 
 describe('trafficDensity', () => {
-  it('is zero away from Stuttgart-Mitte and one deep inside it', () => {
+  it('keeps a low floor of light traffic away from Stuttgart-Mitte and is one deep inside it', () => {
+    expect(LIGHT_TRAFFIC).toBeGreaterThan(0);
+    expect(LIGHT_TRAFFIC).toBeLessThanOrEqual(0.08);
     const route = new ZoneRoute();
     route.snap(2, 0);
-    expect(trafficDensity(route, 0)).toBe(0);
-    expect(trafficDensity(route, ZONE_LENGTH + 1500)).toBe(0);
+    expect(trafficDensity(route, 0)).toBe(LIGHT_TRAFFIC);
+    expect(trafficDensity(route, ZONE_LENGTH + 1500)).toBe(LIGHT_TRAFFIC);
     expect(trafficDensity(route, 2 * ZONE_LENGTH + 1500)).toBe(1);
-    expect(trafficDensity(route, 3 * ZONE_LENGTH + 1500)).toBe(0);
-    expect(trafficDensity(route, 4 * ZONE_LENGTH + 1500)).toBe(0);
+    expect(trafficDensity(route, 3 * ZONE_LENGTH + 1500)).toBe(LIGHT_TRAFFIC);
+    expect(trafficDensity(route, 4 * ZONE_LENGTH + 1500)).toBe(LIGHT_TRAFFIC);
   });
 
   it('ramps in quickly as Mitte arrives and out as it leaves', () => {
@@ -34,14 +49,14 @@ describe('trafficDensity', () => {
     const enter = route.boundary(2);
     const leave = route.boundary(3);
     const into = [-400, -100, 0, 100, 400].map((d) => trafficDensity(route, enter + d));
-    expect(into[0]).toBe(0);
+    expect(into[0]).toBe(LIGHT_TRAFFIC);
     expect(into[4]).toBe(1);
     for (let i = 1; i < into.length; i++) expect(into[i]!).toBeGreaterThanOrEqual(into[i - 1]!);
-    expect(trafficDensity(route, enter)).toBeGreaterThan(0);
+    expect(trafficDensity(route, enter)).toBeGreaterThan(LIGHT_TRAFFIC);
     expect(trafficDensity(route, enter)).toBeLessThan(1);
     expect(trafficDensity(route, leave - 400)).toBe(1);
-    expect(trafficDensity(route, leave)).toBeGreaterThan(0);
-    expect(trafficDensity(route, leave + 400)).toBe(0);
+    expect(trafficDensity(route, leave)).toBeGreaterThan(LIGHT_TRAFFIC);
+    expect(trafficDensity(route, leave + 400)).toBe(LIGHT_TRAFFIC);
   });
 
   it('is full at once when a run is snapped into Mitte', () => {
@@ -49,13 +64,86 @@ describe('trafficDensity', () => {
     route.snap(0, 500);
     expect(trafficDensity(route, 500)).toBe(1);
   });
+
+  it('gives the Mitte share of a density (for the smog haze): none at light traffic, all in Mitte', () => {
+    expect(mitteShare(0)).toBe(0);
+    expect(mitteShare(LIGHT_TRAFFIC)).toBe(0);
+    expect(mitteShare(1)).toBe(1);
+    const half = mitteShare((1 + LIGHT_TRAFFIC) / 2);
+    expect(half).toBeGreaterThan(0.4);
+    expect(half).toBeLessThan(0.6);
+  });
+});
+
+/** Every vehicle that set off during `seconds` of driving, and the share of ticks with an empty street. */
+function census(traffic: Traffic, seconds: number, density: number) {
+  const kinds: VehicleKind[] = [];
+  const wasActive = traffic.vehicles.map((v) => v.active);
+  let empty = 0;
+  let ticks = 0;
+  let most = 0;
+  drive(traffic, seconds, 120, density, 427, () => {
+    let onStreet = 0;
+    traffic.vehicles.forEach((v, i) => {
+      if (v.active && !wasActive[i]) kinds.push(v.kind);
+      wasActive[i] = v.active;
+      if (v.active) onStreet++;
+    });
+    if (onStreet === 0) empty++;
+    most = Math.max(most, onStreet);
+    ticks++;
+  });
+  return { kinds, emptyShare: empty / ticks, most };
+}
+
+describe('Traffic away from Mitte (light traffic)', () => {
+  it('sends a single car or van now and then, with long empty stretches in between', () => {
+    for (const seed of [1, 2, 3]) {
+      const { kinds, emptyShare, most } = census(new Traffic(new Rng(seed)), 240, LIGHT_TRAFFIC);
+      expect(most).toBe(1);
+      expect(emptyShare).toBeGreaterThan(0.35);
+      expect(kinds.length).toBeGreaterThan(10);
+      expect(kinds).not.toContain('truck');
+    }
+  });
+
+  it('sends a bus only rarely', () => {
+    const kinds: VehicleKind[] = [];
+    for (let seed = 1; seed <= 6; seed++) kinds.push(...census(new Traffic(new Rng(seed)), 400, LIGHT_TRAFFIC).kinds);
+    const buses = kinds.filter((k) => k === 'bus').length;
+    expect(buses).toBeGreaterThan(0);
+    expect(buses / kinds.length).toBeLessThan(0.12);
+    expect(kinds.filter((k) => k === 'hatch' || k === 'sedan' || k === 'van').length / kinds.length).toBeGreaterThan(0.88);
+  });
+
+  it('is way, way less than Mitte', () => {
+    const light = census(new Traffic(new Rng(8)), 120, LIGHT_TRAFFIC).kinds.length;
+    const mitte = census(new Traffic(new Rng(8)), 120, 1).kinds.length;
+    expect(light * 8).toBeLessThan(mitte);
+  });
+
+  it('keeps light vehicles below the riding line and the front lane clear of gameplay', () => {
+    const traffic = new Traffic(new Rng(9));
+    drive(traffic, 200, 120, LIGHT_TRAFFIC, 427, () => {
+      for (const v of traffic.vehicles) {
+        if (!v.active) continue;
+        expect(v.top).toBeGreaterThanOrEqual(LANES[v.lane]!.front ? FRONT_TOP : TRAFFIC_TOP);
+        if (VEHICLES[v.kind].heavy) expect(LANES[v.lane]!.front).toBe(true);
+      }
+    });
+  });
+
+  it('is deterministic for a seed', () => {
+    const kinds = (seed: number) => census(new Traffic(new Rng(seed)), 120, LIGHT_TRAFFIC).kinds;
+    expect(kinds(4)).toEqual(kinds(4));
+  });
 });
 
 describe('Traffic', () => {
   it('keeps every vehicle body below the riding line', () => {
     expect(TRAFFIC_TOP).toBeGreaterThan(GROUND_Y);
     for (const lane of LANES) {
-      for (const kind of lane.kinds) expect(lane.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(TRAFFIC_TOP);
+      for (const kind of [...lane.kinds, ...lane.lightKinds]) expect(lane.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(TRAFFIC_TOP);
     }
     const traffic = new Traffic(new Rng(3));
     let highest = Infinity;
@@ -70,7 +158,7 @@ describe('Traffic', () => {
     expect(FRONT_TOP).toBeGreaterThan(GROUND_Y + deepestSink);
     const front = LANES.filter((l) => l.front);
     expect(front).toHaveLength(1);
-    for (const kind of front[0]!.kinds) expect(front[0]!.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(FRONT_TOP);
+    for (const kind of [...front[0]!.kinds, ...front[0]!.lightKinds]) expect(front[0]!.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(FRONT_TOP);
   });
 
   it('drives cars about twice the old size, and buses and trucks clearly bigger', () => {

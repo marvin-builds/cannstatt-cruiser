@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../core/game';
 import { createWorldSystem } from './index';
+import { LIGHT_TRAFFIC } from './traffic';
 import { SEAM_GRID, ZONE_LENGTH } from './zones';
 
 function playing(): Game {
@@ -93,20 +94,20 @@ describe('world system zones', () => {
 });
 
 describe('world system traffic', () => {
-  it('has no traffic in Bad Cannstatt and at the Neckar, dense traffic in Mitte', () => {
+  it('has light traffic in Bad Cannstatt and at the Neckar, dense traffic in Mitte', () => {
     const world = createWorldSystem();
     const game = new Game({ systems: [world] });
     game.seed(1);
     game.commands.startRun();
     game.tick();
-    expect(world.trafficDensity()).toBe(0);
+    expect(world.trafficDensity()).toBe(LIGHT_TRAFFIC);
     rideTo(game, ZONE_LENGTH + 1000);
-    expect(world.trafficDensity()).toBe(0);
+    expect(world.trafficDensity()).toBe(LIGHT_TRAFFIC);
     rideTo(game, 2 * ZONE_LENGTH + 1500);
     expect(world.trafficDensity()).toBe(1);
   });
 
-  it('shows Bad Cannstatt (no traffic) again once back on the title', () => {
+  it('shows Bad Cannstatt (light traffic) again once back on the title', () => {
     const world = createWorldSystem();
     const game = new Game({ systems: [world] });
     game.commands.startRun();
@@ -118,7 +119,7 @@ describe('world system traffic', () => {
     expect(world.trafficDensity()).toBe(1);
     game.commands.toTitle();
     game.tick();
-    expect(world.trafficDensity()).toBe(0);
+    expect(world.trafficDensity()).toBe(LIGHT_TRAFFIC);
   });
 
   it('writes the traffic density into the state each tick for other systems (audio)', () => {
@@ -127,11 +128,11 @@ describe('world system traffic', () => {
     game.seed(1);
     game.commands.startRun();
     game.tick();
-    expect(game.state.trafficDensity).toBe(0);
+    expect(game.state.trafficDensity).toBe(LIGHT_TRAFFIC);
     rideTo(game, ZONE_LENGTH + 1000);
-    expect(game.state.trafficDensity).toBe(0);
+    expect(game.state.trafficDensity).toBe(LIGHT_TRAFFIC);
     rideTo(game, 2 * ZONE_LENGTH - 50);
-    expect(game.state.trafficDensity).toBeGreaterThan(0);
+    expect(game.state.trafficDensity).toBeGreaterThan(LIGHT_TRAFFIC);
     expect(game.state.trafficDensity).toBeLessThan(1);
     expect(game.state.trafficDensity).toBe(world.trafficDensity());
     rideTo(game, 2 * ZONE_LENGTH + 1500);

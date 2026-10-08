@@ -3,6 +3,7 @@ import { Rng } from '../../core/rng';
 import { PropStream } from '../stream';
 import { ZONE_LENGTH } from '../zones';
 import { MID_FACTOR } from './layout';
+import { MOMBACH_FOCUS, mombachquelle } from './mombach';
 import { neckarZone } from './neckar';
 
 describe('Neckar mid layer', () => {
@@ -16,5 +17,15 @@ describe('Neckar mid layer', () => {
       const springs = stream.visible(0, stretch).filter((p) => p.id === 'mombachquelle');
       expect(springs).toHaveLength(1);
     }
+  });
+});
+
+describe('Neckar near layer', () => {
+  it('keeps its lamps and trees off the Mombachquelle (people, stair and basin) while it passes', () => {
+    const near = neckarZone().layers[2]!.props!;
+    expect(near.uncover).toEqual({ id: 'mombachquelle', ...MOMBACH_FOCUS });
+    expect(MOMBACH_FOCUS.from).toBeGreaterThanOrEqual(0);
+    expect(MOMBACH_FOCUS.to).toBeLessThanOrEqual(mombachquelle.width);
+    expect(MOMBACH_FOCUS.to - MOMBACH_FOCUS.from).toBeGreaterThanOrEqual(100);
   });
 });
