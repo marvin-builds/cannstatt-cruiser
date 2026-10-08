@@ -14,10 +14,13 @@ import { ActionButton, IDLE_ACTION } from './action';
 import { GAMEOVER_INPUT_DELAY, TICK_DT, VIEW_H, VIEW_W } from './config';
 import { DelayedButton, drunkDelay } from './drunk';
 import { EventBus } from './events';
+import { type InstallEnvironment, InstallController } from './install';
 import { type ModeCommand, nextMode } from './modes';
 import { Rng } from './rng';
 import type { FrameProbe } from './perf';
 import { createInitialState, resetRun } from './state';
+import { createMemoryStore, type Store } from './storage';
+import { loadWhatsNew, markVersionSeen } from './version';
 
 /** Browser-side effects the game can trigger; no-ops by default (tests, headless). */
 export interface Platform {
@@ -25,6 +28,8 @@ export interface Platform {
   setLetterboxColor(color: string): void;
   /** Reloads the page (location.reload in the browser). */
   reload(): void;
+  /** Installed or not, and the device family, for `state.install` (read once at startup). */
+  installEnvironment(): InstallEnvironment;
 }
 
 /**
@@ -47,6 +52,8 @@ export interface GameOptions {
   /** Update order = array order. */
   systems: System[];
   platform?: Partial<Platform>;
+  /** Persistence for the last-seen version and install hint; defaults to a memory store (tests). */
+  store?: Store;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -93,6 +100,8 @@ export class Game {
   };
   readonly commands: GameCommands;
   readonly ctx: GameContext;
+  /** The install hint state and captured browser prompt; app.ts forwards beforeinstallprompt / appinstalled. */
+  readonly install: InstallController;
   /** Set by the measurement hook (window.__game.perf): books each system's update / render time. */
   probe: FrameProbe | null = null;
 
@@ -121,8 +130,13 @@ export class Game {
       toggleFullscreen: () => {},
       setLetterboxColor: () => {},
       reload: () => {},
+      installEnvironment: () => ({ standalone: false, platform: 'other' }),
       ...options.platform,
     };
+    const store = options.store ?? createMemoryStore();
+    this.state.whatsNew = loadWhatsNew(store);
+    this.install = new InstallController(this.state, store);
+    this.install.start(platform.installEnvironment());
     this.commands = {
       startRun: () => this.startRun(),
       pause: () => this.transition('pause') && this.bus.emit('pause', {}),
@@ -138,6 +152,9 @@ export class Game {
         this.buttons.use.release(USE_ITEM_SOURCE);
       },
       reloadForUpdate: () => platform.reload(),
+      markVersionSeen: () => markVersionSeen(this.state, store),
+      promptInstall: () => this.install.promptInstall(),
+      dismissInstallHint: () => this.install.dismiss(),
     };
     const game = this;
     this.ctx = {

@@ -1,5 +1,6 @@
 import type { DisplayInfo, GameEvents, GameState } from '../types';
 import type { Game } from './game';
+import type { InstallState } from './install';
 import { FrameProbe, type ProbeDump } from './perf';
 import { SWIPE_DUCK_TICKS } from './input';
 import { handleServiceWorkerMessage, UPDATE_READY_MESSAGE } from './update';
@@ -75,6 +76,14 @@ export interface TestHook {
   capture(scale?: number): string;
   /** Handles the service worker's `{type: 'updateReady'}` message as if a new deploy were cached: sets `state.updateReady`. */
   simulateUpdateReady(): void;
+  /**
+   * Overrides `state.install` fields for playtests of the install hint (not persisted).
+   * `canPrompt: true` captures a fake beforeinstallprompt that `commands.promptInstall()`
+   * consumes (counted by promptsShown); `canPrompt: false` withdraws it.
+   */
+  simulateInstall(fields: Partial<InstallState>): void;
+  /** How many fake install prompts (simulateInstall) were shown so far. */
+  promptsShown(): number;
   /** Frame-time probe (scripts/frametimes.ts): records up to `frames` real rAF frames until stop(). */
   perf: {
     start(frames?: number): void;
@@ -107,6 +116,12 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     }
   };
   const { action, duck } = game.buttons;
+  let promptsShown = 0;
+  const simulateInstall = ({ canPrompt, ...fields }: Partial<InstallState>) => {
+    Object.assign(game.state.install, fields);
+    if (canPrompt === true) game.install.capturePrompt({ preventDefault: () => {}, prompt: () => void promptsShown++ });
+    else if (canPrompt === false) game.install.dropPrompt();
+  };
 
   return {
     seed: (n) => game.seed(n),
@@ -150,6 +165,8 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     display: () => ({ ...game.display }),
     capture: (scale = 4) => clock.capture(scale),
     simulateUpdateReady: () => handleServiceWorkerMessage(game.state, UPDATE_READY_MESSAGE),
+    simulateInstall,
+    promptsShown: () => promptsShown,
     perf: {
       start: (frames = 3600) => void (game.probe = new FrameProbe(game.systemNames, frames)),
       stop: () => {

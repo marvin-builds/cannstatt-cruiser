@@ -6,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContextOptions, CDPSession, Page } from 'playwright';
 import { build, preview, type PreviewServer } from 'vite';
-import type { DisplayInfo, GameEvents, GameState } from '../src/types';
+import type { DisplayInfo, GameEvents, GameState, InstallState } from '../src/types';
 import type { LoggedEvent } from '../src/core/testhook';
 
 export interface ViewportSpec {
@@ -83,6 +83,10 @@ export interface GameDriver {
   display(): Promise<DisplayInfo>;
   /** Presses for `holdFrames` ticks while frozen and returns the jump's apex height in view pixels. */
   jumpApex(holdFrames: number): Promise<number>;
+  /** Overrides `state.install` fields; `canPrompt: true` fakes a browser install prompt. */
+  simulateInstall(fields: Partial<InstallState>): Promise<void>;
+  /** Fake install prompts shown so far (commands.promptInstall after simulateInstall). */
+  promptsShown(): Promise<number>;
 }
 
 export interface PlaytestContext {
@@ -148,6 +152,8 @@ export function createGameDriver(page: Page): GameDriver {
       call(([f, n]) => window.__game!.eventsSince(f as number, n as keyof GameEvents | undefined), frame, name),
     clearEvents: () => call(() => window.__game!.clearEvents()),
     display: () => call(() => window.__game!.display()),
+    simulateInstall: (fields) => call(([f]) => window.__game!.simulateInstall(f as Partial<InstallState>), fields),
+    promptsShown: () => call(() => window.__game!.promptsShown()),
     jumpApex: (holdFrames) =>
       call(([h]) => {
         const g = window.__game!;

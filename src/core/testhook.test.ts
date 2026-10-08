@@ -98,3 +98,35 @@ describe('test hook update hint', () => {
     expect(hook.state().updateReady).toBe(true);
   });
 });
+
+describe('test hook install hint', () => {
+  it('overrides install fields for playtests', () => {
+    const { hook } = setup();
+    hook.simulateInstall({ platform: 'ios', visits: 3 });
+    expect(hook.state().install).toMatchObject({ platform: 'ios', visits: 3, canPrompt: false });
+  });
+
+  it('fakes a browser install prompt that promptInstall consumes', () => {
+    const { game, hook } = setup();
+    hook.simulateInstall({ platform: 'android', canPrompt: true });
+    expect(hook.state().install.canPrompt).toBe(true);
+    game.commands.promptInstall();
+    expect(hook.state().install.canPrompt).toBe(false);
+  });
+
+  it('withdraws a prompt with canPrompt: false', () => {
+    const { game, hook } = setup();
+    hook.simulateInstall({ canPrompt: true });
+    hook.simulateInstall({ canPrompt: false });
+    game.commands.promptInstall();
+    expect(hook.state().install.canPrompt).toBe(false);
+    expect(hook.promptsShown()).toBe(0);
+  });
+
+  it('counts the prompts the fake event showed', () => {
+    const { game, hook } = setup();
+    hook.simulateInstall({ canPrompt: true });
+    game.commands.promptInstall();
+    expect(hook.promptsShown()).toBe(1);
+  });
+});

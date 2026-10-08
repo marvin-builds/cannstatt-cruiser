@@ -1,5 +1,6 @@
 import type { GameState, PlayerState } from '../types';
 import { BASE_SPEED, GROUND_Y, MAX_HEALTH, PLAYER_X, START_ZONE } from './config';
+import { createInstallState } from './install';
 
 /** Default skater: standing on the ground at PLAYER_X with a 12x28 hitbox. */
 export function createPlayer(): PlayerState {
@@ -39,13 +40,15 @@ export function createInitialState(): GameState {
     muted: false,
     kidMode: false,
     updateReady: false,
+    whatsNew: [],
+    install: createInstallState(),
     seed: 0,
     player: createPlayer(),
     entities: [],
   };
 }
 
-/** Resets everything that belongs to a single run; keeps mode, frame, settings and the update flag. */
+/** Resets everything that belongs to a single run; keeps mode, frame, settings, the update flag, whatsNew and install. */
 export function resetRun(state: GameState, seed: number): void {
   const fresh = createInitialState();
   Object.assign(state, {
@@ -56,6 +59,8 @@ export function resetRun(state: GameState, seed: number): void {
     muted: state.muted,
     kidMode: state.kidMode,
     updateReady: state.updateReady,
+    whatsNew: state.whatsNew,
+    install: state.install,
     seed,
   });
 }

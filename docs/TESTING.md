@@ -36,6 +36,23 @@ expect(game.state.player.grounded).toBe(false);
 than a hold. Duck works the same with `game.buttons.duck`
 (`src/player/duck.test.ts`).
 
+Such a `Game` uses a fresh memory store (nothing persists between games) and
+a plain browser (`state.install` is `standalone: false, platform: 'other'`).
+To test the "what's new" or install-hint screens, pass both in:
+
+```ts
+import { createMemoryStore } from '../core/storage';
+const store = createMemoryStore();
+store.set('lastSeenVersion', '2026-10-08.1');           // older than BUILD_VERSION
+const game = new Game({
+  systems: [createUiSystem()],
+  store,
+  platform: { installEnvironment: () => ({ standalone: false, platform: 'ios' }) },
+});
+game.state.whatsNew;                                    // entries since 2026-10-08.1
+game.install.capturePrompt({ preventDefault() {}, prompt() {} });  // canPrompt = true
+```
+
 Real input without a DOM: `keyDown(game, 'ArrowDown')` / `keyUp` and
 `new PointerControls(game)` with `down(id, x, y, touch)`, `move`, `up` from
 `src/core/input.ts` take the same path as the browser events
@@ -79,6 +96,8 @@ only available with `?test=1` in the URL.
 | `display()` | copy of `DisplayInfo`: `portrait`, `touch`, `fullscreen`, `viewWidth`, `viewHeight` |
 | `capture(scale = 4)` | PNG data URL of the view buffer (current view width x 180), upscaled nearest-neighbour |
 | `simulateUpdateReady()` | handles the service worker's `{type: 'updateReady'}` message as after a real deploy: sets `state.updateReady` (for the ui's reload hint; the real path is checked by `scripts/scenarios/update-hint.ts`) |
+| `simulateInstall(fields)` | overrides `state.install` fields for install-hint playtests (not persisted), e.g. `{platform: 'ios', visits: 3}`. `canPrompt: true` captures a fake `beforeinstallprompt` that `commands.promptInstall()` consumes; `canPrompt: false` withdraws it |
+| `promptsShown()` | how many fake install prompts were shown (after `simulateInstall({canPrompt: true})` and the ui's "Installieren") |
 
 Reading events since a point in time: note the frame first, then act. Events
 emitted by hook calls between ticks (e.g. `startRun`) carry the current frame,
@@ -329,7 +348,14 @@ The context provides:
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
 
 The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,
-`endRun`, `eventsSince` and `display`.
+`endRun`, `eventsSince`, `display`, `simulateInstall` and `promptsShown`.
+
+Changelog and install state: `scripts/scenarios/version-install.ts` checks
+that a first visit stores the running build silently, that an older stored
+`lastSeenVersion` (localStorage `cannstatt-cruiser:lastSeenVersion`, JSON)
+fills `state.whatsNew` after a reload, the visit count, the fake prompt and
+the platform detection for iPhone and Android user agents. To show the
+"what's new" screen by hand, set that key to an older version and reload.
 
 `captureCanvas(page, file, scale)` from `playtest-lib.ts` saves the upscaled
 buffer from any Playwright script.

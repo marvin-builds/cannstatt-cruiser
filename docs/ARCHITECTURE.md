@@ -11,6 +11,7 @@ integer nearest-neighbour scaling.
 index.html              canvas#game, viewport/touch CSS, PWA <link>s
 src/main.ts             composition root: lists the systems in update order (do not edit from slices)
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
+src/changelog.ts        CHANGELOG (newest first), BUILD_VERSION, changesSince(), compareVersions() (see Changelog)
 src/core/               engine pieces (foundation-owned, slices only import from here)
   config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX, START_ZONE
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
@@ -30,10 +31,12 @@ src/core/               engine pieces (foundation-owned, slices only import from
   font.ts               drawText(g, text, x, y, {color, scale, align, shadow}); glyphs cached per colour
   rng.ts                Rng (mulberry32): next/range/int/pick/chance
   events.ts             EventBus<E>: on/onAny/emit
-  storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage
+  storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage; createMemoryStore() for tests
   fullscreen.ts         toggleFullscreen() with webkit + iOS fallback, landscape lock
   testhook.ts           window.__game (see docs/TESTING.md)
   update.ts             handleServiceWorkerMessage(): sw.js `updateReady` -> state.updateReady (see Update signal)
+  version.ts            loadWhatsNew() / markVersionSeen(): store key lastSeenVersion -> state.whatsNew (see Changelog)
+  install.ts            InstallController, detectInstallEnvironment(): state.install, beforeinstallprompt (see Install hint)
   app.ts                startApp(systems): wires everything in the browser, registers ./sw.js and its message listener
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
   world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
@@ -67,7 +70,7 @@ foundation owner can extend it.
 
 | Path | Owner | Factory / content | Responsibilities |
 |---|---|---|---|
-| `src/core/`, `src/types.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
+| `src/core/`, `src/types.ts`, `src/changelog.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps and the tossed item (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
@@ -107,6 +110,62 @@ creates them in `public/`):
   network and clients; `scripts/scenarios/update-hint.ts` checks it end to
   end on the preview build; `window.__game.simulateUpdateReady()` sets the
   flag without a deploy (docs/TESTING.md).
+
+### Changelog ("Neu in dieser Version", ROADMAP item 16)
+
+- `src/changelog.ts` holds `CHANGELOG: ChangelogEntry[]`, newest first, with
+  `{version, date, items}`. `version` is `YYYY-MM-DD.n` (the deploy date and
+  that day's build number, compared numerically by `compareVersions`), `date`
+  its date part. `BUILD_VERSION` is the newest entry's version: the running build.
+- **The orchestrator adds an entry for every deploy** (a new `.n` on the same
+  day), before the deploy commit. Items are short German bullet points: at
+  most `CHANGELOG_ITEM_MAX_CHARS` = 40 characters in game-font glyphs and
+  `CHANGELOG_MAX_ITEMS_PER_ENTRY` = 6 per entry. Kid mode shows them too, so
+  they never mention drugs or alcohol (`src/changelog.test.ts` checks all of this).
+- At startup (Game constructor, before the systems' `init`) core reads the
+  store key `lastSeenVersion` (`core/version.ts`):
+  - nothing or junk stored (first visit): it stores `BUILD_VERSION` at once
+    and `state.whatsNew` stays empty, so first-timers never see the screen;
+  - otherwise `state.whatsNew = changesSince(lastSeen, CHANGELOG)`: the
+    entries newer than the stored version, newest first, capped to
+    `WHATS_NEW_MAX_ITEMS` = 6 items in total (entries left empty are dropped).
+    Empty when the running build was already seen.
+- The ui shows the screen while `state.whatsNew` is non-empty (before the
+  normal title) and calls `ctx.commands.markVersionSeen()` when the player
+  closes it: core stores `BUILD_VERSION` and empties `state.whatsNew`.
+  `resetRun` keeps `whatsNew`.
+
+### Install hint (ROADMAP item 18)
+
+`state.install` (`InstallState`, `core/install.ts`), written by core only and
+kept across runs:
+
+| Field | Meaning |
+|---|---|
+| `standalone` | already running installed: `matchMedia('(display-mode: standalone)')` or `navigator.standalone` (iOS) |
+| `platform` | `'ios'` (iPhone / iPad, also iPadOS with the Mac desktop user agent plus touch points), `'android'`, or `'other'` |
+| `canPrompt` | a `beforeinstallprompt` was captured (Chromium) and not used yet: show the "Installieren" button |
+| `installed` | the browser reported `appinstalled` during this visit |
+| `visits` | page loads so far including this one (store key `visits`, +1 per load) |
+| `dismissed` | the player closed the hint with "×" (store key `installHintDismissed`) |
+
+- `app.ts` reads the environment through `Platform.installEnvironment()`
+  (`detectInstallEnvironment` over user agent, touch points, display mode)
+  and forwards the window events to `game.install` (`InstallController`):
+  `beforeinstallprompt` -> `capturePrompt` (calls `preventDefault()`, keeps the
+  event, `canPrompt = true`); `appinstalled` -> `appInstalled` (`installed = true`,
+  `canPrompt = false`). Tests and headless games get `{standalone: false,
+  platform: 'other'}` and a memory store.
+- `ctx.commands.promptInstall()` shows the kept prompt (call it from a
+  hotspot's `onPress`, it needs the user gesture) and clears `canPrompt`; a
+  prompt can be shown only once, a refused one is swallowed.
+  `ctx.commands.dismissInstallHint()` sets and persists `dismissed`.
+- The ui decides when to show the hint: touch device, not `standalone`, not
+  `installed`, not `dismissed`, `visits >= 2`, on title or game over only; a
+  button when `canPrompt`, otherwise "Teilen -> Zum Home-Bildschirm" on `ios`.
+- Tests: `src/core/install.test.ts`; `window.__game.simulateInstall({...})`
+  and `promptsShown()` for playtests; `scripts/scenarios/version-install.ts`
+  checks both contracts end to end (docs/TESTING.md).
 
 ## Contracts (src/types.ts)
 
@@ -150,7 +209,7 @@ interface System {
 | `input` | this tick's `InputFrame`: `action`, `duck` and `use` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-duck-and-use). |
 | `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
-| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick), `reloadForUpdate` (reloads the page; see [Update signal](#update-signal-roadmap-item-15)) |
+| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick), `reloadForUpdate` (reloads the page; see [Update signal](#update-signal-roadmap-item-15)), `markVersionSeen` (see [Changelog](#changelog-neu-in-dieser-version-roadmap-item-16)), `promptInstall`, `dismissInstallHint` (see [Install hint](#install-hint-roadmap-item-18)) |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
 | `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
 
@@ -160,6 +219,8 @@ interface System {
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
 | `updateReady` | core, from the service worker's `updateReady` message ([Update signal](#update-signal-roadmap-item-15)); kept across runs, the ui only reads it |
+| `whatsNew` | core: at startup and on `commands.markVersionSeen()` ([Changelog](#changelog-neu-in-dieser-version-roadmap-item-16)); kept across runs |
+| `install` | core: at startup, from the browser's install events and `commands.promptInstall` / `dismissInstallHint` ([Install hint](#install-hint-roadmap-item-18)); kept across runs |
 | `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
 | `player.*` (position, velocity, grounded, grinding, grindTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer` and `grindTrick`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |
@@ -757,5 +818,6 @@ requestAnimationFrame -> FixedTimestep (0..n ticks) -> Game.render(layers) -> Re
 
 Persistence: `import { store } from '../core/storage'`. Keys are namespaced
 `cannstatt-cruiser:*`. Use `highscore`, `starsTotal`, `kidMode` and
-`itemHintSeen` (ui; the first-catch touch hint was shown) and `muted`
-(audio). Calls never throw.
+`itemHintSeen` (ui; the first-catch touch hint was shown), `muted`
+(audio), and `lastSeenVersion`, `visits`, `installHintDismissed` (core; the
+ui changes them only through `commands`). Calls never throw.

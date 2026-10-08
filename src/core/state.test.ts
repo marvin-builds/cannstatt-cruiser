@@ -83,3 +83,29 @@ describe('update-ready state', () => {
     expect(state.updateReady).toBe(true);
   });
 });
+
+describe('changelog and install state', () => {
+  it('starts with nothing new and a plain, uninstalled browser', () => {
+    const state = createInitialState();
+    expect(state.whatsNew).toEqual([]);
+    expect(state.install).toEqual({
+      standalone: false,
+      platform: 'other',
+      canPrompt: false,
+      installed: false,
+      visits: 0,
+      dismissed: false,
+    });
+  });
+
+  it('keeps whatsNew and install when a new run starts', () => {
+    const state = createInitialState();
+    const whatsNew = [{ version: '2026-10-08.1', date: '2026-10-08', items: ['x'] }];
+    state.whatsNew = whatsNew;
+    state.install.canPrompt = true;
+    const install = state.install;
+    resetRun(state, 7);
+    expect(state.whatsNew).toBe(whatsNew);
+    expect(state.install).toBe(install);
+  });
+});

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EntityKind, GameEvents, RenderContext, RenderLayer, System } from '../types';
+import { BUILD_VERSION } from '../changelog';
+import type { EntityKind, GameEvents, GameState, RenderContext, RenderLayer, System } from '../types';
 import { BASE_SPEED, GAMEOVER_INPUT_DELAY, MAX_HEALTH, TICK_DT, VIEW_H, VIEW_W } from './config';
 import { Game } from './game';
+import { INSTALL_HINT_DISMISSED_KEY } from './install';
+import { createMemoryStore } from './storage';
+import { LAST_SEEN_VERSION_KEY } from './version';
 
 function tapAction(game: Game): void {
   game.buttons.action.press('test');
@@ -282,5 +286,56 @@ describe('reloadForUpdate command', () => {
   it('is a no-op without a browser platform', () => {
     const game = new Game({ systems: [] });
     expect(() => game.commands.reloadForUpdate()).not.toThrow();
+  });
+});
+
+describe('changelog and install at startup', () => {
+  it('fills whatsNew and install before the systems init', () => {
+    const store = createMemoryStore();
+    store.set(LAST_SEEN_VERSION_KEY, '2000-01-01.1');
+    let seen: Pick<GameState, 'whatsNew' | 'install'> | null = null;
+    const sys: System = { name: 'ui', init: (ctx) => void (seen = structuredClone({ whatsNew: ctx.state.whatsNew, install: ctx.state.install })) };
+    new Game({
+      systems: [sys],
+      store,
+      platform: { installEnvironment: () => ({ standalone: true, platform: 'ios' }) },
+    });
+    expect(seen!.whatsNew[0]?.version).toBe(BUILD_VERSION);
+    expect(seen!.install).toMatchObject({ standalone: true, platform: 'ios', visits: 1 });
+  });
+
+  it('shows nothing new and stores the build on a first visit', () => {
+    const store = createMemoryStore();
+    const game = new Game({ systems: [], store });
+    expect(game.state.whatsNew).toEqual([]);
+    expect(store.get(LAST_SEEN_VERSION_KEY, null)).toBe(BUILD_VERSION);
+  });
+
+  it('markVersionSeen persists the build and empties whatsNew', () => {
+    const store = createMemoryStore();
+    store.set(LAST_SEEN_VERSION_KEY, '2000-01-01.1');
+    const game = new Game({ systems: [], store });
+    game.commands.markVersionSeen();
+    expect(game.state.whatsNew).toEqual([]);
+    expect(store.get(LAST_SEEN_VERSION_KEY, null)).toBe(BUILD_VERSION);
+  });
+
+  it('promptInstall shows the captured browser prompt; dismissInstallHint persists', () => {
+    const store = createMemoryStore();
+    const game = new Game({ systems: [], store });
+    const prompt = vi.fn(() => Promise.resolve());
+    game.install.capturePrompt({ preventDefault: () => {}, prompt });
+    expect(game.state.install.canPrompt).toBe(true);
+    game.commands.promptInstall();
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(game.state.install.canPrompt).toBe(false);
+    game.commands.dismissInstallHint();
+    expect(game.state.install.dismissed).toBe(true);
+    expect(store.get(INSTALL_HINT_DISMISSED_KEY, false)).toBe(true);
+  });
+
+  it('defaults to a non-persistent store and a plain browser', () => {
+    const game = new Game({ systems: [] });
+    expect(game.state.install).toMatchObject({ standalone: false, platform: 'other', canPrompt: false, visits: 1 });
   });
 });

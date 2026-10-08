@@ -3,13 +3,15 @@ import { TICK_DT } from './config';
 import { isFullscreen, toggleFullscreen } from './fullscreen';
 import { Game } from './game';
 import { bindInput } from './input';
+import { detectInstallEnvironment, type InstallPromptEvent } from './install';
 import { FixedTimestep } from './loop';
 import type { FrameProbe } from './perf';
 import { Renderer } from './renderer';
+import { store } from './storage';
 import { createTestHook, testHookEnabled } from './testhook';
 import { handleServiceWorkerMessage } from './update';
 
-/** Boots the game in the browser: canvas, loop, input, test hook, service worker. */
+/** Boots the game in the browser: canvas, loop, input, install prompt, test hook, service worker. */
 export function startApp(systems: System[]): Game {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('index.html must contain <canvas id="game">');
@@ -20,8 +22,19 @@ export function startApp(systems: System[]): Game {
       toggleFullscreen,
       setLetterboxColor: (c) => renderer.setLetterboxColor(c),
       reload: () => location.reload(),
+      installEnvironment: () =>
+        detectInstallEnvironment({
+          userAgent: navigator.userAgent,
+          maxTouchPoints: navigator.maxTouchPoints,
+          displayModeStandalone: matchMedia('(display-mode: standalone)').matches,
+          navigatorStandalone: (navigator as Navigator & { standalone?: boolean }).standalone,
+        }),
     },
+    store,
   });
+  // Chromium offers installing the PWA: keep the prompt for the ui's "Installieren" button.
+  window.addEventListener('beforeinstallprompt', (e) => game.install.capturePrompt(e as Event & InstallPromptEvent));
+  window.addEventListener('appinstalled', () => game.install.appInstalled());
 
   const updateDisplay = () => {
     renderer.resize();

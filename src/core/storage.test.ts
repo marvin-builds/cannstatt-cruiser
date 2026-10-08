@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createStore } from './storage';
+import { createMemoryStore, createStore } from './storage';
 
 function memoryBackend(): Storage {
   const m = new Map<string, string>();
@@ -38,5 +38,16 @@ describe('createStore', () => {
     expect(() => store.set('x', 1)).not.toThrow();
     expect(store.get('x', 3)).toBe(3);
     expect(createStore(null).get('x', 4)).toBe(4);
+  });
+});
+
+describe('createMemoryStore', () => {
+  it('round-trips copies of values and falls back for missing keys', () => {
+    const store = createMemoryStore();
+    const value = { a: [1] };
+    store.set('k', value);
+    value.a.push(2);
+    expect(store.get('k', null)).toEqual({ a: [1] });
+    expect(store.get('missing', 3)).toBe(3);
   });
 });

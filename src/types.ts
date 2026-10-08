@@ -2,12 +2,14 @@
  * Shared contracts between core and the feature slices. Changing anything here
  * affects every slice: extend (add optional fields) rather than rename.
  */
+import type { ChangelogEntry } from './changelog';
 import type { ActionSnapshot } from './core/action';
 import type { EventBus } from './core/events';
+import type { InstallPlatform, InstallState } from './core/install';
 import type { GameMode } from './core/modes';
 import type { Rng } from './core/rng';
 
-export type { ActionSnapshot, GameMode };
+export type { ActionSnapshot, ChangelogEntry, GameMode, InstallPlatform, InstallState };
 
 export interface Rect {
   x: number;
@@ -141,6 +143,19 @@ export interface GameState {
    * never cleared, kept across runs. The ui shows the reload hint from it.
    */
   updateReady: boolean;
+  /**
+   * Changelog entries newer than the stored last-seen version (src/changelog.ts),
+   * newest first and capped, computed once at startup. Empty on a first visit and
+   * after `commands.markVersionSeen()`. The ui shows "Neu in dieser Version" while
+   * it is non-empty. Kept across runs.
+   */
+  whatsNew: ChangelogEntry[];
+  /**
+   * Install hint facts (core/install.ts): standalone, platform, canPrompt
+   * (a captured beforeinstallprompt), installed, visits, dismissed. Written by
+   * core (commands.promptInstall / dismissInstallHint); kept across runs.
+   */
+  install: InstallState;
   /** Seed used for the current run (rng is re-seeded with it at run start). */
   seed: number;
   player: PlayerState;
@@ -258,6 +273,15 @@ export interface GameCommands {
   useItem(): void;
   /** Reloads the page to start the cached new version (see `state.updateReady`); for a ui hotspot. */
   reloadForUpdate(): void;
+  /** The player closed the "what's new" screen: stores the running build and empties `state.whatsNew`. */
+  markVersionSeen(): void;
+  /**
+   * Shows the browser's install dialog from the captured `beforeinstallprompt`
+   * (only while `state.install.canPrompt`; clears it). Call from a hotspot's onPress (user gesture).
+   */
+  promptInstall(): void;
+  /** "×" on the install hint: sets and persists `state.install.dismissed`. */
+  dismissInstallHint(): void;
 }
 
 export interface GameContext {

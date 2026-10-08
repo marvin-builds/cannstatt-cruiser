@@ -29,6 +29,15 @@ export function createStore(backend: Storage | null): Store {
   };
 }
 
+/** A store that lives only as long as the page (tests, headless games). */
+export function createMemoryStore(): Store {
+  const values = new Map<string, unknown>();
+  return {
+    get: <T>(key: string, fallback: T): T => (values.has(key) ? structuredClone(values.get(key) as T) : fallback),
+    set: (key, value) => void values.set(key, structuredClone(value)),
+  };
+}
+
 function browserStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage;
