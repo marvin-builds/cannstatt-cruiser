@@ -1,13 +1,15 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
- * rail riding, ducking (on the ground only), the stomp bounce, crash/
- * invulnerability and the animation state (incl. the catch reach). One instance
- * per player system; `reset()` at every run start.
+ * rail riding, ducking (on the ground only), the grind trick (down on a
+ * rail), the stomp bounce, crash/invulnerability and the animation state
+ * (incl. the catch reach and the item use). One instance per player system;
+ * `reset()` at every run start.
  */
 import { GROUND_Y } from '../core/config';
-import type { Entity, EntityKind, GameBus, GameState, InputFrame, PlayerAnim, PlayerState, Rect } from '../types';
+import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, ItemAction, PlayerAnim, PlayerState, Rect } from '../types';
 import { BinCrash } from './bin';
 import * as T from './tuning';
+import { ITEM_USE_TIME, MugToss, TOSS_AT } from './use';
 
 /** What the renderer needs besides PlayerState. */
 export interface AnimView {
@@ -22,7 +24,22 @@ export interface AnimView {
   catching: boolean;
   /** The crash playing is the head-first dive into a bin (timeline `binCrash`). */
   binCrash: boolean;
+  /** Grind trick look: turning to the camera (in-between frame, also on the way back), facing it, or none. */
+  trick: TrickPose | null;
+  /** The item being used (itemUsed) and the seconds since, or null. */
+  use: ItemUse | null;
 }
+
+export type TrickPose = 'turn' | 'front';
+
+export interface ItemUse {
+  item: CarriedItem;
+  action: ItemAction;
+  time: number;
+}
+
+/** Where the mug leaves the hand when tossed, relative to the wheel contact point (about the shoulder). */
+const TOSS_FROM = { dx: 2, dy: -26 } as const;
 
 export class SkaterController {
   private boosting = false;
@@ -44,6 +61,14 @@ export class SkaterController {
   /** A stomp arrived after the player's update: bounce at the start of the next tick. */
   private bouncePending = false;
   private catchTimer = 0;
+  /** Grind trick held (down on the rail) and seconds since it started. */
+  private tricking = false;
+  private trickTime = 0;
+  /** Seconds left of the in-between frame turning back after the trick. */
+  private turnBack = 0;
+  private use: ItemUse | null = null;
+  /** The empty mug tossed away after drinking (read by render.ts). */
+  readonly toss = new MugToss();
   /** Bin crash: lid colour and the bin tumbling away after the pop (read by render.ts). */
   readonly bin = new BinCrash();
 
@@ -67,6 +92,11 @@ export class SkaterController {
     this.chill = false;
     this.bouncePending = false;
     this.catchTimer = 0;
+    this.tricking = false;
+    this.trickTime = 0;
+    this.turnBack = 0;
+    this.use = null;
+    this.toss.reset();
     this.bin.reset();
   }
 
@@ -77,7 +107,26 @@ export class SkaterController {
   view(p: PlayerState): AnimView {
     const blinking = p.invulnerableTimer > 0 && !this.crashing;
     const visible = !blinking || Math.floor(p.invulnerableTimer / (T.BLINK_PERIOD / 2)) % 2 === 0;
-    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0, catching: this.catchTimer > 0, binCrash: this.bin.diving };
+    return {
+      anim: this.anim,
+      time: this.animTime,
+      visible,
+      standingUp: this.standUpTimer > 0,
+      catching: this.catchTimer > 0,
+      binCrash: this.bin.diving,
+      trick: this.trickPose(p),
+      use: this.use,
+    };
+  }
+
+  private trickPose(p: PlayerState): TrickPose | null {
+    if (this.tricking) return this.trickTime < T.TRICK_TURN_TIME ? 'turn' : 'front';
+    return this.turnBack > 0 && p.grinding ? 'turn' : null;
+  }
+
+  /** Gameplay: the carried item was used (itemUsed). Plays the use animation; a crash cuts it short. */
+  useItem(item: CarriedItem, action: ItemAction): void {
+    if (!this.crashing) this.use = { item, action, time: 0 };
   }
 
   /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
@@ -123,6 +172,8 @@ export class SkaterController {
     this.crashTimer = T.CRASH_TIME;
     this.bouncePending = false;
     this.catchTimer = 0;
+    this.use = null;
+    this.setTrick(p, false);
     p.invulnerableTimer = T.INVULNERABLE_TIME;
     this.boosting = false;
     this.buffer = 0;
@@ -154,11 +205,32 @@ export class SkaterController {
     this.buffer = Math.max(0, this.buffer - dt);
     // After the physics, so a jump (even from a duck) stands up and a landing with duck held ducks at once.
     this.setDucking(input.duck.held && p.grounded && !this.crashing);
+    // Down on a rail is the grind trick instead (no duck, the grind goes on).
+    this.setTrick(p, input.duck.held && p.grinding && !this.crashing);
 
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
     p.hitbox = hitboxFor(p);
     this.bin.update(state, this.crashing ? this.animTime : null, dt);
+    this.advanceUse(p, dt);
+    this.toss.update(dt, state.speed);
+  }
+
+  private setTrick(p: PlayerState, on: boolean): void {
+    if (on && !this.tricking) this.trickTime = 0;
+    if (!on && this.tricking) this.turnBack = p.grinding ? T.TRICK_TURN_TIME : 0;
+    this.tricking = on;
+    p.grindTrick = on;
+  }
+
+  /** Runs the item use clock; the drink tosses the empty mug at TOSS_AT. */
+  private advanceUse(p: PlayerState, dt: number): void {
+    const use = this.use;
+    if (!use) return;
+    const before = use.time;
+    use.time += dt;
+    if (use.action === 'drink' && before < TOSS_AT && use.time >= TOSS_AT) this.toss.start(p.x + TOSS_FROM.dx, p.y + TOSS_FROM.dy);
+    if (use.time >= ITEM_USE_TIME[use.action]) this.use = null;
   }
 
   private setDucking(ducking: boolean): void {
@@ -172,6 +244,8 @@ export class SkaterController {
     this.standUpTimer = Math.max(0, this.standUpTimer - dt);
     this.crashTimer = Math.max(0, this.crashTimer - dt);
     this.catchTimer = Math.max(0, this.catchTimer - dt);
+    this.turnBack = Math.max(0, this.turnBack - dt);
+    if (this.tricking) this.trickTime += dt;
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.sinceJump += dt;
     this.cruiseTime += dt * this.cruiseRate();
@@ -226,6 +300,7 @@ export class SkaterController {
     const entityId = this.railId;
     this.railId = null;
     p.grinding = false;
+    this.setTrick(p, false);
     if (emit && entityId !== null) this.bus.emit('grindEnd', { entityId, ticks: this.grindTicks });
   }
 

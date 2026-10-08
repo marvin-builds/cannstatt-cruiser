@@ -10,12 +10,21 @@ import { SkaterController } from './controller';
 import { drawDebugRails, installPlayerDebug } from './debug';
 import { drawSkater } from './render';
 
-export function createPlayerSystem(): System {
+/** The player system; `controller` (set in init) is for tests (see testing.ts). */
+export interface PlayerSystem extends System {
+  readonly controller: SkaterController | null;
+}
+
+export function createPlayerSystem(): PlayerSystem {
   let controller: SkaterController | null = null;
   let debug = false;
 
   return {
     name: 'player',
+
+    get controller() {
+      return controller;
+    },
 
     init(ctx) {
       const c = new SkaterController(ctx.bus);
@@ -26,6 +35,7 @@ export function createPlayerSystem(): System {
       ctx.bus.on('crash', (e) => c.crash(ctx.state, e.kind, e.entityId));
       ctx.bus.on('stomp', () => c.stomp());
       ctx.bus.on('itemCaught', () => c.catchItem());
+      ctx.bus.on('itemUsed', (e) => c.useItem(e.item, e.action));
       debug = typeof window !== 'undefined' && testHookEnabled();
       if (debug) installPlayerDebug(ctx);
     },
@@ -39,7 +49,7 @@ export function createPlayerSystem(): System {
         if (debug) drawDebugRails(r);
       },
       player(r) {
-        if (controller) drawSkater(r.g, r.state, controller.view(r.state.player), controller.bin);
+        if (controller) drawSkater(r.g, r.state, controller.view(r.state.player), controller);
       },
     },
   };

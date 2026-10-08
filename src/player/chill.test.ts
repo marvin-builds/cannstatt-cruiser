@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TICK_DT } from '../core/config';
 import type { Game } from '../core/game';
 import type { GameEvents } from '../types';
-import { B, BODY_FRAMES, CHILL_BODY_FRAMES, HEAD_AT } from './art';
+import { B, BODY_FRAMES, CHILL_BODY_FRAMES, FACE_AT, HEAD_AT } from './art';
 import { chillJoint, chillStyle, SMOKE_PERIOD, smokePuffs } from './chill';
 import { isCrashTimeline, poseAt, TIMELINES, type TimelineName } from './poses';
 import { SkaterController } from './controller';
@@ -148,6 +148,10 @@ describe('chill overlay selection', () => {
         expect(chill).toEqual(frame);
       }
     });
+  });
+
+  it('puts the joint at the mouth of the trick poses too (front view: the middle of the face)', () => {
+    for (const body of [B.grindTurn, B.grindFront]) expect(chillJoint('grindTrick', body)).toEqual(FACE_AT[body]!.mouth);
   });
 
   it('shows the duck pose with the joint too', () => {

@@ -11,6 +11,8 @@ import {
   BODY_DECK_ROW,
   BODY_FRAMES,
   CHILL_BODY_FRAMES,
+  CHILL_ONE_ARM_BODY_FRAMES,
+  ONE_ARM_BODY_FRAMES,
   PALETTE,
 } from './art';
 import type { BinCrash, BinTumble } from './bin';
@@ -18,11 +20,33 @@ import { BIN_ANCHOR_X, BIN_FRAMES, BIN_PALETTES, BIN_SIZE } from './bin-art';
 import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
 import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
-import type { AnimView } from './controller';
+import type { AnimView, SkaterController } from './controller';
 import { type Pose, poseAt, type TimelineName, timelineFor } from './poses';
+import { type UseFrame, itemUseFrame, type MugToss } from './use';
+import {
+  armLine,
+  flailArm,
+  HICCUP_ART,
+  hiccupAt,
+  LYING_MUG,
+  TOSSED_MUG,
+  USE_ITEM_ART,
+  type UseDraw,
+  useDraw,
+  type UseSprite,
+} from './use-art';
+import { type DrunkLook, drunkLook } from './wobble';
 
 const BODY = sprite(PALETTE, BODY_FRAMES);
 const CHILL_BODY = sprite(PALETTE, CHILL_BODY_FRAMES);
+const ONE_ARM_BODY = sprite(PALETTE, ONE_ARM_BODY_FRAMES);
+const CHILL_ONE_ARM_BODY = sprite(PALETTE, CHILL_ONE_ARM_BODY_FRAMES);
+const USE_ITEMS = new Map([...USE_ITEM_ART].map(([name, art]) => [name, sprite(ITEM_PALETTE, [art])])) as ReadonlyMap<UseSprite, Sprite>;
+/** One sprite per spin frame of the tossed mug: they differ in size. */
+const MUGS = TOSSED_MUG.map((art) => sprite(ITEM_PALETTE, [art]));
+const MUG_SPIN_STEP = 0.07;
+const HICCUP = sprite({ o: '#e4f3fb' }, [HICCUP_ART]);
+const CRUMB_COLOR = ITEM_PALETTE.z;
 const BOARD = sprite(PALETTE, BOARD_FRAMES);
 /** One sprite per bubble frame: they differ in size. */
 const BUBBLES = BUBBLE_ART.map((art) => sprite(BUBBLE_PALETTE, [art]));
@@ -54,33 +78,50 @@ export interface ChillLook {
   animTime: number;
 }
 
+/** An item being used (itemUsed): which one and the frame of its animation. */
+export interface UseLook {
+  item: CarriedItem;
+  frame: UseFrame;
+  timeline: TimelineName;
+}
+
+/** Everything drawn on top of a bare pose; all optional. */
+export interface PoseLooks {
+  chill?: ChillLook | null;
+  carry?: CarryLook | null;
+  use?: UseLook | null;
+  drunk?: DrunkLook | null;
+  /** Lid colour of the bin a bin-crash pose sits in. */
+  binLid?: number;
+}
+
+const NO_LOOKS: PoseLooks = {};
+
 /**
  * Draws `pose` with the wheel contact point at (x, y); everything snaps to
- * whole pixels together. `binLid` is the lid colour of the bin a bin-crash
- * pose sits in.
+ * whole pixels together. `looks` adds the chill look, the carried item, the
+ * item use, the drunk wobble and the bin lid colour.
  */
-export function drawPose(
-  g: CanvasRenderingContext2D,
-  pose: Pose,
-  x: number,
-  y: number,
-  chill: ChillLook | null = null,
-  carry: CarryLook | null = null,
-  binLid = 0,
-): void {
+export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: number, looks: PoseLooks = NO_LOOKS): void {
+  const { chill, carry, use, drunk } = looks;
   const x0 = Math.round(x);
   const y0 = Math.round(y);
   const boardTop = y0 - BOARD_H;
   drawBoard(g, pose.board, x0 + (pose.boardDx ?? 0), y0 + (pose.boardDy ?? 0));
-  const left = x0 - BODY_ANCHOR_X + (pose.bodyDx ?? 0);
+  // Drunk: the body sways over the board.
+  const left = x0 - BODY_ANCHOR_X + (pose.bodyDx ?? 0) + (drunk?.lean ?? 0);
   const top = boardTop + BOARD_DECK_ROW - BODY_DECK_ROW + (pose.bodyDy ?? 0);
   const item = carry && carriedItemDraw(carry.item, carry.timeline, pose.body, carry.catching);
-  // The reaching arm comes from behind the head, so the body covers its root.
+  const using = use && useDraw(use.item, use.frame, use.timeline, pose.body);
+  const flail = drunk?.flail && !using && !item?.arm ? flailArm(pose.body, drunk.flailHigh) : null;
+  // Reaching arms come from behind the head, so the body covers their root.
   if (item?.arm) ARM.draw(g, 0, left + item.arm.x, top + item.arm.y);
-  (chill?.style.redEyes ? CHILL_BODY : BODY).draw(g, pose.body, left, top);
+  if (using?.behind) drawArm(g, left, top, using.shoulder, using.hand);
+  bodySprite(chill?.style.redEyes ?? false, !!(using || flail)).draw(g, pose.body, left, top);
   if (item) drawItem(g, item, left, top);
+  if (flail) drawArm(g, left, top, flail.shoulder, flail.hand);
   // Upright on the deck, over the hips: only the legs stick out of the top.
-  if (pose.bin) drawBin(g, binLid, 0, x0 + (pose.boardDx ?? 0), boardTop + BOARD_DECK_ROW + (pose.boardDy ?? 0));
+  if (pose.bin) drawBin(g, looks.binLid ?? 0, 0, x0 + (pose.boardDx ?? 0), boardTop + BOARD_DECK_ROW + (pose.boardDy ?? 0));
   if (chill?.style.mouth === 'joint') {
     const joint = chillJoint(chill.timeline, pose.body);
     if (joint) drawJoint(g, { x: left + joint.x, y: top + joint.y }, chill.time);
@@ -88,6 +129,41 @@ export function drawPose(
     const bubble = chillBubble(chill.timeline, pose.body, chill.time, chill.animTime);
     if (bubble) BUBBLES[bubble.frame]!.draw(g, 0, left + bubble.x, top + bubble.y);
   }
+  if (using) drawUse(g, using, left, top);
+  const hiccup = drunk?.hiccup != null ? hiccupAt(pose.body, drunk.hiccup) : null;
+  if (hiccup) HICCUP.draw(g, 0, left + hiccup.x, top + hiccup.y);
+}
+
+function bodySprite(redEyes: boolean, oneArm: boolean): Sprite {
+  if (oneArm) return redEyes ? CHILL_ONE_ARM_BODY : ONE_ARM_BODY;
+  return redEyes ? CHILL_BODY : BODY;
+}
+
+/** An arm from the shoulder to the hand: hoodie sleeve with the outline around it, a skin pixel for the hand. */
+function drawArm(g: CanvasRenderingContext2D, left: number, top: number, shoulder: Point, hand: Point): void {
+  const line = armLine(shoulder, hand);
+  g.fillStyle = PALETTE.k;
+  for (const p of line) g.fillRect(left + p.x - 1, top + p.y - 1, 3, 3);
+  g.fillStyle = PALETTE.R;
+  for (const p of line) g.fillRect(left + p.x, top + p.y, 1, 1);
+  g.fillStyle = PALETTE.s;
+  g.fillRect(left + hand.x, top + hand.y, 1, 1);
+}
+
+/** The using arm in front of the body, the item at the lips over it, and the falling crumbs. */
+function drawUse(g: CanvasRenderingContext2D, using: UseDraw, left: number, top: number): void {
+  if (!using.behind) drawArm(g, left, top, using.shoulder, using.hand);
+  if (using.sprite) USE_ITEMS.get(using.sprite)!.draw(g, 0, left + using.x, top + using.y);
+  g.fillStyle = CRUMB_COLOR;
+  for (const c of using.crumbs) g.fillRect(left + c.x, top + c.y, 1, 1);
+}
+
+/** The empty mug tossed after drinking: spinning in flight, lying on the street once landed. */
+function drawTossedMug(g: CanvasRenderingContext2D, toss: MugToss): void {
+  if (!toss.active) return;
+  const frame = toss.landed ? LYING_MUG : Math.floor(toss.age / MUG_SPIN_STEP) % MUGS.length;
+  const mug = MUGS[frame]!;
+  mug.draw(g, 0, Math.round(toss.x) - Math.floor(mug.width / 2), Math.round(toss.y) - mug.height);
 }
 
 /** The item at its body-frame position; a tucked item gets the hand drawn over it, so the arm grips it. */
@@ -128,9 +204,10 @@ function drawJoint(g: CanvasRenderingContext2D, mouth: Point, time: number): voi
   }
 }
 
-export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: AnimView, bin: BinCrash): void {
+export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: AnimView, skater: Pick<SkaterController, 'bin' | 'toss'>): void {
   const p = state.player;
-  drawTumblingBin(g, bin, p.x);
+  drawTumblingBin(g, skater.bin, p.x);
+  drawTossedMug(g, skater.toss);
   if (!view.visible) return;
   const timeline = timelineFor(view, p.vy);
   const style = chillStyle(state);
@@ -138,5 +215,8 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const time = style?.mouth === 'bubble' ? bubbleTime(state.chillTimer) : state.time;
   const chill = style ? { style, timeline, time, animTime: view.time } : null;
   const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
-  drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill, carry, bin.lid);
+  const frame = view.use && itemUseFrame(view.use.action, view.use.time);
+  const use = view.use && frame ? { item: view.use.item, frame, timeline } : null;
+  const drunk = drunkLook(state.drunkTimer, state.time);
+  drawPose(g, poseAt(timeline, view.time), p.x, p.y, { chill, carry, use, drunk, binLid: skater.bin.lid });
 }

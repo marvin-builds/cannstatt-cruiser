@@ -125,6 +125,34 @@ in any slice's Vitest tests.
   goes up past the face and holds the item above the cap. Looks only, no
   physics change; a crash cuts it short.
 
+## Item use (itemUsed)
+
+- On `itemUsed {item, action}` the player plays an upper-body overlay
+  (`use.ts` timelines, `use-art.ts` geometry): **drink** lifts the Maßkrug to
+  the mouth, `DRINK_GULPS` (3) gulps in ~1 s, then tosses the empty mug
+  (`MugToss`: arc behind, lies on the street and scrolls away); **eat** two
+  bites with crumbs, then the food is gone; **throw** a quick overarm throw
+  (no ball drawn: gameplay owns the `ball` entity). Works in every pose but
+  the crash (ride, push, air, grind, grind trick, duck); a crash cuts it
+  short, a run start clears it. Looks only: hitbox, jump and duck unchanged.
+
+## Drunk look (state.drunkTimer > 0)
+
+- `drunkLook(drunkTimer, state.time)` (`wobble.ts`): the body sways 1 px
+  over the board, an arm flails now and then and a hiccup bubble rises from
+  the mouth. Pure function of the run time; hitbox unchanged.
+
+## Grind trick (player.grindTrick)
+
+- `input.duck.held` while grinding (and not crashing) sets
+  `player.grindTrick = true` every tick; otherwise it is false (released,
+  off the rail, jump, rail end, crash, run start). Down on a rail never
+  ducks and never leaves the rail; `player.state` stays `grind` and the hitbox
+  is the standing one. Gameplay scores it and emits `grindTrick`.
+- Look: one in-between frame (`TRICK_TURN_TIME`, timeline `grindTurn`) turning
+  to the camera, then the front view (`grindTrick`, the only frame with the
+  moustache), and the in-between frame again when the trick ends on the rail.
+
 ## Duck
 
 - `input.duck.held` while the player is **on the ground** (not on a rail,
@@ -159,6 +187,8 @@ length)`, `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the 
 `state.chillTimer`), `kidMode(on)` (sets `state.kidMode`), `carry(item)` (sets
 `state.carriedItem`, `null` drops it), `stomp(item)` (emits `stomp`),
 `catchItem(item)` (sets the item and emits `itemCaught`) and
-`lineup(scale, look, item)` (`look`: `'normal'`, `'chill'` or `'kid'`; `item`
+`useItem(item, action)` (emits `itemUsed`), `drunk(seconds)` (sets
+`state.drunkTimer`), `useLineup(scale)` (item use in ride/air/grind/trick
+poses plus drunk rows) and `lineup(scale, look, item)` (`look`: `'normal'`, `'chill'` or `'kid'`; `item`
 adds it in every pose plus a row of catch reaches) for playtest scenarios (see `scripts/scenarios/skater.ts`). Rails it adds carry
 `data.debugRail` and are drawn by the player slice; gameplay may ignore them.

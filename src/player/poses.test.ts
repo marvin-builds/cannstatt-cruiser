@@ -31,6 +31,22 @@ describe('poses', () => {
     expect(poseAt(timelineFor(up, 0), 0).body).toBe(B.crouch);
   });
 
+  it('turns to the front through one in-between pose during the grind trick', () => {
+    const view = { anim: 'grind' as const, time: 0, visible: true, standingUp: false };
+    expect(timelineFor({ ...view, trick: null }, 0)).toBe('grind');
+    expect(timelineFor({ ...view, trick: 'turn' }, 0)).toBe('grindTurn');
+    expect(timelineFor({ ...view, trick: 'front' }, 0)).toBe('grindTrick');
+    expect(TIMELINES.grindTurn.steps.map((s) => s.body)).toEqual([B.grindTurn]);
+    for (const step of TIMELINES.grindTrick.steps) expect(step.body).toBe(B.grindFront);
+    // On the rail like the normal grind.
+    for (const step of [...TIMELINES.grindTurn.steps, ...TIMELINES.grindTrick.steps]) {
+      expect(step.boardDy).toBe(TIMELINES.grind.steps[0]!.boardDy);
+      expect(step.board).toBe(BD.flat);
+    }
+    // The trick only exists on the rail.
+    expect(timelineFor({ ...view, anim: 'air', trick: 'front' }, 5)).toBe('airFall');
+  });
+
   it('the crash ends standing on the board under the skater within CRASH_TIME', () => {
     const end = poseAt('crash', CRASH_TIME - 0.01);
     expect(end.boardDx ?? 0).toBe(0);

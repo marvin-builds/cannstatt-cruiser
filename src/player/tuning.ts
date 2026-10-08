@@ -72,3 +72,6 @@ export const CATCH_TIME = 0.2;
  * lasts CRASH_TIME like every crash.
  */
 export const BIN_POP_AT = 0.76;
+
+/** Seconds of the in-between frame when the grind trick turns to the camera, and back. Looks only. */
+export const TRICK_TURN_TIME = 0.08;

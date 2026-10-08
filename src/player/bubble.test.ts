@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rowsFromString } from '../core/sprite-data';
-import { B, HEAD_AT, HEAD_MOUTH } from './art';
+import { B, FACE_AT } from './art';
 import { CHILL_DURATION } from '../core/chill';
 import { BUBBLE_ART, BUBBLE_PERIOD, BUBBLE_POP_TIME, bubbleFrame, bubbleTime, chillBubble, F } from './bubble';
 import { isCrashTimeline, TIMELINES, type TimelineName } from './poses';
@@ -62,10 +62,12 @@ describe('chillBubble placement', () => {
     for (const name of names) {
       for (const step of TIMELINES[name].steps) {
         const bubble = chillBubble(name, step.body, grownAt, 0);
-        const head = HEAD_AT[step.body]!;
-        expect(bubble, `${name} body ${step.body}`).toMatchObject({ frame: F.bubble3, x: head.x + HEAD_MOUTH.x + 1 });
+        const { mouth, view } = FACE_AT[step.body]!;
         const rows = rowsFromString(BUBBLE_ART[F.bubble3]!);
-        const mouthY = head.y + HEAD_MOUTH.y;
+        // Side and turning views blow it out in front of the lips, the front view straight at the camera.
+        const x = view === 'front' ? mouth.x - Math.floor(rows[0]!.length / 2) : mouth.x + 1;
+        expect(bubble, `${name} body ${step.body}`).toMatchObject({ frame: F.bubble3, x });
+        const mouthY = mouth.y;
         expect(bubble!.y).toBeLessThanOrEqual(mouthY);
         expect(bubble!.y + rows.length).toBeGreaterThan(mouthY);
       }

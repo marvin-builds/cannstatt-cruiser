@@ -1,7 +1,8 @@
 /**
  * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
- * dark-grey hair with a clean grey band under the cap, red hoodie, jeans, white sneakers) and his
- * longboard. Body frames are composed from shared parts (see compose.ts).
+ * dark hair with a hint of grey at the temple, red hoodie, jeans, white sneakers) and his
+ * longboard. He faces right; only the grind trick turns him to the camera
+ * (front view, the only view that shows his moustache). Body frames are composed from shared parts (see compose.ts).
  *
  * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
  * above BODY_DECK_ROW, the pushing foot and the crash poses reach down to
@@ -15,8 +16,9 @@ export const PALETTE = {
   k: '#241c24', // outline
   s: '#e3a57c', // skin
   S: '#b97456', // skin shade, ear
-  h: '#47444a', // hair, dark grey base
-  H: '#cacaca', // hair, light grey band under the cap and down the back
+  h: '#3b302c', // hair, dark brown-grey
+  H: '#cacaca', // hair, grey at the temple (1-2 px)
+  m: '#2e2420', // moustache (front view only)
   e: '#ff2236', // red eye (chill)
   p: '#ff9aae', // bloodshot pink eye (chill)
   E: '#b0102a', // dark red lower lid line (chill)
@@ -55,20 +57,20 @@ export const BOARD_ANCHOR_X = 13;
 // ---------------------------------------------------------------- parts
 
 /**
- * Head facing right, 11 x 8, the same in every frame. Navy cap with a dark
- * brim over the eyes; under it one continuous light-grey band (H) along the
- * cap edge at the side and down the back of the head, around a small block
- * of the dark-grey base (h) behind the ear. Clean skin face: one eye pixel, the nose sticks out one
- * pixel, the mouth is the outline pixel just under it.
+ * Head facing right, 11 x 8, the same in every side frame. Navy cap with a
+ * dark brim over the eyes; under it dark hair (h) at the side and down the
+ * back of the head, with one grey pixel (H) at the temple, just under the cap.
+ * Clean skin face: one eye pixel, the nose sticks out one pixel, the mouth is
+ * the outline pixel just under it.
  */
 const HEAD = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  kHHHssssk..
-  kHhhSsksssk
-  kHHsssssk..
-  .kHsssssk..
+  khhHssssk..
+  khhhSsksssk
+  khhsssssk..
+  .khsssssk..
   ..kkssskk..
 `;
 
@@ -80,18 +82,44 @@ const HEAD_CHILL = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  kHHHskkkk..
-  kHhhSpesssk
-  kHHsEEEsk..
-  .kHsssssk..
+  khhHskkkk..
+  khhhSpesssk
+  khhsEEEsk..
+  .khsssssk..
   ..kkssskk..
 `;
 
 /**
- * Mouth of the head (where the joint and the bubble gum sit), relative to the
- * head's top-left: the front outline pixel just under the nose.
+ * Grind trick, turning (3/4 view, the in-between frame): two eyes, the nose
+ * still to the right, no moustache yet. Same 11 x 8 box as HEAD.
  */
-export const HEAD_MOUTH = { x: 8, y: 5 } as const;
+const HEAD_TURN = `
+  ..kkkkkk...
+  .kcccccccck
+  kccccCCCCCk
+  khHsssssk..
+  khsksskssk.
+  khssssSssk.
+  .ksssssssk.
+  ..kkssskk..
+`;
+
+/**
+ * Grind trick, front view (11 x 9): the brim seen from the front, dark hair
+ * and sideburns at both sides with one grey pixel at each temple, two eyes, the nose in
+ * the middle, the moustache and the mouth under it.
+ */
+const HEAD_FRONT = `
+  ..kkkkkkk..
+  .kccccccck.
+  kCCCCCCCCCk
+  khHsssssHhk
+  khskssskshk
+  khsssSssshk
+  .ksmmmmmsk.
+  ..ksskssk..
+  ...kkkkk...
+`;
 
 const TORSO_DOWN = `
   .kRrrrrk..
@@ -142,6 +170,67 @@ const TORSO_ARMS_UP = `
   .....kjjjjjjk......
 `;
 
+/**
+ * The arms-out / arms-up torsos without the front (right) arm, for poses where
+ * that arm is busy (item use, drunk flail, see use-art.ts): the shoulder is closed.
+ */
+const TORSO_ARMS_OUT_ONE = `
+  ......kRrrrrk......
+  .....kRrrrrrrk.....
+  kkkkkkRrrrrrrk.....
+  sRRRRRRrrrrrrk.....
+  kkkkkkRrrrrrrk.....
+  .....kRrrrrrk......
+  .....kRrrrrrk......
+  .....kRRRRRRk......
+  .....kjjjjjjk......
+`;
+
+const TORSO_ARMS_UP_ONE = `
+  ks.................
+  .kRk...............
+  ..kRk.kRrrrrk......
+  ...kRkRrrrrrrk.....
+  ....kRRrrrrrrk.....
+  .....kRrrrrrrk.....
+  .....kRrrrrrk......
+  .....kRrrrrrk......
+  .....kRRRRRRk......
+  .....kjjjjjjk......
+`;
+
+/** Grind trick, front view: arms spread, the hoodie strings hanging down. */
+const TORSO_FRONT = `
+  ......kRrrrrk......
+  .....krrwrwrrk.....
+  kkkkkkrrwrwrrkkkkkk
+  sRRRRRrrwrwrrRRRRRs
+  kkkkkkrrrrrrrkkkkkk
+  .....kRrrrrrRk.....
+  .....kRrrrrrRk.....
+  .....kRrrrrrRk.....
+  .....kjjjjjjjk.....
+`;
+
+const TORSO_FRONT_ONE = `
+  ......kRrrrrk......
+  .....krrwrwrrk.....
+  kkkkkkrrwrwrrk.....
+  sRRRRRrrwrwrrk.....
+  kkkkkkrrrrrrrk.....
+  .....kRrrrrrRk.....
+  .....kRrrrrrRk.....
+  .....kRrrrrrRk.....
+  .....kjjjjjjjk.....
+`;
+
+/** Torso art -> the same torso with the front arm off (torsos not listed keep their arms close to the body). */
+const ONE_ARM: ReadonlyMap<string, string> = new Map([
+  [TORSO_ARMS_OUT, TORSO_ARMS_OUT_ONE],
+  [TORSO_ARMS_UP, TORSO_ARMS_UP_ONE],
+  [TORSO_FRONT, TORSO_FRONT_ONE],
+]);
+
 const TORSO_CROUCH = `
   .kRrrrrk...
   kRrrrrrrk..
@@ -162,6 +251,19 @@ const LEGS_STAND = `
   ....kjJk.......kjjk.....
   ...kwwwk.......kwwwwk...
   ..kWWWWWk......kWWWWWk..
+`;
+
+/** Grind trick: seen from the front, both feet across the deck, knees a little bent. */
+const LEGS_FRONT = `
+  ........kjjjjjjk........
+  .......kjjjjjjjjk.......
+  .......kjjJkkJjjk.......
+  ......kjjJk..kJjjk......
+  ......kjjk....kjjk......
+  ......kjJk....kJjk......
+  ......kjjk....kjjk......
+  .....kwwwk....kwwwk.....
+  ....kWWWWk....kWWWWk....
 `;
 
 const LEGS_CROUCH = `
@@ -366,10 +468,44 @@ interface Point {
   y: number;
 }
 
-/** One body frame: its parts and, when the head is visible, where the head goes (drawn last). */
+/** Which way the head looks: right (every pose but the grind trick), turning, or at the camera. */
+export type FaceView = 'side' | 'turn' | 'front';
+
+interface HeadArt {
+  normal: string;
+  chill: string;
+  /** Mouth pixel (joint, bubble gum, drinking) relative to the head's top-left. */
+  mouth: Point;
+}
+
+/** Red eyes for a head drawn with two eye pixels at `eyes`: the eye turns red, a dark red line under it. */
+function redEyes(art: string, eyes: Point[]): string {
+  const rows = rowsFromString(art).map((row) => [...row]);
+  for (const { x, y } of eyes) {
+    rows[y]![x] = 'e';
+    rows[y + 1]![x] = 'E';
+    rows[y + 1]![x + 1] = 'E';
+  }
+  return rows.map((row) => row.join('')).join('\n');
+}
+
+const HEADS: Record<FaceView, HeadArt> = {
+  side: { normal: HEAD, chill: HEAD_CHILL, mouth: { x: 8, y: 5 } },
+  turn: { normal: HEAD_TURN, chill: redEyes(HEAD_TURN, [{ x: 3, y: 4 }, { x: 6, y: 4 }]), mouth: { x: 7, y: 6 } },
+  front: { normal: HEAD_FRONT, chill: redEyes(HEAD_FRONT, [{ x: 3, y: 4 }, { x: 7, y: 4 }]), mouth: { x: 5, y: 7 } },
+};
+
+/**
+ * Mouth of the side head (where the joint and the bubble gum sit), relative to the
+ * head's top-left: the front outline pixel just under the nose.
+ */
+export const HEAD_MOUTH = HEADS.side.mouth;
+
+/** One body frame: its parts and, when the head is visible, where the head goes (drawn last) and which way it looks. */
 interface FrameSpec {
   parts: Part[];
   head?: Point;
+  view?: FaceView;
 }
 
 const at = (art: string, x: number, y: number): Part => ({ art, x, y });
@@ -395,6 +531,8 @@ export const B = {
   binDive: 15,
   binKickA: 16,
   binKickB: 17,
+  grindTurn: 18,
+  grindFront: 19,
 } as const;
 
 const FRAME_SPECS: FrameSpec[] = [
@@ -416,18 +554,36 @@ const FRAME_SPECS: FrameSpec[] = [
   { parts: [at(BIN_LEGS_NARROW, 0, 0), at(BIN_HOODIE, 7, 15)] },
   { parts: [at(BIN_LEGS_WIDE, 0, 0)] },
   { parts: [at(BIN_LEGS_NARROW, 0, 0)] },
+  { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_ARMS_OUT, 2, 10)], head: { x: 7, y: 2 }, view: 'turn' },
+  { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_FRONT, 2, 10)], head: { x: 6, y: 1 }, view: 'front' },
 ];
 
-function body(spec: FrameSpec, headArt: string): string[] {
-  const parts = spec.head ? [...spec.parts, at(headArt, spec.head.x, spec.head.y)] : spec.parts;
-  return composeFrame(BODY_W, BODY_H, parts);
+function body(spec: FrameSpec, look: 'normal' | 'chill', oneArm = false): string[] {
+  const parts = oneArm ? spec.parts.map((p) => ({ ...p, art: ONE_ARM.get(p.art as string) ?? p.art })) : spec.parts;
+  const head = spec.head && at(HEADS[spec.view ?? 'side'][look], spec.head.x, spec.head.y);
+  return composeFrame(BODY_W, BODY_H, head ? [...parts, head] : parts);
 }
 
-export const BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, HEAD));
+export const BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, 'normal'));
 /** The same frames with the red-eyed chill head (frames without a visible head are identical). */
-export const CHILL_BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, HEAD_CHILL));
+export const CHILL_BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, 'chill'));
+/** The frames without the outstretched front arm, drawn while that arm uses an item or flails. */
+export const ONE_ARM_BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, 'normal', true));
+export const CHILL_ONE_ARM_BODY_FRAMES: string[][] = FRAME_SPECS.map((spec) => body(spec, 'chill', true));
 /** Top-left of the head inside each body frame, or null when no face is visible (tumble, lying). */
 export const HEAD_AT: (Point | null)[] = FRAME_SPECS.map((spec) => spec.head ?? null);
+
+/** The visible face of a body frame: head top-left, which way it looks and its mouth (body-frame pixels). */
+export interface Face extends Point {
+  view: FaceView;
+  mouth: Point;
+}
+
+export const FACE_AT: (Face | null)[] = FRAME_SPECS.map(({ head, view = 'side' }) => {
+  if (!head) return null;
+  const { mouth } = HEADS[view];
+  return { x: head.x, y: head.y, view, mouth: { x: head.x + mouth.x, y: head.y + mouth.y } };
+});
 
 // ---------------------------------------------------------------- board
 

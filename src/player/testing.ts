@@ -5,14 +5,26 @@
  */
 import { Game } from '../core/game';
 import type { Entity, EntityKind, Rect, System } from '../types';
-import { createPlayerSystem } from './index';
+import type { SkaterController } from './controller';
+import { createPlayerSystem, type PlayerSystem } from './index';
+
+const systems = new WeakMap<Game, PlayerSystem>();
 
 /** A Game with the player system (plus `extra` systems after it), a fixed seed and a started run. */
 export function createPlayerTestGame(extra: System[] = []): Game {
-  const game = new Game({ systems: [createPlayerSystem(), ...extra] });
+  const player = createPlayerSystem();
+  const game = new Game({ systems: [player, ...extra] });
+  systems.set(game, player);
   game.seed(1);
   game.commands.startRun();
   return game;
+}
+
+/** The skater controller of a game made by createPlayerTestGame (animation view, mug toss). */
+export function playerController(game: Game): SkaterController {
+  const controller = systems.get(game)?.controller;
+  if (!controller) throw new Error('not a createPlayerTestGame game');
+  return controller;
 }
 
 export function tick(game: Game, ticks = 1): void {

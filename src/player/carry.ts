@@ -98,6 +98,8 @@ HOLD_AT[B.landSquash] = hold(20, 17, 'hang');
 HOLD_AT[B.grindA] = hold(20, 13, 'hang');
 HOLD_AT[B.grindB] = hold(20, 14, 'hang');
 HOLD_AT[B.duck] = hold(12, 21, 'side');
+HOLD_AT[B.grindTurn] = hold(20, 13, 'hang');
+HOLD_AT[B.grindFront] = hold(20, 13, 'hang');
 
 /**
  * Catch reach: the front arm goes up from the shoulder past the face to above

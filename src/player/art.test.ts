@@ -1,35 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BODY_FRAMES, CHILL_BODY_FRAMES, HEAD_AT, HEAD_MOUTH, PALETTE } from './art';
+import { B, BODY_FRAMES, CHILL_BODY_FRAMES, FACE_AT, HEAD_AT, HEAD_MOUTH, PALETTE } from './art';
 
 const count = (rows: string[], ch: string) => rows.join('').split(ch).length - 1;
-
-/** Sizes of the 4-connected clusters of `ch` in `rows`. */
-function clusters(rows: string[], ch: string): number[] {
-  const seen = new Set<string>();
-  const sizes: number[] = [];
-  rows.forEach((row, y0) =>
-    [...row].forEach((c, x0) => {
-      if (c !== ch || seen.has(`${x0},${y0}`)) return;
-      let size = 0;
-      const todo = [[x0, y0]];
-      seen.add(`${x0},${y0}`);
-      while (todo.length) {
-        const [x, y] = todo.pop()!;
-        size++;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = x! + dx!;
-          const ny = y! + dy!;
-          if (rows[ny]?.[nx] === ch && !seen.has(`${nx},${ny}`)) {
-            seen.add(`${nx},${ny}`);
-            todo.push([nx, ny]);
-          }
-        }
-      }
-      sizes.push(size);
-    }),
-  );
-  return sizes;
-}
 
 /** Perceived brightness 0..255 of a #rrggbb colour. */
 function luma(hex: string): number {
@@ -45,18 +17,31 @@ const headBox = (frame: string[], head: { x: number; y: number }) =>
 const cells = (rows: string[], ch: string) =>
   rows.flatMap((row, y) => [...row].flatMap((c, x) => (c === ch ? [`${x},${y}`] : [])));
 
+/** Frames with the side-view head (every pose but the grind trick's turn and front view). */
+const sideFaces = (i: number) => FACE_AT[i]?.view === 'side';
+
 const faceFrames = () =>
   [BODY_FRAMES, CHILL_BODY_FRAMES].flatMap((frames) =>
-    frames.flatMap((frame, i) => (HEAD_AT[i] ? [{ i, box: headBox(frame, HEAD_AT[i]!) }] : [])),
+    frames.flatMap((frame, i) => (sideFaces(i) ? [{ i, box: headBox(frame, HEAD_AT[i]!) }] : [])),
+  );
+
+/** Every frame with a visible head, any view, with its head box (`h` rows tall). */
+const allHeads = () =>
+  [BODY_FRAMES, CHILL_BODY_FRAMES].flatMap((frames) =>
+    frames.flatMap((frame, i) => {
+      const face = FACE_AT[i];
+      return face ? [{ i, view: face.view, box: frame.slice(face.y, face.y + 9).map((row) => row.slice(face.x, face.x + 11)) }] : [];
+    }),
   );
 
 describe('skater art at game scale', () => {
-  it('uses a neutral light grey and a clearly darker grey base for the greying hair', () => {
+  it('uses a neutral light grey for the temple and a dark base for the hair', () => {
     const light = parseInt(PALETTE.H.slice(1), 16);
     const [r, g, b] = [light >> 16, (light >> 8) & 255, light & 255];
     expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(8);
     expect(luma(PALETTE.H)).toBeGreaterThan(195);
-    expect(luma(PALETTE.H) - luma(PALETTE.h)).toBeGreaterThan(90);
+    expect(luma(PALETTE.h)).toBeLessThan(80);
+    expect(luma(PALETTE.H) - luma(PALETTE.h)).toBeGreaterThan(120);
   });
 
   it('keeps the face clean: no stubble colour and no hair in front of the ear', () => {
@@ -69,27 +54,54 @@ describe('skater art at game scale', () => {
     }
   });
 
-  it('greys the hair as one clean continuous band under the cap and down the back, identical in every face frame', () => {
+  it('keeps the hair mostly dark with only a hint of grey at the temple, in every view', () => {
+    for (const { i, view, box } of allHeads()) {
+      const grey = cells(box, 'H');
+      expect(grey.length, `frame ${i} (${view})`).toBeGreaterThanOrEqual(1);
+      expect(grey.length, `frame ${i} (${view})`).toBeLessThanOrEqual(2);
+      expect(count(box, 'h'), `frame ${i} (${view})`).toBeGreaterThanOrEqual(3 * grey.length);
+      // At the temple: right under the cap (the first row below the brim).
+      for (const cell of grey) expect(Number(cell.split(',')[1]), `frame ${i} ${cell}`).toBe(3);
+    }
+  });
+
+  it('draws the same side head with the same hair in every side frame', () => {
     const first = faceFrames()[0]!.box;
-    const grey = cells(first, 'H');
-    expect(grey.length).toBeGreaterThanOrEqual(5);
-    // One 4-connected band, no scattered grey pixels.
-    expect(clusters(first, 'H')).toEqual([grey.length]);
-    // It runs along the whole cap edge at the side (the row right under the cap) ...
-    expect(first[3]!.slice(1, 4)).toBe('HHH');
-    // ... and down the back of the head.
-    for (const y of [4, 5]) expect(first[y]![1], `row ${y}`).toBe('H');
-    // A little dark base is left inside it, as one block.
-    expect(count(first, 'h')).toBeGreaterThanOrEqual(2);
-    expect(clusters(first, 'h')).toHaveLength(1);
     for (const { i, box } of faceFrames()) {
-      expect(cells(box, 'H'), `frame ${i}`).toEqual(grey);
+      expect(cells(box, 'H'), `frame ${i}`).toEqual(cells(first, 'H'));
       expect(cells(box, 'h'), `frame ${i}`).toEqual(cells(first, 'h'));
     }
   });
 
+  it('shows the moustache only in the front view of the grind trick', () => {
+    expect(luma(PALETTE.m)).toBeLessThan(80);
+    for (const { i, view, box } of allHeads()) {
+      const moustache = count(box, 'm');
+      if (view !== 'front') expect(moustache, `frame ${i} (${view})`).toBe(0);
+      else {
+        expect(moustache, `frame ${i}`).toBeGreaterThanOrEqual(3);
+        expect(moustache, `frame ${i}`).toBeLessThanOrEqual(7);
+        // Under the nose, above the mouth.
+        const rows = cells(box, 'm').map((c) => Number(c.split(',')[1]));
+        const mouth = FACE_AT[i]!.mouth.y - FACE_AT[i]!.y;
+        for (const y of rows) expect(y, `frame ${i}`).toBe(mouth - 1);
+      }
+    }
+    expect(FACE_AT[B.grindFront]!.view).toBe('front');
+    expect(FACE_AT[B.grindTurn]!.view).toBe('turn');
+  });
+
+  it('gives the front view two eyes and a mouth in the middle of the face', () => {
+    const face = FACE_AT[B.grindFront]!;
+    const box = headBox(BODY_FRAMES[B.grindFront]!, face);
+    expect(face.mouth.x - face.x).toBe(5);
+    expect(BODY_FRAMES[B.grindFront]![face.mouth.y]![face.mouth.x]).toBe('k');
+    const eyeRow = box[4]!;
+    expect([...eyeRow].filter((c, x) => c === 'k' && eyeRow[x - 1] === 's' && eyeRow[x + 1] === 's')).toHaveLength(2);
+  });
+
   it('draws the same head in every normal face frame (no jitter) with a brim, one eye pixel and skin', () => {
-    const heads = faceFrames().filter((_, n) => n < BODY_FRAMES.filter((__, i) => HEAD_AT[i]).length);
+    const heads = faceFrames().filter((_, n) => n < BODY_FRAMES.filter((__, i) => sideFaces(i)).length);
     const head = heads[0]!.box;
     // Compare the head's own pixels; its transparent corners may show arms or the torso.
     const opaque = (box: string[]) => box.map((row, y) => [...row].map((c, x) => (head[y]![x] === '.' ? '.' : c)).join(''));
@@ -113,7 +125,8 @@ describe('skater art at game scale', () => {
   it('puts the mouth (joint, bubble gum) on the front of the face, just under the nose', () => {
     BODY_FRAMES.forEach((frame, i) => {
       const head = HEAD_AT[i];
-      if (!head) return;
+      if (!head || !sideFaces(i)) return;
+      expect(FACE_AT[i]!.mouth).toEqual({ x: head.x + HEAD_MOUTH.x, y: head.y + HEAD_MOUTH.y });
       const mouth = frame[head.y + HEAD_MOUTH.y]![head.x + HEAD_MOUTH.x];
       expect(mouth, `frame ${i}`).toMatch(/[ks]/);
       // Nose: skin right above the mouth that sticks out in front of it.

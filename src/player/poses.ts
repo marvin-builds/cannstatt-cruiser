@@ -29,7 +29,7 @@ interface Timeline {
   loop: boolean;
 }
 
-export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp' | 'binCrash';
+export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp' | 'binCrash' | 'grindTurn' | 'grindTrick';
 
 /** Board sits with its trucks on the rail top (wheels hang either side). */
 const GRIND_DY = 2;
@@ -83,6 +83,16 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 0.3, body: B.grindB, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY },
     ],
   },
+  // Grind trick (down held on the rail): one in-between frame turning to the camera (also on the way
+  // back), then the front view, bobbing on the rail like the normal grind.
+  grindTurn: { loop: false, steps: [{ t: 1, body: B.grindTurn, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY }] },
+  grindTrick: {
+    loop: true,
+    steps: [
+      { t: 0.3, body: B.grindFront, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY },
+      { t: 0.3, body: B.grindFront, board: BD.flat, bodyDy: GRIND_DY + 1, boardDy: GRIND_DY },
+    ],
+  },
   // Thrown off, board flies ahead and lands, tumble, lie, kneel, back on the board.
   crash: {
     loop: false,
@@ -123,8 +133,12 @@ export function isCrashTimeline(name: TimelineName): boolean {
   return name === 'crash' || name === 'binCrash';
 }
 
-export function timelineFor(view: Pick<AnimView, 'anim' | 'standingUp'> & { binCrash?: boolean }, vy: number): TimelineName {
+export function timelineFor(
+  view: Pick<AnimView, 'anim' | 'standingUp'> & Partial<Pick<AnimView, 'binCrash' | 'trick'>>,
+  vy: number,
+): TimelineName {
   if (view.anim === 'crash' && view.binCrash) return 'binCrash';
+  if (view.anim === 'grind' && view.trick) return view.trick === 'turn' ? 'grindTurn' : 'grindTrick';
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
   if (view.standingUp && (view.anim === 'ride' || view.anim === 'push')) return 'standUp';
   return view.anim;

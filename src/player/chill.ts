@@ -5,7 +5,7 @@
  * math; render.ts draws it. The red eyes are a sprite variant (CHILL_BODY_FRAMES).
  */
 import type { GameState } from '../types';
-import { HEAD_AT, HEAD_MOUTH } from './art';
+import { FACE_AT } from './art';
 import { isCrashTimeline, type TimelineName } from './poses';
 
 /** What the chill effect adds to the skater: red eyes or not, and what is at his mouth. */
@@ -51,8 +51,7 @@ export const JOINT_COLORS = { paper: '#f4efe4', glow: ['#ff7a1a', '#ffd040'], sm
  */
 export function chillJoint(timeline: TimelineName, body: number): Point | null {
   if (isCrashTimeline(timeline)) return null;
-  const head = HEAD_AT[body];
-  return head ? { x: head.x + HEAD_MOUTH.x, y: head.y + HEAD_MOUTH.y } : null;
+  return FACE_AT[body]?.mouth ?? null;
 }
 
 /** Puffs at `time` seconds: they rise from the tip and drift left faster as they age. */

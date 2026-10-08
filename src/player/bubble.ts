@@ -7,7 +7,7 @@
  */
 import { CHILL_DURATION } from '../core/chill';
 import { rowsFromString } from '../core/sprite-data';
-import { HEAD_AT, HEAD_MOUTH } from './art';
+import { FACE_AT } from './art';
 import type { Point } from './chill';
 import { isCrashTimeline, type TimelineName } from './poses';
 
@@ -86,7 +86,10 @@ export interface BubbleDraw extends Point {
   frame: number;
 }
 
-const heights = BUBBLE_ART.map((art) => rowsFromString(art).length);
+const sizes = BUBBLE_ART.map((art) => {
+  const rows = rowsFromString(art);
+  return { w: rows[0]!.length, h: rows.length };
+});
 
 /**
  * Bubble frame and its top-left (body-frame pixels) for `timeline`'s frame
@@ -98,8 +101,11 @@ export function chillBubble(timeline: TimelineName, body: number, time: number, 
   // In the bin crash the head is inside the bin: no bubble at all.
   if (timeline === 'binCrash') return null;
   const frame = isCrashTimeline(timeline) ? (animTime < BUBBLE_POP_TIME ? F.pop : null) : bubbleFrame(time);
-  const head = HEAD_AT[body];
-  if (frame === null || !head) return null;
-  const mouth = { x: head.x + HEAD_MOUTH.x, y: head.y + HEAD_MOUTH.y };
-  return { frame, x: mouth.x + 1, y: mouth.y - Math.floor((heights[frame]! - 1) / 2) };
+  const face = FACE_AT[body];
+  if (frame === null || !face) return null;
+  const { mouth } = face;
+  const { w, h } = sizes[frame]!;
+  // Facing the camera (grind trick) the bubble is blown straight at it, centred on the mouth.
+  const x = face.view === 'front' ? mouth.x - Math.floor(w / 2) : mouth.x + 1;
+  return { frame, x, y: mouth.y - Math.floor((h - 1) / 2) };
 }
