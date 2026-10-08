@@ -9,7 +9,7 @@ import type { FrameProbe } from './perf';
 import { Renderer } from './renderer';
 import { store } from './storage';
 import { createTestHook, testHookEnabled } from './testhook';
-import { handleServiceWorkerMessage } from './update';
+import { CHECK_FOR_UPDATE_MESSAGE, handleServiceWorkerMessage, shouldCheckForUpdate, UPDATE_CHECK_INTERVAL_MS } from './update';
 
 /** Boots the game in the browser: canvas, loop, input, install prompt, test hook, service worker. */
 export function startApp(systems: System[]): Game {
@@ -127,10 +127,29 @@ function registerServiceWorker(game: Game): void {
     try {
       const head = await fetch('./sw.js', { method: 'HEAD' });
       if (head.ok && /javascript/.test(head.headers.get('content-type') ?? '')) {
-        await navigator.serviceWorker.register('./sw.js');
+        const registration = await navigator.serviceWorker.register('./sw.js');
+        watchForUpdates(registration);
       }
     } catch {
       // Offline support is optional.
     }
   });
+}
+
+/**
+ * The worker only compares the page on an app start; an installed app resumed
+ * from the background never starts again. So an open app asks the worker to
+ * re-check on coming back to the foreground and every few minutes.
+ */
+function watchForUpdates(registration: ServiceWorkerRegistration): void {
+  let lastCheck = performance.now();
+  const check = (resumed: boolean) => {
+    const now = performance.now();
+    if (!shouldCheckForUpdate(lastCheck, now, resumed)) return;
+    lastCheck = now;
+    registration.update().catch(() => {});
+    navigator.serviceWorker.controller?.postMessage(CHECK_FOR_UPDATE_MESSAGE);
+  };
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check(true));
+  setInterval(() => check(false), UPDATE_CHECK_INTERVAL_MS);
 }
