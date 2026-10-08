@@ -59,7 +59,6 @@ describe('audio system: event to sound mapping', () => {
     ['jump', { velocity: 250 }, 'jump'],
     ['land', { impact: 200 }, 'land'],
     ['starCollected', { entityId: 1, stars: 3 }, 'star'],
-    ['obstacleCleared', { entityId: 1, kind: 'bin', points: 10 }, 'cleared'],
     ['crash', { entityId: 1, kind: 'bin', health: 2 }, 'crash'],
     ['chillStart', { entityId: 1, duration: 8 }, 'chill'],
   ] as const)('%s plays %s', (event, payload, cue) => {
@@ -319,6 +318,65 @@ describe('audio system: robustness', () => {
       ['jump', false],
       ['star', true],
     ]);
+  });
+});
+
+describe('audio system: cleared obstacles', () => {
+  it('plays the cleared sound for an ordinary clear by the end of the tick', () => {
+    const { game, cues } = playing();
+    game.bus.emit('obstacleCleared', { entityId: 1, kind: 'bin', points: 10 });
+    game.tick();
+    expect(cues()).toEqual(['cleared']);
+  });
+
+  it('plays only the bonk and cheer for a ball hit, in either event order', () => {
+    for (const ballHitFirst of [false, true]) {
+      const { game, cues } = playing();
+      if (ballHitFirst) game.bus.emit('ballHit', { entityId: 3, kind: 'vfbFan' });
+      game.bus.emit('obstacleCleared', { entityId: 3, kind: 'vfbFan', points: 50 });
+      if (!ballHitFirst) game.bus.emit('ballHit', { entityId: 3, kind: 'vfbFan' });
+      game.tick();
+      expect(cues()).toEqual(['bonk', 'cheer']);
+    }
+  });
+
+  it('plays only the boing and hoppla for a stomp, in either event order', () => {
+    for (const stompFirst of [false, true]) {
+      const { game, cues } = playing();
+      if (stompFirst) game.bus.emit('stomp', { entityId: 4, kind: 'wasenGuest', item: 'beer' });
+      game.bus.emit('obstacleCleared', { entityId: 4, kind: 'wasenGuest', points: 50 });
+      if (!stompFirst) game.bus.emit('stomp', { entityId: 4, kind: 'wasenGuest', item: 'beer' });
+      game.tick();
+      expect(cues()).toEqual(['boing', 'hoppla']);
+    }
+  });
+
+  it('still plays cleared for another obstacle cleared in the same tick as a ball hit', () => {
+    const { game, cues } = playing();
+    game.bus.emit('ballHit', { entityId: 3, kind: 'vfbFan' });
+    game.bus.emit('obstacleCleared', { entityId: 3, kind: 'vfbFan', points: 50 });
+    game.bus.emit('obstacleCleared', { entityId: 5, kind: 'bin', points: 10 });
+    game.tick();
+    expect(cues()).toEqual(['bonk', 'cheer', 'cleared']);
+  });
+
+  it('plays cleared when the same entity clears in a later tick than its ball hit', () => {
+    const { game, cues } = playing();
+    game.bus.emit('ballHit', { entityId: 3, kind: 'vfbFan' });
+    game.tick();
+    game.bus.emit('obstacleCleared', { entityId: 3, kind: 'vfbFan', points: 50 });
+    game.tick();
+    expect(cues()).toEqual(['bonk', 'cheer', 'cleared']);
+  });
+
+  it('drops a pending cleared sound when a new run starts', () => {
+    const { game, cues } = playing();
+    game.bus.emit('obstacleCleared', { entityId: 1, kind: 'bin', points: 10 });
+    game.commands.gameOver();
+    game.commands.startRun();
+    expect(game.state.mode).toBe('playing');
+    game.tick();
+    expect(cues()).not.toContain('cleared');
   });
 });
 

@@ -7,6 +7,7 @@
 import { store as defaultStore, type Store } from '../core/storage';
 import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
+import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
 import { GLUG_LENGTH } from './sounds';
 import { TrafficNoise } from './traffic';
@@ -45,6 +46,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   /** Run time of the last drink sound, so the woozy sting can wait for the gulps. */
   let glugAt = -Infinity;
   const traffic = new TrafficNoise();
+  const clears = new ClearedSounds();
 
   /** Audio is decoration: a failing backend must never break the game loop. */
   const safely = (fn: () => void) => {
@@ -103,7 +105,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('starCollected', () => play('star'));
       // Kid mode: bubble gum instead of the joint, so a sweet bubbly cue instead of the mellow one.
       bus.on('chillStart', () => play(ctx.state.kidMode ? 'bubble' : 'chill'));
-      bus.on('obstacleCleared', () => play('cleared'));
+      // Held until the end of the tick: a ball hit or stomp of the same person brings its own sound.
+      bus.on('obstacleCleared', ({ entityId }) => clears.cleared(entityId, ctx.state.frame));
       bus.on('crash', ({ kind }) => {
         stopGrind();
         play('crash');
@@ -113,7 +116,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         if (ctx.state.kidMode && ctx.state.chillTimer > 0) play('pop');
       });
       // Landing on a person: the springy bounce, and the person's 'hoppla' as they stumble.
-      bus.on('stomp', () => {
+      bus.on('stomp', ({ entityId }) => {
+        clears.voicedBy(entityId, ctx.state.frame);
         play('boing');
         play('hoppla');
       });
@@ -129,7 +133,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       });
       bus.on('drunkStart', () => play('woozy', 1, Math.max(0, GLUG_LENGTH - (ctx.state.time - glugAt))));
       bus.on('healthGained', () => play('heart'));
-      bus.on('ballHit', () => {
+      bus.on('ballHit', ({ entityId }) => {
+        clears.voicedBy(entityId, ctx.state.frame);
         play('bonk');
         play('cheer');
       });
@@ -153,9 +158,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         boostTicks = null;
         glugAt = -Infinity;
         traffic.reset();
+        clears.reset();
       });
     },
     update(ctx: GameContext) {
+      // Runs after gameplay, so every clear of this tick is known by now.
+      for (let n = clears.flush(); n > 0; n--) play('cleared');
       updateTraffic(ctx);
       if (ctx.state.mode !== 'playing') {
         stopGrind();
