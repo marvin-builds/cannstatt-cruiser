@@ -20,6 +20,18 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.3',
+    date: '2026-10-08',
+    items: [
+      'Knopf "Neu laden" bei neuer Version',
+      'Pause: Logo und Zum Startbildschirm',
+      'Getroffene Leute verlieren ihre Sachen',
+      'Auf Leuten landen ist leichter',
+      'Mehr Verkehr, neue Quelle am Neckar',
+      'Hinweis zum Grind-Trick',
+    ],
+  },
+  {
     version: '2026-10-08.2',
     date: '2026-10-08',
     items: [
@@ -40,7 +52,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Größere Lücken zum Springen',
       'Bank-Grind am hinteren Rand',
       'Crash in die Mülltonne',
-      'Verkehr in Mitte, Mombachquelle',
+      'Verkehr in Mitte, Quelle am Neckar',
     ],
   },
 ];

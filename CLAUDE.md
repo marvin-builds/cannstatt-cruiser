@@ -47,6 +47,9 @@ When the user asks to continue (or resumes work on this game), always work in or
 - Before committing, the orchestrator checks `npm test` and `npm run build`, looks at the key
   playtest screenshots itself, and then commits one commit per slice on `main` (linear history)
   and pushes (the user allowed pushing after each verified slice).
+- Before every push that deploys user-visible changes, the orchestrator adds a new entry to `src/changelog.ts`
+  (next `YYYY-MM-DD.n` version, at most 6 short kid-safe German items that fit 40 characters). Players who
+  saw an older version get the "Neu in dieser Version" screen from it.
 - New user wishes go into `docs/ROADMAP.md` (backlog and status checkpoint) first. They are briefed to the next fitting slice,
   never patched into a slice that is already running.
 - The plan ends with a final multi-persona playtest (desktop keyboard, phone touch landscape and
