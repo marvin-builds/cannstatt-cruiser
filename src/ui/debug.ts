@@ -32,6 +32,10 @@ export interface UiDebugHook {
   /** Emits stunt line events like gameplay: a step with this multiplier, or the end of the line. */
   stuntStep(multiplier: number): void;
   stuntEnd(completed: boolean, points: number): void;
+  /** Emits an air trick like gameplay ("Air-Trick! +points" popup, the air trick hint is never shown again). */
+  airTrick(points: number): void;
+  /** Whether the first-time air trick hint wants to show now (shownHint picks one plate if several do). */
+  airHintVisible(): boolean;
   /**
    * Feeds the kicker hint one kicker just ahead of the skater, as if gameplay had spawned it
    * (shows on the next redraw until the next tick); returns whether the hint shows.
@@ -97,6 +101,12 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     },
     stuntEnd(completed, points) {
       ctx.bus.emit('stuntEnd', { steps: 3, made: completed ? 3 : 1, completed, points });
+    },
+    airTrick(points) {
+      ctx.bus.emit('airTrick', { ticks: 20, points });
+    },
+    airHintVisible() {
+      return view.airHint.visible;
     },
     previewKickerHint() {
       view.kickerHint.update([{ id: -1, kind: 'kicker', x: PLAYER_X + 60, y: GROUND_Y - 8, w: 24, h: 8, done: false }]);

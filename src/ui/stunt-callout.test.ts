@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER_X, VIEW_H } from '../core/config';
+import { GROUND_Y, PLAYER_X } from '../core/config';
+import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { itemButtonRect } from './item-button';
-import { hudButtons, POPUP_MARGIN, uiMetrics } from './layout';
+import { itemButtonRect, itemHintRect, keycapChip } from './item-button';
+import { hudButtons, POPUP_MARGIN, popupScale, uiMetrics } from './layout';
 import { statsLayout } from './stats';
 import {
+  calloutBlockers,
+  type CalloutScene,
   COMBO_TIME,
-  calloutRect,
-  calloutScale,
-  calloutTop,
+  fitCallout,
   LINE_DONE_TIME,
   placeCallout,
   PUNCH_TIME,
@@ -16,10 +17,6 @@ import {
 } from './stunt-callout';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
-/** The tallest HUD stats plate (chill and drunk rows) with a 9 digit score, the widest it gets. */
-const PLATE = statsLayout(9 * 12, true, true).plate;
-const CEILING = PLATE.y + PLATE.h + 2;
 
 describe('stunt callout', () => {
   it('shows "Combo xN!" on every stunt step, replacing the last one', () => {
@@ -31,7 +28,6 @@ describe('stunt callout', () => {
     c.update(0.3);
     c.step(3);
     expect(c.lines).toEqual(['Combo x3!']);
-    expect(c.multiplier).toBe(3);
   });
 
   it('a combo fades after COMBO_TIME', () => {
@@ -92,42 +88,14 @@ describe('stunt callout', () => {
     expect(c.visible).toBe(false);
   });
 
-  it('grows a little with the multiplier, bigger in portrait', () => {
-    const landscape = { portrait: false };
-    const portrait = { portrait: true };
-    expect(calloutScale(landscape, 2)).toBe(2);
-    expect(calloutScale(landscape, 5)).toBe(3);
-    expect(calloutScale(portrait, 2)).toBe(3);
-    expect(calloutScale(portrait, 5)).toBe(4);
-    for (const n of [1, 2, 3, 4, 5, 8]) expect(calloutScale(landscape, n + 1)).toBeGreaterThanOrEqual(calloutScale(landscape, n));
-  });
-
-  it('a combo takes its size from the multiplier, a completed line the base size', () => {
+  it('waits (its time standing still) while it cannot be shown, e.g. under the zone banner', () => {
     const c = new StuntCallout();
-    c.step(6);
-    expect(c.scale({ portrait: false })).toBe(calloutScale({ portrait: false }, 6));
-    c.end(true, 500);
-    expect(c.scale({ portrait: true })).toBe(calloutScale({ portrait: true }, 1));
-    expect(c.punch).toBe(false);
-  });
-
-  it('is placed only while visible and reserves its punched size for the popup column', () => {
-    const c = new StuntCallout();
-    const display = { portrait: false, viewWidth: 320 };
-    expect(placeCallout(c, display, CEILING, false)).toBeNull();
     c.step(2);
-    c.update(PUNCH_TIME + 0.01);
-    const placed = placeCallout(c, display, CEILING, false)!;
-    expect(placed.drawn.y).toBe(CEILING);
-    expect(placed.reserved.h).toBeGreaterThan(placed.drawn.h);
-    c.end(true, 100);
-    const done = placeCallout(c, display, CEILING, true)!;
-    expect(done.reserved).toEqual(done.drawn);
-  });
-
-  it('sits just below the HUD plate, or below the zone banner while it shows', () => {
-    expect(calloutTop(CEILING, false)).toBe(CEILING);
-    expect(calloutTop(CEILING, true)).toBeGreaterThanOrEqual(56 + 22);
+    c.update(5, false);
+    expect(c.visible).toBe(true);
+    expect(c.punch).toBe(true);
+    c.update(COMBO_TIME + 0.01, true);
+    expect(c.visible).toBe(false);
   });
 
   describe('layout', () => {
@@ -148,37 +116,77 @@ describe('stunt callout', () => {
       done.end(true, 12500);
       return [...made, done];
     };
+    /** The HUD plate: a fresh run's, and the widest and tallest one (9 digit score, chill and drunk rows). */
+    const plates = [statsLayout(measureText('0', 2), false).plate, statsLayout(9 * 12, true, true).plate];
+    /** The skater's column (feet at PLAYER_X), at any height up to the street. */
+    const SKATER: Rect = { x: PLAYER_X - 16, y: 0, w: 32, h: GROUND_Y };
+    /** The upper level: ledges 40-60 px above the street plus the skater and his star trail over them. */
+    const ledgeBand = (w: number): Rect => ({ x: 0, y: GROUND_Y - 96, w, h: 56 });
+
+    function sceneFor(d: (typeof displays)[number], viewWidth: number, plate: Rect, banner: boolean, carrying: boolean): CalloutScene {
+      const touchItem = carrying && d.touch;
+      return {
+        viewWidth,
+        plate,
+        chip: carrying && !d.touch ? keycapChip(plate) : null,
+        buttons: hudButtons(viewWidth, true, uiMetrics(d)),
+        itemButton: touchItem ? itemButtonRect(viewWidth, d) : null,
+        itemHint: touchItem ? itemHintRect(viewWidth, d, popupScale(d, false)) : null,
+        banner,
+      };
+    }
+
     for (const viewWidth of [320, 384, 427]) {
       for (const d of displays) {
-        it(`fits at ${viewWidth} wide (${d.name}), clear of the HUD plate, buttons and the skater`, () => {
-          const buttons = hudButtons(viewWidth, true, uiMetrics(d));
-          for (const c of callouts()) {
-            for (const punch of [false, true]) {
-              for (const banner of [false, true]) {
-                const r = calloutRect(c.lines, c.scale(d), punch && c.punch, viewWidth, calloutTop(CEILING, banner));
-                expect(Number.isInteger(r.x) && Number.isInteger(r.y)).toBe(true);
-                expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
-                expect(r.x + r.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
-                expect(r.y + r.h).toBeLessThan(VIEW_H - 40);
-                expect(overlaps(r, PLATE)).toBe(false);
-                for (const b of [buttons.pause, buttons.mute, buttons.fullscreen!]) expect(overlaps(r, b)).toBe(false);
-                if (d.touch) expect(overlaps(r, itemButtonRect(viewWidth, d))).toBe(false);
+        it(`${d.name}, ${viewWidth} wide: never over the skater, the ledge band, the HUD plate, buttons, item button or zone banner`, () => {
+          for (const plate of plates) {
+            for (const carrying of [false, true]) {
+              const scene = sceneFor(d, viewWidth, plate, false, carrying);
+              const blocked: Rect[] = [plate, ...[scene.chip, scene.itemButton, scene.itemHint].filter((r): r is Rect => r !== null)];
+              blocked.push(scene.buttons.pause, scene.buttons.mute, scene.buttons.fullscreen!, SKATER, ledgeBand(viewWidth));
+              for (const c of callouts()) {
+                for (const punch of [false, true]) {
+                  const r = fitCallout(c.lines, punch, viewWidth, calloutBlockers(scene));
+                  expect(r, `${c.lines.join(' ')} fits`).not.toBeNull();
+                  expect(Number.isInteger(r!.x) && Number.isInteger(r!.y)).toBe(true);
+                  expect(r!.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
+                  expect(r!.x + r!.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
+                  expect(r!.y).toBeGreaterThanOrEqual(0);
+                  for (const b of blocked) expect(overlaps(r!, b), `${c.lines.join(' ')} vs ${JSON.stringify(b)}`).toBe(false);
+                }
               }
             }
           }
-          // The combo never covers the skater (feet at PLAYER_X, up to ~16 px either side).
-          const combo = calloutRect(['Combo x9!'], calloutScale(d, 9), true, viewWidth, CEILING);
-          expect(combo.x).toBeGreaterThan(PLAYER_X + 16);
+        });
+
+        it(`${d.name}, ${viewWidth} wide: waits while the zone banner shows`, () => {
+          const c = new StuntCallout();
+          c.step(3);
+          expect(placeCallout(c, sceneFor(d, viewWidth, plates[1]!, true, false))).toBeNull();
+          expect(placeCallout(c, sceneFor(d, viewWidth, plates[1]!, false, false))).not.toBeNull();
         });
       }
     }
 
-    it('the punch draws bigger than the settled callout when it fits', () => {
-      const settled = calloutRect(['Combo x2!'], 2, false, 320, CEILING);
-      const punched = calloutRect(['Combo x2!'], 2, true, 320, CEILING);
-      expect(punched.w).toBeGreaterThan(settled.w);
-      expect(punched.scale).toBe(3);
-      expect(settled.scale).toBe(2);
+    it('smaller than before: the settled combo is drawn at scale 2 and punches in at 3 where there is room', () => {
+      for (const d of displays) {
+        const scene = sceneFor(d, 390, plates[0]!, false, false);
+        const settled = fitCallout(['Combo x2!'], false, 390, calloutBlockers(scene))!;
+        const punched = fitCallout(['Combo x2!'], true, 390, calloutBlockers(scene))!;
+        expect(settled.scale).toBe(2);
+        expect(punched.scale).toBe(3);
+        expect(punched.w).toBeGreaterThan(settled.w);
+        // Both from the same spot, so the punch does not jump.
+        expect(punched.y).toBe(settled.y);
+      }
+    });
+
+    it('is placed only while visible', () => {
+      const c = new StuntCallout();
+      const scene = sceneFor(displays[0]!, 320, plates[0]!, false, false);
+      expect(placeCallout(c, scene)).toBeNull();
+      c.step(2);
+      expect(placeCallout(c, scene)).not.toBeNull();
     });
   });
 });

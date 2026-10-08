@@ -102,11 +102,20 @@ describe('PopupFeed', () => {
     expect(texts(feed)).toEqual(['Grind-Trick! +1.500']);
   });
 
+  it('an air trick: "Air-Trick! +N", the same in kid mode', () => {
+    const feed = new PopupFeed();
+    feed.airTrick(1250);
+    expect(texts(feed)).toEqual(['Air-Trick! +1.250']);
+    feed.airTrick(300);
+    expect(texts(feed, true)).toEqual(['Air-Trick! +300']);
+  });
+
   it('every popup has a colour', () => {
     const feed = new PopupFeed();
     feed.itemUsed('drink');
     feed.ballBack();
     feed.grindTrick(10);
+    feed.airTrick(10);
     for (const p of feed.flush(false)) expect(p.color).toMatch(/^#/);
   });
 });

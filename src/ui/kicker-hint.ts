@@ -2,25 +2,24 @@
  * The first-time kicker hint (ROADMAP 27): while a kicker ramp approaches,
  * on the first KICKER_HINT_RUNS kickers of a run and until the player has
  * completed a stunt line once ever (storage key stuntLineSeen), a small plate
- * at the hint spot under the skater says "Über die Rampe nach oben!". The
+ * at the hint spot under the skater says "Ab über die Rampe!" (short, so it
+ * stays compact in the big portrait font). The
  * ramp needs no button, so touch and keyboard read the same. It disappears
  * on `launch` and once the kicker has passed.
  */
-import { measureText } from '../core/font';
 import { PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
-import { trickHintRect } from './trick-hint';
+import { type HintRow, hintPlateRect } from './hint-plate';
 
 /** Kickers per run that show the hint. */
 export const KICKER_HINT_RUNS = 3;
 /** The hint shows while a kicker's left edge is at most this far ahead of the skater's feet. */
 export const KICKER_HINT_AHEAD = 140;
-export const KICKER_HINT_LABEL = 'Über die Rampe nach oben!';
+export const KICKER_HINT_LABEL = 'Ab über die Rampe!';
+/** The plate's one row. */
+export const KICKER_HINT_ROWS: readonly HintRow[] = [[KICKER_HINT_LABEL]];
 const SEEN_KEY = 'stuntLineSeen';
-/** Padding around the label on the plate. */
-const PAD_X = 4;
-const PAD_Y = 3;
 
 export class KickerHint {
   private seen: boolean;
@@ -77,5 +76,5 @@ function approaching(e: Entity): boolean {
 
 /** The plate for the label at font `scale`: at the trick hint's spot under the skater. */
 export function kickerHintRect(scale: number, viewWidth: number): Rect {
-  return trickHintRect(measureText(KICKER_HINT_LABEL, scale) + 2 * PAD_X, 8 * scale + 2 * PAD_Y, viewWidth);
+  return hintPlateRect(KICKER_HINT_ROWS, scale, viewWidth);
 }

@@ -9,7 +9,8 @@
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
  * trick-hint.ts, the stunt line callout ("Combo xN!") in stunt-callout.ts, the
- * first-time kicker hint in kicker-hint.ts, the drunk look in drunk-look.ts, the zone ribbon in
+ * first-time kicker and air trick hints in kicker-hint.ts and air-trick-hint.ts
+ * (one hint plate at a time, hint-plate.ts), the drunk look in drunk-look.ts, the zone ribbon in
  * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
  * all drawing in screens.ts.
  */
@@ -20,6 +21,7 @@ import type { InputHotspot } from '../core/game';
 import { store as defaultStore, type Store } from '../core/storage';
 import { testHookEnabled } from '../core/testhook';
 import type { GameContext, Rect, System } from '../types';
+import { AirTrickHint } from './air-trick-hint';
 import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
@@ -37,7 +39,6 @@ import { type Popup, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
-import { statsLayout } from './stats';
 import { TrickHint } from './trick-hint';
 import { placeCallout, StuntCallout } from './stunt-callout';
 
@@ -54,8 +55,8 @@ const POPUP_RISE = 44;
 const CATCH_RISE = 60;
 /** Most popups on screen at once (a repeat merges into its popup instead). */
 const MAX_POPUPS = 3;
-/** Popups never rise into the HUD plate (its tallest form, with the chill and drunk rows). */
-const POPUP_CEILING = ((p) => p.y + p.h + 2)(statsLayout(0, true, true).plate);
+/** Gap between the HUD plate and the popups below it. */
+const BELOW_PLATE = 2;
 /** Popups never sink below the riding line (the hints live under it); the oldest go instead. */
 const POPUP_FLOOR = GROUND_Y;
 /** Drunk timer bar length until drunkStart says otherwise (the test hook's setDrunk sends no event). */
@@ -68,7 +69,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   const view: UiView = {
     records: loadRecords(store),
     lastRun: null,
-    popups: Object.assign(new PopupPool(MAX_POPUPS), { ceiling: POPUP_CEILING, floor: POPUP_FLOOR }),
+    popups: Object.assign(new PopupPool(MAX_POPUPS), { floor: POPUP_FLOOR }),
     banner: new Banner(),
     fullscreenAvailable: false,
     portraitDismissed: false,
@@ -78,6 +79,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     itemHint: new ItemHint(store),
     trickHint: new TrickHint(store),
     kickerHint: new KickerHint(store),
+    airHint: new AirTrickHint(store),
     stunt: new StuntCallout(),
     stuntRect: null,
     settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
@@ -102,6 +104,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.itemHint.hide();
       view.trickHint.runStarted();
       view.kickerHint.runStarted();
+      view.airHint.runStarted();
       view.stunt.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
@@ -125,7 +128,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     bus.on('grindStart', () => {
       if (!view.stunt.lineActive) popup('Grind!', UI.teal);
     });
-    bus.on('launch', () => view.kickerHint.launched());
+    bus.on('airTrick', (e) => {
+      feed.airTrick(e.points);
+      view.airHint.trickDone();
+    });
+    bus.on('launch', () => {
+      view.kickerHint.launched();
+      view.airHint.launched();
+    });
     bus.on('stuntStep', (e) => view.stunt.step(e.multiplier));
     bus.on('stuntEnd', (e) => {
       view.stunt.end(e.completed, e.points);
@@ -299,22 +309,37 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
-      const hintShown = view.itemHint.visible && itemControl(display, state.mode, state.carriedItem) === 'button';
-      const placed = placeCallout(view.stunt, display, POPUP_CEILING, view.banner.visible);
-      view.stuntRect = placed?.drawn ?? null;
-      const belowHint = popupCeiling(POPUP_CEILING, hintShown ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null);
-      view.popups.ceiling = popupCeiling(belowHint, placed?.reserved ?? null);
+      const control = itemControl(display, state.mode, state.carriedItem);
+      const hintRect = view.itemHint.visible && control === 'button' ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null;
+      if (riding(state.mode)) view.hud.update(state, control === 'keycap');
+      // Laid out only while it shows (the scene allocates).
+      view.stuntRect = view.stunt.visible
+        ? placeCallout(view.stunt, {
+            viewWidth: display.viewWidth,
+            plate: view.hud.layout.plate,
+            chip: view.hud.chip,
+            buttons: hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode)),
+            itemButton: control === 'button' ? itemButtonRect(display.viewWidth, display) : null,
+            itemHint: hintRect,
+            banner: view.banner.visible,
+          })
+        : null;
+      // Popups never rise into the HUD plate as it is drawn now (so they stay clear of a skater high on a
+      // ledge), nor into the item hint or the stunt callout.
+      const { plate } = view.hud.layout;
+      view.popups.ceiling = popupCeiling(popupCeiling(plate.y + plate.h + BELOW_PLATE, hintRect), view.stuntRect);
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
-      if (riding(state.mode)) view.hud.update(state, itemControl(display, state.mode, state.carriedItem) === 'keycap');
       if (state.mode !== 'playing') return;
+      const { player } = state;
       view.popups.update(dt);
       view.banner.update(dt);
-      view.stunt.update(dt);
+      view.stunt.update(dt, view.stuntRect !== null);
       view.kickerHint.update(state.entities);
+      view.airHint.update(!player.grounded && !player.grinding, player.airTrick);
       view.itemHint.update(dt, view.banner.visible);
-      view.trickHint.update(state.player.grinding, state.player.grindTrick);
+      view.trickHint.update(player.grinding, player.grindTrick);
     },
 
     render: {
