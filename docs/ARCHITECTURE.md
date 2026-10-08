@@ -757,7 +757,7 @@ picks one (null while riding or while the settings menu covers it):
   recorded. Escape on game over also goes to the title (core).
 - **Install hint** (`notices.ts` `installHintKind(install, touch)`): touch
   devices only, not `standalone`, not `installed`, not `dismissed` and from
-  the second visit on (`INSTALL_HINT_MIN_VISITS` = 2); on title and game
+  the first visit on (`INSTALL_HINT_MIN_VISITS` = 1); on title and game
   over, never in pause or mid-run. Kind `'prompt'` when `canPrompt` (text
   "Als App: Vollbild und offline", button "Installieren" calling
   `commands.promptInstall()` inside the tap), otherwise `'ios'` on iOS

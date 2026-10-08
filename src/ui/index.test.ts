@@ -437,12 +437,14 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(ios.press(il.buttons.dismiss)).toBe(false);
   });
 
-  it('install hint: also on game over, never on desktop, mid-run or on the first visit', () => {
+  it('install hint: from the first visit, also on game over, never on desktop or mid-run', () => {
+    const first = app({ touch: true });
+    first.game.state.install.platform = 'ios';
+    first.game.state.install.visits = 1;
+    expect(first.press(titleLayout(first.input({ install: 'ios' })).buttons.dismiss)).toBe(true);
+
     const t = app({ touch: true });
     t.game.state.install.platform = 'ios';
-    t.game.state.install.visits = 1;
-    const dismiss = titleLayout(t.input({ install: 'ios' })).buttons.dismiss;
-    expect(t.press(dismiss)).toBe(false);
     t.game.state.install.visits = 2;
     t.game.commands.startRun();
     t.game.commands.gameOver();

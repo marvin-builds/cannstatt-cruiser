@@ -26,10 +26,10 @@ describe('install hint', () => {
     expect(installHintKind(install({ platform: 'other' }), true)).toBeNull();
   });
 
-  it('only on touch devices from the second visit on', () => {
+  it('only on touch devices, from the first visit on', () => {
     const ios = { platform: 'ios' as const };
     expect(installHintKind(install(ios), false)).toBeNull();
-    expect(installHintKind(install({ ...ios, visits: 1 }), true)).toBeNull();
+    expect(installHintKind(install({ ...ios, visits: 1 }), true)).toBe('ios');
     expect(installHintKind(install({ ...ios, visits: 3 }), true)).toBe('ios');
   });
 
