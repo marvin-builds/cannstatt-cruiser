@@ -8,10 +8,11 @@
  * and the Grabkapelle on its hill in Cannstatt.
  *   npm run playtest -- --scenario scripts/scenarios/world.ts --viewports desktop,phone-landscape --name world
  */
-import { MAX_SPEED, START_ZONE } from '../../src/core/config';
+import { START_ZONE } from '../../src/core/config';
+import { TOP_SPEED } from '../../src/gameplay/difficulty';
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import type {} from '../../src/world/debug'; // window.__world
-import { EXHAUST_TOP, FRONT_TOP, TRAFFIC_TOP } from '../../src/world/traffic';
+import { EXHAUST_TOP, FRONT_TOP, LIGHT_TRAFFIC, TRAFFIC_TOP } from '../../src/world/traffic';
 import { ZONE_LENGTH, ZoneRoute } from '../../src/world/zones';
 import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
@@ -22,7 +23,7 @@ const NECKAR = 1;
 const ROUTE = new ZoneRoute();
 /** Gateways ridden through: one full back-and-forth cycle, so every crossing is seen in both directions. */
 const GATEWAYS = 4;
-const SPEED = MAX_SPEED;
+const SPEED = TOP_SPEED;
 /** Frames around each gateway, as ground distance relative to it. */
 const SEQUENCE = [-650, -350, -120, 0, 250, 600, 1200, 2000];
 /** Frame of the sequence that shows the Mombachquelle on the far Neckar bank. */
@@ -75,7 +76,47 @@ export default async function world(t: PlaytestContext): Promise<void> {
   await t.game.setSpeed(SPEED);
   await rideTo(t, (await t.game.state()).distance + 1500);
   await t.canvasShot('cannstatt grabkapelle');
+  await lightTraffic(t);
   await t.game.setSpeed(null);
+}
+
+/**
+ * Bad Cannstatt: light traffic, one vehicle at a time after a few seconds of
+ * empty street (no trucks), below the same limits as in Mitte; the density
+ * the run (and audio) sees is LIGHT_TRAFFIC, and 0 once the run is over.
+ */
+async function lightTraffic(t: PlaytestContext): Promise<void> {
+  await t.game.setSpeed(90);
+  let maxVehicles = 0;
+  let shot = false;
+  const seen = new Set<string>();
+  const tooHigh: Array<{ x: number; y: number; limit: number }> = [];
+  for (let i = 0; i < 100; i++) {
+    await t.game.setHealth(5);
+    await t.game.step(15);
+    const traffic = await t.page.evaluate(() => window.__world!.traffic());
+    maxVehicles = Math.max(maxVehicles, traffic.vehicles.length);
+    for (const v of traffic.vehicles) {
+      seen.add(v.kind);
+      const limit = v.front ? FRONT_TOP : TRAFFIC_TOP;
+      if (v.y < limit) tooHigh.push({ x: v.x, y: v.y, limit });
+    }
+    if (!shot && traffic.vehicles.some((v) => v.x > 40 && v.x + v.w < 280)) {
+      await t.canvasShot('cannstatt light traffic');
+      shot = true;
+    }
+  }
+  const drawn = await t.page.evaluate(() => window.__world!.trafficDensity());
+  const state = await t.game.state();
+  t.check('cannstatt: light traffic density during the run', drawn === LIGHT_TRAFFIC && state.trafficDensity === LIGHT_TRAFFIC, {
+    drawn,
+    run: state.trafficDensity,
+  });
+  t.check('cannstatt: one vehicle at a time, at least one in 25 s, no truck', maxVehicles === 1 && !seen.has('truck'), { maxVehicles, kinds: [...seen] });
+  t.check('cannstatt: light traffic below the riding line', tooHigh.length === 0, tooHigh.slice(0, 5));
+  await t.game.endRun();
+  await t.game.step(2);
+  t.check('game over: state.trafficDensity is 0', (await t.game.state()).trafficDensity === 0);
 }
 
 /** Rides at the current speed (kept alive) until the distance reaches `target`; throws if the run stops. */

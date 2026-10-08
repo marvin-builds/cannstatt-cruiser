@@ -115,7 +115,7 @@ Testing game over and the HUD without waiting for gameplay:
 
 ```js
 g.setScore(4200); g.setHealth(1); g.step(1);   // HUD with one heart
-g.setSpeed(165);                                // max difficulty speed (MAX_SPEED)
+g.setSpeed(190);                                // top difficulty speed (gameplay TOP_SPEED)
 g.endRun();                                     // game-over screen now
 ```
 
@@ -141,7 +141,13 @@ g.endRun();                                     // game-over screen now
   (a person was hit, or one was within `PERSON_NEAR_SECONDS` = 1 s of street)
   and the entities near it. `src/gameplay/human-bot-1/2.test.ts` require no
   person-related crash over 20 seeds x 3 min (split in two files so Vitest runs
-  them in parallel; together ~40 s).
+  them in parallel; together ~40 s). `human-bot-3.test.ts` rides past both
+  difficulty ramps (top speed, every tier: at most one crash per 45 s over
+  3 seeds x 1 min). `rideDrunk(seed, from)` lets the bot carry a Maßkrug,
+  drink it and ride the drunk phase (it presses about the mean drunk delay
+  early and holds on for the full jump, `drunkFairness`);
+  `human-bot-drunk.test.ts` requires no crash in >= 18 of 20 seeds, early in
+  the run and at full difficulty.
 - `src/gameplay/test-kit.ts` (Vitest only): `quietGame(speed)` (player +
   gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
   `place(game, kind, rect)`, `record(game, event)` and `playBot(game, ticks)`.
@@ -161,8 +167,9 @@ g.endRun();                                     // game-over screen now
 |---|---|
 | `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
-| `window.__world.trafficDensity()` | current Stuttgart-Mitte traffic density 0..1 (1 = full traffic; 0 outside Mitte) |
-| `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h, front}], puffs: [{x, y}], shake}`: view rects of the vehicles (`kind` hatch / sedan / van / bus / truck; `front` = front lane, drawn over gameplay) and the tops of the exhaust puffs on screen, plus the street rumble offset `shake` (0 or 1 px while a bus or truck is on screen). Limits from `world/traffic.ts`: back lane `y >= TRAFFIC_TOP`, front lane `y >= FRONT_TOP`, puffs `y >= EXHAUST_TOP` |
+| `window.__gameplay.drops()` | snapshot of the [dropped items](ARCHITECTURE.md#dropped-items) (no entities, so `state()` misses them): `[{item, x, y, w, h, lying}]`, the pickup box in screen space and whether it already lies on the street |
+| `window.__world.trafficDensity()` | traffic density as drawn: `LIGHT_TRAFFIC` 0.05 outside Mitte (light traffic, one vehicle at a time), ramping to 1 in Mitte; also on the title and game over (where `state.trafficDensity` is 0) |
+| `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h, front}], puffs: [{x, y}], shake}` (Mitte and light traffic): view rects of the vehicles (`kind` hatch / sedan / van / bus / truck; `front` = front lane, drawn over gameplay) and the tops of the exhaust puffs on screen, plus the street rumble offset `shake` (0 or 1 px while a bus or truck is on screen). Limits from `world/traffic.ts`: back lane `y >= TRAFFIC_TOP`, front lane `y >= FRONT_TOP`, puffs `y >= EXHAUST_TOP` |
 | `window.__player.crash(kind = 'barrier')` | emits a crash into `kind` like gameplay would; `'bin'` plays the bin crash (head first into the bin) |
 | `window.__player.grind(height?, length?)` / `removeRail(id)` | a static rail under the player with a grind on it / removes it (the player falls off) |
 | `window.__player.chill(s)`, `kidMode(on)`, `carry(item)`, `stomp(item?)`, `catchItem(item)`, `lineup(scale?, look?, item?)` | player-side effects and the pose lineup PNG, see `src/player/debug.ts` |
@@ -173,9 +180,10 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.itemPopups(...kinds)` | feeds sample item events to the popup feed (shown on the next tick): `'drink'`, `'eat'` (+1 health), `'throw'`, `'hit'` (ball hit with points), `'back'` (ricochet), `'stomp'` (with points), `'trick'` |
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
+| `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu' \| 'check', question, holdProgress}` (`question.answers[question.correct]` is the right answer) |
-| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo}`; the touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
-| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (Mitte rumble starts / stops); `src/audio/debug.ts` |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the rumble starts / stops: quietly with light traffic at run start, louder in Mitte; stops on game over, pause or mute); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
 `window.__gameplay`; likewise `src/world/debug` for `window.__world` and
@@ -272,18 +280,19 @@ npm run playtest -- --headed
   line, exhaust behind gameplay": every back-lane vehicle at or below
   `TRAFFIC_TOP`, front-lane vehicle at or below `FRONT_TOP` and puff at or
   below `EXHAUST_TOP`, sampled over 5 s; obstacles in front; wider views on
-  desktop), `setZone` snaps, the Neckar bridge and the Grabkapelle. Run it on
-  `desktop,phone-landscape,phone-portrait`.
+  desktop), `setZone` snaps, the Neckar bridge and the Grabkapelle, then
+  light traffic in Bad Cannstatt (25 s at 90 px/s: density `LIGHT_TRAFFIC`
+  drawn and in `state.trafficDensity`, never more than one vehicle, no truck,
+  the same height limits) and `state.trafficDensity` 0 after game over. Run
+  it on `desktop,phone-landscape,phone-portrait`.
 - `scripts/scenarios/skater.ts` has the bin crash (`__player.crash('bin')`):
   canvas shots and skater crops of the dive, kicking legs, pop out and the
   tumbling bin, then a normal crash that still throws the skater off. It
   ends with the item use lineup (`00-use-lineup*.png`), the grind trick
   (turn, front view, drinking in it, turn back while still grinding), the
   empty mug toss, eating, throwing in the air and the drunk wobble (crops).
-  Its pose shots pin the speed to 1 px/s, not 0. This works around a known
-  gameplay bug (reported for the ROADMAP backlog): at speed 0 with a Maßkrug
-  in hand, drunk planning overflows the call stack in the solver
-  (`RangeError` from `solve` / `solveFresh`). Go back to 0 once it is fixed.
+  Its pose shots pin the speed to 0 on an empty street (the solver's old
+  stack overflow at speed 0 with a Maßkrug in hand is fixed since Wave 5d).
 - `scripts/scenarios/items.ts` (gameplay item use, all three viewports):
   throw at a Wasen visitor (hit, tumble), a miss that ricochets back (first
   seed whose rng says so) and knocks the skater off, eating a Brezel
@@ -291,6 +300,17 @@ npm run playtest -- --headed
   drunk for ~`DRUNK_DURATION`, and every entity that comes onto the street
   from the catch on is from an easy pattern (no people, overhead obstacles
   or rails).
+- `scripts/scenarios/drop.ts` (gameplay dropped items, run it on
+  `desktop,phone-landscape,phone-portrait`): the football hits a Wasen
+  visitor and the Brezel falls (shots while falling and lying on the street,
+  not caught at once), riding on picks it up without a jump (`itemCaught`,
+  `carriedItem`), kid mode drops a Lebkuchenherz instead of the Maßkrug, a
+  picked-up Maßkrug is drunk by itself `BEER_AUTO_DRINK` after the pickup
+  (the street is cleared meanwhile so no crash costs it), a pickup replaces
+  the carried item, and one-tick taps started a little later each time until
+  one collects the item mid-air (`player.grounded` false at the catch).
+  `window.__gameplay.drops()` checks the item while it falls, that it lies
+  on the street ahead of the skater, and that it is gone after the pickup.
 - `scripts/scenarios/items-ui.ts` (ui, all three viewports): title and
   pause key hints, the item control while carrying each item (desktop "E"
   chip; touch: the first-catch hint once the zone banner is gone, and a real
@@ -313,7 +333,7 @@ npm run playtest -- --headed
   swipe window, so its bench-grind bot plans `SWIPE_WINDOW` ticks ahead
   (`ahead(state)`), like a player who learnt the lag.
 - `default.ts`, `gameplay.ts`, `world.ts`, `ducking.ts`, `chill.ts`,
-  `items.ts`, `items-ui.ts` and `final-phone-touch.ts` call `dismissRotateHint(t)`
+  `items.ts`, `items-ui.ts`, `drop.ts` and `final-phone-touch.ts` call `dismissRotateHint(t)`
   (`playtest-lib.ts`) first (and after a reload), so they also run on
   phone-portrait, where the rotate hint takes the first tap and would
   otherwise keep the run paused.

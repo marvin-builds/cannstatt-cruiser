@@ -104,11 +104,9 @@ export default async function skater(t: PlaytestContext): Promise<void> {
     mode: moving.mode,
     distance: moving.distance,
   });
-  // Nearly freeze an empty world: no obstacle reaches the skater during the pose shots.
-  // 1 px/s, not 0: works around a known gameplay bug (docs/TESTING.md, skater.ts):
-  // at speed 0 with a Maßkrug in hand, drunk planning overflows the call stack.
+  // Freeze an empty world: no obstacle reaches the skater during the pose shots.
   await page.evaluate(() => window.__gameplay!.clear());
-  await game.setSpeed(1);
+  await game.setSpeed(0);
   await stepUntil(t, (s) => s.player.state === 'ride');
   await game.step(10);
   await t.canvasShot('ride');

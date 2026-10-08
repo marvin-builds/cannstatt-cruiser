@@ -36,6 +36,8 @@ and on desktop (keyboard and mouse). The UI language is German.
   scoring).
 - Coyote time (~80 ms) and jump buffering (~120 ms).
 - P / Escape = pause; P / Escape, Space (the jump key) or a tap resumes.
+- On the menu screens: T = "Zum Startbildschirm" (pause, game over), U =
+  "Neu laden" (when a new version is ready), Escape on game over = title.
 
 ## Skater
 
@@ -112,12 +114,16 @@ empties the hands:
   clearly late, ~130-330 ms (8-20 ticks, a deterministic random delay), and
   every press's hold comes out up to 10 ticks shorter or longer, so a tap
   can become a high jump and a long hold a small one (no press is ever
-  lost); the skater and the screen sway
-  and the HUD shows a draining Maßkrug timer. Meanwhile (and already while a
-  Maßkrug is in hand or within reach) the spawner places only easy patterns
-  (single or paired ground obstacles and stars, no people, nothing overhead,
-  no rails, wider gaps) that are clearable with that delay and hold wobble. Not used within
-  ~6 s, it is drunk by itself.
+  lost). The skater sways up to 2 px over the board and now and then
+  staggers with a flailing arm; the screen sees double (two faint copies
+  swaying against each other, up to 6 px), with a slowly pulsing amber wash
+  and darker side edges; the HUD stays sharp and shows a draining Maßkrug
+  timer. Meanwhile (and already while a Maßkrug is in hand or within reach)
+  the spawner places only easy patterns (single or paired ground obstacles,
+  no people, nothing overhead, no rails, a longer run-up) that are clearable
+  with that delay and hold wobble by a player who holds the button long
+  (~0.7 s) for a sure full jump. Not used within ~6 s (counted from when it
+  came into the hands), it is drunk by itself.
 - **Brezel / Lebkuchenherz**: eating it gives +1 health ("Lecker! +1"); at
   full health 150 bonus points instead (times the multiplier).
 - **Football**: thrown forward ("Wurf!"). Hitting a person makes them tumble
@@ -128,6 +134,22 @@ empties the hands:
   (crash, -1 health) unless he jumps over it. Otherwise it rolls away.
 - Popups of one moment are merged: a stomp and its points become one
   "Stomp! +150".
+
+## Dropped items
+
+- A person hit by the thrown football lets go of their item: it pops up a
+  little and falls in a short arc onto the street, a bit further along than
+  the person (VfB fan: the football; Wasen visitor: Brezel or Maßkrug; kid
+  mode: Brezel or Lebkuchenherz, never beer). It lies on the street with a
+  small shadow and a glint and scrolls with it.
+- The skater picks it up by touching it: riding over it, or jumping through
+  it low enough (a high jump passes over it). The pickup works like a catch
+  (catch popup, bonus points; a picked-up Maßkrug is drunk by itself ~6 s
+  later). It always replaces what he carries: the newest item wins.
+- A missed item scrolls off the screen and is gone. It only ever comes to
+  lie on free street (about half a second of riding with no obstacle on
+  either side, else a bit further or just before the person, else nothing
+  drops), so collecting it never needs a risky move.
 
 ## Health
 
@@ -159,10 +181,14 @@ kid mode refers to drugs.
 - A settings menu "Einstellungen" with one setting, "Kindermodus" (off by
   default = adult mode, stored in localStorage).
 - It has no visible button, so kids don't find it by accident: it opens on
-  the title screen by holding the "Cannstatt Cruiser" logo for 3 s (touch or
-  mouse) or holding K for 3 s. A subtle progress bar appears only after ~1 s
-  of holding. A shorter press on the logo is a normal tap and starts the
-  run; the long press never does.
+  the title screen and on the pause screen by holding the "Cannstatt
+  Cruiser" logo for 3 s (touch or mouse) or holding K for 3 s. A subtle
+  progress bar appears only after ~1 s of holding. A shorter press on the
+  logo is a normal tap and starts the run (title) or resumes (pause); the
+  long press never does.
+- Switching kid mode from the pause screen restarts the run (the menu says
+  "Lauf wird neu gestartet"); the run so far still counts for the highscore
+  and the star total.
 - Kindermodus turns on at once. Turning it off asks a simple parent check:
   "Wie viel ist 7 × 8?" (factors 6-9) with three large answer buttons; a
   wrong answer closes the menu without change.
@@ -170,7 +196,7 @@ kid mode refers to drugs.
 
 ## Difficulty
 
-- Speed ramps gently from 90 to at most 165 px/s (over ~4 min); obstacle
+- Speed ramps gently from 90 to at most 190 px/s (over ~5 min); obstacle
   density and the pattern mix keep getting harder before that. The spawner
   guarantees that every pattern can be cleared with the available jump, also
   with moving people and with the lower chill jump where the chill effect can
@@ -205,6 +231,10 @@ Cannstatt -> Neckar -> Stuttgart-Mitte -> Neckar -> Cannstatt -> ...
    while a bus or truck passes. Loud traffic noise: a layered rumble (road
    noise, tyre hiss, engine drone) that dips briefly under gameplay sounds,
    car, small-car and deep bus / truck horns, and passing trucks.
+   Everywhere else (Neckar, Bad Cannstatt) the street has light traffic:
+   a single car or van now and then (a bus rarely, no trucks), one at a
+   time with 4-11 s of empty street between, under the same rules; its
+   rumble is quiet and has no horns or trucks.
 2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette, the
    Mombachquelle's outlet into the river after the real place, without any
    sign: a basin of light grey boulders at the foot of a green embankment,
@@ -221,14 +251,40 @@ The art is recognisable but stylised.
 - Titelbildschirm ("Tippen oder Leertaste zum Starten").
 - HUD (Punkte, Sterne, Gesundheit, chill timer while chilled). Numbers use the
   German thousands dot (61.234).
-- Pause ("Tippen zum Weiterfahren" / "Leertaste, P oder Esc zum Weiterfahren").
+- Pause ("Tippen zum Weiterfahren" / "Leertaste, P oder Esc zum Weiterfahren")
+  with the logo (long press = settings, see Settings) and a "Zum
+  Startbildschirm" button (T): it ends the run, which still counts for the
+  highscore and star total, and shows the title. The installed app has no
+  other way back to the title.
 - Desktop title hints name the keys: "Leertaste kurz = kleiner Sprung",
   "Halten = hoher Sprung", "P/Esc = Pause, M = Ton aus".
-- Game Over with Punkte, Highscore, Sterne and a restart.
+- Game Over with Punkte, Highscore, Sterne, a restart and "Zum
+  Startbildschirm" (T).
 - Highscore and the star total are stored in localStorage.
 - Mute button.
 - On phones the pause, mute, fullscreen and settings buttons have tap areas
   of at least ~44 CSS px; desktop keeps small buttons.
+
+## Updates, install hint and what's new
+
+- **New version:** when the service worker has fully cached a newer
+  deploy, title, pause and game over (never mid-run) show "Neue Version da"
+  with a real button "Neu laden" (touch-sized; keyboard U) that reloads the
+  page. It is a button because the installed app has no browser reload.
+- **"Neu in dieser Version":** every build has a version id and a short
+  German changelog (a few bullet points per version, never about drugs or
+  alcohol, since kid mode shows them too). After an update (the stored
+  last-seen version is older; never on the very first visit) this screen
+  lists the changes since then, newest first, at most 6 lines, before the
+  normal title. "Weiter", a tap anywhere or any key (but M) continues to the
+  title and stores the new version as seen.
+- **Install hint:** on phones and tablets only, when the game is not
+  already running installed, from the 2nd visit on, on title and game over
+  (never in pause or mid-run): "Als App: Vollbild und offline" with an
+  "Installieren" button where the browser offers an install prompt
+  (Android / Chromium), or "Teilen [share icon] -> Zum Home-Bildschirm" on
+  iPhone / iPad (no API there; installed it runs fullscreen and offline).
+  "×" hides it for good.
 
 ## Audio
 
@@ -236,7 +292,7 @@ The art is recognisable but stylised.
   crash, game over.
 - The audio context is unlocked on the first input. Mute is persisted.
 - Stuttgart-Mitte adds the traffic noise (rumble, horns, passing trucks; see
-  Zones).
+  Zones); outside Mitte the light traffic only rumbles quietly.
 
 ## PWA
 
