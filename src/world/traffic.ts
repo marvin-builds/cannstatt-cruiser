@@ -6,7 +6,10 @@
  * big exhaust clouds that drift up behind gameplay, flash their headlights
  * now and then (honk) and make the street rumble by 1 px while a bus or truck
  * passes. Everywhere else light traffic: now and then a single car or van
-(rarely a bus) with long empty stretches between. DOM-free and allocation-free while driving (fixed pools); the art
+(rarely a bus) with long empty stretches between. A keep-out span (the
+ * NorDIY park, see park.ts) moving with the street is never driven over on
+ * screen: no vehicle sets off that would cross it in view, and a car already
+ * driving with the skater speeds up or drops back out of view. DOM-free and allocation-free while driving (fixed pools); the art
  * lives in art/traffic.ts.
  */
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
@@ -135,6 +138,12 @@ const PUFF_DRIFT = -6;
 /** Seconds between two headlight flashes of a vehicle, and how long one lasts. */
 const FLASH_EVERY: readonly [number, number] = [2.5, 7];
 export const FLASH_TIME = 0.35;
+/** Margin (px) kept around a keep-out span. */
+const KEEP_OUT_PAD = 8;
+/** A hurried car goes this much faster (or slower) than just enough. */
+const HURRY_MARGIN = 1.15;
+/** Slowest a car drops back (px/s relative to the skater), so it never stalls out of view. */
+const MIN_DROP_BACK = 20;
 /** Ticks per half period of the 1 px street rumble. */
 const SHAKE_TICKS = 4;
 
@@ -160,6 +169,12 @@ export interface Vehicle {
   light: boolean;
   /** Its centre has crossed PLAYER_X (the pass-by was reported). */
   passed: boolean;
+}
+
+/** A screen-x span [from, to) moving left with the street that no vehicle may be seen over. */
+export interface KeepOut {
+  from: number;
+  to: number;
 }
 
 export interface Puff {
@@ -205,6 +220,51 @@ export function vehicleScreenX(v: Vehicle, scrollLead: number, ahead: number): n
   return LANES[v.lane]!.dir === 1 ? v.x + v.pace * ahead : v.x - scrollLead - v.pace * ahead;
 }
 
+/**
+ * True if a vehicle (left edge `x`, `w` wide, screen velocity `vx` px/s) is
+ * ever on screen ([0, viewWidth)) while overlapping the span [from, to)
+ * (padded by KEEP_OUT_PAD) that moves left at the street speed `street`.
+ * Assumes both keep their speeds.
+ */
+export function crossesKeepOut(x: number, w: number, vx: number, span: KeepOut, street: number, viewWidth: number): boolean {
+  const rel = vx + street;
+  span_.lo = 0;
+  span_.hi = Infinity;
+  // Each condition holds while c + m * t > 0; all four must hold at some t >= 0.
+  return holds(x + w - (span.from - KEEP_OUT_PAD), rel) && holds(span.to + KEEP_OUT_PAD - x, -rel) && holds(x + w, vx) && holds(viewWidth - x, -vx);
+}
+
+/** Time window crossesKeepOut narrows (reused: driving allocates nothing). */
+const span_ = { lo: 0, hi: Infinity };
+
+/** Narrows the time window to where c + m * t > 0; false once it is empty. */
+function holds(c: number, m: number): boolean {
+  if (m > 0) span_.lo = Math.max(span_.lo, -c / m);
+  else if (m < 0) span_.hi = Math.min(span_.hi, c / -m);
+  else if (c <= 0) return false;
+  return span_.lo < span_.hi;
+}
+
+/**
+ * Relative pace (px/s, see Lane.speed) that takes a car driving with the
+ * skater (left edge `x`, `w` wide) out of view before the keep-out span
+ * reaches it: fast enough to leave at the right edge or slow enough to drop
+ * back out at the left one, whichever is the smaller change from `pace`;
+ * null if neither can work (the span is already on it).
+ */
+export function clearingPace(x: number, w: number, pace: number, span: KeepOut, street: number, viewWidth: number): number | null {
+  const front = x + w;
+  const meet = span.from - KEEP_OUT_PAD;
+  if (meet <= front) return null;
+  // Dropping back: the car's front leaves the left edge before the span's start meets it.
+  const back = -Math.max(MIN_DROP_BACK, ((street * front) / meet) * HURRY_MARGIN);
+  // Speeding up: the car's tail passes the right edge before the span's start meets its front.
+  const room = meet - viewWidth - w;
+  if (room <= 0) return back;
+  const ahead = ((street * (viewWidth + w - front)) / room) * HURRY_MARGIN;
+  return Math.abs(ahead - pace) < Math.abs(back - pace) ? ahead : back;
+}
+
 function firstInactive<T extends { active: boolean }>(pool: readonly T[]): T | null {
   for (let i = 0; i < pool.length; i++) if (!pool[i]!.active) return pool[i]!;
   return null;
@@ -224,6 +284,9 @@ export class Traffic {
   /** Light traffic: seconds of empty street left until the next vehicle. */
   private lightTimer = LIGHT_GAP[0];
   private ticks = 0;
+  /** This step's keep-out span (screen x) and street speed (px/s). */
+  private keepOut: KeepOut | null = null;
+  private street = 0;
   /** Reused for every pass-by report. */
   private readonly pass: { -readonly [K in keyof VehiclePass]: VehiclePass[K] } = { kind: 'car', front: false, light: false };
 
@@ -260,9 +323,12 @@ export class Traffic {
    * One step: `scroll` = view px the street moved left this step, `density`
    * 0..1; `onPass` hears each vehicle once as its centre crosses PLAYER_X.
    */
-  update(dt: number, scroll: number, density: number, viewWidth: number, onPass?: PassListener): void {
+  update(dt: number, scroll: number, density: number, viewWidth: number, onPass?: PassListener, keepOut: KeepOut | null = null): void {
+    this.keepOut = keepOut;
+    this.street = dt > 0 ? scroll / dt : 0;
     this.movePuffs(dt, scroll);
     this.follow();
+    if (keepOut) this.steerClear(keepOut, viewWidth);
     let heavy = false;
     let onStreet = 0;
     for (let i = 0; i < this.vehicles.length; i++) {
@@ -286,6 +352,20 @@ export class Traffic {
     else if (density > 0) this.spawnLight(dt, onStreet === 0, density, viewWidth);
     this.ticks++;
     this.shake = heavy ? Math.floor(this.ticks / SHAKE_TICKS) % 2 : 0;
+  }
+
+  /** Cars driving with the skater that would be seen over the keep-out span speed up or drop back. */
+  private steerClear(span: KeepOut, viewWidth: number): void {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]!;
+      if (!v.active || LANES[v.lane]!.dir !== 1) continue;
+      const { w } = VEHICLES[v.kind];
+      if (!crossesKeepOut(v.x, w, v.pace, span, this.street, viewWidth)) continue;
+      const pace = clearingPace(v.x, w, v.pace, span, this.street, viewWidth);
+      if (pace === null) continue;
+      v.speed = pace;
+      v.pace = pace;
+    }
   }
 
   /** Reports each vehicle whose centre has just crossed PLAYER_X (once per vehicle). */
@@ -387,6 +467,8 @@ export class Traffic {
     const speed = Math.round(this.rng.range(spec.speed[0], spec.speed[1]));
     const x = spec.dir === 1 ? -w - 1 : viewWidth + 1;
     if (!this.clear(lane, x, w)) return false;
+    const vx = spec.dir === 1 ? speed : -speed - this.street;
+    if (this.keepOut && crossesKeepOut(x, w, vx, this.keepOut, this.street, viewWidth)) return false;
     slot.active = true;
     slot.kind = kind;
     slot.variant = this.rng.int(0, VEHICLE_VARIANTS - 1);
