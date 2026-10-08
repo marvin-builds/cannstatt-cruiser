@@ -92,6 +92,8 @@ export interface DrunkRun {
   drunkSeconds: number;
   /** Crashes while drunk (and the half second after). */
   crashes: CrashReport[];
+  /** Obstacles cleared while drunk (and the half second after). */
+  cleared: number;
 }
 
 /** Seconds the bot rides with the Maßkrug before drinking it. */
@@ -102,7 +104,7 @@ const SOBER_UP = 0.5;
 /**
  * The human bot rides a seeded run from street distance `from` with a
  * Maßkrug in hand, drinks it after DRINK_AFTER seconds (use button) and
- * rides until the drunk effect is over. Reports the crashes while drunk.
+ * rides until the drunk effect is over. Reports the crashes and clears while drunk.
  */
 export function rideDrunk(seed: number, from: number): DrunkRun {
   const game = new Game({ systems: [createPlayerSystem(), createGameplaySystem()] });
@@ -112,9 +114,12 @@ export function rideDrunk(seed: number, from: number): DrunkRun {
   game.state.distance = from;
   game.state.carriedItem = 'beer';
   const bot = new HumanBot(new Rng(seed * 7919 + 1));
-  const run: DrunkRun = { seed, drunkSeconds: 0, crashes: [] };
+  const run: DrunkRun = { seed, drunkSeconds: 0, crashes: [], cleared: 0 };
   let drankAt = -1;
   game.bus.on('drunkStart', () => (drankAt = game.state.time));
+  game.bus.on('obstacleCleared', () => {
+    if (drankAt >= 0) run.cleared++;
+  });
   game.bus.on('crash', (e) => {
     if (drankAt < 0) return;
     run.crashes.push({ seed, time: Math.round((game.state.time - drankAt) * 10) / 10, kind: e.kind, personRelated: false, near: nearby(game.state) });
