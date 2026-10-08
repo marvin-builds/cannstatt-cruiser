@@ -61,7 +61,7 @@ Real input without a DOM: `keyDown(game, 'ArrowDown')` / `keyUp` and
 presses the topmost hotspot at a view pixel; `keyDown(game, 'KeyK')` offers
 the key to active `InputHotspot`s first. `src/ui/index.test.ts` opens the
 hidden settings menu this way (3 s long press on the logo, or K held) and
-answers the parent check.
+toggles kid mode on and off.
 
 ## Test hook: `window.__game`
 
@@ -148,6 +148,11 @@ g.endRun();                                     // game-over screen now
   early and holds on for the full jump, `drunkFairness`);
   `human-bot-drunk.test.ts` requires no crash in >= 18 of 20 seeds, early in
   the run and at full difficulty.
+- `src/gameplay/effect-street.ts` (Vitest only): `rideEffect(seed, from,
+  'drunk' | 'chill')` rides a seeded run (gameplay only, never crashing) into
+  a drunk or chill phase and reports the longest stretch of empty street
+  under the skater and the kinds that came; `effect-street.test.ts` keeps
+  the street busy during effects (see ARCHITECTURE, Effect street).
 - `src/gameplay/test-kit.ts` (Vitest only): `quietGame(speed)` (player +
   gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
   `place(game, kind, rect)`, `record(game, event)` and `playBot(game, ticks)`.
@@ -166,6 +171,9 @@ g.endRun();                                     // game-over screen now
 | Hook | Effect |
 |---|---|
 | `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
+| `window.__gameplay.place('kicker' \| 'ledge', x, variant?)` | stunt pieces with their left edge at screen x, forming one line: a kicker starts a new line (launching for a `DEFAULT_LEDGE_HEIGHT` ledge), a ledge (`DEFAULT_LEDGE_HEIGHT` up, 100 px long, the zone's look, `variant` 1 = its second look) joins the line placed last. A ledge's entity `y` is its grind surface. Place a line's pieces together: a line whose next piece is missing ends at once. Used by `scripts/scenarios/stunts.ts` |
+| `window.__gameplay.stuntLine(x, seed?)` | places a whole designed stunt line (`stunt-line.ts`) for the current speed and zone with its first kicker at screen x; returns the entity ids (stars included) |
+| `window.__gameplay.stunts()` | the running stunt line `{line, steps, made, multiplier, points}` (points so far, without the line bonus) or null (read-only) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__gameplay.drops()` | snapshot of the [dropped items](ARCHITECTURE.md#dropped-items) (no entities, so `state()` misses them): `[{item, x, y, w, h, lying}]`, the pickup box in screen space and whether it already lies on the street |
 | `window.__world.trafficDensity()` | traffic density as drawn: `LIGHT_TRAFFIC` 0.05 outside Mitte (light traffic, one vehicle at a time), ramping to 1 in Mitte; also on the title and game over (where `state.trafficDensity` is 0) |
@@ -181,9 +189,9 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
-| `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu' \| 'check', question, holdProgress}` (`question.answers[question.correct]` is the right answer) |
-| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
-| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the rumble starts / stops: quietly with light traffic at run start, louder in Mitte; stops on game over, pause or mute); `src/audio/debug.ts` |
+| `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
 `window.__gameplay`; likewise `src/world/debug` for `window.__world` and
@@ -254,8 +262,8 @@ npm run playtest -- --headed
 - `scripts/scenarios/settings.ts`: the hidden settings menu on desktop and
   both phone viewports: title without a settings button, a short logo hold
   (no progress, starts the run like a tap), the 3 s long press with its
-  progress bar (no run start), turning kid mode on, the parent check (wrong
-  answer keeps it, right answer turns it off), reopening with K (desktop) or
+  progress bar (no run start), turning kid mode on and off at once (no
+  parent check since Wave 9), reopening with K (desktop) or
   the long press (touch), persistence across a reload, and a kid-mode run
   with the bubble gum, pink tint and gum HUD icon. On touch viewports it
   checks every menu and HUD tap area is >= 44 CSS px (rect x
@@ -325,7 +333,8 @@ npm run playtest -- --headed
   service worker, audio unlock on the first real input, a sound for every
   gameplay event (`window.__audio.log`), mute across reloads, offline reload
   after a simulated deploy.
-- Final personas: `final-keyboard.ts` (real key events, `desktop,laptop`),
+- Final personas: `final-keyboard.ts` (real key events, `desktop,laptop`;
+  its top-speed run pins gameplay's `TOP_SPEED`),
   `final-phone-touch.ts`, `final-phone-rotate.ts` (portrait, then rotating:
   rotate hint, pause on rotation, nothing cut off) and `final-casual.ts`
   (a first-timer).
@@ -340,6 +349,16 @@ npm run playtest -- --headed
   Loops that wait for game progress use `stepWhile(t, more, {max})` or check
   the mode, so a stopped run fails with a message instead of hanging.
 
+- `scripts/scenarios/stunts.ts` (stunt lines; run it on
+  `desktop,phone-landscape,phone-portrait`): first a kicker without a ledge
+  (`launch`, the skater lands on the street, the line ends incomplete, no
+  crash and no health lost); that ride also measures where the skater comes
+  down to ledge height. Then in each zone a kicker and a ledge there are
+  placed together as one line: `launch` from the kicker, `grindStart` on the
+  ledge, two `stuntStep`s (step 1 and 2, multiplier = step) and a completed
+  `stuntEnd` (made 2, line bonus > 0), with no crash and no health lost. On
+  desktop a 100 s ride without input checks that the spawner brings >= 2
+  lines and that no `kicker` / `ledge` crash happens.
 - `scripts/scenarios/update-hint.ts` (production build, run it with
   `--viewports desktop`; any viewport works): the service worker controls the
   page, a reload of an unchanged deploy leaves `state.updateReady` off, then a
