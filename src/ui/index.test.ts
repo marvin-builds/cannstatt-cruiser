@@ -3,6 +3,9 @@ import { Game } from '../core/game';
 import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
 import { createUiSystem } from './index';
+import type { System } from '../types';
+import { HudModel } from './hud-model';
+import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { loadKidMode, parentQuestion, saveKidMode } from './settings';
@@ -18,9 +21,11 @@ function memoryStore(): Store & { raw: Map<string, string> } {
 
 function setup(fullscreenAvailable = true, store = memoryStore()) {
   let fullscreenToggles = 0;
+  let uses = 0;
   const ui = createUiSystem({ store, fullscreenAvailable: () => fullscreenAvailable });
-  const game = new Game({ systems: [ui], platform: { toggleFullscreen: () => fullscreenToggles++ } });
-  return { game, store, ui, toggles: () => fullscreenToggles };
+  const useSpy: System = { name: 'use-spy', update: (ctx) => void (ctx.input.use.pressed && uses++) };
+  const game = new Game({ systems: [useSpy, ui], platform: { toggleFullscreen: () => fullscreenToggles++ } });
+  return { game, store, ui, toggles: () => fullscreenToggles, uses: () => uses };
 }
 
 const centre = (r: { x: number; y: number; w: number; h: number }) => [r.x + r.w / 2, r.y + r.h / 2] as const;
@@ -93,6 +98,33 @@ describe('ui system', () => {
     expect(game.state.muted).toBe(true);
     expect(game.hitHotspot(160, 90)).toBe(true);
     expect(game.state.mode).toBe('playing');
+  });
+
+  it('the touch item button uses the carried item and does not jump', () => {
+    const { game, uses } = setup();
+    game.display.touch = true;
+    game.commands.startRun();
+    const [x, y] = centre(itemButtonRect(game.display.viewWidth, game.display));
+    expect(game.hitHotspot(x, y)).toBe(false); // nothing carried: no button
+    game.state.carriedItem = 'pretzel';
+    expect(game.hitHotspot(x, y)).toBe(true);
+    game.tick();
+    expect(uses()).toBe(1);
+    expect(game.state.player.grounded).toBe(true);
+  });
+
+  it('on desktop the E key cap chip is clickable while carrying', () => {
+    const { game, uses } = setup();
+    game.commands.startRun();
+    game.state.carriedItem = 'football';
+    game.tick();
+    // The ui places the chip with the same model it draws the HUD from.
+    const hud = new HudModel();
+    hud.update(game.state, true);
+    const chip = hud.chip!;
+    expect(game.hitHotspot(...centre(chip))).toBe(true);
+    game.tick();
+    expect(uses()).toBe(1);
   });
 
   it('pauses a run when a touch device turns to portrait and a tap dismisses the hint', () => {

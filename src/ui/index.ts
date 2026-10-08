@@ -1,10 +1,12 @@
 /**
  * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
- * (pause, mute, fullscreen) and the hidden settings menu (kid mode, opened by
- * a 3 s long press on the title logo or holding K). Records live in
- * records.ts, popups in popups.ts (catch popups in item-look.ts), the zone
- * ribbon in banner.ts, the settings logic in settings.ts, layout math in
- * layout.ts and all drawing in screens.ts.
+ * (pause, mute, fullscreen, the item button) and the hidden settings menu
+ * (kid mode, opened by a 3 s long press on the title logo or holding K).
+ * Records live in records.ts, popups in popups.ts (which events show which
+ * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
+ * plate in hud-model.ts, item use in item-button.ts, the drunk look in
+ * drunk-look.ts, the zone ribbon in banner.ts, the settings logic in
+ * settings.ts, layout math in layout.ts and all drawing in screens.ts.
  */
 import { CHILL_DURATION } from '../core/chill';
 import { PLAYER_X } from '../core/config';
@@ -17,10 +19,13 @@ import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
+import { HudModel } from './hud-model';
+import { itemButtonRect, itemControl, ItemHint } from './item-button';
 import { catchPopup } from './item-look';
-import { hudButtons, plusPoints, popupScale, riding, settingsLayout, uiMetrics } from './layout';
+import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
-import { PopupPool } from './popups';
+import { PopupFeed } from './popup-feed';
+import { type Popup, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, portraitHintShown, type UiView } from './screens';
@@ -39,8 +44,10 @@ const POPUP_RISE = 44;
 const CATCH_RISE = 60;
 /** Most popups on screen at once (a repeat merges into its popup instead). */
 const MAX_POPUPS = 3;
-/** Popups never rise into the HUD plate (its tallest form, with the chill row). */
-const POPUP_CEILING = ((p) => p.y + p.h + 2)(statsLayout(0, true).plate);
+/** Popups never rise into the HUD plate (its tallest form, with the chill and drunk rows). */
+const POPUP_CEILING = ((p) => p.y + p.h + 2)(statsLayout(0, true, true).plate);
+/** Drunk timer bar length until drunkStart says otherwise (the test hook's setDrunk sends no event). */
+const DEFAULT_DRUNK_DURATION = 6;
 
 const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSupported();
 
@@ -54,9 +61,18 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     fullscreenAvailable: false,
     portraitDismissed: false,
     chillDuration: CHILL_DURATION,
+    drunkDuration: DEFAULT_DRUNK_DURATION,
+    hud: new HudModel(),
+    itemHint: new ItemHint(store),
     settings: new SettingsMenu(store),
     logoHold: new LongPress(),
   };
+  /** Gameplay events of the current tick, turned into popups once per tick (see popup-feed.ts). */
+  const feed = new PopupFeed();
+
+  function spawnPopup(ctx: GameContext, text: string, color: string, icon: Popup['icon']): void {
+    view.popups.spawn(text, PLAYER_X, ctx.state.player.y - POPUP_RISE, color, popupScale(ctx.display, false), icon);
+  }
 
   function bindEvents(ctx: GameContext): void {
     const { bus, state, display } = ctx;
@@ -64,16 +80,29 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.spawn(text, PLAYER_X, state.player.y - rise, color, popupScale(display, big));
     bus.on('runStarted', () => {
       view.popups.clear();
+      feed.clear();
+      view.itemHint.hide();
       view.banner.show(zoneName(state.zoneIndex));
     });
-    bus.on('obstacleCleared', (e) => popup(plusPoints(e.points), UI.white));
+    bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
+    bus.on('stomp', (e) => feed.stomp(e.entityId));
+    bus.on('crash', () => feed.crash());
+    bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta));
+    bus.on('itemUsed', (e) => {
+      feed.itemUsed(e.action);
+      view.itemHint.hide();
+    });
+    bus.on('healthGained', () => feed.healthGained());
+    bus.on('ballHit', (e) => feed.ballHit(e.entityId));
+    bus.on('ballBack', () => feed.ballBack());
+    bus.on('grindTrick', (e) => feed.grindTrick(e.points));
+    bus.on('drunkStart', (e) => (view.drunkDuration = e.duration));
     bus.on('grindStart', () => popup('Grind!', UI.teal));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
-    bus.on('crash', () => popup('Autsch!', UI.red));
-    bus.on('stomp', () => popup('Stomp!', UI.orange));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
       popup(look.text, look.color, true, CATCH_RISE);
+      view.itemHint.caught(display.touch);
     });
     bus.on('chillStart', (e) => {
       view.chillDuration = e.duration;
@@ -104,6 +133,15 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     });
     ctx.addHotspot({ rect: whenButtons(() => buttons().mute), onPress: () => commands.setMuted(!state.muted) });
     ctx.addHotspot({ rect: whenButtons(() => buttons().fullscreen), onPress: () => commands.toggleFullscreen() });
+    // The item button (touch) or the E key cap chip (desktop): uses the carried item, never jumps.
+    ctx.addHotspot({
+      rect: whenButtons(() => {
+        if (state.mode !== 'playing') return null;
+        const control = itemControl(display, state.mode, state.carriedItem);
+        return control === 'button' ? itemButtonRect(display.viewWidth, display) : control ? view.hud.chip : null;
+      }),
+      onPress: () => commands.useItem(),
+    });
     addSettingsHotspots(ctx, full);
     ctx.addHotspot({
       rect: () => (portraitHintShown(ctx, view) ? full() : null),
@@ -160,7 +198,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       ctx.state.kidMode = loadKidMode(store);
       bindEvents(ctx);
       addHotspots(ctx);
-      if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view);
+      if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view, feed);
     },
 
     update(ctx, dt) {
@@ -168,9 +206,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if (state.mode === 'title' && view.logoHold.update(dt)) view.settings.show();
+      const popups = feed.flush(state.kidMode);
+      for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
+      if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
+      if (riding(state.mode)) view.hud.update(state, itemControl(display, state.mode, state.carriedItem) === 'keycap');
       if (state.mode !== 'playing') return;
       view.popups.update(dt);
       view.banner.update(dt);
+      view.itemHint.update(dt);
     },
 
     render: {

@@ -3,6 +3,7 @@
  */
 import { type Sprite, sprite } from '../core/sprite';
 import { rowsFromString } from '../core/sprite-data';
+import type { CarriedItem } from '../types';
 
 export const UI = {
   ink: '#1b1f2e',
@@ -23,6 +24,10 @@ export const UI = {
   /** Deeper edge haze of the chill tints (adult, kid mode), so the tint shows even on a warm sky. */
   chillEdge: '200, 70, 30',
   gumEdge: '220, 50, 160',
+  /** Woozy look while drunk: a faint beer-amber wash and a greenish-dark vignette at the sides. */
+  drunkTint: '255, 200, 70',
+  drunkEdge: '60, 80, 30',
+  drunkBar: '#f5b52e',
   /** Settings menu: button face and the "on" colour. */
   buttonFace: '#10121e',
   buttonEdge: '#c9c3b8',
@@ -42,16 +47,19 @@ export const STAR = sprite({ y: UI.yellow, o: UI.orange, k: UI.ink }, [`
   .kk.kk.
 `]);
 
-/** Frame 0 full, frame 1 empty. */
-export const HEART = sprite({ r: UI.red, w: UI.white, d: UI.empty, k: UI.ink }, [
-  `
+const HEART_PALETTE = { r: UI.red, w: UI.white, d: UI.empty, k: UI.ink };
+const HEART_FULL = `
   .kk.kk.
   krwkrrk
   krrrrrk
   .krrrk.
   ..krk..
   ...k...
-`,
+`;
+
+/** Frame 0 full, frame 1 empty. */
+export const HEART = sprite(HEART_PALETTE, [
+  HEART_FULL,
   `
   .kk.kk.
   kddkddk
@@ -93,19 +101,35 @@ function upscale(art: readonly string[], n: number): string[] {
   return art.flatMap((row) => Array<string>(n).fill(row.replace(/./g, (ch) => ch.repeat(n))));
 }
 
-/** A HUD icon at 1x (desktop) and 2x (touch), both crisp. */
+/** An icon drawn crisp at any integer scale (1x desktop HUD, 2x touch HUD, 3x the touch item button). */
 export class PixelIcon {
-  private readonly sizes: Record<1 | 2, Sprite>;
+  readonly width: number;
+  readonly height: number;
+  private readonly rows: string[][];
+  private readonly sizes = new Map<number, Sprite>();
 
-  constructor(palette: Record<string, string>, frames: readonly string[]) {
-    const rows = frames.map((f) => rowsFromString(f));
-    this.sizes = { 1: sprite(palette, rows), 2: sprite(palette, rows.map((r) => upscale(r, 2))) };
+  constructor(
+    private readonly palette: Record<string, string>,
+    frames: readonly string[],
+  ) {
+    this.rows = frames.map((f) => rowsFromString(f));
+    this.height = this.rows[0]!.length;
+    this.width = this.rows[0]![0]!.length;
   }
 
   draw(g: CanvasRenderingContext2D, frame: number, x: number, y: number, scale: number): void {
-    this.sizes[scale >= 2 ? 2 : 1].draw(g, frame, x, y);
+    const n = Math.max(1, Math.round(scale));
+    let size = this.sizes.get(n);
+    if (!size) {
+      size = sprite(this.palette, this.rows.map((r) => upscale(r, n)));
+      this.sizes.set(n, size);
+    }
+    size.draw(g, frame, x, y);
   }
 }
+
+/** A full heart for popups ("Lecker! +1"), at the popup's scale. */
+export const HEART_ICON = new PixelIcon(HEART_PALETTE, [HEART_FULL]);
 
 const ICON = { w: UI.white, r: UI.red };
 
@@ -227,3 +251,61 @@ export const GUM_ICON = sprite({ k: UI.ink, p: UI.pink, W: '#ffe0ef', d: '#d9508
   kppddk.kpdk
   .kkkk...kk.
 `]);
+
+/** Carried items (state.carriedItem), outlined like the skater's art; colours as the player draws them. */
+const ITEM_PALETTE = {
+  k: UI.ink,
+  b: '#f4f1ea', // football white
+  q: '#2a2a2e', // football patches
+  w: '#f7f3ea', // pretzel salt, beer foam
+  z: '#c47a35', // pretzel crust
+  Z: '#8a4a1c',
+  y: '#f5b52e', // beer
+  Y: '#c9821a',
+  g: '#cfe2ea', // mug glass
+  L: '#a3602c', // gingerbread
+  i: '#fff4f4', // icing
+  P: '#ff7aa8',
+  x: '#2f6fd6', // ribbon
+};
+
+/** Item icons for the touch item button (3x) and the desktop chip (1x); the beer also marks the drunk timer row. */
+export const ITEM_ICONS: Record<CarriedItem, PixelIcon> = {
+  football: new PixelIcon(ITEM_PALETTE, [`
+    ..kkkk..
+    .kbbbbk.
+    kbbqqbbk
+    kbqqqqbk
+    kbqqqqbk
+    kbbqqbbk
+    .kbbbbk.
+    ..kkkk..
+  `]),
+  pretzel: new PixelIcon(ITEM_PALETTE, [`
+    .kkk.kkk.
+    kzwzkzwzk
+    kz.kzk.zk
+    kzzzkzzzk
+    .kz.k.zk.
+    ..kzZzk..
+    ...kkk...
+  `]),
+  beer: new PixelIcon(ITEM_PALETTE, [`
+    .wwwww..
+    kwwwwwk.
+    kyyyygkk
+    kyYyyg.k
+    kyYyygkk
+    kyyyygk.
+    .kkkkk..
+  `]),
+  gingerbread: new PixelIcon(ITEM_PALETTE, [`
+    ..x.x..
+    .kkxkk.
+    kiikiik
+    kiLPLik
+    .kiLik.
+    ..kik..
+    ...k...
+  `]),
+};

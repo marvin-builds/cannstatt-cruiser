@@ -18,6 +18,8 @@ export interface Popup {
   y: number;
   /** 0 at spawn .. 1 at the end of its life. */
   age: number;
+  /** Small icon drawn after the text ("Lecker! +1" and a heart), or null. */
+  icon: 'heart' | null;
 }
 
 interface Slot extends Popup {
@@ -42,11 +44,11 @@ export class PopupPool {
 
   constructor(capacity: number) {
     this.slots = Array.from({ length: capacity }, () => ({
-      text: '', base: '', count: 0, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false,
+      text: '', base: '', count: 0, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false, icon: null,
     }));
   }
 
-  spawn(text: string, x: number, y: number, color: string, scale = 1): void {
+  spawn(text: string, x: number, y: number, color: string, scale = 1, icon: Popup['icon'] = null): void {
     const repeat = this.slots.find((s) => s.alive && s.base === text && s.color === color);
     if (repeat) {
       repeat.count++;
@@ -59,7 +61,7 @@ export class PopupPool {
     const slot = this.slots.find((s) => !s.alive) ?? this.oldest();
     slot.alive = false;
     const baseY = this.freeY(Math.round(x), Math.max(Math.round(y), this.ceiling + RISE), scale);
-    Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, alive: true });
+    Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, alive: true, icon });
   }
 
   update(dt: number): void {

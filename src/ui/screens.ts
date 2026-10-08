@@ -11,11 +11,13 @@ import {
   buttonPlateSprite,
   GUM_ICON,
   HEART,
+  HEART_ICON,
   ICON_FULLSCREEN,
   ICON_PAUSE,
   ICON_PLAY,
   ICON_SIZE,
   ICON_SOUND,
+  ITEM_ICONS,
   JOINT_ICON,
   type PixelIcon,
   ROTATE,
@@ -24,15 +26,20 @@ import {
 } from './art';
 import type { Banner } from './banner';
 import { chillLook } from './chill-look';
+import { drunkShown, drunkStrength, swayOffset } from './drunk-look';
+import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
+import { AlphaColors } from './hud-text';
+import { CHIP_H, type ItemHint, itemButtonRect, itemControl } from './item-button';
 import {
   answerLabel,
   blinkOn,
-  buttonPlate,
   centreX,
   fitCentred,
   formatNumber,
+  type HudButtons,
   hudButtons,
   metres,
+  popupScale,
   riding,
   settingsLayout,
   type UiMetrics,
@@ -42,7 +49,7 @@ import { drawLogo, logoRect } from './logo';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
-import { CHILL_BAR_H, CHILL_BAR_W, chillBarFill, statsLayout } from './stats';
+import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 
 export interface UiView {
   records: Records;
@@ -55,6 +62,12 @@ export interface UiView {
   portraitDismissed: boolean;
   /** Length of the current chill effect (from chillStart), for the timer bar. */
   chillDuration: number;
+  /** Length of the current drunk effect (from drunkStart), for the timer bar and the woozy ease. */
+  drunkDuration: number;
+  /** Texts and layout of the HUD stats plate, updated every tick. */
+  hud: HudModel;
+  /** First-time touch hint "Tippe auf den Gegenstand". */
+  itemHint: ItemHint;
   /** The hidden settings menu and the long press on the title logo that opens it. */
   settings: SettingsMenu;
   logoHold: LongPress;
@@ -62,26 +75,49 @@ export interface UiView {
 
 const LINE = 11;
 
-function text(r: RenderContext, s: string, x: number, y: number, options: TextOptions = {}): void {
-  drawText(r.g, s, x, y, { shadow: UI.ink, ...options });
+/*
+ * Text helpers reuse one options object and the HUD passes module-level
+ * option constants: the HUD and popups draw every frame and must not allocate.
+ */
+const NO_TEXT_OPTIONS: TextOptions = {};
+const scratch: TextOptions = {};
+
+function text(r: RenderContext, s: string, x: number, y: number, options = NO_TEXT_OPTIONS): void {
+  scratch.color = options.color;
+  scratch.scale = options.scale;
+  scratch.align = options.align;
+  scratch.shadow = options.shadow ?? UI.ink;
+  drawText(r.g, s, x, y, scratch);
 }
 
 function centred(r: RenderContext, s: string, y: number, options: TextOptions = {}): void {
   text(r, s, centreX(r.display.viewWidth), y, { align: 'center', ...options });
 }
 
+const MUTED: TextOptions = { color: UI.muted };
+const SCORE: TextOptions = { scale: 2 };
+const MULTIPLIER: TextOptions = { scale: 2, color: UI.yellow };
+const COMBO_LABEL: TextOptions = { color: UI.orange };
+const KEYCAP: TextOptions = { color: UI.ink, shadow: '' };
+
 function fill(r: RenderContext, color: string): void {
   r.g.fillStyle = color;
   r.g.fillRect(0, 0, r.display.viewWidth, r.display.viewHeight);
 }
 
-/** Draws `s` with a 1 px ink outline all round, so coloured text reads on any background. */
-function outlined(r: RenderContext, s: string, x: number, y: number, options: TextOptions): void {
-  for (const [dx, dy] of OUTLINE) drawText(r.g, s, x + dx, y + dy, { ...options, color: UI.ink });
-  drawText(r.g, s, x, y, options);
+/** Draws centred `s` with a 1 px ink outline all round, so coloured text reads on any background. */
+function outlined(r: RenderContext, s: string, x: number, y: number, color: string, scale: number): void {
+  const o = outlineText;
+  o.scale = scale;
+  o.color = UI.ink;
+  for (let i = 0; i < OUTLINE.length; i += 2) drawText(r.g, s, x + OUTLINE[i]!, y + OUTLINE[i + 1]!, o);
+  o.color = color;
+  drawText(r.g, s, x, y, o);
 }
 
-const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]] as const;
+const outlineText: TextOptions = { align: 'center' };
+/** dx, dy pairs of the outline passes. */
+const OUTLINE = [-1, 0, 1, 0, 0, -1, 0, 1, -1, -1, 1, -1, -1, 1, 1, 1];
 
 /** Opaque plate with a yellow rule above and below (zone banner, pause prompt), `x`..`x + w`. */
 function ribbon(r: RenderContext, x: number, y: number, w: number, h: number): void {
@@ -103,18 +139,31 @@ function hint(r: RenderContext, touch: string, keys: string): string {
   return r.display.touch ? touch : keys;
 }
 
-/** One HUD button: the plate centred in its tap area, the icon centred on the plate. */
+/** One HUD button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
 function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame: number): void {
-  const plate = buttonPlate(hit, m);
-  buttonPlateSprite(m.plate).draw(r.g, 0, plate.x, plate.y);
+  const plateInset = Math.floor((hit.w - m.plate) / 2);
+  const x = hit.x + plateInset;
+  const y = hit.y + plateInset;
+  buttonPlateSprite(m.plate).draw(r.g, 0, x, y);
   const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
-  icon.draw(r.g, frame, plate.x + inset, plate.y + inset, m.iconScale);
+  icon.draw(r.g, frame, x + inset, y + inset, m.iconScale);
+}
+
+/** The button row is laid out again only when the width, device or mode changes (drawn every frame). */
+const buttonRow = { width: 0, metrics: null as UiMetrics | null, fullscreen: false, pause: false, rects: null as HudButtons | null };
+
+function cachedHudButtons(viewWidth: number, fullscreen: boolean, m: UiMetrics, pause: boolean): HudButtons {
+  const c = buttonRow;
+  if (!c.rects || c.width !== viewWidth || c.metrics !== m || c.fullscreen !== fullscreen || c.pause !== pause) {
+    Object.assign(c, { width: viewWidth, metrics: m, fullscreen, pause, rects: hudButtons(viewWidth, fullscreen, m, pause) });
+  }
+  return c.rects!;
 }
 
 function drawButtons(r: RenderContext, view: UiView): void {
   const m = uiMetrics(r.display);
   const { mode, muted } = r.state;
-  const b = hudButtons(r.display.viewWidth, view.fullscreenAvailable, m, riding(mode));
+  const b = cachedHudButtons(r.display.viewWidth, view.fullscreenAvailable, m, riding(mode));
   if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
   hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
   if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
@@ -148,7 +197,7 @@ function drawTitle(r: RenderContext, view: UiView): void {
 
   const y = TITLE_PANEL_Y + 3;
   const hints = y + 27;
-  const keys = hints + 3 * LINE + 1;
+  const keys = hints + 4 * LINE + 1;
   const rowY = touch ? keys + 2 : keys + LINE + 3;
   panel(r, 236, TITLE_PANEL_Y, rowY + LINE - TITLE_PANEL_Y);
   drawHoldProgress(r, view.logoHold.progress);
@@ -159,6 +208,7 @@ function drawTitle(r: RenderContext, view: UiView): void {
   centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Leertaste kurz = kleiner Sprung'), hints);
   centred(r, 'Halten = hoher Sprung', hints + LINE);
   centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), hints + 2 * LINE);
+  centred(r, hint(r, 'Gegenstand antippen = benutzen', 'E = Gegenstand benutzen'), hints + 3 * LINE);
   if (!touch) centred(r, 'P/Esc = Pause, M = Ton aus', keys, { color: UI.muted });
 
   const best = `Highscore ${formatNumber(view.records.highscore)}`;
@@ -172,43 +222,57 @@ function drawTitle(r: RenderContext, view: UiView): void {
   text(r, stars, x + STAR.width + 3, rowY, { color: UI.white });
 }
 
-/** Score, combo, hearts, stars and the chill timer in the top-left corner on a plate sized to them. */
+/** Score, combo, hearts, stars and the timer rows in the top-left corner, from the HUD model (no allocation). */
 function drawStats(r: RenderContext, view: UiView): void {
   const { state, g } = r;
-  const score = formatNumber(state.score);
-  const stars = formatNumber(state.stars);
-  const combo = state.multiplier > 1 ? `x${state.multiplier}` : '';
-  const comboLabel = state.combo > 1 && combo ? `Combo ${state.combo}` : '';
-  const scoreW = measureText(score, 2) + (combo ? 6 + measureText(combo, 2) : 0);
-  const labelW = comboLabel ? measureText(score, 2) + 6 + measureText(comboLabel) : measureText('Punkte');
-  const heartsW = state.maxHealth * 8 - 1;
-  const rowW = heartsW + 6 + STAR.width + 3 + measureText(stars);
-  const l = statsLayout(Math.max(scoreW, labelW, rowW), state.chillTimer > 0);
-  const look = chillLook(state.kidMode);
+  const hud = view.hud;
+  const l = hud.layout;
 
   g.fillStyle = UI.panel;
   g.fillRect(l.plate.x, l.plate.y, l.plate.w, l.plate.h);
-  text(r, 'Punkte', l.x, l.label, { color: UI.muted });
-  text(r, score, l.x, l.score, { scale: 2 });
-  if (combo) {
-    const x = l.x + measureText(score, 2) + 6;
-    text(r, combo, x, l.score, { scale: 2, color: UI.yellow });
-    if (comboLabel) text(r, comboLabel, x, l.label, { color: UI.orange });
+  text(r, 'Punkte', l.x, l.label, MUTED);
+  text(r, hud.score.text, l.x, l.score, SCORE);
+  if (hud.combo) {
+    const x = l.x + hud.score.width + COMBO_GAP;
+    text(r, hud.multiplier.text, x, l.score, MULTIPLIER);
+    if (hud.showComboLabel) text(r, hud.comboLabel.text, x, l.label, COMBO_LABEL);
   }
 
-  for (let i = 0; i < state.maxHealth; i++) HEART.draw(g, i < state.health ? 0 : 1, l.x + i * 8, l.hearts + 1);
-  const starX = l.x + heartsW + 6;
+  for (let i = 0; i < state.maxHealth; i++) HEART.draw(g, i < state.health ? 0 : 1, l.x + i * HEART_STEP, l.hearts + 1);
+  const starX = l.x + state.maxHealth * HEART_STEP - 1 + STAR_GAP;
   STAR.draw(g, 0, starX, l.hearts);
-  text(r, stars, starX + STAR.width + 3, l.hearts);
+  text(r, hud.stars.text, starX + STAR.width + STAR_TEXT_GAP, l.hearts);
 
   if (l.chill !== null) {
+    const look = chillLook(state.kidMode);
     (look.icon === 'gum' ? GUM_ICON : JOINT_ICON).draw(g, 0, l.x, l.chill + 1);
-    const y = l.chill + 2;
-    g.fillStyle = UI.ink;
-    g.fillRect(l.chillBarX, y, CHILL_BAR_W, CHILL_BAR_H);
-    g.fillStyle = look.bar;
-    g.fillRect(l.chillBarX + 1, y + 1, Math.max(0, chillBarFill(state.chillTimer, view.chillDuration) - 2), CHILL_BAR_H - 2);
+    timerBar(r, l.barX, l.chill + 2, timerBarFill(state.chillTimer, view.chillDuration), look.bar);
   }
+  if (l.drunk !== null) {
+    ITEM_ICONS.beer.draw(g, 0, l.x + 1, l.drunk, 1);
+    timerBar(r, l.barX, l.drunk + 2, timerBarFill(state.drunkTimer, view.drunkDuration), UI.drunkBar);
+  }
+}
+
+/** A draining timer bar in the stats plate: ink frame, `fill` px of colour. */
+function timerBar(r: RenderContext, x: number, y: number, fill: number, color: string): void {
+  const { g } = r;
+  g.fillStyle = UI.ink;
+  g.fillRect(x, y, TIMER_BAR_W, TIMER_BAR_H);
+  g.fillStyle = color;
+  g.fillRect(x + 1, y + 1, Math.max(0, fill - 2), TIMER_BAR_H - 2);
+}
+
+/** Cached translucent colours per "r, g, b" (the screen tints are drawn every frame). */
+const alphaColors = new Map<string, AlphaColors>();
+
+function tint(rgb: string, alpha: number): string {
+  let colors = alphaColors.get(rgb);
+  if (!colors) {
+    colors = new AlphaColors(rgb);
+    alphaColors.set(rgb, colors);
+  }
+  return colors.get(alpha);
 }
 
 /** Steady tint while chilled (warm haze, or sweet pink in kid mode) that fades with the effect (no flicker). */
@@ -217,16 +281,92 @@ function drawChillTint(r: RenderContext): void {
   if (strength <= 0) return;
   const { g } = r;
   const { viewWidth: w, viewHeight: h } = r.display;
-  const { tint, edge } = chillLook(r.state.kidMode);
-  g.fillStyle = `rgba(${tint}, ${(0.26 * strength).toFixed(3)})`;
+  const look = chillLook(r.state.kidMode);
+  g.fillStyle = tint(look.tint, 0.26 * strength);
   g.fillRect(0, 0, w, h);
   // A denser, deeper band towards the edges, in three steps: shows even where the sky has the tint's hue.
-  g.fillStyle = `rgba(${edge}, ${(0.1 * strength).toFixed(3)})`;
-  for (const inset of [0, 6, 12]) {
+  g.fillStyle = tint(look.edge, 0.1 * strength);
+  for (let inset = 0; inset <= 12; inset += 6) {
     g.fillRect(0, inset, w, 6);
     g.fillRect(0, h - inset - 6, w, 6);
   }
 }
+
+/**
+ * Woozy screen while drunk (never in kid mode): a faint double image of the
+ * street that sways sideways, and a soft vignette at the left and right
+ * edges. Faint enough that obstacles stay sharp where they really are.
+ */
+function drawDrunk(r: RenderContext, view: UiView): void {
+  if (!drunkShown(r.state)) return;
+  const strength = drunkStrength(r.state.drunkTimer, view.drunkDuration);
+  if (strength <= 0) return;
+  const { g } = r;
+  const { viewWidth: w, viewHeight: h } = r.display;
+  const dx = swayOffset(r.state.time, strength);
+  const dy = swayOffset(r.state.time * 0.7 + 1, strength * 0.4);
+  if (dx !== 0 || dy !== 0) {
+    g.globalAlpha = 0.3 * strength;
+    g.drawImage(g.canvas, dx, dy);
+    g.globalAlpha = 1;
+  }
+  g.fillStyle = tint(UI.drunkTint, 0.08 * strength);
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = tint(UI.drunkEdge, 0.16 * strength);
+  for (let inset = 0; inset <= 16; inset += 8) {
+    g.fillRect(inset, 0, 8, h);
+    g.fillRect(w - inset - 8, 0, 8, h);
+  }
+}
+
+/** The touch item button (big, under the HUD buttons) or the desktop chip with the "E" key cap. */
+function drawItemControl(r: RenderContext, view: UiView): void {
+  const { state, display, g } = r;
+  const item = state.carriedItem;
+  const control = itemControl(display, state.mode, item);
+  if (!item || !control) return;
+  const icon = ITEM_ICONS[item];
+  if (control === 'button') {
+    const b = itemButtonRect(display.viewWidth, display);
+    buttonPlateSprite(b.w).draw(g, 0, b.x, b.y);
+    const scale = Math.floor((b.w - 12) / Math.max(icon.width, icon.height));
+    icon.draw(g, 0, b.x + Math.floor((b.w - icon.width * scale) / 2), b.y + Math.floor((b.h - icon.height * scale) / 2), scale);
+    return;
+  }
+  const chip = view.hud.chip;
+  if (!chip) return;
+  g.fillStyle = UI.panel;
+  g.fillRect(chip.x, chip.y, chip.w, chip.h);
+  icon.draw(g, 0, chip.x + 3 + Math.floor((9 - icon.width) / 2), chip.y + Math.floor((CHIP_H - icon.height) / 2), 1);
+  // The key cap: light face, darker bottom edge, an ink "E".
+  const kx = chip.x + chip.w - 12;
+  const ky = chip.y + 2;
+  g.fillStyle = UI.muted;
+  g.fillRect(kx, ky, 9, 10);
+  g.fillStyle = UI.white;
+  g.fillRect(kx, ky, 9, 8);
+  text(r, 'E', kx + 3, ky, KEYCAP);
+}
+
+/** "Tippe auf den Gegenstand" on a plate left of the item button, with a pointer towards it (drawn above the zone banner). */
+function drawItemHint(r: RenderContext, view: UiView): void {
+  const { g, state, display } = r;
+  if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;
+  const button = itemButtonRect(display.viewWidth, display);
+  const scale = popupScale(r.display, false);
+  const label = 'Tippe auf den Gegenstand';
+  const w = measureText(label, scale) + 8;
+  const h = 8 * scale + 6;
+  const x = button.x - w - 6;
+  const y = button.y + Math.floor((button.h - h) / 2);
+  ribbon(r, x, y, w, h);
+  g.fillStyle = UI.yellow;
+  for (let i = 0; i < 4; i++) g.fillRect(x + w + i, y + Math.floor(h / 2) - 3 + i, 1, 7 - 2 * i);
+  text(r, label, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+}
+
+const HINT_TEXT: TextOptions = { color: UI.yellow };
+const HINT_TEXT_BIG: TextOptions = { color: UI.yellow, scale: 2 };
 
 /** Popups and the zone ribbon: only while riding, never under the pause dim. */
 function drawLive(r: RenderContext, view: UiView): void {
@@ -234,9 +374,12 @@ function drawLive(r: RenderContext, view: UiView): void {
 
   for (const p of view.popups.active()) {
     g.globalAlpha = p.age > 0.7 ? (1 - p.age) / 0.3 : 1;
-    // Keep wide popups (portrait, catch texts) inside the left edge.
-    const x = Math.max(p.x, 2 + Math.ceil(measureText(p.text, p.scale) / 2));
-    outlined(r, p.text, x, p.y, { color: p.color, align: 'center', scale: p.scale });
+    // Keep wide popups (portrait, catch texts, an icon after them) inside the left edge.
+    const w = measureText(p.text, p.scale);
+    const iconW = p.icon ? (HEART_ICON.width + 2) * p.scale : 0;
+    const x = Math.max(p.x, 2 + Math.ceil(w / 2) + iconW);
+    outlined(r, p.text, x - (iconW >> 1), p.y, p.color, p.scale);
+    if (p.icon) HEART_ICON.draw(g, 0, x - (iconW >> 1) + Math.ceil(w / 2) + 2 * p.scale, p.y + p.scale, p.scale);
   }
   g.globalAlpha = 1;
 
@@ -256,6 +399,7 @@ function drawPause(r: RenderContext): void {
   const w = measureText(prompt) + 16;
   ribbon(r, centreX(r.display.viewWidth) - Math.floor(w / 2), 88, w, 15);
   if (blinkOn(r.state.modeTime)) centred(r, prompt, 92, { color: UI.yellow });
+  if (!r.display.touch) centred(r, 'E = Gegenstand benutzen, M = Ton aus', 110, { color: UI.muted });
 }
 
 /** One "label  value" row of the game-over table, split at the centre line. */
@@ -357,13 +501,18 @@ export function drawUi(r: RenderContext, view: UiView): void {
       else drawTitle(r, view);
       break;
     case 'playing':
+      drawDrunk(r, view);
       drawChillTint(r);
       drawStats(r, view);
+      drawItemControl(r, view);
       drawLive(r, view);
+      drawItemHint(r, view);
       break;
     case 'paused':
+      drawDrunk(r, view);
       drawChillTint(r);
       drawStats(r, view);
+      drawItemControl(r, view);
       drawPause(r);
       break;
     case 'gameover':

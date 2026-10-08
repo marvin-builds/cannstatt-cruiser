@@ -93,6 +93,13 @@ describe('PopupPool', () => {
     expect(pool.active().map((p) => p.scale)).toEqual([2, 1]);
   });
 
+  it('keeps a popup icon', () => {
+    const pool = new PopupPool(2);
+    pool.spawn('Lecker! +1', 50, 100, '#f8b', 1, 'heart');
+    pool.spawn('+50', 50, 140, '#fff');
+    expect(pool.active().map((p) => p.icon)).toEqual(['heart', null]);
+  });
+
   it('clear() removes everything', () => {
     const pool = new PopupPool(2);
     pool.spawn('a', 0, 0, '#fff');
