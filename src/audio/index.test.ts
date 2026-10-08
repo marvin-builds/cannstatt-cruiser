@@ -559,6 +559,21 @@ describe('audio system: Mitte traffic', () => {
     expect(backend.traffic.at(-1)!).toBeGreaterThan(0.95);
   });
 
+  it('ducks the rumble under the air trick spin, its ping and a big drop', () => {
+    const duckedBy = (sound: (game: Game) => void) => {
+      const { game, backend } = inTraffic();
+      sound(game);
+      game.tick();
+      return backend.traffic.at(-1)!;
+    };
+    const spin = (game: Game) => {
+      game.state.player.airTrick = true;
+    };
+    for (const sound of [spin, (g: Game) => g.bus.emit('airTrick', { ticks: 20, points: 150 }), (g: Game) => g.bus.emit('land', { impact: 600 })]) {
+      expect(duckedBy(sound)).toBeLessThanOrEqual(TRAFFIC.duckTo + 0.001);
+    }
+  });
+
   it('does not duck under its own horns and trucks', () => {
     const { game, backend, cues } = inTraffic();
     const sentBefore = backend.traffic.length;
@@ -785,5 +800,92 @@ describe('audio system: stunt lines', () => {
       ['stuntFanfare', true],
     ]);
     expect(backend.muted).toBe(true);
+  });
+});
+
+describe('audio system: air trick', () => {
+  const trick = { ticks: 20, points: 150 };
+
+  it('plays the spin once when the air trick starts', () => {
+    const { game, cues } = playing();
+    game.state.player.airTrick = true;
+    for (let i = 0; i < 10; i++) game.tick();
+    expect(cues()).toEqual(['airSpin']);
+  });
+
+  it('spins again for the next air trick', () => {
+    const { game, cues } = playing();
+    game.state.player.airTrick = true;
+    game.tick();
+    game.state.player.airTrick = false;
+    game.tick();
+    game.state.player.airTrick = true;
+    game.tick();
+    expect(cues()).toEqual(['airSpin', 'airSpin']);
+  });
+
+  it('does not spin outside a run', () => {
+    const { game, cues } = setup();
+    game.state.player.airTrick = true;
+    game.tick();
+    expect(cues()).not.toContain('airSpin');
+  });
+
+  it('pings when the air trick is made', () => {
+    const { game, cues } = playing();
+    game.bus.emit('airTrick', trick);
+    expect(cues()).toEqual(['airTrick']);
+  });
+
+  it('keeps the spin and the ping inaudible while muted', () => {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    game.commands.setMuted(true);
+    game.state.player.airTrick = true;
+    game.tick();
+    game.bus.emit('airTrick', trick);
+    game.bus.emit('land', { impact: 600 });
+    expect(heard.filter(([name]) => !name.startsWith('traffic'))).toEqual([
+      ['airSpin', true],
+      ['airTrick', true],
+      ['land', true],
+      ['landHeavy', true],
+    ]);
+    expect(backend.muted).toBe(true);
+  });
+});
+
+describe('audio system: big drops', () => {
+  const land = (impact: number) => {
+    const { game, backend } = playing();
+    game.bus.emit('land', { impact });
+    return backend.played;
+  };
+
+  it('keeps a normal jump landing (even a full-hold jump) a plain thud', () => {
+    for (const impact of [190, 368]) {
+      const played = land(impact);
+      expect(played.map((p) => p.cue)).toEqual(['land']);
+      expect(played[0].pitch).toBe(1);
+    }
+  });
+
+  it('lands a big drop with a lower thud and a boom under it', () => {
+    const played = land(480);
+    expect(played.map((p) => p.cue)).toEqual(['land', 'landHeavy']);
+    expect(played[0].pitch).toBeLessThan(1);
+    expect(played[0].pitch).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it('makes the boom heavier the bigger the drop, never above full volume', () => {
+    const boom = (impact: number) => land(impact).find((p) => p.cue === 'landHeavy')!;
+    expect(boom(420).intensity).toBeLessThan(boom(600).intensity);
+    expect(boom(420).intensity).toBeGreaterThan(0);
+    expect(boom(800).intensity).toBeLessThanOrEqual(1);
+    expect(boom(600).pitch).toBeLessThanOrEqual(boom(420).pitch);
   });
 });
