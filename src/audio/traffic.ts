@@ -56,6 +56,11 @@ export class TrafficNoise {
     return { level: this.send(), honk: this.honk(target, time) };
   }
 
+  /** A new run: its run time starts at 0 again, so honk slots start fresh. */
+  reset(): void {
+    this.lastSlot = null;
+  }
+
   private send(): number | null {
     const silenced = this.level === 0 && this.sent !== 0;
     if (!silenced && Math.abs(this.level - this.sent) < TRAFFIC.minStep) return null;

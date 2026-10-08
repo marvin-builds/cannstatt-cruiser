@@ -498,6 +498,18 @@ describe('audio system: Mitte traffic', () => {
     expect(cues().filter((c) => c === 'honk').length).toBe(honks);
   });
 
+  it('starts each run with fresh honk slots', () => {
+    const { game, cues } = inTraffic(1);
+    const firstRun = cues().filter((c) => c === 'honk').length;
+    expect(firstRun).toBeGreaterThan(0);
+    game.commands.gameOver();
+    game.tick();
+    game.commands.startRun();
+    game.state.trafficDensity = 1;
+    for (let i = 0; i < 60; i++) game.tick();
+    expect(cues().filter((c) => c === 'honk').length).toBe(2 * firstRun);
+  });
+
   it('comes back after resuming', () => {
     const { game, backend } = inTraffic();
     game.commands.pause();

@@ -1,9 +1,8 @@
 /**
  * AudioBackend on WebAudio. The AudioContext is created lazily in the first
  * user gesture (autoplay policies) and resumed in every later gesture while
- * it is suspended or interrupted (iOS Safari). The latest cue played while
- * the context is resuming (e.g. the jump of the unlocking tap) is kept and
- * played once it runs, if it is still fresh. Missing or failing WebAudio
+ * it is suspended or interrupted (iOS Safari). Cues played while the context
+ * is resuming wait (see PendingCues) and play once it runs, if still fresh. Missing or failing WebAudio
  * leaves the backend silent; nothing here throws.
  */
 import type { AudioBackend, Cue, LoopName } from './backend';
@@ -17,8 +16,43 @@ interface RunningLoop {
 }
 
 const SILENT = 0.0001;
-/** A cue waiting for the context to resume is dropped after this many ms (it would sound late). */
+/** A cue waiting for the context to resume is dropped this many ms after its start time (it would sound late). */
 const PENDING_MAX_AGE_MS = 250;
+
+interface PendingCue {
+  cue: Cue;
+  intensity: number;
+  /** performance.now() at which the cue should start (play time + delay). */
+  due: number;
+  delayed: boolean;
+}
+
+/**
+ * Cues waiting for the context to resume. Only the latest immediate cue is
+ * kept (e.g. the jump of the unlocking tap), but every delayed cue is kept
+ * (e.g. the woozy sting waiting behind the gulps), so a later cue never
+ * drops one that was scheduled to follow.
+ */
+class PendingCues {
+  private cues: PendingCue[] = [];
+
+  add(cue: Cue, intensity: number, delay: number, now: number): void {
+    const delayed = delay > 0;
+    if (!delayed) this.cues = this.cues.filter((p) => p.delayed);
+    this.cues.push({ cue, intensity, due: now + delay * 1000, delayed });
+  }
+
+  clear(): void {
+    this.cues = [];
+  }
+
+  /** Removes all cues and returns the fresh ones with their remaining delay in seconds. */
+  take(now: number): { cue: Cue; intensity: number; delay: number }[] {
+    const fresh = this.cues.filter((p) => now - p.due <= PENDING_MAX_AGE_MS);
+    this.cues = [];
+    return fresh.map((p) => ({ cue: p.cue, intensity: p.intensity, delay: Math.max(0, (p.due - now) / 1000) }));
+  }
+}
 
 function browserContext(): AudioContext | null {
   const w = globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext };
@@ -45,7 +79,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   let unavailable = false;
   let muted = false;
   const loops = new Map<LoopName, RunningLoop>();
-  let pending: { cue: Cue; intensity: number; at: number } | null = null;
+  const pending = new PendingCues();
   /** Traffic rumble bus, built on the first audible level and reused (never stopped). */
   let traffic: GainNode | null = null;
   /** Last requested traffic level, applied once the context runs. */
@@ -206,10 +240,10 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
 
   function playPending(): void {
     applyTraffic();
-    const cue = pending;
-    pending = null;
+    const cues = pending.take(performance.now());
     const ctx = ready();
-    if (cue && ctx && !muted && performance.now() - cue.at <= PENDING_MAX_AGE_MS) playNow(ctx, cue.cue, cue.intensity);
+    if (!ctx || muted) return;
+    for (const p of cues) playNow(ctx, p.cue, p.intensity, p.delay);
   }
 
   return {
@@ -219,9 +253,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
       if (ac && ac.state !== 'running') {
         guard(
           () =>
-            void ac!.resume().then(playPending, () => {
-              pending = null;
-            }),
+            void ac!.resume().then(playPending, () => pending.clear()),
         );
       }
     },
@@ -229,7 +261,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
       if (muted) return;
       const ctx = ready();
       if (ctx) playNow(ctx, cue, intensity, delay);
-      else if (ac && master) pending = { cue, intensity, at: performance.now() };
+      else if (ac && master) pending.add(cue, intensity, delay, performance.now());
     },
     startLoop(loop: LoopName) {
       const ctx = ready();
@@ -248,7 +280,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     },
     setMuted(value: boolean) {
       muted = value;
-      if (muted) pending = null;
+      if (muted) pending.clear();
       if (ac && master) guard(() => master!.gain.setTargetAtTime(masterLevel(), ac!.currentTime, 0.01));
     },
     setTraffic(level: number) {

@@ -101,3 +101,13 @@ describe('traffic noise: honks', () => {
     }
   });
 });
+
+describe('traffic noise: a new run', () => {
+  it('honks in the first slot of a new run even if the last run ended in that slot', () => {
+    const fresh = run(new TrafficNoise(), 60, 1, true, 0).honks;
+    const noise = new TrafficNoise();
+    run(noise, 60, 1, true, 0);
+    noise.reset();
+    expect(run(noise, 60, 1, true, 0).honks).toBe(fresh);
+  });
+});

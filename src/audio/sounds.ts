@@ -42,8 +42,16 @@ const N = {
   C7: 2093.0,
 } as const;
 
+/**
+ * When each gulp starts, in seconds after itemUsed: the player starts the drink
+ * animation on that tick, lifts the mug for 0.10 s, then tips it every 0.28 s
+ * (player/use.ts), and tosses the empty mug at 0.94 s, when the 'aah' follows.
+ */
+export const GULP_AT = [0.1, 0.38, 0.66] as const;
+/** Start of the 'aah', just after the player tosses the empty mug. */
+const AAH_AT = 0.98;
 /** Drinking the Maßkrug: three gulps (one per player gulp) and a friendly 'aah' end within this many seconds. */
-export const GLUG_LENGTH = 1.28;
+export const GLUG_LENGTH = AAH_AT + 0.3;
 
 /** One low gulp: a falling triangle 'gloomp' with a wet lowpassed noise tap. */
 function gulp(at: number): Voice[] {
@@ -147,11 +155,9 @@ export const SOUNDS: Record<Cue, Voice[]> = {
   ],
   // Maßkrug: 'glug glug glug' then a small, friendly 'aah' (a soft falling vowel-ish triangle).
   glug: [
-    ...gulp(0),
-    ...gulp(0.32),
-    ...gulp(0.64),
-    { wave: 'triangle', at: 0.98, dur: 0.3, freq: N.A4 * 1.2, to: N.E4, gain: 0.22 },
-    { wave: 'square', at: 0.98, dur: 0.18, freq: 264, to: 200, gain: 0.03 },
+    ...GULP_AT.flatMap((at) => gulp(at)),
+    { wave: 'triangle', at: AAH_AT, dur: GLUG_LENGTH - AAH_AT, freq: N.A4 * 1.2, to: N.E4, gain: 0.22 },
+    { wave: 'square', at: AAH_AT, dur: 0.18, freq: 264, to: 200, gain: 0.03 },
   ],
   // Brezel / Lebkuchenherz: two crunchy bites, the second a little lower.
   munch: [...bite(0, 1), ...bite(0.17, 0.8)],

@@ -152,6 +152,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         stopGrind();
         boostTicks = null;
         glugAt = -Infinity;
+        traffic.reset();
       });
     },
     update(ctx: GameContext) {

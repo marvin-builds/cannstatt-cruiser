@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Cue } from './backend';
 import { SOUNDS } from './sounds';
 import { createWebAudioBackend } from './webaudio';
@@ -10,6 +10,8 @@ class FakeContext {
   sampleRate = 8000;
   destination = {};
   started: string[] = [];
+  /** Start time (s) of every started source, in start order. */
+  startTimes: number[] = [];
   stopped: string[] = [];
   resumes = 0;
   master: { gain: { value: number } } | null = null;
@@ -54,8 +56,9 @@ class FakeContext {
         return target;
       },
       disconnect() {},
-      start() {
+      start(when = 0) {
         ctx.started.push(kind);
+        ctx.startTimes.push(when);
       },
       stop() {
         ctx.stopped.push(kind);
@@ -262,5 +265,72 @@ describe('WebAudio backend', () => {
     expect(backend.status?.()).toBe('locked');
     backend.unlock();
     expect(backend.status?.()).toBe('running');
+  });
+});
+
+describe('WebAudio backend: delayed cues while the context resumes', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** A suspended context whose resume finishes when `finish` is called (at the faked clock `nowMs`). */
+  function resuming() {
+    const ctx = new FakeContext('suspended');
+    let finish = () => {};
+    ctx.resume = () =>
+      new Promise<void>((done) => {
+        finish = () => {
+          ctx.state = 'running';
+          done();
+        };
+      });
+    let nowMs = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+    const backend = createWebAudioBackend(() => ctx as unknown as AudioContext);
+    backend.unlock();
+    const resumeAt = async (ms: number) => {
+      nowMs = ms;
+      finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    return { ctx, backend, resumeAt };
+  }
+
+  /** Earliest start time of the sources started from index `from` on. */
+  const firstStart = (ctx: FakeContext, from: number) => Math.min(...ctx.startTimes.slice(from));
+
+  it('keeps a delayed cue when a later cue is played before the context runs', async () => {
+    const { ctx, backend, resumeAt } = resuming();
+    const before = ctx.started.length;
+    backend.play('woozy', 1, 1.2);
+    backend.play('jump', 1);
+    await resumeAt(1050);
+    const played = ctx.started.length - before;
+    expect(played).toBe(SOUNDS.woozy.length + SOUNDS.jump.length);
+  });
+
+  it('plays both the gulps and the woozy sting that waits behind them', async () => {
+    const { ctx, backend, resumeAt } = resuming();
+    const before = ctx.started.length;
+    backend.play('glug', 1);
+    backend.play('woozy', 1, 1.28);
+    await resumeAt(1050);
+    expect(ctx.started.length - before).toBe(SOUNDS.glug.length + SOUNDS.woozy.length);
+  });
+
+  it('still plays a delayed cue after a slow resume and keeps its remaining delay', async () => {
+    const { ctx, backend, resumeAt } = resuming();
+    const before = ctx.started.length;
+    backend.play('woozy', 1, 1.2);
+    await resumeAt(1500);
+    expect(ctx.started.length - before).toBe(SOUNDS.woozy.length);
+    expect(firstStart(ctx, before)).toBeCloseTo(ctx.currentTime + 0.7, 5);
+  });
+
+  it('drops a delayed cue whose start is long past when the context finally runs', async () => {
+    const { ctx, backend, resumeAt } = resuming();
+    const before = ctx.started.length;
+    backend.play('woozy', 1, 0.5);
+    await resumeAt(3000);
+    expect(ctx.started.length - before).toBe(0);
   });
 });
