@@ -39,6 +39,7 @@ function createBrowser(files: Record<string, string>) {
   };
   const stores = new Map<string, FakeCache>();
   const messages: unknown[] = [];
+  const net = { offline: false };
   const caches = {
     open: async (name: string) => stores.get(name) ?? stores.set(name, new FakeCache(fetchUrl)).get(name)!,
     keys: async () => [...stores.keys()],
@@ -58,7 +59,10 @@ function createBrowser(files: Record<string, string>) {
         matchAll: async () => [{ postMessage: (m: unknown) => messages.push(m) }],
       },
     };
-    const fetch = (input: string | { url: string }) => fetchUrl(typeof input === 'string' ? input : input.url);
+    const fetch = async (input: string | { url: string }) => {
+      if (net.offline) throw new TypeError('Failed to fetch');
+      return fetchUrl(typeof input === 'string' ? input : input.url);
+    };
     new Function('self', 'caches', 'fetch', SW_SOURCE)(self, caches, fetch);
     const dispatch = async (type: string, extra: object = {}) => {
       const pending: Promise<unknown>[] = [];
@@ -76,10 +80,12 @@ function createBrowser(files: Record<string, string>) {
       activate: () => dispatch('activate'),
       /** A page load: served from the cache, refreshed in the background. */
       navigate: () => dispatch('fetch', { request: { method: 'GET', url: SCOPE, mode: 'navigate' } }),
+      /** A window posts a message to the worker. */
+      message: (data: unknown) => dispatch('message', { data }),
     };
   }
 
-  return { network, stores, messages, startWorker };
+  return { network, stores, messages, net, startWorker };
 }
 
 function staticFiles(): Record<string, string> {
@@ -153,6 +159,53 @@ describe('service worker update signal', () => {
     const worker = browser.startWorker();
     await worker.install();
     await worker.activate();
+    expect(browser.messages).toEqual([]);
+  });
+});
+
+describe('service worker update check while the app stays open', () => {
+  const CHECK = { type: 'checkForUpdate' };
+
+  it('caches a changed deploy completely and then posts updateReady', async () => {
+    const browser = await installedBrowser();
+    deploy(browser, 'index-new.js');
+    await browser.worker.message(CHECK);
+    expect(browser.messages).toEqual([{ type: 'updateReady' }]);
+    const cache = [...browser.stores.values()][0]!;
+    expect(cache.entries.get(SCOPE)).toBe(page('index-new.js'));
+    expect(cache.entries.has(SCOPE + 'assets/index-new.js')).toBe(true);
+    expect(cache.entries.has(SCOPE + 'assets/index-old.js')).toBe(false);
+  });
+
+  it('does nothing while the deployed page is unchanged', async () => {
+    const browser = await installedBrowser();
+    await browser.worker.message(CHECK);
+    expect(browser.messages).toEqual([]);
+  });
+
+  it('keeps the old build and stays silent when an asset of the new page fails', async () => {
+    const browser = await installedBrowser();
+    browser.network.set(SCOPE, page('index-broken.js'));
+    await browser.worker.message(CHECK);
+    expect(browser.messages).toEqual([]);
+    expect([...browser.stores.values()][0]!.entries.get(SCOPE)).toBe(page('index-old.js'));
+  });
+
+  it('swallows offline errors and server errors', async () => {
+    const browser = await installedBrowser();
+    browser.net.offline = true;
+    await expect(browser.worker.message(CHECK)).resolves.toBeUndefined();
+    browser.net.offline = false;
+    browser.network.delete(SCOPE);
+    await expect(browser.worker.message(CHECK)).resolves.toBeUndefined();
+    expect(browser.messages).toEqual([]);
+    expect([...browser.stores.values()][0]!.entries.get(SCOPE)).toBe(page('index-old.js'));
+  });
+
+  it.each([null, 'checkForUpdate', { type: 'other' }])('ignores other messages (%j)', async (data) => {
+    const browser = await installedBrowser();
+    deploy(browser, 'index-new.js');
+    await browser.worker.message(data);
     expect(browser.messages).toEqual([]);
   });
 });

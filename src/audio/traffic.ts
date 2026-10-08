@@ -1,11 +1,13 @@
 /**
- * Stuttgart-Mitte traffic noise logic (no WebAudio here): turns the world's
- * state.trafficDensity into a smoothed rumble level for the backend, ducks it
- * briefly under gameplay sounds and decides when a horn sounds or a truck
- * passes. Traffic cues are rng-free: the run time is cut into slots and a
+ * Traffic noise logic (no WebAudio here): turns the world's
+ * state.trafficDensity into a smoothed Mitte rumble level for the backend,
+ * swells it in and out around each passing vehicle of light traffic (the
+ * street outside Mitte is silent in between), ducks it briefly under gameplay
+ * sounds and decides when a horn sounds or a truck passes. Traffic cues are rng-free: the run time is cut into slots and a
  * hash of the slot index decides whether and what sounds in that slot, so the
  * same run sounds the same.
  */
+import { LIGHT_TRAFFIC } from '../world/traffic';
 import type { Cue } from './backend';
 import { PASS_CUES } from './passby';
 
@@ -13,10 +15,17 @@ export const TRAFFIC = {
   /** Fraction of the remaining gap to the density closed per tick (~0.25 s to settle). */
   smoothing: 0.07,
   /**
-   * Hum curve exponent: level = density ** humCurve, so the light traffic
-   * outside Mitte (density 0.05) still hums softly (~0.22) under full Mitte (1).
+   * Hum curve exponent over the density above LIGHT_TRAFFIC: light traffic
+   * has no steady hum, the Mitte ramps rise quickly towards full Mitte (1).
    */
   humCurve: 0.5,
+  /**
+   * One passing vehicle of light traffic: its hum rises for `rise` seconds
+   * after the crossing event and is gone `length` seconds after it. `peak` is
+   * the level of a front-lane vehicle (strength 1); `voices` overlapping
+   * vehicles are heard at once (more replace the oldest).
+   */
+  swell: { rise: 0.25, length: 1.2, peak: 0.35, voices: 4 },
   /** Smallest level change worth a backend call; also the snap-to-silence threshold. */
   minStep: 0.01,
   /** Rumble factor right after a gameplay sound (jump, crash, item ...). */
@@ -56,9 +65,18 @@ export function isTrafficCue(cue: Cue): cue is TrafficCue {
   return TRAFFIC_CUE_SET.has(cue);
 }
 
-/** Rumble level 0..1 for a traffic density: a gentle curve that keeps light traffic audible. */
+/** Steady rumble level 0..1 for a traffic density: silent at light traffic, full in Mitte. */
 export function humLevel(density: number): number {
-  return Math.min(1, Math.max(0, density)) ** TRAFFIC.humCurve;
+  const dense = (density - LIGHT_TRAFFIC) / (1 - LIGHT_TRAFFIC);
+  return Math.min(1, Math.max(0, dense)) ** TRAFFIC.humCurve;
+}
+
+/** Swell shape 0..1 at `age` seconds after a vehicle passed: a smooth rise, then a soft fade to 0. */
+export function swellEnvelope(age: number): number {
+  const { rise, length } = TRAFFIC.swell;
+  if (age <= 0 || age >= length) return 0;
+  if (age < rise) return Math.sin((age / rise) * (Math.PI / 2));
+  return (1 - (age - rise) / (length - rise)) ** 2;
 }
 
 export interface TrafficStep {
@@ -97,10 +115,37 @@ class Slots {
   }
 }
 
+/** The vehicles of light traffic currently swelling (fixed slots: no allocation per vehicle). */
+class Swells {
+  private readonly starts: number[] = new Array<number>(TRAFFIC.swell.voices).fill(-Infinity);
+  private readonly strengths: number[] = new Array<number>(TRAFFIC.swell.voices).fill(0);
+
+  /** A vehicle passed at run time `time`; it takes the slot of the oldest swell. */
+  add(strength: number, time: number): void {
+    let oldest = 0;
+    for (let i = 1; i < this.starts.length; i++) if (this.starts[i]! < this.starts[oldest]!) oldest = i;
+    this.starts[oldest] = time;
+    this.strengths[oldest] = strength;
+  }
+
+  /** Summed swell level at run time `time`, before clamping. */
+  level(time: number): number {
+    let sum = 0;
+    for (let i = 0; i < this.starts.length; i++) sum += this.strengths[i]! * swellEnvelope(time - this.starts[i]!);
+    return sum * TRAFFIC.swell.peak;
+  }
+
+  reset(): void {
+    this.starts.fill(-Infinity);
+    this.strengths.fill(0);
+  }
+}
+
 export class TrafficNoise {
-  /** Smoothed rumble level 0..1 (before ducking). */
+  /** Smoothed steady rumble level 0..1 (before swells and ducking). */
   level = 0;
   private sent = 0;
+  private readonly swells = new Swells();
   private duckGain = 1;
   private duckHold = 0;
   private readonly horns = new Slots(TRAFFIC.hornSlot);
@@ -124,9 +169,23 @@ export class TrafficNoise {
       this.level = 0;
     }
     this.recoverDuck();
-    this.step.level = this.send();
+    const out = active ? Math.min(1, this.level + this.swells.level(time)) * this.duckGain : 0;
+    this.step.level = this.send(out);
     this.step.cue = this.cue(clamped, time);
     return this.step;
+  }
+
+  /**
+   * A vehicle of light traffic passes at run time `time`: the hum swells in and
+   * out around it. `strength` 0..1 is its loudness (the back lane is quieter).
+   */
+  swell(strength: number, time: number): void {
+    this.swells.add(strength, time);
+  }
+
+  /** Whether the backend currently hears any rumble or swell. */
+  get sounding(): boolean {
+    return this.sent > 0;
   }
 
   /** Current duck factor (1 = not ducked); pass-by sounds follow it like the rumble. */
@@ -144,6 +203,7 @@ export class TrafficNoise {
   reset(): void {
     this.horns.reset();
     this.trucks.reset();
+    this.swells.reset();
     this.duckGain = 1;
     this.duckHold = 0;
   }
@@ -153,8 +213,8 @@ export class TrafficNoise {
     else this.duckGain = Math.min(1, this.duckGain + TRAFFIC.duckRecover);
   }
 
-  private send(): number | null {
-    const out = this.level * this.duckGain;
+  /** The level for the backend, or null when it changed too little to send. */
+  private send(out: number): number | null {
     const silenced = out === 0 && this.sent !== 0;
     if (!silenced && Math.abs(out - this.sent) < TRAFFIC.minStep) return null;
     this.sent = out;

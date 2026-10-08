@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HORN_CUES, TRAFFIC, TRAFFIC_CUES, TrafficNoise, humLevel, type TrafficCue } from './traffic';
+import { LIGHT_TRAFFIC } from '../world/traffic';
+import { HORN_CUES, TRAFFIC, TRAFFIC_CUES, TrafficNoise, humLevel, swellEnvelope, type TrafficCue } from './traffic';
 
 /** Runs `ticks` updates at 60 Hz from `start` seconds; returns the levels sent and the traffic cues. */
 function run(noise: TrafficNoise, ticks: number, density: number, active = true, start = 0) {
@@ -30,22 +31,19 @@ describe('traffic noise: rumble level', () => {
     expect(noise.level).toBeCloseTo(humLevel(0.4), 2);
   });
 
-  it('makes light traffic (density 0.05) a soft but audible hum, clearly quieter than Mitte', () => {
-    const light = new TrafficNoise();
-    run(light, 300, 0.05);
-    const mitte = new TrafficNoise();
-    run(mitte, 300, 1);
-    expect(light.level).toBeGreaterThanOrEqual(0.15);
-    expect(light.level).toBeLessThanOrEqual(mitte.level * 0.35);
-    expect(mitte.level).toBeCloseTo(1, 2);
+  it('has no steady hum in light traffic outside Mitte (silence on an empty street)', () => {
+    const noise = new TrafficNoise();
+    expect(run(noise, 300, LIGHT_TRAFFIC).sent).toEqual([]);
+    expect(noise.level).toBe(0);
   });
 
-  it('maps density to a rising hum level from silence to full', () => {
+  it('maps density to a rising hum level from silence (light traffic and below) to full', () => {
     expect(humLevel(0)).toBe(0);
+    expect(humLevel(LIGHT_TRAFFIC)).toBe(0);
     expect(humLevel(1)).toBe(1);
     expect(humLevel(-1)).toBe(0);
     expect(humLevel(3)).toBe(1);
-    for (let d = 0.05; d <= 1; d += 0.05) expect(humLevel(d)).toBeGreaterThan(humLevel(d - 0.05));
+    for (let d = LIGHT_TRAFFIC + 0.05; d <= 1; d += 0.05) expect(humLevel(d)).toBeGreaterThan(humLevel(d - 0.05));
   });
 
   it('fades out smoothly when the density drops and ends at exactly 0', () => {
@@ -198,5 +196,79 @@ describe('traffic noise: a new run', () => {
     run(noise, 120, 1, true, 0);
     noise.reset();
     expect(run(noise, 120, 1, true, 0).cues).toEqual(fresh);
+  });
+});
+
+describe('traffic noise: a vehicle of light traffic swells past', () => {
+  /** Ticks at light density from `start` for `seconds`; returns the levels sent with their run times. */
+  function listen(noise: TrafficNoise, start: number, seconds: number, active = true) {
+    const sent: { t: number; level: number }[] = [];
+    for (let i = 0; i < seconds * 60; i++) {
+      const t = start + i / 60;
+      const step = noise.update(LIGHT_TRAFFIC, active, t);
+      if (step.level !== null) sent.push({ t, level: step.level });
+    }
+    return sent;
+  }
+  const peak = (sent: { level: number }[]) => Math.max(0, ...sent.map((s) => s.level));
+
+  it('rises from silence, peaks shortly after the crossing and fades back to exactly 0', () => {
+    const noise = new TrafficNoise();
+    listen(noise, 0, 2);
+    noise.swell(1, 2);
+    const sent = listen(noise, 2, 2);
+    const top = sent.reduce((a, b) => (b.level > a.level ? b : a));
+    expect(top.level).toBeGreaterThanOrEqual(0.2);
+    expect(top.level).toBeLessThanOrEqual(0.5);
+    expect(top.t - 2).toBeGreaterThan(0.1);
+    expect(top.t - 2).toBeLessThan(0.5);
+    expect(sent.at(-1)!.level).toBe(0);
+    expect(sent.at(-1)!.t - 2).toBeLessThanOrEqual(TRAFFIC.swell.length + 1 / 60);
+    expect(noise.sounding).toBe(false);
+  });
+
+  it('glides in and out without jumps', () => {
+    const noise = new TrafficNoise();
+    noise.swell(1, 0);
+    const sent = listen(noise, 0, 2);
+    for (let i = 1; i < sent.length; i++) expect(Math.abs(sent[i]!.level - sent[i - 1]!.level)).toBeLessThan(0.06);
+  });
+
+  it('is quieter for the back lane', () => {
+    const front = new TrafficNoise();
+    front.swell(1, 0);
+    const back = new TrafficNoise();
+    back.swell(0.6, 0);
+    expect(peak(listen(back, 0, 2))).toBeLessThan(peak(listen(front, 0, 2)) * 0.7);
+  });
+
+  it('overlapping vehicles add up but never exceed full level', () => {
+    const one = new TrafficNoise();
+    one.swell(1, 0);
+    const many = new TrafficNoise();
+    for (let i = 0; i < 10; i++) many.swell(1, 0);
+    const solo = peak(listen(one, 0, 2));
+    const crowd = peak(listen(many, 0, 2));
+    expect(crowd).toBeGreaterThan(solo);
+    expect(crowd).toBeLessThanOrEqual(1);
+  });
+
+  it('is silent while inactive and gone after a new run', () => {
+    const paused = new TrafficNoise();
+    paused.swell(1, 0);
+    expect(listen(paused, 0, 1, false)).toEqual([]);
+    const restarted = new TrafficNoise();
+    restarted.swell(1, 50);
+    restarted.reset();
+    expect(listen(restarted, 0, 2)).toEqual([]);
+  });
+
+  it('has an envelope that starts and ends at 0 and peaks at 1', () => {
+    expect(swellEnvelope(-0.1)).toBe(0);
+    expect(swellEnvelope(0)).toBe(0);
+    expect(swellEnvelope(TRAFFIC.swell.rise)).toBeCloseTo(1, 5);
+    expect(swellEnvelope(TRAFFIC.swell.length)).toBe(0);
+    expect(swellEnvelope(TRAFFIC.swell.length + 1)).toBe(0);
+    for (let t = 0; t < TRAFFIC.swell.length; t += 0.01) expect(swellEnvelope(t)).toBeLessThanOrEqual(1);
   });
 });

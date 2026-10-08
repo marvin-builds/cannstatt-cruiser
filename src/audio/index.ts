@@ -1,6 +1,6 @@
 /**
  * Audio system: maps bus events to chiptune cues on an AudioBackend, keeps
- * the grind loop and the Mitte traffic rumble in sync with the game, unlocks
+ * the grind loop and the traffic rumble in sync with the game, unlocks
  * audio on user gestures and persists the mute flag. Sound design lives in
  * sounds.ts, traffic logic in traffic.ts, WebAudio in webaudio.ts.
  */
@@ -9,7 +9,7 @@ import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
-import { PassBy } from './passby';
+import { PASS_BY, PassBy } from './passby';
 import { GLUG_LENGTH } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
 import { createWebAudioBackend } from './webaudio';
@@ -67,10 +67,10 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   /** One tick of the traffic rumble, horns and trucks: silent unless playing and unmuted. */
   const updateTraffic = (ctx: GameContext) => {
     const { state } = ctx;
-    const wasSounding = traffic.level > 0;
+    const wasSounding = traffic.sounding;
     const step = traffic.update(state.trafficDensity, state.mode === 'playing' && !muted, state.time);
     if (step.level !== null) safely(() => backend.setTraffic(step.level!));
-    if (wasSounding !== traffic.level > 0) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
+    if (wasSounding !== traffic.sounding) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
     if (step.cue) play(step.cue);
   };
   const startGrind = () => {
@@ -152,8 +152,10 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('gameOver');
       });
       // A vehicle drives past: a pass-by whoosh, ducked like the rumble under gameplay sounds.
+      // Light traffic has no steady hum, so its hum swells in and out around each vehicle.
       bus.on('vehiclePassed', (vehicle) => {
         if (ctx.state.mode !== 'playing') return;
+        if (vehicle.light) traffic.swell(vehicle.front ? PASS_BY.lane.front : PASS_BY.lane.back, ctx.state.time);
         const step = passBy.pass(vehicle, ctx.state.time);
         if (step) play(step.cue, step.intensity * traffic.duckFactor);
       });
