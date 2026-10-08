@@ -18,9 +18,8 @@ export const TICK_DT = 1 / TICK_RATE;
 /** Screen x of the player's feet; the world scrolls past this point. */
 export const PLAYER_X = 64;
 
-/** World scroll speed at run start and its cap, in view pixels per second. */
+/** World scroll speed at run start, in view pixels per second (the top speed is gameplay's TOP_SPEED). */
 export const BASE_SPEED = 90;
-export const MAX_SPEED = 165;
 
 export const MAX_HEALTH = 5;
 
