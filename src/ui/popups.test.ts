@@ -82,6 +82,28 @@ describe('PopupPool', () => {
     expect(pool.active().map((p) => p.text)).toEqual(['Stern!']);
   });
 
+  it('drops the oldest popups that the ceiling would push below the floor, so the column never piles up', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 100;
+    pool.floor = 100 + 2 * popupHeight(2);
+    pool.spawn('Stern!', 50, 120, '#fff', 2);
+    pool.spawn('Grind!', 50, 120, '#fff', 2);
+    pool.spawn('+50', 50, 120, '#fff', 2);
+    const live = pool.active();
+    expect(live.map((p) => p.text).sort()).toEqual(['+50', 'Grind!']);
+    for (const p of live) expect(p.y + popupHeight(p.scale)).toBeLessThanOrEqual(pool.floor);
+    expectApart(live);
+  });
+
+  it('keeps the newest popup even when nothing fits under the floor', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 100;
+    pool.floor = 105;
+    pool.spawn('a', 50, 120, '#fff');
+    pool.spawn('b', 50, 120, '#fff');
+    expect(pool.active().map((p) => p.text)).toEqual(['b']);
+  });
+
   it('never lets a popup rise above the ceiling, even when stacked', () => {
     const pool = new PopupPool(3);
     pool.ceiling = 60;

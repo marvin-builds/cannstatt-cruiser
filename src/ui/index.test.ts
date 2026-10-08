@@ -299,6 +299,19 @@ describe('grind trick hint', () => {
   });
 });
 
+describe('stunt lines', () => {
+  it('persists a completed stunt line so the kicker hint never shows again; a missed line does not', () => {
+    const { game, store } = setup();
+    game.commands.startRun();
+    game.tick();
+    game.bus.emit('stuntStep', { step: 1, steps: 3, multiplier: 2, points: 50 });
+    game.bus.emit('stuntEnd', { steps: 3, made: 1, completed: false, points: 0 });
+    expect(store.get('stuntLineSeen', false)).toBe(false);
+    game.bus.emit('stuntEnd', { steps: 3, made: 3, completed: true, points: 600 });
+    expect(store.get('stuntLineSeen', false)).toBe(true);
+  });
+});
+
 describe('update, what is new, install hint and pause navigation', () => {
   function app(options: { touch?: boolean; portrait?: boolean } = {}) {
     let reloads = 0;

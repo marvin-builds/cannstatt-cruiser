@@ -3,7 +3,7 @@
  * states the gameplay slice would produce and reports the settings menu and
  * button layout (incl. the menu screens' buttons), for the playtest scenarios.
  */
-import { PLAYER_X } from '../core/config';
+import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { CarriedItem, GameContext, Rect } from '../types';
 import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
@@ -29,6 +29,14 @@ export interface UiDebugHook {
   carry(item: CarriedItem | null): void;
   /** Whether the grind trick hint ("↓ = Trick!") shows now. */
   trickHintVisible(): boolean;
+  /** Emits stunt line events like gameplay: a step with this multiplier, or the end of the line. */
+  stuntStep(multiplier: number): void;
+  stuntEnd(completed: boolean, points: number): void;
+  /**
+   * Feeds the kicker hint one kicker just ahead of the skater, as if gameplay had spawned it
+   * (shows on the next redraw until the next tick); returns whether the hint shows.
+   */
+  previewKickerHint(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over). */
   setRecords(highscore?: number, starsTotal?: number): void;
   /** The hidden settings menu: screen and the logo hold progress (0..1). */
@@ -83,6 +91,16 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     },
     trickHintVisible() {
       return view.trickHint.visible;
+    },
+    stuntStep(multiplier) {
+      ctx.bus.emit('stuntStep', { step: 1, steps: 3, multiplier, points: 0 });
+    },
+    stuntEnd(completed, points) {
+      ctx.bus.emit('stuntEnd', { steps: 3, made: completed ? 3 : 1, completed, points });
+    },
+    previewKickerHint() {
+      view.kickerHint.update([{ id: -1, kind: 'kicker', x: PLAYER_X + 60, y: GROUND_Y - 8, w: 24, h: 8, done: false }]);
+      return view.kickerHint.visible;
     },
     setRecords(highscore = 0, starsTotal = 0) {
       view.records = { highscore, starsTotal };

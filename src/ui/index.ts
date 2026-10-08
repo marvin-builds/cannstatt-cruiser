@@ -8,12 +8,13 @@
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
- * trick-hint.ts, the drunk look in drunk-look.ts, the zone ribbon in
+ * trick-hint.ts, the stunt line callout ("Combo xN!") in stunt-callout.ts, the
+ * first-time kicker hint in kicker-hint.ts, the drunk look in drunk-look.ts, the zone ribbon in
  * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
  * all drawing in screens.ts.
  */
 import { CHILL_DURATION } from '../core/chill';
-import { PLAYER_X } from '../core/config';
+import { GROUND_Y, PLAYER_X } from '../core/config';
 import { fullscreenSupported } from '../core/fullscreen';
 import type { InputHotspot } from '../core/game';
 import { store as defaultStore, type Store } from '../core/storage';
@@ -24,6 +25,7 @@ import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
 import { HudModel } from './hud-model';
+import { KickerHint } from './kicker-hint';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
@@ -37,6 +39,7 @@ import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
 import { statsLayout } from './stats';
 import { TrickHint } from './trick-hint';
+import { placeCallout, StuntCallout } from './stunt-callout';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -53,6 +56,8 @@ const CATCH_RISE = 60;
 const MAX_POPUPS = 3;
 /** Popups never rise into the HUD plate (its tallest form, with the chill and drunk rows). */
 const POPUP_CEILING = ((p) => p.y + p.h + 2)(statsLayout(0, true, true).plate);
+/** Popups never sink below the riding line (the hints live under it); the oldest go instead. */
+const POPUP_FLOOR = GROUND_Y;
 /** Drunk timer bar length until drunkStart says otherwise (the test hook's setDrunk sends no event). */
 const DEFAULT_DRUNK_DURATION = 6;
 
@@ -63,7 +68,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   const view: UiView = {
     records: loadRecords(store),
     lastRun: null,
-    popups: Object.assign(new PopupPool(MAX_POPUPS), { ceiling: POPUP_CEILING }),
+    popups: Object.assign(new PopupPool(MAX_POPUPS), { ceiling: POPUP_CEILING, floor: POPUP_FLOOR }),
     banner: new Banner(),
     fullscreenAvailable: false,
     portraitDismissed: false,
@@ -72,6 +77,9 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     hud: new HudModel(),
     itemHint: new ItemHint(store),
     trickHint: new TrickHint(store),
+    kickerHint: new KickerHint(store),
+    stunt: new StuntCallout(),
+    stuntRect: null,
     settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
     logoHold: new LongPress(),
   };
@@ -93,6 +101,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       feed.clear();
       view.itemHint.hide();
       view.trickHint.runStarted();
+      view.kickerHint.runStarted();
+      view.stunt.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
@@ -111,7 +121,16 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.trickHint.trickDone();
     });
     bus.on('drunkStart', (e) => (view.drunkDuration = e.duration));
-    bus.on('grindStart', () => popup('Grind!', UI.teal));
+    // During a stunt line the callout already cheers each piece: no "Grind!" on its ledges.
+    bus.on('grindStart', () => {
+      if (!view.stunt.lineActive) popup('Grind!', UI.teal);
+    });
+    bus.on('launch', () => view.kickerHint.launched());
+    bus.on('stuntStep', (e) => view.stunt.step(e.multiplier));
+    bus.on('stuntEnd', (e) => {
+      view.stunt.end(e.completed, e.points);
+      if (e.completed) view.kickerHint.lineCompleted();
+    });
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
@@ -281,7 +300,10 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const hintShown = view.itemHint.visible && itemControl(display, state.mode, state.carriedItem) === 'button';
-      view.popups.ceiling = popupCeiling(POPUP_CEILING, hintShown ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null);
+      const placed = placeCallout(view.stunt, display, POPUP_CEILING, view.banner.visible);
+      view.stuntRect = placed?.drawn ?? null;
+      const belowHint = popupCeiling(POPUP_CEILING, hintShown ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null);
+      view.popups.ceiling = popupCeiling(belowHint, placed?.reserved ?? null);
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
@@ -289,6 +311,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (state.mode !== 'playing') return;
       view.popups.update(dt);
       view.banner.update(dt);
+      view.stunt.update(dt);
+      view.kickerHint.update(state.entities);
       view.itemHint.update(dt, view.banner.visible);
       view.trickHint.update(state.player.grinding, state.player.grindTrick);
     },
