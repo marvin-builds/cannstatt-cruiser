@@ -2,6 +2,7 @@ import type { DisplayInfo, GameEvents, GameState } from '../types';
 import type { Game } from './game';
 import { FrameProbe, type ProbeDump } from './perf';
 import { SWIPE_DUCK_TICKS } from './input';
+import { handleServiceWorkerMessage, UPDATE_READY_MESSAGE } from './update';
 
 export interface LoggedEvent {
   frame: number;
@@ -72,6 +73,8 @@ export interface TestHook {
   display(): DisplayInfo;
   /** PNG data URL of the view buffer (current view width x 180) upscaled by `scale`. */
   capture(scale?: number): string;
+  /** Handles the service worker's `{type: 'updateReady'}` message as if a new deploy were cached: sets `state.updateReady`. */
+  simulateUpdateReady(): void;
   /** Frame-time probe (scripts/frametimes.ts): records up to `frames` real rAF frames until stop(). */
   perf: {
     start(frames?: number): void;
@@ -146,6 +149,7 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     clearEvents: () => void log.splice(0),
     display: () => ({ ...game.display }),
     capture: (scale = 4) => clock.capture(scale),
+    simulateUpdateReady: () => handleServiceWorkerMessage(game.state, UPDATE_READY_MESSAGE),
     perf: {
       start: (frames = 3600) => void (game.probe = new FrameProbe(game.systemNames, frames)),
       stop: () => {

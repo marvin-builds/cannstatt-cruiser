@@ -7,6 +7,7 @@ import { FixedTimestep } from './loop';
 import type { FrameProbe } from './perf';
 import { Renderer } from './renderer';
 import { createTestHook, testHookEnabled } from './testhook';
+import { handleServiceWorkerMessage } from './update';
 
 /** Boots the game in the browser: canvas, loop, input, test hook, service worker. */
 export function startApp(systems: System[]): Game {
@@ -15,7 +16,11 @@ export function startApp(systems: System[]): Game {
   const renderer = new Renderer(canvas);
   const game = new Game({
     systems,
-    platform: { toggleFullscreen, setLetterboxColor: (c) => renderer.setLetterboxColor(c) },
+    platform: {
+      toggleFullscreen,
+      setLetterboxColor: (c) => renderer.setLetterboxColor(c),
+      reload: () => location.reload(),
+    },
   });
 
   const updateDisplay = () => {
@@ -87,7 +92,7 @@ export function startApp(systems: System[]): Game {
     });
   }
 
-  registerServiceWorker();
+  registerServiceWorker(game);
   return game;
 }
 
@@ -96,9 +101,15 @@ function usedHeap(): number {
   return (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
 }
 
-/** Registers public/sw.js (shipped by the PWA slice) once it is actually served as a script. */
-function registerServiceWorker(): void {
+/**
+ * Registers public/sw.js once it is actually served as a script, and turns its
+ * messages (a new deploy is cached) into `state.updateReady`.
+ */
+function registerServiceWorker(game: Game): void {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (e) => handleServiceWorkerMessage(game.state, e.data));
+  // Delivers messages queued while the page was still loading.
+  navigator.serviceWorker.startMessages();
   window.addEventListener('load', async () => {
     try {
       const head = await fetch('./sw.js', { method: 'HEAD' });

@@ -78,6 +78,7 @@ only available with `?test=1` in the URL.
 | `clearEvents()` | empties the event log |
 | `display()` | copy of `DisplayInfo`: `portrait`, `touch`, `fullscreen`, `viewWidth`, `viewHeight` |
 | `capture(scale = 4)` | PNG data URL of the view buffer (current view width x 180), upscaled nearest-neighbour |
+| `simulateUpdateReady()` | handles the service worker's `{type: 'updateReady'}` message as after a real deploy: sets `state.updateReady` (for the ui's reload hint; the real path is checked by `scripts/scenarios/update-hint.ts`) |
 
 Reading events since a point in time: note the frame first, then act. Events
 emitted by hook calls between ticks (e.g. `startRun`) carry the current frame,
@@ -284,6 +285,15 @@ npm run playtest -- --headed
   otherwise keep the run paused.
   Loops that wait for game progress use `stepWhile(t, more, {max})` or check
   the mode, so a stopped run fails with a message instead of hanging.
+
+- `scripts/scenarios/update-hint.ts` (production build, run it with
+  `--viewports desktop`; any viewport works): the service worker controls the
+  page, a reload of an unchanged deploy leaves `state.updateReady` off, then a
+  simulated deploy (routes serve a page that references a copy of the bundle
+  under a new name) makes the page receive `updateReady` after one online
+  start, and the next reload runs the new build from the cache. The worker
+  logic itself has unit tests in `src/core/sw.test.ts` (sw.js in a vm with
+  fake caches, network and clients).
 
 ### Custom scenarios
 

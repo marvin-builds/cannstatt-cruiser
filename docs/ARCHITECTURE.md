@@ -33,7 +33,8 @@ src/core/               engine pieces (foundation-owned, slices only import from
   storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage
   fullscreen.ts         toggleFullscreen() with webkit + iOS fallback, landscape lock
   testhook.ts           window.__game (see docs/TESTING.md)
-  app.ts                startApp(systems): wires everything in the browser, registers ./sw.js
+  update.ts             handleServiceWorkerMessage(): sw.js `updateReady` -> state.updateReady (see Update signal)
+  app.ts                startApp(systems): wires everything in the browser, registers ./sw.js and its message listener
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
   world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
   world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
@@ -80,6 +81,33 @@ creates them in `public/`):
 - `sw.js` (registered only in production builds, and only once it is served as
   JavaScript)
 
+### Update signal (ROADMAP item 15)
+
+- `public/sw.js` posts `{type: 'updateReady'}` to every window
+  (`clients.matchAll({type: 'window', includeUncontrolled: true})`) when a
+  reload would start a newer, fully cached build:
+  - the background page refresh stored a **changed** page (a new deploy)
+    after all its assets were cached (`storePage`, never on the first install
+    and never when an asset download fails, so the old build stays complete);
+  - a new worker version activates and an older version's cache held a
+    different page than the one it just cached (`dropOldCaches`).
+- Core (`app.ts`, production only, same guard as the registration) listens on
+  `navigator.serviceWorker` and passes `MessageEvent.data` to
+  `handleServiceWorkerMessage` (`core/update.ts`), which sets
+  `state.updateReady = true` for that message and ignores everything else.
+- `state.updateReady` is never cleared (only a reload resets the page) and
+  `resetRun` keeps it. The ui reads it to show the reload hint (title and
+  pause screens only) and calls `ctx.commands.reloadForUpdate()` from the
+  hint's hotspot; core reloads the page (`location.reload()` through the
+  `Platform`, a no-op in tests).
+- A message can be lost if the worker finishes before the loading page exists
+  as a client; the next start then already runs the new build, so nothing is
+  missed for long.
+- Tests: `src/core/sw.test.ts` runs `public/sw.js` against in-memory caches,
+  network and clients; `scripts/scenarios/update-hint.ts` checks it end to
+  end on the preview build; `window.__game.simulateUpdateReady()` sets the
+  flag without a deploy (docs/TESTING.md).
+
 ## Contracts (src/types.ts)
 
 ### System
@@ -122,7 +150,7 @@ interface System {
 | `input` | this tick's `InputFrame`: `action`, `duck` and `use` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-duck-and-use). |
 | `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
-| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick) |
+| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick), `reloadForUpdate` (reloads the page; see [Update signal](#update-signal-roadmap-item-15)) |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
 | `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
 
@@ -131,6 +159,7 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
+| `updateReady` | core, from the service worker's `updateReady` message ([Update signal](#update-signal-roadmap-item-15)); kept across runs, the ui only reads it |
 | `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
 | `player.*` (position, velocity, grounded, grinding, grindTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer` and `grindTrick`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |

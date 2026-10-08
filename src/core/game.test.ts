@@ -270,3 +270,17 @@ describe('Game', () => {
     expect(game.state.speed).toBe(150);
   });
 });
+
+describe('reloadForUpdate command', () => {
+  it('reloads the page through the platform', () => {
+    const reload = vi.fn();
+    const game = new Game({ systems: [], platform: { reload } });
+    game.commands.reloadForUpdate();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('is a no-op without a browser platform', () => {
+    const game = new Game({ systems: [] });
+    expect(() => game.commands.reloadForUpdate()).not.toThrow();
+  });
+});

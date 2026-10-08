@@ -38,13 +38,14 @@ export function createInitialState(): GameState {
     trafficDensity: 0,
     muted: false,
     kidMode: false,
+    updateReady: false,
     seed: 0,
     player: createPlayer(),
     entities: [],
   };
 }
 
-/** Resets everything that belongs to a single run; keeps mode, frame and settings. */
+/** Resets everything that belongs to a single run; keeps mode, frame, settings and the update flag. */
 export function resetRun(state: GameState, seed: number): void {
   const fresh = createInitialState();
   Object.assign(state, {
@@ -54,6 +55,7 @@ export function resetRun(state: GameState, seed: number): void {
     frame: state.frame,
     muted: state.muted,
     kidMode: state.kidMode,
+    updateReady: state.updateReady,
     seed,
   });
 }

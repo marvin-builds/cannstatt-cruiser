@@ -135,6 +135,12 @@ export interface GameState {
    * Kept across runs.
    */
   kidMode: boolean;
+  /**
+   * A newer deploy is fully cached by the service worker (it posted
+   * `{type: 'updateReady'}`, core/update.ts); a reload starts it. Set by core,
+   * never cleared, kept across runs. The ui shows the reload hint from it.
+   */
+  updateReady: boolean;
   /** Seed used for the current run (rng is re-seeded with it at run start). */
   seed: number;
   player: PlayerState;
@@ -250,6 +256,8 @@ export interface GameCommands {
    * released on the next tick). For a ui hotspot's onPress, e.g. the item button.
    */
   useItem(): void;
+  /** Reloads the page to start the cached new version (see `state.updateReady`); for a ui hotspot. */
+  reloadForUpdate(): void;
 }
 
 export interface GameContext {

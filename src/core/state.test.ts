@@ -70,3 +70,16 @@ describe('wave 5b contract', () => {
     expect(state.player.grindTrick).toBe(false);
   });
 });
+
+describe('update-ready state', () => {
+  it('starts without a pending update', () => {
+    expect(createInitialState().updateReady).toBe(false);
+  });
+
+  it('keeps a pending update when a new run starts', () => {
+    const state = createInitialState();
+    state.updateReady = true;
+    resetRun(state, 7);
+    expect(state.updateReady).toBe(true);
+  });
+});

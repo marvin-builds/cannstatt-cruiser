@@ -23,6 +23,8 @@ import { createInitialState, resetRun } from './state';
 export interface Platform {
   toggleFullscreen(): void;
   setLetterboxColor(color: string): void;
+  /** Reloads the page (location.reload in the browser). */
+  reload(): void;
 }
 
 /**
@@ -118,6 +120,7 @@ export class Game {
     const platform: Platform = {
       toggleFullscreen: () => {},
       setLetterboxColor: () => {},
+      reload: () => {},
       ...options.platform,
     };
     this.commands = {
@@ -134,6 +137,7 @@ export class Game {
         this.buttons.use.press(USE_ITEM_SOURCE);
         this.buttons.use.release(USE_ITEM_SOURCE);
       },
+      reloadForUpdate: () => platform.reload(),
     };
     const game = this;
     this.ctx = {

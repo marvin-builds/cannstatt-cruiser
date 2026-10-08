@@ -10,6 +10,10 @@
  *   complete build; assets only the old page referenced are then dropped.
  *   All other same-origin GETs are cache-first and cached on first use.
  * - activate: deletes caches of older versions.
+ * - update signal: once a changed page is completely cached (a new deploy, or
+ *   a new worker version that cached a different page than its predecessor),
+ *   every open window gets the message {type: 'updateReady'} (handled in
+ *   src/core/update.ts). Never on the first install.
  *
  * Bump VERSION only when this file's caching logic changes; new game builds
  * are picked up by the background page refresh.
@@ -23,6 +27,14 @@ const STATIC_FILES = ['./manifest.webmanifest', './icons/icon-192.png', './icons
 );
 /** Servers may send `Vary: Origin` (module scripts are CORS requests); cached files match regardless. */
 const MATCH = { ignoreSearch: true, ignoreVary: true };
+
+const UPDATE_READY = { type: 'updateReady' };
+
+/** Tells every open window that a reload would start a newer, fully cached build. */
+async function notifyUpdateReady() {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of windows) client.postMessage(UPDATE_READY);
+}
 
 /** Same-origin URLs referenced by src/href attributes in the page. */
 function referencedAssets(html) {
@@ -38,7 +50,7 @@ function referencedAssets(html) {
  * Stores `response` as the app shell if it differs from the cached page:
  * caches its missing assets first (all or nothing, so a failed download keeps
  * the old, complete build), then the page, then drops assets that only the
- * old page referenced.
+ * old page referenced. Replacing an earlier page signals an update.
  */
 async function storePage(cache, response) {
   const html = await response.clone().text();
@@ -52,6 +64,29 @@ async function storePage(cache, response) {
   await cache.put(SHELL_URL, response);
   if (oldHtml === null) return;
   for (const url of referencedAssets(oldHtml)) if (!assets.has(url)) await cache.delete(url, MATCH);
+  await notifyUpdateReady();
+}
+
+/** The cached app shell's HTML in cache `name`, or null. */
+async function cachedPage(name) {
+  const page = await (await caches.open(name)).match(SHELL_URL, MATCH);
+  return page ? page.text() : null;
+}
+
+/**
+ * Deletes the caches of older worker versions. If one of them held a different
+ * page, the open windows run an older build than the one just cached.
+ */
+async function dropOldCaches() {
+  const old = (await caches.keys()).filter((k) => k.startsWith(PREFIX) && k !== CACHE);
+  const current = await cachedPage(CACHE);
+  let changed = false;
+  for (const name of old) {
+    const html = await cachedPage(name);
+    if (html !== null && html !== current) changed = true;
+    await caches.delete(name);
+  }
+  if (changed) await notifyUpdateReady();
 }
 
 async function cacheShell() {
@@ -65,12 +100,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil(dropOldCaches().then(() => self.clients.claim()));
 });
 
 async function fromCacheThenRefreshPage(event) {

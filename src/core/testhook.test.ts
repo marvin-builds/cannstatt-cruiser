@@ -89,3 +89,12 @@ describe('test hook', () => {
     expect(hook.display()).toMatchObject({ viewWidth: 422, viewHeight: 180 });
   });
 });
+
+describe('test hook update hint', () => {
+  it('simulates the service worker update message', () => {
+    const { hook } = setup();
+    expect(hook.state().updateReady).toBe(false);
+    hook.simulateUpdateReady();
+    expect(hook.state().updateReady).toBe(true);
+  });
+});
