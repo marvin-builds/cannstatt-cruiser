@@ -12,6 +12,7 @@ export function createPlayer(): PlayerState {
     grounded: true,
     grinding: false,
     grindTrick: false,
+    airTrick: false,
     state: 'ride',
     hitbox: { x: PLAYER_X - 6, y: GROUND_Y - 28, w: 12, h: 28 },
     invulnerableTimer: 0,
