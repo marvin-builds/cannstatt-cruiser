@@ -2,7 +2,7 @@
  * A branchable copy of the skater's movement (src/player/controller.ts, numbers
  * from src/player/tuning.ts) for the clearability solver: ground, variable
  * jump (take-off scaled by CHILL_JUMP_SCALE while chilled), ducking (on the
- * ground only), riding a rail and rolling off its end, and the stomp bounce. Jump buffer, coyote
+ * ground only), riding a rail and rolling off its end, the stomp bounce and the kicker launch. Jump buffer, coyote
  * time and crashes are left out, which only makes the solver more conservative.
  * jumpsim.test.ts checks it against the real player tick by tick.
  */
@@ -23,15 +23,18 @@ export interface Body {
   readonly boostTime: number;
   /** Ducked on the ground (low hitbox). */
   readonly ducking: boolean;
-  /** A stomp was reported: the next step bounces (see stompBody). */
-  readonly bouncing: boolean;
+  /**
+   * Upward speed of a bounce on the next step: a stomp (stompBody,
+   * STOMP_BOUNCE_VELOCITY) or a kicker launch (launchBody); 0 = none.
+   */
+  readonly bounce: number;
 }
 
 /** A Body the solver steps in place (stepBodyInto), so its flights allocate nothing per tick. */
 export type MutableBody = { -readonly [K in keyof Body]: Body[K] };
 
 export function groundBody(): Body {
-  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false, bouncing: false };
+  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false, bounce: 0 };
 }
 
 export function railBody(railTop: number, railEnd: number): Body {
@@ -54,7 +57,7 @@ export function copyInto(out: MutableBody, b: Body): MutableBody {
   out.boosting = b.boosting;
   out.boostTime = b.boostTime;
   out.ducking = b.ducking;
-  out.bouncing = b.bouncing;
+  out.bounce = b.bounce;
   return out;
 }
 
@@ -71,15 +74,16 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
 /** stepBody written into `out` (which may be `b` itself); returns `out`. */
 export function stepBodyInto(out: MutableBody, b: Body, px: number, press: boolean, held: boolean, duck = false, jumpScale = 1): MutableBody {
   let { y, vy, grounded, onRail, boosting, boostTime } = b;
-  const { railTop, railEnd, bouncing } = b;
+  const { railTop, railEnd, bounce } = b;
   if (!held) boosting = false;
-  if (bouncing && !onRail) {
+  const bounces = bounce > 0 && !onRail;
+  if (bounces) {
     // Like a take-off with the action already released: normal gravity, no hold boost.
     grounded = false;
     boosting = false;
-    vy = -T.STOMP_BOUNCE_VELOCITY;
+    vy = -bounce;
   }
-  if (press && (grounded || onRail)) {
+  if (press && !bounces && (grounded || onRail)) {
     onRail = false;
     grounded = false;
     boosting = true;
@@ -112,7 +116,7 @@ export function stepBodyInto(out: MutableBody, b: Body, px: number, press: boole
   out.boosting = boosting;
   out.boostTime = boostTime;
   out.ducking = duck && grounded;
-  out.bouncing = false;
+  out.bounce = 0;
   return out;
 }
 
@@ -156,6 +160,13 @@ export function stompBody(b: Body): Body {
 
 /** stompBody in place; returns `b`. */
 export function stompInto(b: MutableBody): MutableBody {
-  b.bouncing = true;
+  b.bounce = T.STOMP_BOUNCE_VELOCITY;
   return b;
+}
+
+/** What the launch event does to the player: it takes off with `velocity` on the next step, like a stomp bounce. */
+export function launchBody(b: Body, velocity: number): Body {
+  const out = copyBody(b);
+  out.bounce = velocity;
+  return out;
 }

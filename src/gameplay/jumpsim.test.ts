@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import { addRail, createPlayerTestGame, startGrind, tick } from '../player/testing';
 import { CHILL_JUMP_SCALE, GRAVITY, HITBOX_H, HOLD_GRAVITY, JUMP_VELOCITY, STOMP_BOUNCE_VELOCITY } from '../player/tuning';
-import { copyBody, groundBody, hitboxOf, railBody, snapToRail, snapToRailInto, stepBody, stepBodyInto, stompBody, stompInto } from './jumpsim';
+import { copyBody, groundBody, hitboxOf, launchBody, railBody, snapToRail, snapToRailInto, stepBody, stepBodyInto, stompBody, stompInto } from './jumpsim';
 
 /** y per tick of the real player when pressing for `hold` ticks from the ground (`chillTimer` > 0: chilled). */
 function realGroundJump(hold: number, ticks: number, chillTimer = 0): number[] {
@@ -144,6 +144,24 @@ describe('stomp bounce', () => {
       game.tick();
       b = stepBody(b, 0, i === 0, true);
       expect(b.y).toBeCloseTo(game.state.player.y, 6);
+      expect(b.grounded).toBe(game.state.player.grounded);
+    }
+    game.buttons.action.release('test');
+  });
+});
+
+describe('kicker launch', () => {
+  it('matches the real player after a launch event tick by tick (a held action gives no boost)', () => {
+    const velocity = 400;
+    const game = createPlayerTestGame();
+    tick(game, 3);
+    game.buttons.action.press('test');
+    game.bus.emit('launch', { entityId: 1, velocity });
+    let b = launchBody(groundBody(), velocity);
+    for (let i = 0; i < 80; i++) {
+      game.tick();
+      b = stepBody(b, 0, i === 0, true);
+      expect(b.y, `tick ${i}`).toBeCloseTo(game.state.player.y, 6);
       expect(b.grounded).toBe(game.state.player.grounded);
     }
     game.buttons.action.release('test');

@@ -62,7 +62,16 @@ export type RailKind = 'handrail' | 'pipe';
  * `joint`: the rare pickup that starts the chill effect (state.chillTimer, event chillStart).
  * `ball`: the football the skater threw (gameplay owns it; player and ui only read it).
  */
-export type EntityKind = ObstacleKind | RailKind | 'star' | 'joint' | 'ball';
+/**
+ * Stunt line pieces (ROADMAP 27), optional bonus structures that never crash:
+ * `kicker`: a small ramp on the street; riding over it launches the skater
+ * high (event `launch`). `ledge`: a slim grindable structure of the upper
+ * level 40-60 px above the street (railing, ledge, thin roof edge), drawn per
+ * zone; its entity `y` is the grind surface. Missing it just drops the skater
+ * back to the street.
+ */
+export type StuntKind = 'kicker' | 'ledge';
+export type EntityKind = ObstacleKind | RailKind | StuntKind | 'star' | 'joint' | 'ball';
 
 /**
  * Anything gameplay spawns. Coordinates are screen space (view pixels): the
@@ -181,6 +190,25 @@ export interface GameEvents {
    * jump take-off without hold; gameplay's jumpsim mirrors it.
    */
   stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
+  /**
+   * Gameplay: the skater rode onto a kicker (entity `entityId`). The player
+   * takes off on the next tick with `velocity` (px/s upwards, no hold needed),
+   * like a stomp bounce; gameplay's jumpsim mirrors it.
+   */
+  launch: { entityId: number; velocity: number };
+  /**
+   * Gameplay: one piece of a stunt line was made (kicker air, ledge grind,
+   * jump or stomp in the line). `step` counts from 1 up to `steps` (the line's
+   * length); `multiplier` is the line's current combo multiplier. The ui shows
+   * "Combo xN!", audio a rising sound.
+   */
+  stuntStep: { step: number; steps: number; multiplier: number; points: number };
+  /**
+   * Gameplay: a stunt line ended, `completed` when every piece was made, else
+   * the skater dropped out (never a crash, never health). `points` is the
+   * line bonus awarded (0 if none).
+   */
+  stuntEnd: { steps: number; made: number; completed: boolean; points: number };
   /** Gameplay: the tossed item reached the skater's hands. */
   itemCaught: { item: CarriedItem };
   /**

@@ -19,6 +19,14 @@ export function addPoints(state: GameState, bus: GameBus, base: number): number 
   return delta;
 }
 
+/** Adds `points` as they are (no multiplier: stunt lines have their own); returns them. */
+export function addBonus(state: GameState, bus: GameBus, points: number): number {
+  if (points === 0) return 0;
+  state.score += points;
+  bus.emit('scoreChanged', { score: state.score, delta: points, combo: state.combo, multiplier: state.multiplier });
+  return points;
+}
+
 /** Counts a trick in the chain, then scores `base` with the new multiplier. */
 export function addTrick(state: GameState, bus: GameBus, base: number): number {
   state.combo += 1;

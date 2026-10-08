@@ -103,12 +103,12 @@ const EFFECT_PUSH_SECONDS = [0, 0.5, 1];
 const DRUNK_LEAD_SECONDS = 0.4;
 
 /** Free run-up before the first piece, growing with speed (longer while the player may be drunk). */
-function leadFor(speed: number, drunk = false): number {
+export function leadFor(speed: number, drunk = false): number {
   return Math.round(20 + 0.3 * speed + (drunk ? DRUNK_LEAD_SECONDS * speed : 0));
 }
 
 /** Room after the last piece in which the player must be back on the ground (a late landing still lands here). */
-function runoutFor(speed: number): number {
+export function runoutFor(speed: number): number {
   return Math.round(32 + 0.55 * speed);
 }
 

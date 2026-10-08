@@ -12,7 +12,9 @@
  * long is drunk by itself, auto-drink.ts), the item a person hit by the
  * ball drops onto the street for the skater to pick up (drop.ts), grind tricks
  * (grind-trick.ts), the human margins for every take-off, around people and
- * while drunk (fairness.ts) and score/combo (scoring.ts).
+ * while drunk (fairness.ts), score/combo (scoring.ts) and the stunt lines:
+ * kickers, ledges of the upper level and their combo (stunt-line.ts plans
+ * them, stunts.ts launches and scores, stunt-art.ts draws them).
  */
 import { START_ZONE } from '../core/config';
 import { Rng } from '../core/rng';
@@ -22,7 +24,7 @@ import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
 import { AutoDrink } from './auto-drink';
 import { newBall, updateBalls } from './ball';
-import { GRIND_POINTS, isObstacle, isRail } from './catalogue';
+import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
 import { isLive, resolveContacts } from './contacts';
 import { installGameplayDebug } from './debug';
@@ -33,6 +35,7 @@ import { drawDrops, drawToss } from './item-art';
 import { ITEM_POINTS, itemOf } from './items';
 import { anchorOf, moveTo } from './motion';
 import { addPoints, breakCombo } from './scoring';
+import { StuntLines } from './stunts';
 import { PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
 import { ItemToss, type Point } from './toss';
 import { countDownDrunk, useCarriedItem } from './use';
@@ -60,6 +63,8 @@ function catchItem(ctx: GameContext, item: CarriedItem | null): void {
 }
 
 const isPickup = (e: Entity) => e.kind === 'star' || e.kind === 'joint';
+/** Drawn first: rails and the stunt ledges with their thin posts. */
+const isBehind = (e: Entity) => isRail(e.kind) || isLedge(e.kind);
 
 export function createGameplaySystem(options: GameplayOptions = {}): System {
   const spawning = options.spawning ?? true;
@@ -72,6 +77,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const drops = new DroppedItems();
   const trick = new GrindTrick();
   const autoDrink = new AutoDrink();
+  const stunts = new StuntLines();
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
   const hands: Point = { x: 0, y: 0 };
   let nextBallId = BALL_IDS;
@@ -150,7 +156,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       game = ctx;
       // All art rasterised at startup: a first draw mid-run was a render spike on phones.
       warmArt();
-      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops);
+      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops, stunts);
       ctx.bus.on('runStarted', () => {
         route.snap(START_ZONE, 0);
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));
@@ -159,6 +165,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         drops.reset();
         trick.reset();
         autoDrink.reset();
+        stunts.reset();
       });
       ctx.bus.on('gameOver', () => {
         ctx.state.drunkTimer = 0;
@@ -167,8 +174,16 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('zoneChanged', (e) => {
         if (route.zoneAt(ctx.state.distance) !== e.index) route.snap(e.index, ctx.state.distance);
       });
-      ctx.bus.on('land', () => breakCombo(ctx.state));
-      ctx.bus.on('grindStart', (e) => trick.grindStarted(ctx, e.entityId));
+      ctx.bus.on('land', () => {
+        breakCombo(ctx.state);
+        stunts.landed(ctx);
+      });
+      ctx.bus.on('grindStart', (e) => {
+        trick.grindStarted(ctx, e.entityId);
+        const ledge = ctx.state.entities.find((s) => s.id === e.entityId);
+        if (ledge && isLedge(ledge.kind) && ctx.state.player.grinding) stunts.made(ctx, ledge);
+      });
+      ctx.bus.on('grindEnd', (e) => stunts.grindEnded(ctx, e.entityId));
       const sparkleAt = (id: number) => {
         const e = ctx.state.entities.find((s) => s.id === id);
         if (e) sparkles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, age: 0 });
@@ -186,7 +201,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         const hand = { x: person.x + person.w / 2, y: person.y + Math.round(person.h / 3) };
         drops.drop(itemOf(person, ctx.state.kidMode), hand, ctx.state.speed, freeStreet);
       });
-      ctx.bus.on('crash', () => toss.cancel());
+      ctx.bus.on('crash', () => {
+        toss.cancel();
+        stunts.crashed(ctx);
+      });
       ctx.bus.on('itemCaught', () => autoDrink.reset());
       ctx.bus.on('itemUsed', () => autoDrink.reset());
     },
@@ -208,6 +226,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       catchItem(ctx, toss.update(handsOf(ctx), dt));
       if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
       resolveContacts(ctx);
+      stunts.update(ctx);
       despawn(state.entities);
       updateSparkles(dx);
     },
@@ -215,14 +234,14 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
     render: {
       entities({ g, state, scrollLead }) {
         const entities = state.entities;
-        // Rails behind the obstacles below them, stars on top.
+        // Rails and stunt ledges behind the obstacles below them, stars on top.
         for (let i = 0; i < entities.length; i++) {
           const e = entities[i]!;
-          if (isLive(e) && isRail(e.kind)) drawEntity(g, e, state, scrollLead);
+          if (isLive(e) && isBehind(e)) drawEntity(g, e, state, scrollLead);
         }
         for (let i = 0; i < entities.length; i++) {
           const e = entities[i]!;
-          if (isLive(e) && !isRail(e.kind) && !isPickup(e)) drawEntity(g, e, state, scrollLead);
+          if (isLive(e) && !isBehind(e) && !isPickup(e)) drawEntity(g, e, state, scrollLead);
         }
         drawDrops(g, drops, state.frame, scrollLead);
         for (let i = 0; i < entities.length; i++) {

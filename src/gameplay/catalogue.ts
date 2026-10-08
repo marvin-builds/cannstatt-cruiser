@@ -66,6 +66,21 @@ export const RAILS: Record<RailKind, RailSpec> = {
   pipe: { minHeight: 8, maxHeight: 12, minLength: 48, maxLength: 110 },
 };
 
+/**
+ * Stunt line pieces (ROADMAP 27): optional, never an obstacle and never a
+ * rail for the solver, so nothing about them can crash the skater. The
+ * kicker is a small ramp standing on the street (entity rect = the ramp).
+ */
+export const KICKER = { w: 18, h: 7 } as const;
+
+/**
+ * A ledge of the upper level: a slim deck whose top edge (entity y) is
+ * minHeight..maxHeight above the street, minLength..maxLength long. The
+ * entity is only the deck (`deck` px thick); art.ts draws thin supports
+ * down to the street that never collide.
+ */
+export const LEDGE = { minHeight: 42, maxHeight: 58, minLength: 40, maxLength: 120, deck: 4 } as const;
+
 export const STAR_SIZE = 9;
 /** The joint pickup: small, floating where a riding (or ducking) skater's body passes. */
 export const JOINT_W = 11;
@@ -92,9 +107,17 @@ export function isRail(kind: EntityKind): kind is RailKind {
   return kind in RAILS;
 }
 
-/** Rails, and obstacles whose top can be ground (bench). */
+export function isKicker(kind: EntityKind): kind is 'kicker' {
+  return kind === 'kicker';
+}
+
+export function isLedge(kind: EntityKind): kind is 'ledge' {
+  return kind === 'ledge';
+}
+
+/** Rails, stunt ledges, and obstacles whose top can be ground (bench). */
 export function isGrindable(kind: EntityKind): boolean {
-  return isRail(kind) || (isObstacle(kind) && !!OBSTACLES[kind].grindable);
+  return isRail(kind) || isLedge(kind) || (isObstacle(kind) && !!OBSTACLES[kind].grindable);
 }
 
 /** People who walk or sway (their entity carries a motion, see motion.ts). */
@@ -111,6 +134,16 @@ export function obstacleRect(kind: ObstacleKind, x: number): Rect {
 /** Rail rect: top edge at `height` above the ground, reaching down to it. */
 export function railRect(x: number, height: number, length: number): Rect {
   return { x, y: GROUND_Y - height, w: length, h: height };
+}
+
+/** Kicker rect with its left edge at x, standing on the street. */
+export function kickerRect(x: number): Rect {
+  return { x, y: GROUND_Y - KICKER.h, w: KICKER.w, h: KICKER.h };
+}
+
+/** Ledge deck rect: top edge (the grind surface) `height` above the street. */
+export function ledgeRect(x: number, height: number, length: number): Rect {
+  return { x, y: GROUND_Y - height, w: length, h: LEDGE.deck };
 }
 
 /** Joint rect with its left edge at x. */

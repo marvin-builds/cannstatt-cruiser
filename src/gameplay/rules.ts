@@ -3,7 +3,7 @@
  * solver, so both judge a crash or a rail landing identically.
  */
 import { TICK_DT } from '../core/config';
-import { HITBOX_W } from '../player/tuning';
+import { GRAVITY, HITBOX_W } from '../player/tuning';
 import type { PlayerState, Rect } from '../types';
 
 export function overlaps(a: Rect, b: Rect): boolean {
@@ -100,4 +100,46 @@ export function landsOnHead(feet: Feet, body: Rect, head: Rect, step: number): b
   if (feet.supported || feet.vy <= 0 || feet.y < head.y || feet.y > head.y + STOMP_DEPTH) return false;
   const reach = stompReach(step, head.w);
   return body.x < head.x + head.w + reach && head.x - reach < body.x + body.w;
+}
+
+/** Share of a kicker's length the wheels roll up before it launches (its lip). */
+export const KICKER_LIP = 0.5;
+
+/**
+ * The skater takes off from a kicker this tick: not rising, the wheels at or
+ * below the ramp's top (riding on the street, or coming down onto it) and
+ * between its lip and its rear end.
+ */
+export function hitsKicker(feet: Feet, kicker: Rect): boolean {
+  if (feet.vy < 0 || feet.y < kicker.y) return false;
+  return feet.x >= kicker.x + kicker.w * KICKER_LIP && feet.x <= kicker.x + kicker.w;
+}
+
+/** How far the feet clear a ledge at the top of a kicker's launch (the arc comes down onto it). */
+export const LAUNCH_CLEARANCE = 14;
+
+/**
+ * Launch speed (px/s up) of a kicker in front of a ledge `height` px above
+ * the street: the apex is about LAUNCH_CLEARANCE above the deck (a launch
+ * flies with normal gravity, like a stomp bounce).
+ */
+export function launchVelocityFor(height: number): number {
+  return Math.round(Math.sqrt(2 * GRAVITY * (height + LAUNCH_CLEARANCE)));
+}
+
+/** Stunt ledge magnet: the feet may come down this far before the front corner... */
+export const STUNT_MAGNET_FRONT = 10;
+/** ...and an arc that tops out up to this far below the deck is still pulled up onto it. */
+export const STUNT_MAGNET_DEPTH = 5;
+
+/**
+ * The feet come down onto a stunt ledge this tick, with its small magnet
+ * (more generous than a street rail): from STUNT_MAGNET_FRONT before its
+ * front corner to its rear end, falling through the band from the deck down
+ * to STUNT_MAGNET_DEPTH below it.
+ */
+export function landsOnHighLedge(feet: Feet, top: Rect): boolean {
+  if (feet.supported || feet.vy < 0) return false;
+  const before = feet.y - feet.vy * TICK_DT;
+  return before <= top.y + STUNT_MAGNET_DEPTH && feet.y >= top.y && feet.x >= top.x - STUNT_MAGNET_FRONT && feet.x <= top.x + top.w;
 }

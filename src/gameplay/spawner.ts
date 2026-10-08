@@ -22,6 +22,14 @@
  * pattern only fills up its free street to EFFECT_FREE_SECONDS. While
  * chilled only easy patterns come (up to CHILLED_TIER).
  *
+ * Stunt lines (ROADMAP 27, stunt-line.ts): about every STUNT_LINE_INTERVAL
+ * seconds of riding (never in the first STUNT_FIRST_SECONDS of a run) the
+ * next pattern is a stunt line, but never while the player may be drunk or
+ * in the street the chill effect reaches after a joint: then it waits for the
+ * first pattern after it. A line's street holds only its kickers and its
+ * length covers every landing off it, so the next pattern needs no check
+ * across the boundary (its pieces are no obstacles or rails).
+ *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
  * planSteps), so no tick stalls on a hard pattern. If a pattern is due before
@@ -40,6 +48,7 @@ import { isObstacle, isRail } from './catalogue';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
+import { planStuntLine } from './stunt-line';
 import type { WorkBudget } from './solver';
 
 /** Street distance from the player to the first pattern (a few empty seconds). */
@@ -67,6 +76,14 @@ export const JOINT_FIRST_DISTANCE = 3300;
 export const JOINT_SPACING = 8600;
 /** ...plus up to this much at random (also for the first one). */
 const JOINT_JITTER = 2400;
+/**
+ * Seconds of riding between two stunt lines (drawn per line; converted to
+ * street at the speed of the ride, so lines come equally often early and late).
+ */
+export const STUNT_LINE_INTERVAL: [number, number] = [30, 45];
+/** Seconds of riding before the first stunt line of a run (fixed: no rng draw, so a run's first patterns stay as they were). */
+export const STUNT_FIRST_SECONDS = 25;
+
 /** Street the chill effect can last after the pickup (it runs CHILL_DURATION, never faster than TOP_SPEED). */
 export const CHILL_REACH = Math.ceil(CHILL_DURATION * TOP_SPEED);
 /**
@@ -113,6 +130,8 @@ interface Cursor {
   chilledUntil: number;
   /** Patterns starting before this street distance may be ridden drunk. */
   drunkUntil: number;
+  /** The next stunt line comes at the first pattern from this street distance (null: not drawn yet, set at the run's first plan). */
+  nextStunt: number | null;
 }
 
 interface Planned {
@@ -135,7 +154,9 @@ export class Spawner {
   /** Screen x of the next pattern not on the street yet. */
   private nextStart = 0;
   private nextId = 1;
-  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity };
+  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null };
+  /** Street distance at the run start (the first spawn call), for the first stunt line. */
+  private runStart: number | null = null;
   /** Planned patterns, in street order, starting at nextStart. */
   private queue: Planned[] = [];
   /** The plan in progress (the pattern after the queue). */
@@ -163,7 +184,8 @@ export class Spawner {
     this.rng = rng;
     this.nextStart = PLAYER_X + FIRST_START;
     this.nextId = 1;
-    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity };
+    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null };
+    this.runStart = null;
     this.queue = [];
     this.job = null;
     this.delayed = 0;
@@ -187,6 +209,7 @@ export class Spawner {
   spawn(entities: Entity[], distance: number, viewWidth: number, speedOverride: number | null, situation: SpawnSituation = SOBER): void {
     this.work = 0;
     if (!this.rng) return;
+    this.runStart ??= distance;
     if (situation.drunk && this.hasSoberPlans()) this.discardPlans();
     if (this.workPerTick !== null) this.planAhead(distance, speedOverride, situation);
     const edge = viewWidth + SPAWN_MARGIN;
@@ -274,11 +297,16 @@ export class Spawner {
     const speeds = pinned ? [speedOverride] : [speedAt(street), speedAt(street + SPEED_SPAN + PLAN_DELAY_MAX)];
     let pattern: Pattern;
     const fast = Math.max(...speeds);
+    const pace = pinned ? speedOverride : null;
+    this.cursor.nextStunt ??= rideStreet(this.runStart ?? street, STUNT_FIRST_SECONDS, pace);
     if (street >= this.cursor.nextJoint && !drunk) {
       pattern = jointPattern(fast);
       this.cursor.nextJoint = street + JOINT_SPACING + rng.int(0, JOINT_JITTER);
       this.cursor.chillUntil = street + pattern.length + CHILL_REACH;
       this.cursor.chilledUntil = street + pattern.length + chillStreet(fast);
+    } else if (street >= this.cursor.nextStunt && !drunk && street >= this.cursor.chillUntil) {
+      pattern = yield* planStuntLine(rng, speeds, this.zoneAt(street), Math.round(street), this.budget);
+      this.cursor.nextStunt = rideStreet(street, rng.range(...STUNT_LINE_INTERVAL), pace);
     } else {
       const chilled = street < this.cursor.chilledUntil;
       const effect = drunk || chilled;
@@ -303,6 +331,14 @@ export class Spawner {
     }
     return { pattern, advance, drunk, before };
   }
+}
+
+/** Street distance reached `seconds` of riding after `street`: at the difficulty speed, or at `pinned`. */
+function rideStreet(street: number, seconds: number, pinned: number | null): number {
+  if (pinned !== null) return street + seconds * pinned;
+  let at = street;
+  for (let t = 0; t < seconds; t += 0.25) at += speedAt(at) * 0.25;
+  return at;
 }
 
 /** The gap after a pattern while an effect is on: just enough for EFFECT_FREE_SECONDS of free street after its last piece, never more than `gap`. */
