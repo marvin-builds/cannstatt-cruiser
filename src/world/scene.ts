@@ -1,9 +1,9 @@
 import { VIEW_H } from '../core/config';
 import { Rng } from '../core/rng';
 import type { BaseTile, Prop } from './art/paint';
-import { PropStream, type StreamConfig } from './stream';
-import { tileStarts } from './tiling';
-import type { Depth, Leg, ZoneRoute } from './zones';
+import { type Placement, PropStream, type StreamConfig } from './stream';
+import { firstTileX } from './tiling';
+import { type Depth, type Leg, LegList, type ZoneRoute } from './zones';
 
 /** One zone's look on one parallax depth. */
 export interface LayerSpec {
@@ -14,8 +14,12 @@ export interface LayerSpec {
     /** Screen x of the first prop after a snap (run start, setZone). */
     readonly startAt: number;
   };
-  /** Moving things drawn above the base and below the props (e.g. a train), given the layer scroll. */
-  readonly vehicle?: (g: CanvasRenderingContext2D, scroll: number, time: number) => void;
+  /**
+   * Moving things drawn above the base and below the props (e.g. a train),
+   * given the layer scroll and `ahead` = seconds since the last tick (to
+   * extrapolate their own motion in a frame between ticks).
+   */
+  readonly vehicle?: (g: CanvasRenderingContext2D, scroll: number, ahead: number) => void;
 }
 
 /** A zone: its sky and its far, mid and near layers (same order as the world's depths). */
@@ -46,8 +50,13 @@ const GATEWAY_MARGIN = 4;
  */
 export class DepthLayer {
   private readonly streams = new Map<number, PropStream>();
+  /** Lowest leg index that may still have a stream (older ones are dropped once passed). */
+  private oldestLeg = 0;
   private seed = 0;
   private restartX = 0;
+  /** Reused every frame, so drawing allocates nothing. */
+  private readonly legs = new LegList();
+  private readonly placements: Placement[] = [];
 
   constructor(
     private readonly depth: Depth,
@@ -63,26 +72,31 @@ export class DepthLayer {
 
   reseed(seed: number): void {
     this.seed = seed;
-    this.streams.clear();
+    this.clearStreams();
   }
 
   /** The route was snapped at this layer scroll: lay out the zone's intro on screen again. */
   restart(scroll: number): void {
     this.restartX = Math.floor(scroll);
-    this.streams.clear();
+    this.clearStreams();
   }
 
-  draw(g: CanvasRenderingContext2D, route: ZoneRoute, distance: number, time: number, viewWidth: number): void {
+  /**
+   * Draws the layer at ground distance `distance` (RenderContext.scroll, so
+   * it moves evenly between ticks); `ahead` = seconds since the last tick.
+   */
+  draw(g: CanvasRenderingContext2D, route: ZoneRoute, distance: number, time: number, ahead: number, viewWidth: number): void {
     const scroll = this.scroll(distance);
     const s = Math.floor(scroll);
-    const legs = route.legs(this.depth, s, s + viewWidth);
-    for (const leg of legs) this.drawLeg(g, leg, scroll, time, viewWidth);
-    for (const leg of legs) {
+    const legs = route.legs(this.depth, s, s + viewWidth, this.legs);
+    for (let i = 0; i < legs.count; i++) this.drawLeg(g, legs.at(i), scroll, time, ahead, viewWidth);
+    for (let i = 0; i < legs.count; i++) {
+      const leg = legs.at(i);
       if (leg.index === 0) continue;
       const gate = this.gateway(leg.previous, leg.zone);
       gate.prop.draw(g, leg.from - gate.seam - s, time, leg.index);
     }
-    for (const index of this.streams.keys()) if (index < legs[0]!.index) this.streams.delete(index);
+    this.dropPassedStreams(legs.at(0).index);
   }
 
   warm(): void {
@@ -99,7 +113,19 @@ export class DepthLayer {
     return gate;
   }
 
-  private drawLeg(g: CanvasRenderingContext2D, leg: Leg, scroll: number, time: number, viewWidth: number): void {
+  private clearStreams(): void {
+    this.streams.clear();
+    this.oldestLeg = 0;
+  }
+
+  /** Forgets the streams of legs left behind (only when a new leg became the first on screen). */
+  private dropPassedStreams(firstLeg: number): void {
+    if (firstLeg <= this.oldestLeg) return;
+    for (let index = this.oldestLeg; index < firstLeg; index++) this.streams.delete(index);
+    this.oldestLeg = firstLeg;
+  }
+
+  private drawLeg(g: CanvasRenderingContext2D, leg: Leg, scroll: number, time: number, ahead: number, viewWidth: number): void {
     const s = Math.floor(scroll);
     const left = Math.max(0, leg.from - s);
     const right = Math.min(viewWidth, leg.to - s);
@@ -114,11 +140,15 @@ export class DepthLayer {
     }
     if (base) {
       const tile = base.frame(time);
-      for (const x of tileStarts(s, base.period, viewWidth)) g.drawImage(tile, x, base.y);
+      for (let x = firstTileX(s, base.period); x < viewWidth; x += base.period) g.drawImage(tile, x, base.y);
     }
-    vehicle?.(g, scroll, time);
+    vehicle?.(g, scroll, ahead);
     if (props) {
-      for (const p of this.stream(leg).visible(s, s + viewWidth)) propOf(props.catalogue, p.id).draw(g, p.x - s, time, p.seed);
+      const visible = this.stream(leg).visible(s, s + viewWidth, this.placements);
+      for (let i = 0; i < visible.length; i++) {
+        const p = visible[i]!;
+        propOf(props.catalogue, p.id).draw(g, p.x - s, time, p.seed);
+      }
     }
     if (clipped) g.restore();
   }
@@ -142,6 +172,7 @@ export class DepthLayer {
 /** A layer shared by every zone (clouds): one endless stream, with optional drift. */
 export class SharedLayer {
   private stream: PropStream | null = null;
+  private readonly placements: Placement[] = [];
 
   constructor(
     private readonly factor: number,
@@ -163,7 +194,11 @@ export class SharedLayer {
   draw(g: CanvasRenderingContext2D, distance: number, time: number, viewWidth: number): void {
     if (!this.stream) return;
     const s = Math.floor(this.scroll(distance, time));
-    for (const p of this.stream.visible(s, s + viewWidth)) propOf(this.props.catalogue, p.id).draw(g, p.x - s, time, p.seed);
+    const visible = this.stream.visible(s, s + viewWidth, this.placements);
+    for (let i = 0; i < visible.length; i++) {
+      const p = visible[i]!;
+      propOf(this.props.catalogue, p.id).draw(g, p.x - s, time, p.seed);
+    }
   }
 
   warm(): void {

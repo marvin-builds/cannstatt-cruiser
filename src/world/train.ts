@@ -44,8 +44,11 @@ export class TrainRunner {
     if (this.wait <= 1e-9) this.x = layerScroll + viewWidth + 4;
   }
 
-  /** Integer screen x of the train's left edge, or null when none is running. */
-  screenX(layerScroll: number): number | null {
-    return this.x === null ? null : Math.round(this.x) - Math.floor(layerScroll);
+  /**
+   * Integer screen x of the train's left edge, or null when none is running.
+   * `ahead` (s) extrapolates its own drive for a frame drawn between ticks.
+   */
+  screenX(layerScroll: number, ahead = 0): number | null {
+    return this.x === null ? null : Math.round(this.x - this.options.speed * ahead) - Math.floor(layerScroll);
   }
 }

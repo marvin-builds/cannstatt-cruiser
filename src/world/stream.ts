@@ -56,11 +56,24 @@ export class PropStream {
     this.lastLandmark = [...this.config.intro].reverse().find((id) => this.config.landmarks.includes(id)) ?? null;
   }
 
-  /** Placements overlapping layer x range [from, to); earlier ones are dropped. */
-  visible(from: number, to: number): Placement[] {
+  /**
+   * Placements overlapping layer x range [from, to), written into `out`
+   * (pass a reused list to draw without allocating); earlier ones are dropped.
+   */
+  visible(from: number, to: number, out: Placement[] = []): Placement[] {
     while (this.cursor < to) this.place();
-    this.placed = this.placed.filter((p) => p.x + p.width > from);
-    return this.placed.filter((p) => p.x < to);
+    // Placements never overlap, so the passed ones are a prefix.
+    let passed = 0;
+    while (passed < this.placed.length && this.placed[passed]!.x + this.placed[passed]!.width <= from) passed++;
+    if (passed > 0) {
+      this.placed.copyWithin(0, passed);
+      this.placed.length -= passed;
+    }
+    // Overwrite, then truncate: emptying the list first would free its storage every frame.
+    let n = 0;
+    for (let i = 0; i < this.placed.length; i++) if (this.placed[i]!.x < to) out[n++] = this.placed[i]!;
+    out.length = n;
+    return out;
   }
 
   private place(): void {

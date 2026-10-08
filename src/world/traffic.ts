@@ -104,8 +104,18 @@ export function trafficDensity(route: ZoneRoute, distance: number): number {
   return density;
 }
 
+/**
+ * Screen x to draw a vehicle at in a frame between ticks: oncoming traffic
+ * moves with the street (`scrollLead`, see RenderContext) and at its own pace,
+ * traffic in the skater's direction only at its own pace relative to him.
+ * `ahead` = seconds since the last tick.
+ */
+export function vehicleScreenX(v: Vehicle, scrollLead: number, ahead: number): number {
+  return LANES[v.lane]!.dir === 1 ? v.x + v.pace * ahead : v.x - scrollLead - v.pace * ahead;
+}
+
 function firstInactive<T extends { active: boolean }>(pool: readonly T[]): T | null {
-  for (const item of pool) if (!item.active) return item;
+  for (let i = 0; i < pool.length; i++) if (!pool[i]!.active) return pool[i]!;
   return null;
 }
 
@@ -136,8 +146,8 @@ export class Traffic {
   }
 
   reset(): void {
-    for (const v of this.vehicles) v.active = false;
-    for (const p of this.puffs) p.active = false;
+    for (let i = 0; i < this.vehicles.length; i++) this.vehicles[i]!.active = false;
+    for (let i = 0; i < this.puffs.length; i++) this.puffs[i]!.active = false;
     for (let i = 0; i < this.timers.length; i++) this.timers[i] = 0;
   }
 
@@ -145,7 +155,8 @@ export class Traffic {
   update(dt: number, scroll: number, density: number, viewWidth: number): void {
     this.movePuffs(dt, scroll);
     this.follow();
-    for (const v of this.vehicles) {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]!;
       if (!v.active) continue;
       const w = VEHICLES[v.kind].w;
       v.x += LANES[v.lane]!.dir === 1 ? v.pace * dt : -v.pace * dt - scroll;
@@ -162,8 +173,12 @@ export class Traffic {
 
   /** Slows a vehicle that has closed up on the one ahead to that one's pace. */
   private follow(): void {
-    for (const v of this.vehicles) if (v.active) v.pace = v.speed;
-    for (const v of this.vehicles) {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]!;
+      if (v.active) v.pace = v.speed;
+    }
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]!;
       if (!v.active) continue;
       const ahead = this.ahead(v);
       if (ahead && this.gap(v, ahead) < MIN_GAP * 3) v.pace = Math.min(v.pace, ahead.pace);
@@ -173,7 +188,8 @@ export class Traffic {
   /** Never lets a vehicle overlap the one ahead (pushes it back to the minimum gap). */
   private keepApart(): void {
     for (let pass = 0; pass < 3; pass++) {
-      for (const v of this.vehicles) {
+      for (let i = 0; i < this.vehicles.length; i++) {
+        const v = this.vehicles[i]!;
         if (!v.active) continue;
         const ahead = this.ahead(v);
         if (!ahead) continue;
@@ -187,7 +203,8 @@ export class Traffic {
   private ahead(v: Vehicle): Vehicle | null {
     const dir = LANES[v.lane]!.dir;
     let best: Vehicle | null = null;
-    for (const o of this.vehicles) {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const o = this.vehicles[i]!;
       if (!o.active || o === v || o.lane !== v.lane) continue;
       if ((o.x - v.x) * dir <= 0) continue;
       if (!best || (o.x - best.x) * dir < 0) best = o;
@@ -228,7 +245,8 @@ export class Traffic {
   /** True if a vehicle `w` wide fits at `x` in `lane` with room to spare. */
   private clear(lane: number, x: number, w: number): boolean {
     const room = MIN_GAP * 3;
-    for (const o of this.vehicles) {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const o = this.vehicles[i]!;
       if (!o.active || o.lane !== lane) continue;
       if (x - room < o.x + VEHICLES[o.kind].w && o.x < x + w + room) return false;
     }
@@ -248,7 +266,8 @@ export class Traffic {
   }
 
   private movePuffs(dt: number, scroll: number): void {
-    for (const p of this.puffs) {
+    for (let i = 0; i < this.puffs.length; i++) {
+      const p = this.puffs[i]!;
       if (!p.active) continue;
       p.age += dt;
       p.x += PUFF_DRIFT * dt - scroll;

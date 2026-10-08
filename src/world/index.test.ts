@@ -120,4 +120,45 @@ describe('world system traffic', () => {
     game.tick();
     expect(world.trafficDensity()).toBe(0);
   });
+
+  it('writes the traffic density into the state each tick for other systems (audio)', () => {
+    const world = createWorldSystem();
+    const game = new Game({ systems: [world] });
+    game.seed(1);
+    game.commands.startRun();
+    game.tick();
+    expect(game.state.trafficDensity).toBe(0);
+    rideTo(game, ZONE_LENGTH + 1000);
+    expect(game.state.trafficDensity).toBe(0);
+    rideTo(game, 2 * ZONE_LENGTH - 50);
+    expect(game.state.trafficDensity).toBeGreaterThan(0);
+    expect(game.state.trafficDensity).toBeLessThan(1);
+    expect(game.state.trafficDensity).toBe(world.trafficDensity());
+    rideTo(game, 2 * ZONE_LENGTH + 1500);
+    expect(game.state.trafficDensity).toBe(1);
+  });
+
+  it('keeps the state density while paused and zeroes it on game over and the title', () => {
+    const game = new Game({ systems: [createWorldSystem()] });
+    game.commands.startRun();
+    game.commands.setZone(0);
+    game.tick();
+    expect(game.state.trafficDensity).toBe(1);
+    game.commands.pause();
+    game.tick();
+    expect(game.state.trafficDensity).toBe(1);
+    game.commands.resume();
+    game.tick();
+    game.commands.gameOver();
+    game.tick();
+    expect(game.state.trafficDensity).toBe(0);
+    game.commands.toTitle();
+    game.tick();
+    expect(game.state.trafficDensity).toBe(0);
+  });
+
+  it('draws the traffic in the world layer, under every entity (e.g. the thrown ball)', () => {
+    const world = createWorldSystem();
+    expect(Object.keys(world.render ?? {}).sort()).toEqual(['background', 'world']);
+  });
 });

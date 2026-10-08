@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, TICK_DT } from '../core/config';
 import { Rng } from '../core/rng';
-import { LANES, Traffic, TRAFFIC_TOP, trafficDensity, VEHICLES } from './traffic';
+import { LANES, Traffic, TRAFFIC_TOP, trafficDensity, vehicleScreenX, VEHICLES } from './traffic';
 import { ZONE_LENGTH, ZoneRoute } from './zones';
 
 /** Runs `seconds` of traffic at a constant scroll speed (px/s) and density. */
@@ -140,5 +140,14 @@ describe('Traffic', () => {
     traffic.reset();
     expect(active(traffic)).toHaveLength(0);
     expect(traffic.puffs.filter((p) => p.active)).toHaveLength(0);
+  });
+
+  it('extrapolates vehicles for a frame drawn between ticks (street lead plus own pace)', () => {
+    const traffic = new Traffic(new Rng(3));
+    drive(traffic, 5, 100, 1);
+    const withSkater = active(traffic).find((v) => LANES[v.lane]!.dir === 1)!;
+    const oncoming = active(traffic).find((v) => LANES[v.lane]!.dir === -1)!;
+    expect(vehicleScreenX(withSkater, 1.2, 0.01)).toBeCloseTo(withSkater.x + withSkater.pace * 0.01);
+    expect(vehicleScreenX(oncoming, 1.2, 0.01)).toBeCloseTo(oncoming.x - 1.2 - oncoming.pace * 0.01);
   });
 });

@@ -195,8 +195,8 @@ export function mitteZone(train: TrainRunner): ZoneSpec {
       },
       {
         base: trackBed,
-        vehicle: (g, scroll) => {
-          const x = train.screenX(scroll);
+        vehicle: (g, scroll, ahead) => {
+          const x = train.screenX(scroll, ahead);
           if (x !== null) g.drawImage(MITTE_TRAIN.canvas(), x, TRAIN_RAIL_Y - MITTE_TRAIN.height);
         },
         props: {

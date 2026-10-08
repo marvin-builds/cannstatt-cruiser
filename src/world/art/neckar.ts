@@ -272,7 +272,8 @@ export function neckarZone(): ZoneSpec {
           },
           stream: {
             intro: ['bankTree', 'mombachquelle', 'bridge'],
-            landmarks: ['bridge', 'mombachquelle', 'ship'],
+            // The Mombachquelle is unique: only in the intro, so once per Neckar stretch.
+            landmarks: ['bridge', 'ship'],
             fillers: ['bankTrees', 'bankTree', 'poplar', 'boathouse'],
             gap: [6, 28],
             fillersBetween: [2, 4],

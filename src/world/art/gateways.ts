@@ -19,7 +19,7 @@ function group(width: number, parts: ReadonlyArray<readonly [Prop, number]>): Pr
   return {
     width,
     draw: (g, x, time, seed) => {
-      for (const [prop, dx] of parts) prop.draw(g, x + dx, time, seed);
+      for (let i = 0; i < parts.length; i++) parts[i]![0].draw(g, x + parts[i]![1], time, seed);
     },
     warm: () => parts.forEach(([prop]) => prop.warm()),
   };

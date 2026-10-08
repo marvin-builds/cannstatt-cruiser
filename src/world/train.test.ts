@@ -48,4 +48,11 @@ describe('TrainRunner', () => {
     train.update(0.6, 500, 320, true);
     expect(train.screenX(500)).toBe(train.screenX(400)! - 100);
   });
+
+  it('extrapolates its own drive for a frame drawn between ticks', () => {
+    const train = new TrainRunner(new Rng(1), OPTS);
+    train.restart();
+    train.update(0.6, 0, 320, true);
+    expect(train.screenX(0, 0.5)).toBe(train.screenX(0)! - 30);
+  });
 });

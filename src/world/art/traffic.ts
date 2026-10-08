@@ -4,7 +4,7 @@
  * fading grey blobs; and a smoggy haze over the city behind the street.
  */
 import { GROUND_Y, VIEW_MAX_W } from '../../core/config';
-import { LANES, PUFF_LIFE, type Puff, type Traffic, type Vehicle, VEHICLE_VARIANTS, type VehicleKind, VEHICLES } from '../traffic';
+import { LANES, PUFF_LIFE, type Puff, type Traffic, type Vehicle, VEHICLE_VARIANTS, type VehicleKind, VEHICLES, vehicleScreenX } from '../traffic';
 import { lazyCanvas, type Painter } from './paint';
 
 const CAR = {
@@ -115,25 +115,23 @@ const HAZE = lazyCanvas(VIEW_MAX_W, GROUND_Y, (p) => {
   }
 });
 
-function drawVehicle(g: CanvasRenderingContext2D, v: Vehicle): void {
+function drawVehicle(g: CanvasRenderingContext2D, v: Vehicle, scrollLead: number, ahead: number): void {
   const facing = LANES[v.lane]!.dir === 1 ? 0 : 1;
-  g.drawImage(SPRITES[v.kind][v.variant]![facing]!(), Math.round(v.x), v.top);
+  g.drawImage(SPRITES[v.kind][v.variant]![facing]!(), Math.round(vehicleScreenX(v, scrollLead, ahead)), v.top);
 }
 
-/** Puff sizes [w, h] over its life: a wisp growing into a soft rounded blob. */
-const PUFF_SIZES: readonly (readonly [number, number])[] = [
-  [2, 1],
-  [3, 2],
-  [4, 3],
-  [5, 4],
-];
+/** Puff sizes over its life (w, h per stage): a wisp growing into a soft rounded blob. */
+const PUFF_W: readonly number[] = [2, 3, 4, 5];
+const PUFF_H: readonly number[] = [1, 2, 3, 4];
 
 /** Puffs grow (top row at p.y, so they never rise above it) and fade out over their life. */
-function drawPuff(g: CanvasRenderingContext2D, p: Puff): void {
+function drawPuff(g: CanvasRenderingContext2D, p: Puff, scrollLead: number): void {
   const t = p.age / PUFF_LIFE;
-  const [w, h] = PUFF_SIZES[Math.min(PUFF_SIZES.length - 1, Math.floor(t * 1.4 * PUFF_SIZES.length))]!;
+  const stage = Math.min(PUFF_W.length - 1, Math.floor(t * 1.4 * PUFF_W.length));
+  const w = PUFF_W[stage]!;
+  const h = PUFF_H[stage]!;
   g.globalAlpha = 0.7 * (1 - t * t);
-  const x = Math.round(p.x) - (w >> 1);
+  const x = Math.round(p.x - scrollLead) - (w >> 1);
   const y = Math.round(p.y);
   if (h < 3) {
     g.fillRect(x, y, w, h);
@@ -143,13 +141,21 @@ function drawPuff(g: CanvasRenderingContext2D, p: Puff): void {
   }
 }
 
-/** Vehicles back lane first, then the exhaust over them. */
-export function drawTraffic(g: CanvasRenderingContext2D, traffic: Traffic): void {
+/**
+ * Vehicles back lane first, then the exhaust over them, extrapolated for a
+ * frame between ticks: `scrollLead` = RenderContext.scrollLead, `ahead` =
+ * seconds since the last tick (0 while paused).
+ */
+export function drawTraffic(g: CanvasRenderingContext2D, traffic: Traffic, scrollLead: number, ahead: number): void {
+  const { vehicles, puffs } = traffic;
   for (let lane = 0; lane < LANES.length; lane++) {
-    for (const v of traffic.vehicles) if (v.active && v.lane === lane) drawVehicle(g, v);
+    for (let i = 0; i < vehicles.length; i++) {
+      const v = vehicles[i]!;
+      if (v.active && v.lane === lane) drawVehicle(g, v, scrollLead, ahead);
+    }
   }
   g.fillStyle = EXHAUST;
-  for (const p of traffic.puffs) if (p.active) drawPuff(g, p);
+  for (let i = 0; i < puffs.length; i++) if (puffs[i]!.active) drawPuff(g, puffs[i]!, scrollLead);
   g.globalAlpha = 1;
 }
 

@@ -1,10 +1,8 @@
 /**
- * Screen x positions (integers) at which to draw a horizontally repeating tile
- * of width `period` so that it covers 0..viewWidth when scrolled by `scroll`.
+ * Screen x (an integer, -period < x <= 0) of the first copy of a horizontally
+ * repeating tile `period` wide, scrolled by `scroll`. Draw copies at x, x +
+ * period, ... while x < viewWidth (a plain loop: no list per frame).
  */
-export function tileStarts(scroll: number, period: number, viewWidth: number): number[] {
-  const offset = ((Math.floor(scroll) % period) + period) % period;
-  const starts: number[] = [];
-  for (let x = -offset; x < viewWidth; x += period) starts.push(x);
-  return starts;
+export function firstTileX(scroll: number, period: number): number {
+  return -(((Math.floor(scroll) % period) + period) % period);
 }

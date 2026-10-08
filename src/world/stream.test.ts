@@ -113,4 +113,19 @@ describe('PropStream', () => {
       expect(300 - (last.x + last.width)).toBeLessThan(4 + 12 + 1);
     }
   });
+
+  it('fills a caller-owned list, so drawing needs no new array per frame', () => {
+    const stream = make(4);
+    stream.restart(0);
+    const out: Placement[] = [];
+    const first = stream.visible(0, 400, out);
+    expect(first).toBe(out);
+    expect(out.length).toBeGreaterThan(0);
+    stream.visible(200, 600, out);
+    expect(out).toBe(first);
+    for (const p of out) {
+      expect(p.x + p.width).toBeGreaterThan(200);
+      expect(p.x).toBeLessThan(600);
+    }
+  });
 });

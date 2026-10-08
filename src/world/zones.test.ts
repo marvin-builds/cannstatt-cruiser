@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, PLAYER_X } from '../core/config';
+import { BASE_SPEED, PLAYER_X, START_ZONE as CONFIG_START_ZONE } from '../core/config';
 import { FAR_DEPTH, GROUND_DEPTH, MID_DEPTH, NEAR_DEPTH } from './art/layout';
-import { type Depth, normalizeZone, PALETTE_BLEND, SEAM_GRID, START_ZONE, ZONE_COUNT, ZONE_LENGTH, ZoneRoute } from './zones';
+import { type Depth, type Leg, LegList, normalizeZone, type PaletteBlend, PALETTE_BLEND, SEAM_GRID, START_ZONE, ZONE_COUNT, ZONE_LENGTH, ZoneRoute } from './zones';
+
+function legsOf(list: LegList): Leg[] {
+  return Array.from({ length: list.count }, (_, i) => list.at(i));
+}
 
 describe('normalizeZone', () => {
   it('wraps any index into 0..ZONE_COUNT-1', () => {
@@ -22,6 +26,7 @@ describe('ZoneRoute schedule', () => {
 
   it('starts in Bad Cannstatt and rides Cannstatt, Neckar, Mitte, Neckar, Cannstatt (ping-pong)', () => {
     expect(START_ZONE).toBe(2);
+    expect(START_ZONE).toBe(CONFIG_START_ZONE);
     const route = new ZoneRoute();
     expect(route.zoneAt(0)).toBe(2);
     expect(route.boundary(1)).toBe(ZONE_LENGTH);
@@ -101,21 +106,47 @@ describe('ZoneRoute layers', () => {
     const route = new ZoneRoute();
     route.snap(0, 0);
     const seam = route.seam(MID_DEPTH, 1);
-    const legs = route.legs(MID_DEPTH, seam - 100, seam + 100);
+    const legs = legsOf(route.legs(MID_DEPTH, seam - 100, seam + 100));
     expect(legs.map((l) => [l.index, l.zone, l.previous, l.next])).toEqual([[0, 0, 1, 1], [1, 1, 0, 2]]);
     expect(legs[0]!.from).toBe(-Infinity);
     expect(legs[0]!.to).toBe(seam);
     expect(legs[1]!.from).toBe(seam);
     expect(legs[1]!.to).toBe(route.seam(MID_DEPTH, 2));
-    expect(route.legs(MID_DEPTH, 0, 100).map((l) => l.index)).toEqual([0]);
+    expect(legsOf(route.legs(MID_DEPTH, 0, 100)).map((l) => l.index)).toEqual([0]);
+  });
+});
+
+describe('ZoneRoute without per-frame allocation', () => {
+  it('fills a caller-owned leg list and reuses its leg objects', () => {
+    const route = new ZoneRoute();
+    route.snap(0, 0);
+    const seam = route.seam(MID_DEPTH, 1);
+    const out = new LegList();
+    route.legs(MID_DEPTH, seam - 100, seam + 100, out);
+    const [a, b] = legsOf(out);
+    expect(legsOf(out).map((l) => [l.index, l.zone])).toEqual([[0, 0], [1, 1]]);
+    expect(route.legs(MID_DEPTH, 0, 100, out)).toBe(out);
+    expect(out.count).toBe(1);
+    expect(out.at(0)).toBe(a);
+    route.legs(MID_DEPTH, seam - 100, seam + 100, out);
+    expect(out.at(1)).toBe(b);
+    expect(out.at(1).from).toBe(seam);
   });
 
-  it('finds the zone at a layer position', () => {
+  it('gives the zone at a layer position without building a leg', () => {
     const route = new ZoneRoute();
     route.snap(0, 0);
     const seam = route.seam(NEAR_DEPTH, 1);
-    expect(route.legAtLayer(NEAR_DEPTH, seam - 1).zone).toBe(0);
-    expect(route.legAtLayer(NEAR_DEPTH, seam).zone).toBe(1);
+    expect(route.zoneAtLayer(NEAR_DEPTH, seam - 1)).toBe(0);
+    expect(route.zoneAtLayer(NEAR_DEPTH, seam)).toBe(1);
+  });
+
+  it('fills a caller-owned palette blend', () => {
+    const route = new ZoneRoute();
+    route.snap(0, 0);
+    const out: PaletteBlend = { from: 0, to: 0, t: 0 };
+    expect(route.blend(route.boundary(1), out)).toBe(out);
+    expect(out).toEqual({ from: 0, to: 1, t: 0.5 });
   });
 });
 
@@ -142,7 +173,7 @@ describe('ZoneRoute snap', () => {
     expect(route.zoneAt(1000)).toBe(2);
     expect(route.blend(1000)).toEqual({ from: 2, to: 2, t: 1 });
     const scroll = 1000 * FAR_DEPTH.factor;
-    expect(route.legs(FAR_DEPTH, scroll, scroll + 427).map((l) => l.zone)).toEqual([2]);
+    expect(legsOf(route.legs(FAR_DEPTH, scroll, scroll + 427)).map((l) => l.zone)).toEqual([2]);
   });
 
   it('schedules the next gateway a full zone length after the snap', () => {

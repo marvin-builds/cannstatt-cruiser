@@ -5,9 +5,13 @@
  * layer streams the next zone in from the right at its own parallax speed
  * (near first, far last), gateway art hides each seam, and the sky palette
  * blends over several seconds. Stuttgart-Mitte adds dense traffic on the
- * foreground street (below the riding line) and a smoggy haze. Purely visual
- * apart from `state.zoneIndex` (see docs/ARCHITECTURE.md).
+ * foreground street (below the riding line, in the world render layer, so
+ * under every entity) and a smoggy haze. Purely visual apart from
+ * `state.zoneIndex` and `state.trafficDensity` (see docs/ARCHITECTURE.md).
+ * Everything that scrolls is drawn from RenderContext.scroll / scrollLead, so
+ * it moves evenly on 120/144 Hz displays; render allocates nothing per frame.
  */
+import { START_ZONE, TICK_DT } from '../core/config';
 import { Rng } from '../core/rng';
 import { testHookEnabled } from '../core/testhook';
 import type { GameContext, GameMode, RenderContext, System } from '../types';
@@ -24,7 +28,7 @@ import { LETTERBOX } from './palette';
 import { DepthLayer, mixSeed, SharedLayer } from './scene';
 import { Traffic, trafficDensity } from './traffic';
 import { TrainRunner } from './train';
-import { START_ZONE, ZoneRoute } from './zones';
+import { type PaletteBlend, ZoneRoute } from './zones';
 
 /** Zone of the near-layer Stadtbahn (Stuttgart-Mitte). */
 const TRAIN_ZONE = 0;
@@ -34,7 +38,11 @@ const HAZE_BEFORE_LAYER = 2;
 
 /** The world system plus read-only ambience for other systems (e.g. traffic noise). */
 export interface WorldSystem extends System {
-  /** Stuttgart-Mitte traffic density 0..1: 0 elsewhere, ramps in and out with Mitte. */
+  /**
+   * Stuttgart-Mitte traffic density 0..1 as drawn: 0 elsewhere, ramps in and
+   * out with Mitte (the traffic stays on screen on game over). Other systems
+   * read `state.trafficDensity`, which is 0 on the title and game over.
+   */
   trafficDensity(): number;
 }
 
@@ -65,6 +73,7 @@ export function createWorldSystem(): WorldSystem {
   /** Distance seen by the last update, to scroll the traffic with the street. */
   let lastDistance = 0;
   let lastMode: GameMode | null = null;
+  const blend: PaletteBlend = { from: START_ZONE, to: START_ZONE, t: 1 };
 
   function snap(zone: number, distance: number): void {
     route.snap(zone, distance);
@@ -97,11 +106,16 @@ export function createWorldSystem(): WorldSystem {
   /** The train only sets off where the track (a Mitte leg) reaches past the right edge. */
   function trainEnabled(distance: number, viewWidth: number): boolean {
     const spawn = distance * NEAR_DEPTH.factor + viewWidth + 4 + MITTE_TRAIN.width;
-    return route.legAtLayer(NEAR_DEPTH, spawn).zone === TRAIN_ZONE;
+    return route.zoneAtLayer(NEAR_DEPTH, spawn) === TRAIN_ZONE;
+  }
+
+  /** Seconds since the last tick the frame shows (moving things are extrapolated by it); 0 while paused. */
+  function ahead({ state, alpha }: RenderContext): number {
+    return state.mode === 'paused' ? 0 : alpha * TICK_DT;
   }
 
   function drawSky(g: CanvasRenderingContext2D, distance: number): void {
-    const { from, to, t } = route.blend(distance);
+    const { from, to, t } = route.blend(distance, blend);
     g.drawImage(zones[from]!.sky(), 0, 0);
     if (from === to || t <= 0) return;
     g.globalAlpha = t;
@@ -109,7 +123,8 @@ export function createWorldSystem(): WorldSystem {
     g.globalAlpha = 1;
   }
 
-  function drawBackground({ g, state, display }: RenderContext): void {
+  function drawBackground(r: RenderContext): void {
+    const { g, scroll, display } = r;
     if (!warmed) {
       zones.forEach((z) => z.sky());
       clouds.warm();
@@ -119,12 +134,18 @@ export function createWorldSystem(): WorldSystem {
       warmed = true;
     }
     const { viewWidth } = display;
-    drawSky(g, state.distance);
-    clouds.draw(g, state.distance, time, viewWidth);
+    const lead = ahead(r);
+    drawSky(g, scroll);
+    clouds.draw(g, scroll, time + lead, viewWidth);
     for (let d = 0; d < layers.length; d++) {
       if (d === HAZE_BEFORE_LAYER) drawHaze(g, density);
-      layers[d]!.draw(g, route, state.distance, time, viewWidth);
+      layers[d]!.draw(g, route, scroll, time, lead, viewWidth);
     }
+  }
+
+  function drawStreet(r: RenderContext): void {
+    ground.draw(r.g, route, r.scroll, r.display.viewWidth);
+    drawTraffic(r.g, traffic, r.scrollLead, ahead(r));
   }
 
   return {
@@ -154,15 +175,13 @@ export function createWorldSystem(): WorldSystem {
       const scroll = Math.max(0, state.distance - lastDistance);
       lastDistance = state.distance;
       density = trafficDensity(route, state.distance);
+      state.trafficDensity = state.mode === 'playing' ? density : 0;
       traffic.update(dt, scroll, density, display.viewWidth);
     },
 
     render: {
       background: drawBackground,
-      world: ({ g, state, display }) => {
-        ground.draw(g, route, state.distance, display.viewWidth);
-        drawTraffic(g, traffic);
-      },
+      world: drawStreet,
     },
   };
 }
