@@ -14,13 +14,18 @@
  * stopped and ends with the same answer: the spawner plans patterns over
  * several game ticks this way (spawner.ts).
  *
+ * Every search ends within HORIZON ticks, at any speed (at a standstill
+ * nothing passes), and none recurses per tick, so no course or speed can
+ * overflow the call stack. Flights step two scratch cursors in place: only
+ * the nodes kept in the memos are allocated.
+ *
  * Course space: x = 0 is the player's x at tick 0, so the player moves right by
  * speed * dt per tick; y is screen space. The player starts supported (on the
  * ground, or on a rail via `start`).
  */
 import { TICK_DT } from '../core/config';
 import type { Rect } from '../types';
-import { type Body, groundBody, hitboxInto, hitboxOf, snapToRail, stepBody, stompBody } from './jumpsim';
+import { type Body, copyBody, copyInto, groundBody, hitboxInto, hitboxOf, type MutableBody, snapToRailInto, stepBodyInto, stompInto } from './jumpsim';
 import { HITBOX_W } from '../player/tuning';
 import { type Motion, motionOffset } from './motion';
 import { type Feet, landsOnHead, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
@@ -84,6 +89,12 @@ const SAFETY = 1;
 const MAX_FLIGHT = 240;
 /** Node key layout (keyOf): ticks, then supports (0 = ground), then stomped bits; jump keys add the hold. */
 const KEY_TICKS = 1 << 14;
+/**
+ * No search goes past this tick (4.5 minutes of riding, the most node keys
+ * can tell apart): every search ends at any speed. At a standstill or a crawl
+ * that cannot reach the goal by then the answer is a quick no (`hopeless`).
+ */
+const HORIZON = KEY_TICKS - 1;
 const KEY_SUPPORTS = 1 << 8;
 const KEY_HOLDS = 64;
 /** Any rail landing window beats every ground landing window. */
@@ -140,13 +151,21 @@ export class Solver {
   /** ridesThrough and takeoffs per node (they walk many cached ticks; repeated walks dominated the planning time). */
   private readonly rideMemo = new Map<number, boolean>();
   private readonly takeoffMemo = new Map<number, Takeoffs>();
-  /** fairJudge memos per (holds, window, spread): kept, so a resumed fair() check skips finished work. */
-  private readonly fairMemos = new Map<string, Map<number, boolean>>();
+  /** fairJudge per (holds, window, spread), with its memo: kept, so a resumed fair() check skips finished work. */
+  private readonly fairJudges = new Map<string, (node: Node) => boolean>();
   /** wait() and jump() results per node (and hold): the searches visit the same nodes many times. */
   private readonly waits = new Map<number, Node | null>();
   private readonly jumps = new Map<number, Flight | null>();
   /** Supports the body can ride (rails and ledge tops), by index in node keys; grows for rails not in the course. */
   private readonly supports: { top: number; end: number }[];
+  /** The pace cannot carry the player past the goal within HORIZON (a standstill or a crawl): nothing passes. */
+  private readonly hopeless: boolean;
+  /** ridesThrough's keys on the way (reused: it runs for every fair node). */
+  private readonly ridePath: number[] = [];
+  /** solve's explicit search stack (one entry per node being searched): node, key, next choice (see solve). */
+  private readonly stackNodes: Node[] = [];
+  private readonly stackKeys: number[] = [];
+  private readonly stackChoices: number[] = [];
 
   constructor(
     private readonly course: Course,
@@ -161,6 +180,7 @@ export class Solver {
     this.supports = this.rails.map((r) => ({ top: r.y, end: r.x + r.w }));
     this.stomps = options.stomps ?? false;
     this.budget = options.budget ?? null;
+    this.hopeless = this.x(HORIZON) - HITBOX_W / 2 <= course.goal;
   }
 
   /** Whether the course can be passed from `start` (default: on the ground). */
@@ -228,11 +248,17 @@ export class Solver {
   /** Whether the course is fair from a supported node on (see fair), memoised per solver. */
   private fairJudge(holds: readonly number[], window: number, spread = 0): (node: Node) => boolean {
     const id = `${holds.join(',')}|${window}|${spread}`;
-    let memo = this.fairMemos.get(id);
-    if (!memo) this.fairMemos.set(id, (memo = new Map()));
-    const results = memo;
+    let judge = this.fairJudges.get(id);
+    if (!judge) this.fairJudges.set(id, (judge = this.newFairJudge(holds, window, spread)));
+    return judge;
+  }
+
+  private newFairJudge(holds: readonly number[], window: number, spread: number): (node: Node) => boolean {
+    const results = new Map<number, boolean>();
+    // Longest hold first: it clears most pieces, so hasRun's search usually ends early.
+    const longestFirst = [...holds].sort((a, b) => b - a);
     const fairFrom = (node: Node): boolean => {
-      if (this.x(node.tick) > this.course.limit) return false;
+      if (this.hopeless || this.x(node.tick) > this.course.limit) return false;
       if (this.passed(node)) return true;
       const key = this.keyOf(node);
       const known = results.get(key);
@@ -240,7 +266,7 @@ export class Solver {
       results.set(key, false);
       try {
         const rolled = node.body.onRail ? this.rollOff(node) : null;
-        const ok = this.ridesThrough(node) || (!!rolled && fairFrom(rolled)) || this.hasRun(node, holds, window, spread, fairFrom);
+        const ok = this.ridesThrough(node) || (!!rolled && fairFrom(rolled)) || this.hasRun(node, longestFirst, window, spread, fairFrom);
         results.set(key, ok);
         return ok;
       } catch (e) {
@@ -253,9 +279,10 @@ export class Solver {
   }
 
   /**
-   * Whether `window` consecutive take-offs from `from` with one hold all
-   * pass. Tests the last tick of a candidate run first and restarts after
-   * any failure, so most ticks of a hopeless stretch are never flown.
+   * Whether `window` consecutive take-offs from `from` with one of `holds`
+   * (tried in this order) all pass. Tests the last tick of a candidate run
+   * first and restarts after any failure, so most ticks of a hopeless
+   * stretch are never flown.
    */
   private hasRun(from: Node, holds: readonly number[], window: number, spread: number, passes: (f: Flight) => boolean): boolean {
     const { nodes, useful } = this.takeoffs(from);
@@ -263,8 +290,7 @@ export class Solver {
       const flight = this.jump(node, hold);
       return !!flight && useful(flight) && passes(flight);
     };
-    // Longest hold first: it clears most pieces, so the search usually ends early.
-    for (const hold of [...holds].sort((a, b) => b - a)) {
+    for (const hold of holds) {
       const known = new Map<number, boolean>();
       const short = Math.max(HOLDS[0], hold - spread);
       const works = (i: number) => {
@@ -295,8 +321,9 @@ export class Solver {
    * starts or stops.
    */
   private windows(from: Node, holds: readonly number[], passes = (f: Flight) => this.solve(f)): Window[] {
-    const { nodes, useful } = this.takeoffs(from);
     const found: Window[] = [];
+    if (this.hopeless) return found;
+    const { nodes, useful } = this.takeoffs(from);
     for (const hold of holds) {
       let run: Window = { hold, ticks: [], grinds: false };
       const close = () => {
@@ -347,7 +374,8 @@ export class Solver {
 
   /** Riding on without jumping (ducking where needed, rolling off rails) passes the course. Memoised for every node on the way. */
   private ridesThrough(from: Node): boolean {
-    const path: number[] = [];
+    const path = this.ridePath;
+    path.length = 0;
     let node: Node | null = from;
     let ok: boolean | undefined;
     while (ok === undefined) {
@@ -392,35 +420,78 @@ export class Solver {
   }
 
 
-  private solve(node: Node): boolean {
-    if (this.x(node.tick) > this.course.limit) return false;
-    if (this.passed(node)) return true;
-    const key = this.keyOf(node);
-    const known = this.memo.get(key);
-    if (known !== undefined) return known;
-    this.memo.set(key, false);
+  /**
+   * Whether the course can be passed from a supported node: some jump (each
+   * of HOLDS, in order) or else waiting a tick leads to a node from which it
+   * can. A depth-first search on an explicit stack, not one call per node:
+   * waiting walks the course tick by tick, thousands of ticks deep at low
+   * speeds. Every node searched is memoised.
+   */
+  private solve(root: Node): boolean {
+    const settled = this.settled(root);
+    if (settled !== undefined) return settled;
+    const nodes = this.stackNodes;
+    const choices = this.stackChoices;
+    const base = nodes.length;
+    let result = false;
+    this.push(root);
     try {
-      const ok = this.solveFresh(node);
-      this.memo.set(key, ok);
-      return ok;
+      while (nodes.length > base) {
+        const top = nodes.length - 1;
+        // Choices 0..HOLDS.length - 1 jump with that hold, HOLDS.length waits; after that the node fails.
+        const choice = choices[top]!;
+        if (choice > HOLDS.length) result = false;
+        else {
+          choices[top] = choice + 1;
+          const node = nodes[top]!;
+          const next = choice < HOLDS.length ? this.jump(node, HOLDS[choice]!) : this.wait(node);
+          if (!next) continue;
+          const known = this.settled(next);
+          if (known === undefined) this.push(next);
+          if (!known) continue;
+          result = true;
+        }
+        // The top node is decided; a success decides every node below it too.
+        do this.pop(result);
+        while (result && nodes.length > base);
+      }
+      return result;
     } catch (e) {
-      // Out of work: the in-progress mark must not stick as a result.
-      this.memo.delete(key);
+      // Out of work: the in-progress marks must not stick as results.
+      while (nodes.length > base) {
+        this.memo.delete(this.stackKeys.pop()!);
+        nodes.pop();
+        choices.pop();
+      }
       throw e;
     }
   }
 
-  private solveFresh(node: Node): boolean {
-    for (const hold of HOLDS) {
-      const flight = this.jump(node, hold);
-      if (flight && this.solve(flight)) return true;
-    }
-    const next = this.wait(node);
-    return !!next && this.solve(next);
+  /** solve's answer for a node without searching (out of time, past the goal, memoised), or undefined. */
+  private settled(node: Node): boolean | undefined {
+    if (this.hopeless || this.x(node.tick) > this.course.limit) return false;
+    if (this.passed(node)) return true;
+    return this.memo.get(this.keyOf(node));
+  }
+
+  /** Puts a node on solve's stack, marked as failing while in progress. */
+  private push(node: Node): void {
+    const key = this.keyOf(node);
+    this.memo.set(key, false);
+    this.stackNodes.push(node);
+    this.stackKeys.push(key);
+    this.stackChoices.push(0);
+  }
+
+  /** Takes the top node off solve's stack with its result. */
+  private pop(result: boolean): void {
+    this.memo.set(this.stackKeys.pop()!, result);
+    this.stackNodes.pop();
+    this.stackChoices.pop();
   }
 
   private passed(node: Node): boolean {
-    return node.body.grounded && hitboxOf(node.body, this.x(node.tick)).x > this.course.goal;
+    return node.body.grounded && hitboxInto(node.body, this.x(node.tick), scratchPassed).x > this.course.goal;
   }
 
   private x(tick: number): number {
@@ -439,10 +510,12 @@ export class Solver {
   private wait(node: Node): Node | null {
     const key = this.keyOf(node);
     if (this.waits.has(key)) return this.waits.get(key)!;
-    let next = this.advance(node, false, false);
-    if (next && !next.body.grounded && !next.body.onRail) next = this.fly(next, 0, false);
-    this.waits.set(key, next);
-    return next;
+    let found: Node | null = null;
+    if (this.advance(this.load(cursorA, node), false, false, cursorB)) {
+      found = isSupported(cursorB.body) ? nodeOf(cursorB) : this.flyFrom(cursorB, 0, false);
+    }
+    this.waits.set(key, found);
+    return found;
   }
 
   /** Presses now from a supported node and holds `hold` ticks, until supported again; null on a crash. */
@@ -460,65 +533,87 @@ export class Solver {
    * airborne into it.
    */
   private fly(node: Node, hold: number, press = true, path?: Jump['path']): Flight | null {
-    let current: Node = node;
+    return this.flyFrom(this.load(cursorA, node), hold, press, path);
+  }
+
+  /**
+   * fly from a scratch cursor: the airborne ticks step between the two
+   * scratch cursors, so only the landing allocates (its node).
+   */
+  private flyFrom(start: Cursor, hold: number, press: boolean, path?: Jump['path']): Flight | null {
+    let from = start;
+    let to = start === cursorA ? cursorB : cursorA;
     for (let i = 0; i < MAX_FLIGHT; i++) {
-      const next = this.advance(current, press && i === 0, i < hold);
-      if (!next) return null;
-      current = next;
-      if (current.body.grounded || current.body.onRail) return current;
+      if (!this.advance(from, press && i === 0, i < hold, to)) return null;
+      const landed = to;
+      to = from;
+      from = landed;
+      if (isSupported(from.body)) return nodeOf(from);
       if (path) {
-        const box = hitboxOf(current.body, this.x(current.tick));
+        const box = hitboxOf(from.body, this.x(from.tick));
         path.push({ x: box.x + box.w / 2, y: box.y + box.h / 2 });
       }
     }
     return null;
   }
 
-  /**
-   * One tick in the live order: player movement, scroll, rail landing, head
-   * landing (stomps on), obstacle check. Ducks when standing would crash (a
-   * ducked body on the ground is never hit where a standing one is not).
-   */
-  private advance(node: Node, press: boolean, held: boolean): Node | null {
-    return this.advanceAs(node, press, held, false) ?? (press ? null : this.advanceAs(node, press, held, true));
+  /** Copies a node into a scratch cursor; returns the cursor. */
+  private load(cursor: Cursor, node: Node): Cursor {
+    cursor.tick = node.tick;
+    copyInto(cursor.body, node.body);
+    cursor.stomped = node.stomped;
+    return cursor;
   }
 
-  private advanceAs(node: Node, press: boolean, held: boolean, duck: boolean): Node | null {
+  /**
+   * One tick in the live order: player movement, scroll, rail landing, head
+   * landing (stomps on), obstacle check, written into `out` (false on a
+   * crash). Ducks when standing would crash (a ducked body on the ground is
+   * never hit where a standing one is not).
+   */
+  private advance(from: Cursor, press: boolean, held: boolean, out: Cursor): boolean {
+    return this.advanceAs(from, press, held, false, out) || (!press && this.advanceAs(from, press, held, true, out));
+  }
+
+  private advanceAs(from: Cursor, press: boolean, held: boolean, duck: boolean, out: Cursor): boolean {
+    if (from.tick >= HORIZON) return false;
     if (this.budget && --this.budget.left < 0) throw OUT_OF_WORK;
-    // The hot loop of every search: index loops and scratch objects, so a simulated tick allocates only its body and node.
-    let body = stepBody(node.body, this.x(node.tick), press, held, duck, this.pace.jumpScale(node.tick));
-    if (duck && !body.ducking) return null;
-    const tick = node.tick + 1;
+    // The hot loop of every search: index loops and scratch objects, so a simulated tick allocates nothing.
+    const body = stepBodyInto(out.body, from.body, this.x(from.tick), press, held, duck, this.pace.jumpScale(from.tick));
+    if (duck && !body.ducking) return false;
+    const tick = from.tick + 1;
     const x = this.x(tick);
     const box = hitboxInto(body, x, scratchBox);
-    let stomped = node.stomped;
+    let stomped = from.stomped;
     if (!body.onRail) {
       scratchFeet.x = x;
       scratchFeet.y = body.y;
       scratchFeet.vy = body.vy;
       scratchFeet.supported = body.grounded;
       const rail = this.railLandedOn(scratchFeet);
-      if (rail) body = snapToRail(body, rail.y, rail.x + rail.w);
+      if (rail) snapToRailInto(body, rail.y, rail.x + rail.w);
       else if (this.stomps) {
         for (let j = 0; j < this.movers.length; j++) {
           const m = this.movers[j]!;
           if (stomped & (1 << j) || !landsOnHead(scratchFeet, box, at(m.rest, m, x))) continue;
           stomped |= 1 << j;
-          body = stompBody(body);
+          stompInto(body);
           break;
         }
       }
     }
-    for (let i = 0; i < this.obstacles.length; i++) if (overlaps(box, this.obstacles[i]!)) return null;
+    for (let i = 0; i < this.obstacles.length; i++) if (overlaps(box, this.obstacles[i]!)) return false;
     for (let i = 0; i < this.ledges.length; i++) {
       const l = this.ledges[i]!;
-      if (!ridesOn(body, l.top) && !pastLedge(x, l.top) && overlaps(box, l.box)) return null;
+      if (!ridesOn(body, l.top) && !pastLedge(x, l.top) && overlaps(box, l.box)) return false;
     }
     for (let j = 0; j < this.movers.length; j++) {
       const m = this.movers[j]!;
-      if (!(stomped & (1 << j)) && overlaps(box, at(m.box, m, x))) return null;
+      if (!(stomped & (1 << j)) && overlaps(box, at(m.box, m, x))) return false;
     }
-    return { tick, body, stomped };
+    out.tick = tick;
+    out.stomped = stomped;
+    return true;
   }
 
   /** The first rail, then ledge top, the falling feet land on this tick (or null). */
@@ -530,10 +625,33 @@ export class Solver {
   }
 }
 
-/** Scratch objects of advanceAs (single-threaded, never kept). */
+/** A node being simulated in place (the solver's scratch cursors). */
+interface Cursor {
+  tick: number;
+  body: MutableBody;
+  stomped: number;
+}
+
+/**
+ * Scratch objects of the simulation (single-threaded, never kept): two
+ * cursors that flights step between, and the boxes and feet of advanceAs and
+ * passed.
+ */
+const cursorA: Cursor = { tick: 0, body: copyBody(groundBody()), stomped: 0 };
+const cursorB: Cursor = { tick: 0, body: copyBody(groundBody()), stomped: 0 };
 const scratchBox: Rect = { x: 0, y: 0, w: 0, h: 0 };
+const scratchPassed: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const scratchFeet: Feet = { x: 0, y: 0, vy: 0, supported: false };
 const scratchMover: Rect = { x: 0, y: 0, w: 0, h: 0 };
+
+/** A kept node with its own copy of the cursor's body. */
+function nodeOf(cursor: Cursor): Node {
+  return { tick: cursor.tick, body: copyBody(cursor.body), stomped: cursor.stomped };
+}
+
+function isSupported(body: Body): boolean {
+  return body.grounded || body.onRail;
+}
 
 /** A mover's `box` where its motion has carried it when the player is at course x `x` (in a scratch rect). */
 function at(box: Rect, m: Mover, x: number): Rect {

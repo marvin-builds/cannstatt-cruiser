@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import { addRail, createPlayerTestGame, startGrind, tick } from '../player/testing';
 import { CHILL_JUMP_SCALE, GRAVITY, HITBOX_H, HOLD_GRAVITY, JUMP_VELOCITY, STOMP_BOUNCE_VELOCITY } from '../player/tuning';
-import { groundBody, hitboxOf, railBody, stepBody, stompBody } from './jumpsim';
+import { copyBody, groundBody, hitboxOf, railBody, snapToRail, snapToRailInto, stepBody, stepBodyInto, stompBody, stompInto } from './jumpsim';
 
 /** y per tick of the real player when pressing for `hold` ticks from the ground (`chillTimer` > 0: chilled). */
 function realGroundJump(hold: number, ticks: number, chillTimer = 0): number[] {
@@ -147,5 +147,37 @@ describe('stomp bounce', () => {
       expect(b.grounded).toBe(game.state.player.grounded);
     }
     game.buttons.action.release('test');
+  });
+});
+
+describe('in-place stepping (the solver reuses scratch bodies)', () => {
+  /** A press, a hold, a fall onto a rail, riding off its end, a stomp bounce and a landing with duck held. */
+  function script(i: number): { press: boolean; held: boolean; duck: boolean; px: number } {
+    return { press: i === 0 || i === 60, held: i < 8 || (i >= 60 && i < 66), duck: i > 90, px: i * 1.5 };
+  }
+
+  it('stepBodyInto into a scratch body or in place matches stepBody tick by tick', () => {
+    let plain = railBody(GROUND_Y - 20, 30);
+    const scratch = copyBody(plain);
+    const inPlace = copyBody(plain);
+    for (let i = 0; i < 140; i++) {
+      const { press, held, duck, px } = script(i);
+      if (i === 40) {
+        plain = stompBody(plain);
+        stompInto(scratch);
+        stompInto(inPlace);
+      }
+      if (i === 70) {
+        plain = snapToRail(plain, GROUND_Y - 30, 200);
+        snapToRailInto(scratch, GROUND_Y - 30, 200);
+        snapToRailInto(inPlace, GROUND_Y - 30, 200);
+      }
+      const from = copyBody(scratch);
+      plain = stepBody(plain, px, press, held, duck);
+      expect(stepBodyInto(scratch, from, px, press, held, duck)).toBe(scratch);
+      stepBodyInto(inPlace, inPlace, px, press, held, duck);
+      expect(scratch, `tick ${i}`).toEqual(plain);
+      expect(inPlace, `tick ${i}`).toEqual(plain);
+    }
   });
 });

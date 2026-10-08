@@ -53,8 +53,15 @@ export const LEDGE_FRONT_REACH = HITBOX_W / 2;
  * (pastLedge).
  */
 export function landsOnLedge(feet: Feet, top: Rect): boolean {
-  return landsOnRail(feet, { ...top, x: top.x - LEDGE_FRONT_REACH, w: top.w + LEDGE_FRONT_REACH });
+  scratchLedge.x = top.x - LEDGE_FRONT_REACH;
+  scratchLedge.y = top.y;
+  scratchLedge.w = top.w + LEDGE_FRONT_REACH;
+  scratchLedge.h = top.h;
+  return landsOnRail(feet, scratchLedge);
 }
+
+/** landsOnLedge's widened top (the solver asks millions of times; never kept). */
+const scratchLedge: Rect = { x: 0, y: 0, w: 0, h: 0 };
 
 /**
  * The board (wheel contact x) is past the ledge's rear end: it got there over

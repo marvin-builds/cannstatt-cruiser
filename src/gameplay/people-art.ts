@@ -10,7 +10,8 @@
  * circling their head and then laugh. Sizes match catalogue.ts (art.test.ts).
  */
 import { GROUND_Y, PLAYER_X } from '../core/config';
-import { type Sprite, sprite } from '../core/sprite';
+import type { Sprite } from '../core/sprite';
+import { sprite } from './sprites';
 import type { CarriedItem, Entity } from '../types';
 import { itemOf } from './items';
 import { anchorOf, swayOffset } from './motion';

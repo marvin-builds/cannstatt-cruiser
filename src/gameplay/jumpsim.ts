@@ -27,12 +27,35 @@ export interface Body {
   readonly bouncing: boolean;
 }
 
+/** A Body the solver steps in place (stepBodyInto), so its flights allocate nothing per tick. */
+export type MutableBody = { -readonly [K in keyof Body]: Body[K] };
+
 export function groundBody(): Body {
   return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false, bouncing: false };
 }
 
 export function railBody(railTop: number, railEnd: number): Body {
   return { ...groundBody(), y: railTop, grounded: false, onRail: true, railTop, railEnd };
+}
+
+/** A fresh copy of a body (same fields, same order). */
+export function copyBody(b: Body): MutableBody {
+  return copyInto({} as MutableBody, b);
+}
+
+/** Copies every field of `b` into `out`; returns `out`. */
+export function copyInto(out: MutableBody, b: Body): MutableBody {
+  out.y = b.y;
+  out.vy = b.vy;
+  out.grounded = b.grounded;
+  out.onRail = b.onRail;
+  out.railTop = b.railTop;
+  out.railEnd = b.railEnd;
+  out.boosting = b.boosting;
+  out.boostTime = b.boostTime;
+  out.ducking = b.ducking;
+  out.bouncing = b.bouncing;
+  return out;
 }
 
 /**
@@ -42,9 +65,15 @@ export function railBody(railTop: number, railEnd: number): Body {
  * `jumpScale` scales the take-off speed (CHILL_JUMP_SCALE while chilled).
  */
 export function stepBody(b: Body, px: number, press: boolean, held: boolean, duck = false, jumpScale = 1): Body {
+  return stepBodyInto(copyBody(b), b, px, press, held, duck, jumpScale);
+}
+
+/** stepBody written into `out` (which may be `b` itself); returns `out`. */
+export function stepBodyInto(out: MutableBody, b: Body, px: number, press: boolean, held: boolean, duck = false, jumpScale = 1): MutableBody {
   let { y, vy, grounded, onRail, boosting, boostTime } = b;
+  const { railTop, railEnd, bouncing } = b;
   if (!held) boosting = false;
-  if (b.bouncing && !onRail) {
+  if (bouncing && !onRail) {
     // Like a take-off with the action already released: normal gravity, no hold boost.
     grounded = false;
     boosting = false;
@@ -58,8 +87,8 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
     vy = -T.JUMP_VELOCITY * jumpScale;
   }
   if (onRail) {
-    if (px > b.railEnd) onRail = false;
-    else y = b.railTop;
+    if (px > railEnd) onRail = false;
+    else y = railTop;
   } else if (!grounded) {
     const boosted = boosting && vy < 0 && boostTime < T.MAX_JUMP_HOLD;
     if (boosted) boostTime += TICK_DT;
@@ -67,12 +96,24 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
     vy = Math.min(T.MAX_FALL_SPEED, vy + (boosted ? T.HOLD_GRAVITY : T.GRAVITY) * TICK_DT);
     y += vy * TICK_DT;
     if (y >= GROUND_Y) {
-      y = GROUND_Y;
       vy = 0;
       grounded = true;
     }
+    // Clamped with Math.min, not `y = GROUND_Y`: bundled module constants are `var`s, and merging
+    // one into the float y made V8 box y in a fresh heap number on every simulated tick.
+    y = Math.min(y, GROUND_Y);
   }
-  return { ...b, y, vy, grounded, onRail, boosting, boostTime, ducking: duck && grounded, bouncing: false };
+  out.y = y;
+  out.vy = vy;
+  out.grounded = grounded;
+  out.onRail = onRail;
+  out.railTop = railTop;
+  out.railEnd = railEnd;
+  out.boosting = boosting;
+  out.boostTime = boostTime;
+  out.ducking = duck && grounded;
+  out.bouncing = false;
+  return out;
 }
 
 /** The player's hitbox for this body at pattern x `px` (same shape as the player's own). */
@@ -93,10 +134,28 @@ export function hitboxInto(b: Body, px: number, out: Rect): Rect {
 
 /** Puts the body onto a rail (what grindStart does to the player). */
 export function snapToRail(b: Body, railTop: number, railEnd: number): Body {
-  return { ...b, y: railTop, vy: 0, grounded: false, onRail: true, railTop, railEnd, boosting: false };
+  return snapToRailInto(copyBody(b), railTop, railEnd);
+}
+
+/** snapToRail in place; returns `b`. */
+export function snapToRailInto(b: MutableBody, railTop: number, railEnd: number): MutableBody {
+  b.y = railTop;
+  b.vy = 0;
+  b.grounded = false;
+  b.onRail = true;
+  b.railTop = railTop;
+  b.railEnd = railEnd;
+  b.boosting = false;
+  return b;
 }
 
 /** What the stomp event does to the player: it bounces up with STOMP_BOUNCE_VELOCITY on the next step. */
 export function stompBody(b: Body): Body {
-  return { ...b, bouncing: true };
+  return stompInto(copyBody(b));
+}
+
+/** stompBody in place; returns `b`. */
+export function stompInto(b: MutableBody): MutableBody {
+  b.bouncing = true;
+  return b;
 }

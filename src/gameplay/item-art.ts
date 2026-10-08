@@ -2,7 +2,7 @@
  * Pixel art of the items people carry and toss (football, Brezel, Maßkrug,
  * Lebkuchenherz) and the foam drops a flying Maßkrug spills.
  */
-import { sprite } from '../core/sprite';
+import { sprite } from './sprites';
 import type { CarriedItem } from '../types';
 import { DROP_TICKS, type ItemToss } from './toss';
 

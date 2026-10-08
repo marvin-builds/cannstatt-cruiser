@@ -1,6 +1,8 @@
 /**
  * Gameplay slice: obstacles, people, rails, stars and the joint, drawn as a
- * bubble gum in kid mode (catalogue.ts, art.ts, people-art.ts, motion.ts),
+ * bubble gum in kid mode (catalogue.ts, art.ts, people-art.ts, motion.ts;
+ * every sprite rasterised at startup, sprites.ts, rails and overhead signs
+ * composed into one canvas each, composed.ts),
  * the distance-based spawner with clearability check, planned ahead under a
  * per-tick work budget (spawner.ts, patterns.ts, course.ts, solver.ts,
  * jumpsim.ts), difficulty (difficulty.ts) and the chill effect (chill.ts),
@@ -16,7 +18,7 @@ import { Rng } from '../core/rng';
 import { testHookEnabled } from '../core/testhook';
 import type { CarriedItem, Entity, GameContext, System } from '../types';
 import { ZoneRoute } from '../world/zones';
-import { drawEntity, drawSparkle, SPARKLE_TICKS } from './art';
+import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
 import { AutoDrink } from './auto-drink';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isObstacle, isRail } from './catalogue';
@@ -143,6 +145,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
 
     init(ctx) {
       game = ctx;
+      // All art rasterised at startup: a first draw mid-run was a render spike on phones.
+      warmArt();
       if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx);
       ctx.bus.on('runStarted', () => {
         route.snap(START_ZONE, 0);

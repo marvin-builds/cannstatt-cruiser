@@ -4,8 +4,11 @@
  * are drawn from it down to the ground behind the rider and never collide.
  */
 import { GROUND_Y } from '../core/config';
-import { type Sprite, sprite } from '../core/sprite';
+import type { Sprite } from '../core/sprite';
+import { sprite } from './sprites';
 import type { Entity } from '../types';
+import { obstacleRect } from './catalogue';
+import { ComposedCache } from './composed';
 
 const K = '#1a1418';
 
@@ -156,17 +159,62 @@ export function overheadSize(kind: OverheadKind): { w: number; h: number } {
   return { w: s.width, h: s.height };
 }
 
+/** A sign with its supports down to the ground, composed once per kind and height. */
+interface Composed {
+  kind: OverheadKind;
+  /** Sign top (screen y). */
+  y: number;
+}
+
+const KINDS: OverheadKind[] = ['banner', 'stopSign'];
+const COMPOSED = new ComposedCache<Composed>(4, (g, { kind, y }) => paintOverhead(g, kind, -leftOf(kind), GROUND_Y - y));
+const scratch: Composed = { kind: 'banner', y: 0 };
+
 /** Supports first (behind), then the hanging sprite, at integer coordinates (`lead`: RenderContext.scrollLead). */
 export function drawOverhead(g: CanvasRenderingContext2D, e: Entity, kind: OverheadKind, lead = 0): void {
-  const { sprite: art, support } = ART[kind];
   const x = Math.round(e.x - lead);
   const y = Math.round(e.y);
+  const left = leftOf(kind);
+  g.drawImage(composed(kind, y), x + left, y);
+}
+
+/** Composes both signs at their catalogue height now (see art.ts warmArt). */
+export function warmOverheads(g: CanvasRenderingContext2D): void {
+  for (const kind of KINDS) g.drawImage(composed(kind, obstacleRect(kind, 0).y), 0, 0);
+}
+
+function composed(kind: OverheadKind, y: number): HTMLCanvasElement {
+  const { sprite: art, support } = ART[kind];
+  const left = leftOf(kind);
+  let right = art.width;
+  for (const dx of support.xs) right = Math.max(right, dx + footOffset(support) + support.foot.width);
+  scratch.kind = kind;
+  scratch.y = y;
+  return COMPOSED.get(KINDS.indexOf(kind) * 256 + y, right - left, GROUND_Y - y, scratch);
+}
+
+/** The sign at (x, 0) with its supports down to `ground`. */
+function paintOverhead(g: CanvasRenderingContext2D, kind: OverheadKind, x: number, ground: number): void {
+  const { sprite: art, support } = ART[kind];
   const { post, foot, band } = support;
-  const footTop = GROUND_Y - foot.height;
+  const footTop = ground - foot.height;
   for (const dx of support.xs) {
     const px = x + dx;
-    for (let py = y + support.from; py < footTop; py++) post.draw(g, Math.floor((py - y) / band) % post.frameCount, px, py);
-    foot.draw(g, 0, px - Math.floor((foot.width - post.width) / 2), footTop);
+    for (let py = support.from; py < footTop; py++) post.draw(g, Math.floor(py / band) % post.frameCount, px, py);
+    foot.draw(g, 0, px + footOffset(support), footTop);
   }
-  art.draw(g, 0, x, y);
+  art.draw(g, 0, x, 0);
+}
+
+/** A foot's x relative to its post (centred under it). */
+function footOffset(support: Support): number {
+  return -Math.floor((support.foot.width - support.post.width) / 2);
+}
+
+/** Leftmost x of the composed art relative to the sign (a foot may reach left of it). */
+function leftOf(kind: OverheadKind): number {
+  const { support } = ART[kind];
+  let left = 0;
+  for (const dx of support.xs) left = Math.min(left, dx + footOffset(support));
+  return left;
 }

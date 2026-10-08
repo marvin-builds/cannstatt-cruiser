@@ -5,10 +5,12 @@
  * catalogue.ts.
  */
 import { GROUND_Y } from '../core/config';
-import { type Sprite, sprite } from '../core/sprite';
+import type { Sprite } from '../core/sprite';
+import { scratchContext, sprite, warmSprites } from './sprites';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { ITEM_SPRITES } from './item-art';
-import { drawOverhead, isOverheadArt, overheadSize } from './overhead-art';
+import { ComposedCache } from './composed';
+import { drawOverhead, isOverheadArt, overheadSize, warmOverheads } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
 
 const K = '#1a1418';
@@ -217,18 +219,29 @@ export const SPARKLE_TICKS = SPARKLE_FRAMES * SPARKLE_FRAME_TICKS;
 /** Distance between rail posts. */
 const POST_SPACING = 28;
 
+/** A rail's art from its bar (one row above its top) down to the ground, composed once per kind, length and height. */
+const RAILS = new ComposedCache<Entity>(8, (g, e) => paintRail(g, e, 1, GROUND_Y - Math.round(e.y) + 1));
+
 function drawRail(g: CanvasRenderingContext2D, e: Entity, x: number): void {
-  const parts = e.kind === 'pipe' ? PIPE : HANDRAIL;
   const top = Math.round(e.y);
-  const postW = parts.post.width;
-  // Posts every POST_SPACING, plus one at the rear end.
-  for (let px = 4; px < e.w - postW - 3; px += POST_SPACING) drawPost(g, parts, x + px, top);
-  drawPost(g, parts, x + e.w - postW - 4, top);
-  for (let px = 0; px < e.w; px++) parts.bar.draw(g, 0, x + px, top - 1);
+  const w = Math.round(e.w);
+  const key = ((e.kind === 'pipe' ? 1 : 0) * 4096 + w) * 256 + top;
+  g.drawImage(RAILS.get(key, w, GROUND_Y - top + 1, e), x, top - 1);
 }
 
-function drawPost(g: CanvasRenderingContext2D, parts: typeof HANDRAIL | typeof PIPE, px: number, top: number): void {
-  const footTop = GROUND_Y - parts.foot.height;
+/** Bar slices, posts and feet with the rail top at `top` and the ground at `ground` (canvas y). */
+function paintRail(g: CanvasRenderingContext2D, e: Entity, top: number, ground: number): void {
+  const parts = e.kind === 'pipe' ? PIPE : HANDRAIL;
+  const w = Math.round(e.w);
+  const postW = parts.post.width;
+  // Posts every POST_SPACING, plus one at the rear end.
+  for (let px = 4; px < w - postW - 3; px += POST_SPACING) drawPost(g, parts, px, top, ground);
+  drawPost(g, parts, w - postW - 4, top, ground);
+  for (let px = 0; px < w; px++) parts.bar.draw(g, 0, px, top - 1);
+}
+
+function drawPost(g: CanvasRenderingContext2D, parts: typeof HANDRAIL | typeof PIPE, px: number, top: number, ground: number): void {
+  const footTop = ground - parts.foot.height;
   for (let py = top + parts.bar.height - 1; py < footTop; py++) parts.post.draw(g, 0, px, py);
   parts.foot.draw(g, 0, px - Math.floor((parts.foot.width - parts.post.width) / 2), footTop);
 }
@@ -295,4 +308,16 @@ export function starSize(): { w: number; h: number } {
 
 export function jointSize(): { w: number; h: number } {
   return { w: JOINT.width, h: JOINT.height };
+}
+
+/**
+ * Rasterises all gameplay art now (call once at startup): every sprite frame
+ * and the composed overhead signs, so nothing is built on its first draw
+ * mid-run. Rails are composed when they come (their sizes vary).
+ */
+export function warmArt(): void {
+  const g = scratchContext();
+  if (!g) return;
+  warmSprites(g);
+  warmOverheads(g);
 }
