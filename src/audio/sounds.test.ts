@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Cue } from './backend';
-import { GLUG_LENGTH, GULP_AT, SOUNDS } from './sounds';
+import { GLUG_LENGTH, GULP_AT, SOUNDS, stuntStepPitch } from './sounds';
 import { PASS_CUES } from './passby';
 import { TRAFFIC_CUES } from './traffic';
 
@@ -110,5 +110,39 @@ describe('sounds: vehicles passing by', () => {
     for (const cue of ['passCar', 'passVan'] as const) {
       expect(SOUNDS[cue].some((v) => v.wave === 'square' && v.freq < 50)).toBe(false);
     }
+  });
+});
+
+describe('sounds: stunt lines', () => {
+  const peak = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.gain));
+  const tonal = (cue: Cue) => SOUNDS[cue].filter((v) => v.wave !== 'noise').sort((a, b) => a.at - b.at);
+
+  it('launches with a springy whoosh that sweeps up', () => {
+    const voices = tonal('launch');
+    const end = voices.reduce((last, v) => (v.at + v.dur > last.at + last.dur ? v : last));
+    expect(end.to!).toBeGreaterThan(3 * voices[0].freq);
+    expect(SOUNDS.launch.some((v) => v.wave === 'noise')).toBe(true);
+  });
+
+  it('climbs a scale with every step of the line, starting at the plain note', () => {
+    expect(stuntStepPitch(1)).toBe(1);
+    for (let step = 2; step <= 10; step++) expect(stuntStepPitch(step)).toBeGreaterThan(stuntStepPitch(step - 1));
+  });
+
+  it('keeps the climb in a pleasant range for very long lines', () => {
+    expect(stuntStepPitch(0)).toBe(1);
+    expect(stuntStepPitch(100)).toBeLessThanOrEqual(4);
+  });
+
+  it('ends a completed line with a fanfare that finishes on its highest note', () => {
+    const notes = tonal('stuntFanfare');
+    const top = Math.max(...notes.map((v) => v.freq));
+    expect(notes.at(-1)!.freq).toBe(top);
+  });
+
+  it('lets a dropped line fade with a soft falling blip, quieter than the fanfare', () => {
+    const notes = tonal('stuntFizzle');
+    expect(notes.at(-1)!.freq).toBeLessThan(notes[0].freq);
+    expect(peak('stuntFizzle')).toBeLessThan(peak('stuntFanfare'));
   });
 });

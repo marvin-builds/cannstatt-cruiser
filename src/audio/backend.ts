@@ -37,7 +37,11 @@ export type Cue =
   | 'passCar'
   | 'passVan'
   | 'passBus'
-  | 'passTruck';
+  | 'passTruck'
+  | 'launch'
+  | 'stuntStep'
+  | 'stuntFanfare'
+  | 'stuntFizzle';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';
@@ -47,9 +51,10 @@ export interface AudioBackend {
   unlock(): void;
   /**
    * Plays a one-shot cue; `intensity` 0..1 scales its volume, `delay` (seconds,
-   * default 0) starts it later. Ignored before unlock.
+   * default 0) starts it later, `pitch` (default 1) multiplies the frequency of
+   * its tonal voices (2 = an octave up). Ignored before unlock.
    */
-  play(cue: Cue, intensity: number, delay?: number): void;
+  play(cue: Cue, intensity: number, delay?: number, pitch?: number): void;
   startLoop(loop: LoopName): void;
   stopLoop(loop: LoopName): void;
   setMuted(muted: boolean): void;

@@ -29,6 +29,7 @@ const PENDING_MAX_AGE_MS = 250;
 interface PendingCue {
   cue: Cue;
   intensity: number;
+  pitch: number;
   /** performance.now() at which the cue should start (play time + delay). */
   due: number;
   delayed: boolean;
@@ -40,13 +41,19 @@ interface PendingCue {
  * (e.g. the woozy sting waiting behind the gulps), so a later cue never
  * drops one that was scheduled to follow.
  */
+/** A tonal voice moved by the pitch factor (noise keeps its cutoff). */
+function transpose(voice: Voice, pitch: number): Voice {
+  if (pitch === 1 || voice.wave === 'noise') return voice;
+  return { ...voice, freq: voice.freq * pitch, to: voice.to && voice.to * pitch };
+}
+
 class PendingCues {
   private cues: PendingCue[] = [];
 
-  add(cue: Cue, intensity: number, delay: number, now: number): void {
+  add(cue: Cue, intensity: number, delay: number, pitch: number, now: number): void {
     const delayed = delay > 0;
     if (!delayed) this.cues = this.cues.filter((p) => p.delayed);
-    this.cues.push({ cue, intensity, due: now + delay * 1000, delayed });
+    this.cues.push({ cue, intensity, pitch, due: now + delay * 1000, delayed });
   }
 
   clear(): void {
@@ -54,10 +61,10 @@ class PendingCues {
   }
 
   /** Removes all cues and returns the fresh ones with their remaining delay in seconds. */
-  take(now: number): { cue: Cue; intensity: number; delay: number }[] {
+  take(now: number): { cue: Cue; intensity: number; delay: number; pitch: number }[] {
     const fresh = this.cues.filter((p) => now - p.due <= PENDING_MAX_AGE_MS);
     this.cues = [];
-    return fresh.map((p) => ({ cue: p.cue, intensity: p.intensity, delay: Math.max(0, (p.due - now) / 1000) }));
+    return fresh.map((p) => ({ cue: p.cue, intensity: p.intensity, pitch: p.pitch, delay: Math.max(0, (p.due - now) / 1000) }));
   }
 }
 
@@ -249,9 +256,9 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     }
   };
 
-  function playNow(ctx: AudioContext, cue: Cue, intensity: number, delay = 0): void {
+  function playNow(ctx: AudioContext, cue: Cue, intensity: number, delay: number, pitch: number): void {
     guard(() => {
-      for (const voice of SOUNDS[cue]) playVoice(ctx, voice, intensity, delay);
+      for (const voice of SOUNDS[cue]) playVoice(ctx, transpose(voice, pitch), intensity, delay);
     });
   }
 
@@ -274,7 +281,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     const cues = pending.take(performance.now());
     const ctx = ready();
     if (!ctx || muted) return;
-    for (const p of cues) playNow(ctx, p.cue, p.intensity, p.delay);
+    for (const p of cues) playNow(ctx, p.cue, p.intensity, p.delay, p.pitch);
   }
 
   return {
@@ -288,11 +295,11 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
         );
       }
     },
-    play(cue: Cue, intensity: number, delay = 0) {
+    play(cue: Cue, intensity: number, delay = 0, pitch = 1) {
       if (muted) return;
       const ctx = ready();
-      if (ctx) playNow(ctx, cue, intensity, delay);
-      else if (ac && master) pending.add(cue, intensity, delay, performance.now());
+      if (ctx) playNow(ctx, cue, intensity, delay, pitch);
+      else if (ac && master) pending.add(cue, intensity, delay, pitch, performance.now());
     },
     startLoop(loop: LoopName) {
       const ctx = ready();

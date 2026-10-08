@@ -131,6 +131,18 @@ const POP: Voice[] = [
   { wave: 'square', at: 0, dur: 0.05, freq: 1400, to: 500, gain: 0.08 },
 ];
 
+/**
+ * Semitones of the stunt melody: a major pentatonic run over two octaves, so
+ * every step of a line sounds like the next note of a happy tune.
+ */
+const STUNT_SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24] as const;
+
+/** Pitch factor of stunt step `step` (1 = first piece); long lines stay on the top note. */
+export function stuntStepPitch(step: number): number {
+  const index = Math.min(STUNT_SCALE.length - 1, Math.max(0, Math.floor(step) - 1));
+  return 2 ** (STUNT_SCALE[index] / 12);
+}
+
 export const SOUNDS: Record<Cue, Voice[]> = {
   // Quick rising square blip.
   jump: [{ wave: 'square', at: 0, dur: 0.11, freq: 300, to: 720, gain: 0.22 }],
@@ -274,6 +286,30 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'noise', at: 0, dur: 1.1, freq: 250, to: 900, gain: 0.2, filter: 'lowpass', attack: 0.45 },
     { wave: 'sawtooth', at: 0, dur: 1.1, freq: 62, to: 48, gain: 0.08, attack: 0.45 },
     { wave: 'noise', at: 0.75, dur: 0.45, freq: 4200, to: 3000, gain: 0.07, filter: 'highpass', attack: 0.06 },
+  ],
+  // Kicker take-off: a springy 'twang' that shoots up with an airy whoosh rising behind it.
+  launch: [
+    { wave: 'triangle', at: 0, dur: 0.05, freq: 200, to: 150, gain: 0.35 },
+    { wave: 'triangle', at: 0.04, dur: 0.2, freq: 150, to: 900, gain: 0.32 },
+    { wave: 'square', at: 0.04, dur: 0.14, freq: 300, to: 1100, gain: 0.05 },
+    { wave: 'noise', at: 0.02, dur: 0.26, freq: 900, to: 3200, gain: 0.22, filter: 'bandpass' },
+  ],
+  // One piece of a stunt line: a short bright note with a soft octave on top; the
+  // audio system transposes it up the stunt scale with every step (stuntStepPitch).
+  stuntStep: [
+    { wave: 'square', at: 0, dur: 0.1, freq: N.C5, gain: 0.1 },
+    { wave: 'triangle', at: 0.015, dur: 0.12, freq: N.C6, gain: 0.12 },
+  ],
+  // A completed line: a short happy fanfare over a bouncy bass, ending on a long high note.
+  stuntFanfare: [
+    ...notes('triangle', [N.C4, N.G4, N.C5], 0.08, 0.2, 0.2),
+    ...notes('square', [N.C5, N.E5, N.G5, N.C6], 0.08, 0.12, 0.34),
+    { wave: 'triangle', at: 0.24, dur: 0.34, freq: N.C6, gain: 0.12 },
+  ],
+  // A line the skater dropped out of: two soft falling blips, friendly, never a sad sting.
+  stuntFizzle: [
+    { wave: 'triangle', at: 0, dur: 0.1, freq: N.G5, to: N.E5, gain: 0.1 },
+    { wave: 'triangle', at: 0.1, dur: 0.14, freq: N.E5, to: N.C5, gain: 0.08 },
   ],
   // Vehicles driving past (vehiclePassed): a light, higher car hum ...
   passCar: passBy({ wave: 'triangle', hz: 150, engineGain: 0.12, air: 1600, airGain: 0.09, len: 0.75 }),

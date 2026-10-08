@@ -10,7 +10,7 @@ import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
 import { PASS_BY, PassBy } from './passby';
-import { GLUG_LENGTH } from './sounds';
+import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
 import { createWebAudioBackend } from './webaudio';
 
@@ -58,11 +58,11 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       // Ignore: the game keeps running silently.
     }
   };
-  const play = (cue: Cue, intensity = 1, delay = 0) => {
+  const play = (cue: Cue, intensity = 1, delay = 0, pitch = 1) => {
     onSound?.(cue, muted);
     // Gameplay sounds stay clearly audible over the Mitte rumble.
     if (!isTrafficCue(cue)) traffic.duck();
-    safely(() => backend.play(cue, intensity, delay));
+    safely(() => backend.play(cue, intensity, delay, pitch));
   };
   /** One tick of the traffic rumble, horns and trucks: silent unless playing and unmuted. */
   const updateTraffic = (ctx: GameContext) => {
@@ -159,6 +159,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         const step = passBy.pass(vehicle, ctx.state.time);
         if (step) play(step.cue, step.intensity * traffic.duckFactor);
       });
+      // Stunt lines: a springy take-off, a melody that climbs with each piece made,
+      // and a fanfare for a full line (a dropped line only fades with a soft blip).
+      // Ledge grinds bring their own grindStart / grindEnd, so the grind loop covers them.
+      bus.on('launch', () => play('launch'));
+      bus.on('stuntStep', ({ step }) => play('stuntStep', 1, 0, stuntStepPitch(step)));
+      bus.on('stuntEnd', ({ completed }) => play(completed ? 'stuntFanfare' : 'stuntFizzle'));
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);
