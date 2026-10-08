@@ -20,11 +20,16 @@ export const UI = {
   /** Sweet pink tint while the bubble gum works (kid mode). */
   gumTint: '255, 140, 205',
   pink: '#ff7eb6',
+  /** Deeper edge haze of the chill tints (adult, kid mode), so the tint shows even on a warm sky. */
+  chillEdge: '200, 70, 30',
+  gumEdge: '220, 50, 160',
   /** Settings menu: button face and the "on" colour. */
-  buttonFace: 'rgba(16, 18, 30, 0.8)',
-  buttonEdge: 'rgba(255, 244, 224, 0.7)',
+  buttonFace: '#10121e',
+  buttonEdge: '#c9c3b8',
   green: '#7bd389',
-  panel: 'rgba(16, 18, 30, 0.55)',
+  /** Opaque plates (HUD, banner, panels, buttons): translucent ones turned clouds into grey smudges. */
+  panel: '#20243a',
+  plateEdge: '#8a8a94',
 } as const;
 
 export const STAR = sprite({ y: UI.yellow, o: UI.orange, k: UI.ink }, [`
@@ -77,7 +82,7 @@ const plates = new Map<number, Sprite>();
 export function buttonPlateSprite(size: number): Sprite {
   let plate = plates.get(size);
   if (!plate) {
-    plate = sprite({ b: 'rgba(16, 18, 30, 0.55)', e: 'rgba(255, 244, 224, 0.45)' }, [plateArt(size)]);
+    plate = sprite({ b: UI.panel, e: UI.plateEdge }, [plateArt(size)]);
     plates.set(size, plate);
   }
   return plate;

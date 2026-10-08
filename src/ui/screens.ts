@@ -24,7 +24,20 @@ import {
 } from './art';
 import type { Banner } from './banner';
 import { chillLook } from './chill-look';
-import { blinkOn, buttonPlate, centreX, formatNumber, hudButtons, metres, settingsLayout, type UiMetrics, uiMetrics } from './layout';
+import {
+  answerLabel,
+  blinkOn,
+  buttonPlate,
+  centreX,
+  fitCentred,
+  formatNumber,
+  hudButtons,
+  metres,
+  riding,
+  settingsLayout,
+  type UiMetrics,
+  uiMetrics,
+} from './layout';
 import { drawLogo, logoRect } from './logo';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
@@ -62,7 +75,25 @@ function fill(r: RenderContext, color: string): void {
   r.g.fillRect(0, 0, r.display.viewWidth, r.display.viewHeight);
 }
 
-/** Translucent plate behind a block of centred text, `w` wide. */
+/** Draws `s` with a 1 px ink outline all round, so coloured text reads on any background. */
+function outlined(r: RenderContext, s: string, x: number, y: number, options: TextOptions): void {
+  for (const [dx, dy] of OUTLINE) drawText(r.g, s, x + dx, y + dy, { ...options, color: UI.ink });
+  drawText(r.g, s, x, y, options);
+}
+
+const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]] as const;
+
+/** Opaque plate with a yellow rule above and below (zone banner, pause prompt), `x`..`x + w`. */
+function ribbon(r: RenderContext, x: number, y: number, w: number, h: number): void {
+  const { g } = r;
+  g.fillStyle = UI.panel;
+  g.fillRect(x, y, w, h);
+  g.fillStyle = UI.yellow;
+  g.fillRect(x, y, w, 1);
+  g.fillRect(x, y + h - 1, w, 1);
+}
+
+/** Opaque plate behind a block of centred text, `w` wide. */
 function panel(r: RenderContext, w: number, y: number, h: number): void {
   r.g.fillStyle = UI.panel;
   r.g.fillRect(centreX(r.display.viewWidth) - Math.floor(w / 2), y, w, h);
@@ -82,49 +113,63 @@ function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, f
 
 function drawButtons(r: RenderContext, view: UiView): void {
   const m = uiMetrics(r.display);
-  const b = hudButtons(r.display.viewWidth, view.fullscreenAvailable, m);
   const { mode, muted } = r.state;
-  if (mode === 'playing' || mode === 'paused') hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
+  const b = hudButtons(r.display.viewWidth, view.fullscreenAvailable, m, riding(mode));
+  if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
   hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
   if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
 }
 
-/** A thin bar under the logo that fills while it is held (shown only after LONG_PRESS_HINT_DELAY). */
+/** A 2 px yellow bar under the logo that fills while it is held (shown only after LONG_PRESS_HINT_DELAY). */
 function drawHoldProgress(r: RenderContext, progress: number): void {
   if (progress <= 0) return;
+  const { g } = r;
   const logo = logoRect(r.display.viewWidth);
   const w = logo.w - 20;
   const x = logo.x + 10;
-  const y = logo.y + logo.h - 1;
-  r.g.fillStyle = UI.panel;
-  r.g.fillRect(x, y, w, 3);
-  r.g.fillStyle = UI.muted;
-  r.g.fillRect(x + 1, y + 1, Math.round((w - 2) * progress), 1);
+  const y = TITLE_PANEL_Y - 3;
+  g.fillStyle = UI.ink;
+  g.fillRect(x - 1, y - 1, w + 2, 4);
+  g.fillStyle = UI.empty;
+  g.fillRect(x, y, w, 2);
+  g.fillStyle = UI.yellow;
+  g.fillRect(x, y, Math.round(w * progress), 2);
+  g.fillStyle = UI.white;
+  g.fillRect(x, y, Math.round(w * progress), 1);
 }
+
+/** Top of the title's text panel, just under the logo. */
+const TITLE_PANEL_Y = 66;
 
 function drawTitle(r: RenderContext, view: UiView): void {
   const cx = centreX(r.display.viewWidth);
+  const { touch } = r.display;
   drawLogo(r.g, r.display.viewWidth);
-  drawHoldProgress(r, view.logoHold.progress);
 
-  panel(r, 236, 62, 80);
-  centred(r, 'Mit dem Longboard durch Stuttgart', 66, { color: UI.muted });
+  const y = TITLE_PANEL_Y + 3;
+  const hints = y + 27;
+  const keys = hints + 3 * LINE + 1;
+  const rowY = touch ? keys + 2 : keys + LINE + 3;
+  panel(r, 236, TITLE_PANEL_Y, rowY + LINE - TITLE_PANEL_Y);
+  drawHoldProgress(r, view.logoHold.progress);
+  centred(r, 'Mit dem Longboard durch Stuttgart', y, { color: UI.muted });
   if (blinkOn(r.state.modeTime)) {
-    centred(r, hint(r, 'Tippen zum Starten', 'Leertaste zum Starten'), 81, { color: UI.yellow });
+    centred(r, hint(r, 'Tippen zum Starten', 'Leertaste zum Starten'), y + 13, { color: UI.yellow });
   }
-  centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Kurz drücken = kleiner Sprung'), 96);
-  centred(r, 'halten = hoher Sprung', 96 + LINE - 1);
-  centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), 96 + 2 * LINE - 2);
+  centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Leertaste kurz = kleiner Sprung'), hints);
+  centred(r, 'Halten = hoher Sprung', hints + LINE);
+  centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), hints + 2 * LINE);
+  if (!touch) centred(r, 'P/Esc = Pause, M = Ton aus', keys, { color: UI.muted });
 
   const best = `Highscore ${formatNumber(view.records.highscore)}`;
   const stars = `${formatNumber(view.records.starsTotal)} gesamt`;
   const gap = 14;
   const total = measureText(best) + gap + STAR.width + 3 + measureText(stars);
   let x = cx - Math.floor(total / 2);
-  text(r, best, x, 130, { color: UI.white });
+  text(r, best, x, rowY, { color: UI.white });
   x += measureText(best) + gap;
-  STAR.draw(r.g, 0, x, 130);
-  text(r, stars, x + STAR.width + 3, 130, { color: UI.white });
+  STAR.draw(r.g, 0, x, rowY);
+  text(r, stars, x + STAR.width + 3, rowY, { color: UI.white });
 }
 
 /** Score, combo, hearts, stars and the chill timer in the top-left corner on a plate sized to them. */
@@ -172,11 +217,11 @@ function drawChillTint(r: RenderContext): void {
   if (strength <= 0) return;
   const { g } = r;
   const { viewWidth: w, viewHeight: h } = r.display;
-  const { tint } = chillLook(r.state.kidMode);
-  g.fillStyle = `rgba(${tint}, ${(0.16 * strength).toFixed(3)})`;
+  const { tint, edge } = chillLook(r.state.kidMode);
+  g.fillStyle = `rgba(${tint}, ${(0.26 * strength).toFixed(3)})`;
   g.fillRect(0, 0, w, h);
-  // A slightly denser band towards the edges, in three steps.
-  g.fillStyle = `rgba(${tint}, ${(0.06 * strength).toFixed(3)})`;
+  // A denser, deeper band towards the edges, in three steps: shows even where the sky has the tint's hue.
+  g.fillStyle = `rgba(${edge}, ${(0.1 * strength).toFixed(3)})`;
   for (const inset of [0, 6, 12]) {
     g.fillRect(0, inset, w, 6);
     g.fillRect(0, h - inset - 6, w, 6);
@@ -189,7 +234,9 @@ function drawLive(r: RenderContext, view: UiView): void {
 
   for (const p of view.popups.active()) {
     g.globalAlpha = p.age > 0.7 ? (1 - p.age) / 0.3 : 1;
-    text(r, p.text, p.x, p.y, { color: p.color, align: 'center' });
+    // Keep wide popups (portrait, catch texts) inside the left edge.
+    const x = Math.max(p.x, 2 + Math.ceil(measureText(p.text, p.scale) / 2));
+    outlined(r, p.text, x, p.y, { color: p.color, align: 'center', scale: p.scale });
   }
   g.globalAlpha = 1;
 
@@ -197,11 +244,7 @@ function drawLive(r: RenderContext, view: UiView): void {
     const w = measureText(view.banner.text, 2) + 16;
     const x = centreX(r.display.viewWidth) - Math.floor(w / 2);
     const y = 56 - Math.round(view.banner.slide() * 80);
-    g.fillStyle = UI.panel;
-    g.fillRect(x, y, w, 22);
-    g.fillStyle = UI.yellow;
-    g.fillRect(x, y, w, 1);
-    g.fillRect(x, y + 21, w, 1);
+    ribbon(r, x, y, w, 22);
     text(r, view.banner.text, x + 8, y + 4, { scale: 2, color: UI.white });
   }
 }
@@ -209,9 +252,10 @@ function drawLive(r: RenderContext, view: UiView): void {
 function drawPause(r: RenderContext): void {
   fill(r, UI.dim);
   centred(r, 'Pause', 54, { scale: 3 });
-  if (blinkOn(r.state.modeTime)) {
-    centred(r, hint(r, 'Tippen zum Weiterfahren', 'Leertaste oder P zum Weiterfahren'), 92, { color: UI.yellow });
-  }
+  const prompt = hint(r, 'Tippen zum Weiterfahren', 'Leertaste, P oder Esc zum Weiterfahren');
+  const w = measureText(prompt) + 16;
+  ribbon(r, centreX(r.display.viewWidth) - Math.floor(w / 2), 88, w, 15);
+  if (blinkOn(r.state.modeTime)) centred(r, prompt, 92, { color: UI.yellow });
 }
 
 /** One "label  value" row of the game-over table, split at the centre line. */
@@ -229,7 +273,11 @@ function drawGameOver(r: RenderContext, view: UiView): void {
   fill(r, UI.dim);
   const { state } = r;
   const run = view.lastRun;
-  centred(r, 'Sturz! Runde vorbei', 16, { scale: 2, color: UI.red });
+  // Centred, unless that runs under the button row (portrait): then left of it.
+  const buttons = hudButtons(r.display.viewWidth, view.fullscreenAvailable, uiMetrics(r.display), false);
+  const title = 'Sturz! Runde vorbei';
+  const titleX = fitCentred(measureText(title, 2), r.display.viewWidth, (buttons.fullscreen ?? buttons.mute).x);
+  text(r, title, titleX, 16, { scale: 2, color: UI.red, align: 'center' });
   if (run?.newRecord && blinkOn(state.modeTime * 2)) centred(r, 'Neuer Rekord!', 38, { scale: 2, color: UI.yellow });
 
   const rows: [string, string, string][] = [
@@ -277,7 +325,7 @@ function menuButton(r: RenderContext, rect: Rect, label: string, color: string =
 
 function drawSettings(r: RenderContext, view: UiView): void {
   const { settings } = view;
-  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display), r.display.viewHeight);
+  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
   fill(r, UI.ink);
   if (settings.screen === 'menu') {
     const on = r.state.kidMode;
@@ -292,7 +340,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
     const q = settings.question;
     centred(r, 'Elternfrage: Kindermodus ausschalten?', 12, { color: UI.muted });
     centred(r, `Wie viel ist ${q.a} × ${q.b}?`, 28, { scale: 2, color: UI.yellow });
-    q.answers.forEach((n, i) => menuButton(r, l.answers[i]!, String(n)));
+    q.answers.forEach((n, i) => menuButton(r, l.answers[i]!, answerLabel(i, n)));
     if (!r.display.touch) centred(r, 'Tasten 1, 2, 3 = antworten, Esc = schließen', l.back.y - 14, { color: UI.muted });
     menuButton(r, l.back, 'Zurück');
   }

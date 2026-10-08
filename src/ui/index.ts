@@ -18,12 +18,13 @@ import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
 import { catchPopup } from './item-look';
-import { hudButtons, plusPoints, settingsLayout, uiMetrics } from './layout';
+import { hudButtons, plusPoints, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, portraitHintShown, type UiView } from './screens';
+import { statsLayout } from './stats';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -34,6 +35,12 @@ export interface UiSystemOptions {
 
 /** Popups appear this far above the skater's feet. */
 const POPUP_RISE = 44;
+/** Catch popups appear above the item the skater raises, and bigger. */
+const CATCH_RISE = 60;
+/** Most popups on screen at once (a repeat merges into its popup instead). */
+const MAX_POPUPS = 3;
+/** Popups never rise into the HUD plate (its tallest form, with the chill row). */
+const POPUP_CEILING = ((p) => p.y + p.h + 2)(statsLayout(0, true).plate);
 
 const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSupported();
 
@@ -42,7 +49,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   const view: UiView = {
     records: loadRecords(store),
     lastRun: null,
-    popups: new PopupPool(8),
+    popups: Object.assign(new PopupPool(MAX_POPUPS), { ceiling: POPUP_CEILING }),
     banner: new Banner(),
     fullscreenAvailable: false,
     portraitDismissed: false,
@@ -52,9 +59,9 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   };
 
   function bindEvents(ctx: GameContext): void {
-    const { bus, state } = ctx;
-    const popup = (text: string, color: string) =>
-      view.popups.spawn(text, PLAYER_X, state.player.y - POPUP_RISE, color);
+    const { bus, state, display } = ctx;
+    const popup = (text: string, color: string, big = false, rise = POPUP_RISE) =>
+      view.popups.spawn(text, PLAYER_X, state.player.y - rise, color, popupScale(display, big));
     bus.on('runStarted', () => {
       view.popups.clear();
       view.banner.show(zoneName(state.zoneIndex));
@@ -63,9 +70,10 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     bus.on('grindStart', () => popup('Grind!', UI.teal));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
     bus.on('crash', () => popup('Autsch!', UI.red));
+    bus.on('stomp', () => popup('Stomp!', UI.orange));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
-      popup(look.text, look.color);
+      popup(look.text, look.color, true, CATCH_RISE);
     });
     bus.on('chillStart', (e) => {
       view.chillDuration = e.duration;
@@ -84,14 +92,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
 
   function addHotspots(ctx: GameContext): void {
     const { state, display, commands } = ctx;
-    const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display));
+    const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode));
     const whenButtons = (pick: () => Rect | null) => () =>
       portraitHintShown(ctx, view) || view.settings.open ? null : pick();
     const full = (): Rect => ({ x: 0, y: 0, w: display.viewWidth, h: display.viewHeight });
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? full() : null), onPress: () => commands.resume() });
     ctx.addHotspot({
-      rect: whenButtons(() => (state.mode === 'playing' || state.mode === 'paused' ? buttons().pause : null)),
+      rect: whenButtons(() => (riding(state.mode) ? buttons().pause : null)),
       onPress: () => (state.mode === 'playing' ? commands.pause() : commands.resume()),
     });
     ctx.addHotspot({ rect: whenButtons(() => buttons().mute), onPress: () => commands.setMuted(!state.muted) });
@@ -107,7 +115,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   function addSettingsHotspots(ctx: GameContext, full: () => Rect): void {
     const { state, display, commands } = ctx;
     const { settings, logoHold } = view;
-    const menu = () => settingsLayout(display.viewWidth, uiMetrics(display), display.viewHeight);
+    const menu = () => settingsLayout(display.viewWidth, uiMetrics(display));
     const onTitle = () => state.mode === 'title' && !portraitHintShown(ctx, view);
     const logo: InputHotspot = {
       rect: () => (onTitle() && !settings.open ? logoRect(display.viewWidth) : null),

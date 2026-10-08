@@ -1,3 +1,4 @@
+import type { GameMode } from '../core/modes';
 import type { Rect } from '../types';
 
 /**
@@ -44,21 +45,31 @@ export function centreX(viewWidth: number): number {
 }
 
 export interface HudButtons {
+  /** Outermost slot. The button exists only while riding; without it (title, game over) mute takes this slot. */
   pause: Rect;
   mute: Rect;
   /** null where the browser has no Fullscreen API (iPhone Safari). */
   fullscreen: Rect | null;
 }
 
-/** Tap areas of the button row in the top-right corner, right to left: pause, mute, fullscreen. */
-export function hudButtons(viewWidth: number, fullscreenAvailable: boolean, m: UiMetrics = DESKTOP): HudButtons {
+/** Whether the pause button shows: only during a run (playing or paused). */
+export function riding(mode: GameMode): boolean {
+  return mode === 'playing' || mode === 'paused';
+}
+
+/**
+ * Tap areas of the button row in the top-right corner, right to left: pause
+ * (only while riding or paused), mute, fullscreen.
+ */
+export function hudButtons(viewWidth: number, fullscreenAvailable: boolean, m: UiMetrics = DESKTOP, withPause = true): HudButtons {
+  const first = withPause ? 1 : 0;
   const slot = (i: number): Rect => ({
     x: rightAnchor(viewWidth, m.hit, m.margin + i * (m.hit + m.gap)),
     y: m.margin,
     w: m.hit,
     h: m.hit,
   });
-  return { pause: slot(0), mute: slot(1), fullscreen: fullscreenAvailable ? slot(2) : null };
+  return { pause: slot(0), mute: slot(first), fullscreen: fullscreenAvailable ? slot(first + 1) : null };
 }
 
 /** The visible plate of a HUD button, centred in its tap area. */
@@ -80,10 +91,11 @@ const BACK_W = 100;
 const ANSWER_W = 72;
 const ANSWER_GAP = 12;
 const ANSWERS_Y = 56;
-/** Gap between the Zurück button and the bottom of the view. */
-const BOTTOM_GAP = 10;
+/** Gap between the lowest content (answers, or the toggle and its note) and Zurück. */
+const BACK_GAP = 20;
 
-export function settingsLayout(viewWidth: number, m: UiMetrics, viewHeight = 180): SettingsLayout {
+/** The settings screens as one compact block: Zurück sits right under the content, not at the bottom. */
+export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout {
   const cx = centreX(viewWidth);
   const h = m.menuButtonH;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
@@ -91,9 +103,31 @@ export function settingsLayout(viewWidth: number, m: UiMetrics, viewHeight = 180
   const answer = (i: number): Rect => ({ x: rowX + i * (ANSWER_W + ANSWER_GAP), y: ANSWERS_Y, w: ANSWER_W, h });
   return {
     toggle: centred(TOGGLE_W, TOGGLE_Y),
-    back: centred(BACK_W, viewHeight - BOTTOM_GAP - h),
+    back: centred(BACK_W, Math.max(TOGGLE_Y, ANSWERS_Y) + h + BACK_GAP),
     answers: [answer(0), answer(1), answer(2)],
   };
+}
+
+/** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */
+export function popupScale(display: { portrait: boolean }, big: boolean): number {
+  return big || display.portrait ? 2 : 1;
+}
+
+/** A parent-check answer labelled with the key that picks it: "1: 48". */
+export function answerLabel(index: number, answer: number): string {
+  return `${index + 1}: ${answer}`;
+}
+
+/**
+ * Centre x for text `w` wide that must stay left of `obstacleX` (the button
+ * row): the view centre when it fits there, else the centre of the free space,
+ * never closer than 2 px to the left edge.
+ */
+export function fitCentred(w: number, viewWidth: number, obstacleX: number): number {
+  const half = Math.ceil(w / 2);
+  const cx = centreX(viewWidth);
+  if (cx - half >= 2 && cx + half <= obstacleX - 2) return cx;
+  return Math.max(Math.floor(obstacleX / 2), 2 + half);
 }
 
 /** Whole number with German thousands dots: 1234567 -> "1.234.567". */

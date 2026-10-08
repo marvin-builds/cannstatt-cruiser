@@ -35,8 +35,8 @@ and on desktop (keyboard and mouse). The UI language is German.
 
 ## Skater
 
-- A middle-aged person of normal height, with salt-and-pepper (mixed dark-grey)
-  hair visible under a cap. Casual clothes, e.g. hoodie or jacket, jeans and
+- A middle-aged person of normal height under a cap, with tidy grey hair at the
+  temple and nape and no moustache. Casual clothes, e.g. hoodie or jacket, jeans and
   sneakers.
 - Board: a short longboard. The deck is longer than a street board, with a slight
   kicktail and visibly bigger, soft wheels.
@@ -156,7 +156,9 @@ The art is recognisable but stylised.
 - Titelbildschirm ("Tippen oder Leertaste zum Starten").
 - HUD (Punkte, Sterne, Gesundheit, chill timer while chilled). Numbers use the
   German thousands dot (61.234).
-- Pause.
+- Pause ("Tippen zum Weiterfahren" / "Leertaste, P oder Esc zum Weiterfahren").
+- Desktop title hints name the keys: "Leertaste kurz = kleiner Sprung",
+  "Halten = hoher Sprung", "P/Esc = Pause, M = Ton aus".
 - Game Over with Punkte, Highscore, Sterne and a restart.
 - Highscore and the star total are stored in localStorage.
 - Mute button.

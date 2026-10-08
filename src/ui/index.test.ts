@@ -60,20 +60,22 @@ describe('ui system', () => {
     expect(game.state.mode).toBe('paused');
   });
 
-  it('the mute hotspot toggles mute in every mode', () => {
+  it('the mute hotspot toggles mute in every mode, flush right while there is no pause button', () => {
     const { game } = setup();
-    const [x, y] = centre(hudButtons(game.display.viewWidth, true).mute);
+    const onTitle = hudButtons(game.display.viewWidth, true, undefined, false).mute;
+    expect(onTitle).toEqual(hudButtons(game.display.viewWidth, true).pause);
+    const [x, y] = centre(onTitle);
     expect(game.hitHotspot(x, y)).toBe(true);
     expect(game.state.muted).toBe(true);
     game.commands.startRun();
-    game.hitHotspot(x, y);
+    game.hitHotspot(...centre(hudButtons(game.display.viewWidth, true).mute));
     expect(game.state.muted).toBe(false);
     expect(game.state.mode).toBe('playing');
   });
 
   it('the fullscreen hotspot exists only where fullscreen is supported', () => {
     const supported = setup(true);
-    const [x, y] = centre(hudButtons(320, true).fullscreen!);
+    const [x, y] = centre(hudButtons(320, true, undefined, false).fullscreen!);
     expect(supported.game.hitHotspot(x, y)).toBe(true);
     expect(supported.toggles()).toBe(1);
 

@@ -119,7 +119,11 @@ async function chill(t: PlaytestContext): Promise<void> {
   t.check('chill: street slows to ~60 %', chilled.speed < before.speed * 0.65, { before: before.speed, now: chilled.speed });
   const chillApex = await t.game.jumpApex(30);
   t.check('chill: the full jump is lower', chillApex < normalApex * 0.8, { normalApex, chillApex });
-  await t.game.step(30);
+  await t.game.setZone(0);
+  await t.game.step(10);
+  await t.canvasShot('chill tint mitte');
+  await t.game.setZone(2);
+  await t.game.step(20);
   await t.canvasShot('chill late');
   const after = await stepWhile(t, (s) => s.chillTimer > 0, { max: 600 });
   await t.game.step(2);

@@ -9,6 +9,8 @@ export interface ChillLook {
   icon: 'joint' | 'gum';
   /** "r, g, b" of the screen tint (alpha comes from the effect strength). */
   tint: string;
+  /** "r, g, b" of the denser haze at the top and bottom edge. */
+  edge: string;
   /** Colour of the draining timer bar. */
   bar: string;
   /** Popup at the pickup. */
@@ -16,8 +18,8 @@ export interface ChillLook {
   popupColor: string;
 }
 
-const ADULT: ChillLook = { icon: 'joint', tint: UI.chillTint, bar: UI.chillBar, popup: 'Ganz entspannt...', popupColor: UI.orange };
-const KID: ChillLook = { icon: 'gum', tint: UI.gumTint, bar: UI.pink, popup: 'Kaugummi!', popupColor: UI.pink };
+const ADULT: ChillLook = { icon: 'joint', tint: UI.chillTint, edge: UI.chillEdge, bar: UI.chillBar, popup: 'Ganz entspannt...', popupColor: UI.orange };
+const KID: ChillLook = { icon: 'gum', tint: UI.gumTint, edge: UI.gumEdge, bar: UI.pink, popup: 'Kaugummi!', popupColor: UI.pink };
 
 export function chillLook(kidMode: boolean): ChillLook {
   return kidMode ? KID : ADULT;

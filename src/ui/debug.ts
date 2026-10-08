@@ -6,7 +6,7 @@
 import { PLAYER_X } from '../core/config';
 import type { GameContext, Rect } from '../types';
 import { UI } from './art';
-import { type HudButtons, hudButtons, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
+import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { UiView } from './screens';
 import type { ParentQuestion, SettingsScreen } from './settings';
@@ -37,9 +37,10 @@ export function installUiDebug(ctx: GameContext, view: UiView): void {
     },
     samplePopups() {
       const y = ctx.state.player.y - 44;
-      view.popups.spawn('+50', PLAYER_X, y, UI.white);
-      view.popups.spawn('Grind!', PLAYER_X, y, UI.teal);
-      view.popups.spawn('Stern!', PLAYER_X, y, UI.yellow);
+      const scale = popupScale(ctx.display, false);
+      view.popups.spawn('+50', PLAYER_X, y, UI.white, scale);
+      view.popups.spawn('Grind!', PLAYER_X, y, UI.teal, scale);
+      view.popups.spawn('Stern!', PLAYER_X, y, UI.yellow, scale);
     },
     setRecords(highscore = 0, starsTotal = 0) {
       view.records = { highscore, starsTotal };
@@ -52,8 +53,8 @@ export function installUiDebug(ctx: GameContext, view: UiView): void {
       const metrics = uiMetrics(display);
       return {
         metrics,
-        hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics),
-        menu: settingsLayout(display.viewWidth, metrics, display.viewHeight),
+        hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics, riding(ctx.state.mode)),
+        menu: settingsLayout(display.viewWidth, metrics),
         logo: logoRect(display.viewWidth),
       };
     },

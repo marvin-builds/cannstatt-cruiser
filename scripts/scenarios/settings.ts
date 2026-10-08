@@ -161,6 +161,9 @@ async function kidRun(t: PlaytestContext): Promise<void> {
   await t.canvasShot('kid mode gum pickup');
   await game.step(50);
   await t.canvasShot('kid mode pink tint and gum icon');
+  await game.setZone(2);
+  await game.step(10);
+  await t.canvasShot('kid mode pink tint cannstatt');
   await t.screenshot('kid mode run page');
   t.check('the gum works like the joint (chillStart)', (await game.eventsSince(since, 'chillStart')).length === 1);
   await game.setSpeed(null);

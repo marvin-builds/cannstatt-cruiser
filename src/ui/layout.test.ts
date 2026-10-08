@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rect } from '../types';
-import { blinkOn, buttonPlate, centreX, formatNumber, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
+import { answerLabel, blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -93,6 +93,46 @@ describe('layout helpers', () => {
       expect(r.h).toBeGreaterThan(40);
       expect(inside(r, width)).toBe(true);
     }
+  });
+
+  it('without the pause button the others move flush right (title, game over)', () => {
+    for (const { display } of DEVICES) {
+      const m = uiMetrics(display);
+      const withPause = hudButtons(390, true, m);
+      const without = hudButtons(390, true, m, false);
+      expect(without.mute).toEqual(withPause.pause);
+      expect(without.fullscreen).toEqual(withPause.mute);
+    }
+  });
+
+  it('settings: Zurück sits right under the content instead of at the bottom', () => {
+    for (const { display } of DEVICES) {
+      const m = uiMetrics(display);
+      const l = settingsLayout(390, m);
+      const content = Math.max(l.toggle.y + l.toggle.h, l.answers[0].y + l.answers[0].h);
+      expect(l.back.y - content).toBeGreaterThanOrEqual(16);
+      expect(l.back.y - content).toBeLessThanOrEqual(24);
+    }
+  });
+
+  it('draws popups twice as big in portrait and for catches', () => {
+    expect(popupScale({ portrait: false }, false)).toBe(1);
+    expect(popupScale({ portrait: false }, true)).toBe(2);
+    expect(popupScale({ portrait: true }, false)).toBe(2);
+  });
+
+  it('labels parent-check answers with their key', () => {
+    expect(answerLabel(0, 48)).toBe('1: 48');
+    expect(answerLabel(2, 81)).toBe('3: 81');
+  });
+
+  it('fits centred text left of an obstacle on the right', () => {
+    // Fits centred in the view: stays centred.
+    expect(fitCentred(100, 320, 280)).toBe(160);
+    // Would run under the obstacle: centred in the free space left of it instead.
+    expect(fitCentred(220, 390, 302)).toBe(151);
+    // Never closer than 2 px to the left edge.
+    expect(fitCentred(300, 320, 300)).toBe(152);
   });
 
   it('omits the fullscreen button where unsupported', () => {

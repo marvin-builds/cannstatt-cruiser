@@ -341,6 +341,17 @@ The zones follow each other along the street; there is no time-based cycle.
 
 So every tap area on a phone is >= ~44 CSS px; the HUD tap areas stay right
 of x = 120 (clear of the stats plate) at every width from 320 to 427.
+The pause button exists only during a run (`layout.ts` `riding`); on the
+title and game-over screens mute and fullscreen move flush right into its slot.
+All UI plates (HUD, buttons, zone banner, pause prompt, panels) are opaque.
+
+### Popups (ui/popups.ts)
+
+At most 3 popups show at once. A repeat of a live popup merges into it
+("Stern! x3"). No popup rises above the HUD stats plate (`PopupPool.ceiling`;
+stacks then grow downwards). Every popup has a 1 px ink outline; catch popups
+and all popups in portrait are drawn at scale 2 (`popupScale`). The ui slice
+shows "Stomp!" on `stomp`; gameplay adds the points.
 
 ## Stomp and carried items
 
@@ -375,7 +386,8 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   `state.carriedItem`, adds `ITEM_POINTS` and emits `itemCaught {item}`.
 - **Losing it**: a crash clears `state.carriedItem` (`health.ts`) and cancels
   an item in flight; `resetRun` clears it at every run start.
-- **UI**: popup per item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
+- **UI**: "Stomp!" on the stomp, then a big popup per item above the raised
+  item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
   "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
   draws the carried item and the catch pose; audio plays its own sounds.
 - **Solver**: `new Solver(course, pace, {stomps: true})` treats a head
