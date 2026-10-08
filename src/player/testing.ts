@@ -33,8 +33,8 @@ export function startGrind(game: Game, rail: Entity): void {
   game.bus.emit('grindStart', { entityId: rail.id });
 }
 
-/** What gameplay does when the player hits an obstacle. */
-export function crash(game: Game, kind: EntityKind = 'bin'): void {
+/** What gameplay does when the player hits an obstacle (`bin`: the head-first dive into the bin). */
+export function crash(game: Game, kind: EntityKind = 'barrier'): void {
   game.state.health -= 1;
   game.bus.emit('crash', { entityId: 1, kind, health: game.state.health });
 }

@@ -65,3 +65,10 @@ export const CHILL_ANIM_RATE = 0.7;
 export const STOMP_BOUNCE_VELOCITY = 150;
 /** Seconds the arm reaches up after catching a tossed item (itemCaught). Looks only. */
 export const CATCH_TIME = 0.2;
+
+/**
+ * Bin crash (crash into a `bin`): seconds head first in the bin on the board
+ * (legs kicking) before he pops out and the bin tumbles away. The sequence
+ * lasts CRASH_TIME like every crash.
+ */
+export const BIN_POP_AT = 0.76;

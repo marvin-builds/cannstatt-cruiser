@@ -15,6 +15,8 @@ export interface Pose {
   bodyDy?: number;
   boardDx?: number;
   boardDy?: number;
+  /** The bin crash: the open bin sits on the deck, drawn over the body (only the legs stick out). */
+  bin?: boolean;
 }
 
 interface Step extends Pose {
@@ -27,7 +29,7 @@ interface Timeline {
   loop: boolean;
 }
 
-export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp';
+export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp' | 'binCrash';
 
 /** Board sits with its trucks on the rail top (wheels hang either side). */
 const GRIND_DY = 2;
@@ -96,9 +98,33 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.crouch, board: BD.flat },
     ],
   },
+  // Head first into the bin on the rolling board, legs kicking (BIN_POP_AT s), then a hop out
+  // with the arms up and back onto the board; the bin tumbles away meanwhile (bin.ts).
+  binCrash: {
+    loop: false,
+    steps: [
+      { t: 0.06, body: B.binDive, board: BD.flat, bodyDy: -6, bin: true },
+      { t: 0.06, body: B.binDive, board: BD.flat, bodyDy: -2, bin: true },
+      ...binKicks(8, 0.08),
+      { t: 0.1, body: B.airFall, board: BD.flat, bodyDy: -9 },
+      { t: 0.08, body: B.airRise, board: BD.flat, bodyDy: -4 },
+      { t: 0.06, body: B.landSquash, board: BD.flat },
+    ],
+  },
 };
 
-export function timelineFor(view: Pick<AnimView, 'anim' | 'standingUp'>, vy: number): TimelineName {
+/** `n` alternating kick frames of `t` seconds, in the bin. */
+function binKicks(n: number, t: number): Step[] {
+  return Array.from({ length: n }, (_, i) => ({ t, body: i % 2 ? B.binKickB : B.binKickA, board: BD.flat, bin: true }));
+}
+
+/** Both crash timelines: the joint, the carried item and the bubble gum are gone meanwhile. */
+export function isCrashTimeline(name: TimelineName): boolean {
+  return name === 'crash' || name === 'binCrash';
+}
+
+export function timelineFor(view: Pick<AnimView, 'anim' | 'standingUp'> & { binCrash?: boolean }, vy: number): TimelineName {
+  if (view.anim === 'crash' && view.binCrash) return 'binCrash';
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
   if (view.standingUp && (view.anim === 'ride' || view.anim === 'push')) return 'standUp';
   return view.anim;

@@ -49,6 +49,17 @@ in any slice's Vitest tests.
   tumble, lying, kneel, back on the board) for `CRASH_TIME` (1.0 s), ignores
   the action meanwhile, leaves a rail (emitting `grindEnd`), and sets
   `player.invulnerableTimer = INVULNERABLE_TIME` (1.5 s).
+- **Bin crash** (`kind === 'bin'`): instead of being thrown off, the skater
+  dives head first into the bin and keeps rolling on the ground (no crash
+  hop): the open bin sits on the deck with his legs kicking out of the top
+  for `BIN_POP_AT` (0.76 s), then he pops out with a hop and lands back on
+  the board within `CRASH_TIME`, while the bin tumbles away to the left and
+  then moves with the street until it leaves the screen (`bin.ts`). The
+  player draws this bin from the crash moment on, so **gameplay removes the
+  hit bin entity** on that crash. The lid colour is read from the hit
+  entity's `data.variant` (gameplay's lid order) if it is still in
+  `state.entities` when `crash` is emitted, otherwise the first lid.
+  `player.state` stays `crash`, so the rules above are unchanged.
 - **The player owns `invulnerableTimer`**: it sets it on a crash and counts
   it down every playing tick. Gameplay only reads it: skip obstacle
   collisions (and do not emit `crash`) while `player.invulnerableTimer > 0`.
@@ -139,12 +150,12 @@ const rail = addRail(game, { x: 60, y: GROUND_Y - 30, w: 120, h: 4 });
 startGrind(game, rail);   // emits grindStart like gameplay
 tick(game, 10);
 game.buttons.duck.press('test'); // duck (release with .release('test'))
-crash(game);              // health - 1, emits crash
+crash(game);              // health - 1, emits crash (kind 'barrier'; crash(game, 'bin') = bin dive)
 jumpApex(game, 2);        // tap from the current support, returns apex height
 ```
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
-length)`, `removeRail(id)`, `crash()`, `chill(seconds)` (sets
+length)`, `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the bin dive), `chill(seconds)` (sets
 `state.chillTimer`), `kidMode(on)` (sets `state.kidMode`), `carry(item)` (sets
 `state.carriedItem`, `null` drops it), `stomp(item)` (emits `stomp`),
 `catchItem(item)` (sets the item and emits `itemCaught`) and

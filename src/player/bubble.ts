@@ -9,7 +9,7 @@ import { CHILL_DURATION } from '../core/chill';
 import { rowsFromString } from '../core/sprite-data';
 import { HEAD_AT, HEAD_MOUTH } from './art';
 import type { Point } from './chill';
-import type { TimelineName } from './poses';
+import { isCrashTimeline, type TimelineName } from './poses';
 
 export const BUBBLE_PALETTE = {
   q: '#ff8cc6', // gum pink
@@ -92,10 +92,12 @@ const heights = BUBBLE_ART.map((art) => rowsFromString(art).length);
  * Bubble frame and its top-left (body-frame pixels) for `timeline`'s frame
  * `body`: in front of the mouth, centred on it. `time` drives the loop (see bubbleTime);
  * `animTime` is the time in the current animation, so a crash pops the bubble
- * right away and then shows none. Null without a visible face.
+ * right away and then shows none (the bin crash shows none). Null without a visible face.
  */
 export function chillBubble(timeline: TimelineName, body: number, time: number, animTime: number): BubbleDraw | null {
-  const frame = timeline === 'crash' ? (animTime < BUBBLE_POP_TIME ? F.pop : null) : bubbleFrame(time);
+  // In the bin crash the head is inside the bin: no bubble at all.
+  if (timeline === 'binCrash') return null;
+  const frame = isCrashTimeline(timeline) ? (animTime < BUBBLE_POP_TIME ? F.pop : null) : bubbleFrame(time);
   const head = HEAD_AT[body];
   if (frame === null || !head) return null;
   const mouth = { x: head.x + HEAD_MOUTH.x, y: head.y + HEAD_MOUTH.y };

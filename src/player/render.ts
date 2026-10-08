@@ -1,4 +1,5 @@
 /** Drawing of the skater and his board (player render layer). */
+import { GROUND_Y } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
 import type { CarriedItem, GameState } from '../types';
 import {
@@ -12,6 +13,8 @@ import {
   CHILL_BODY_FRAMES,
   PALETTE,
 } from './art';
+import type { BinCrash, BinTumble } from './bin';
+import { BIN_ANCHOR_X, BIN_FRAMES, BIN_PALETTES, BIN_SIZE } from './bin-art';
 import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
 import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
@@ -27,6 +30,9 @@ const ITEMS = Object.fromEntries(
   Object.entries(ITEM_ART).map(([item, art]) => [item, sprite(ITEM_PALETTE, [art])]),
 ) as Record<CarriedItem, Sprite>;
 const ARM = sprite(PALETTE, [CATCH_ARM]);
+/** One bin sprite per lid colour; frames are the quarter turns (BIN_FRAMES). */
+const BINS = BIN_PALETTES.map((palette) => sprite(palette, BIN_FRAMES));
+const tumble: BinTumble = { frame: 0, dx: 0, lift: 0 };
 
 /** The carried item to add to a pose (state.carriedItem) and whether the catch reach is showing. */
 export interface CarryLook {
@@ -48,7 +54,11 @@ export interface ChillLook {
   animTime: number;
 }
 
-/** Draws `pose` with the wheel contact point at (x, y); everything snaps to whole pixels together. */
+/**
+ * Draws `pose` with the wheel contact point at (x, y); everything snaps to
+ * whole pixels together. `binLid` is the lid colour of the bin a bin-crash
+ * pose sits in.
+ */
 export function drawPose(
   g: CanvasRenderingContext2D,
   pose: Pose,
@@ -56,6 +66,7 @@ export function drawPose(
   y: number,
   chill: ChillLook | null = null,
   carry: CarryLook | null = null,
+  binLid = 0,
 ): void {
   const x0 = Math.round(x);
   const y0 = Math.round(y);
@@ -68,6 +79,8 @@ export function drawPose(
   if (item?.arm) ARM.draw(g, 0, left + item.arm.x, top + item.arm.y);
   (chill?.style.redEyes ? CHILL_BODY : BODY).draw(g, pose.body, left, top);
   if (item) drawItem(g, item, left, top);
+  // Upright on the deck, over the hips: only the legs stick out of the top.
+  if (pose.bin) drawBin(g, binLid, 0, x0 + (pose.boardDx ?? 0), boardTop + BOARD_DECK_ROW + (pose.boardDy ?? 0));
   if (chill?.style.mouth === 'joint') {
     const joint = chillJoint(chill.timeline, pose.body);
     if (joint) drawJoint(g, { x: left + joint.x, y: top + joint.y }, chill.time);
@@ -83,6 +96,18 @@ function drawItem(g: CanvasRenderingContext2D, item: ItemDraw, left: number, top
   if (item.grip !== 'side') return;
   g.fillStyle = PALETTE.s;
   g.fillRect(left + item.hand.x, top + item.hand.y, 1, 1);
+}
+
+/** Bin frame `frame` with the bin body centred on x and the frame's bottom row just above `bottom`. */
+function drawBin(g: CanvasRenderingContext2D, lid: number, frame: number, x: number, bottom: number): void {
+  BINS[lid % BINS.length]!.draw(g, frame, x - BIN_ANCHOR_X, bottom - BIN_SIZE);
+}
+
+/** The bin tumbling away to the left after the pop (drawn even while the skater blinks). */
+function drawTumblingBin(g: CanvasRenderingContext2D, bin: BinCrash, x: number): void {
+  if (bin.tumbleTime < 0) return;
+  bin.tumble(tumble);
+  drawBin(g, bin.lid, tumble.frame, Math.round(x) + tumble.dx, GROUND_Y - tumble.lift);
 }
 
 /** Draws board frame `frame` with the wheel contact point at the whole-pixel (x, y). */
@@ -103,14 +128,15 @@ function drawJoint(g: CanvasRenderingContext2D, mouth: Point, time: number): voi
   }
 }
 
-export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: AnimView): void {
-  if (!view.visible) return;
+export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: AnimView, bin: BinCrash): void {
   const p = state.player;
+  drawTumblingBin(g, bin, p.x);
+  if (!view.visible) return;
   const timeline = timelineFor(view, p.vy);
   const style = chillStyle(state);
   // The bubble loop starts at the pickup, so it opens with a readable bubble.
   const time = style?.mouth === 'bubble' ? bubbleTime(state.chillTimer) : state.time;
   const chill = style ? { style, timeline, time, animTime: view.time } : null;
   const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
-  drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill, carry);
+  drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill, carry, bin.lid);
 }

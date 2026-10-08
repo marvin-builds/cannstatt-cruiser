@@ -6,7 +6,7 @@
  */
 import type { GameState } from '../types';
 import { HEAD_AT, HEAD_MOUTH } from './art';
-import type { TimelineName } from './poses';
+import { isCrashTimeline, type TimelineName } from './poses';
 
 /** What the chill effect adds to the skater: red eyes or not, and what is at his mouth. */
 export interface ChillStyle {
@@ -50,7 +50,7 @@ export const JOINT_COLORS = { paper: '#f4efe4', glow: ['#ff7a1a', '#ffd040'], sm
  * visible face have none.
  */
 export function chillJoint(timeline: TimelineName, body: number): Point | null {
-  if (timeline === 'crash') return null;
+  if (isCrashTimeline(timeline)) return null;
   const head = HEAD_AT[body];
   return head ? { x: head.x + HEAD_MOUTH.x, y: head.y + HEAD_MOUTH.y } : null;
 }

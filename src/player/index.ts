@@ -23,7 +23,7 @@ export function createPlayerSystem(): System {
       ctx.bus.on('runStarted', () => c.reset());
       ctx.bus.on('grindStart', (e) => c.startGrind(ctx.state, e.entityId));
       ctx.bus.on('grindEnd', (e) => c.endGrindExternally(ctx.state, e.entityId));
-      ctx.bus.on('crash', () => c.crash(ctx.state));
+      ctx.bus.on('crash', (e) => c.crash(ctx.state, e.kind, e.entityId));
       ctx.bus.on('stomp', () => c.stomp());
       ctx.bus.on('itemCaught', () => c.catchItem());
       debug = typeof window !== 'undefined' && testHookEnabled();
@@ -39,7 +39,7 @@ export function createPlayerSystem(): System {
         if (debug) drawDebugRails(r);
       },
       player(r) {
-        if (controller) drawSkater(r.g, r.state, controller.view(r.state.player));
+        if (controller) drawSkater(r.g, r.state, controller.view(r.state.player), controller.bin);
       },
     },
   };

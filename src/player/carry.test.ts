@@ -3,7 +3,7 @@ import { parseSprite, rowsFromString } from '../core/sprite-data';
 import type { CarriedItem } from '../types';
 import { B, BODY_W, HEAD_AT } from './art';
 import { carriedItemDraw, HOLD_AT, ITEM_ART, ITEM_PALETTE, itemSize } from './carry';
-import { TIMELINES, type TimelineName } from './poses';
+import { isCrashTimeline, TIMELINES, type TimelineName } from './poses';
 
 const ITEMS: CarriedItem[] = ['football', 'pretzel', 'beer', 'gingerbread'];
 const names = Object.keys(TIMELINES) as TimelineName[];
@@ -47,10 +47,11 @@ describe('carried item placement', () => {
 
   it('draws nothing during the crash (gameplay clears the item then)', () => {
     for (const body of bodiesOf('crash')) expect(carriedItemDraw('beer', 'crash', body, false)).toBeNull();
+    for (const body of bodiesOf('binCrash')) expect(carriedItemDraw('beer', 'binCrash', body, false)).toBeNull();
   });
 
   it.each(ITEMS)('carries the %s in every pose but the crash, at the hand of that frame', (item) => {
-    for (const name of names.filter((n) => n !== 'crash')) {
+    for (const name of names.filter((n) => !isCrashTimeline(n))) {
       for (const body of bodiesOf(name)) {
         const d = carriedItemDraw(item, name, body, false);
         const hold = HOLD_AT[body];
@@ -84,7 +85,7 @@ describe('carried item placement', () => {
   });
 
   it('while catching, holds the item up above the cap in every pose with a face', () => {
-    for (const name of names.filter((n) => n !== 'crash')) {
+    for (const name of names.filter((n) => !isCrashTimeline(n))) {
       for (const body of bodiesOf(name)) {
         const d = carriedItemDraw('football', name, body, true)!;
         expect(d.grip, `${name} body ${body}`).toBe('catch');

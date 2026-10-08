@@ -5,7 +5,8 @@
  * per player system; `reset()` at every run start.
  */
 import { GROUND_Y } from '../core/config';
-import type { Entity, GameBus, GameState, InputFrame, PlayerAnim, PlayerState, Rect } from '../types';
+import type { Entity, EntityKind, GameBus, GameState, InputFrame, PlayerAnim, PlayerState, Rect } from '../types';
+import { BinCrash } from './bin';
 import * as T from './tuning';
 
 /** What the renderer needs besides PlayerState. */
@@ -19,6 +20,8 @@ export interface AnimView {
   standingUp: boolean;
   /** Reaching up for a caught item (CATCH_TIME after itemCaught). */
   catching: boolean;
+  /** The crash playing is the head-first dive into a bin (timeline `binCrash`). */
+  binCrash: boolean;
 }
 
 export class SkaterController {
@@ -41,6 +44,8 @@ export class SkaterController {
   /** A stomp arrived after the player's update: bounce at the start of the next tick. */
   private bouncePending = false;
   private catchTimer = 0;
+  /** Bin crash: lid colour and the bin tumbling away after the pop (read by render.ts). */
+  readonly bin = new BinCrash();
 
   constructor(private readonly bus: GameBus) {}
 
@@ -62,6 +67,7 @@ export class SkaterController {
     this.chill = false;
     this.bouncePending = false;
     this.catchTimer = 0;
+    this.bin.reset();
   }
 
   get crashing(): boolean {
@@ -71,7 +77,7 @@ export class SkaterController {
   view(p: PlayerState): AnimView {
     const blinking = p.invulnerableTimer > 0 && !this.crashing;
     const visible = !blinking || Math.floor(p.invulnerableTimer / (T.BLINK_PERIOD / 2)) % 2 === 0;
-    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0, catching: this.catchTimer > 0 };
+    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0, catching: this.catchTimer > 0, binCrash: this.bin.diving };
   }
 
   /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
@@ -105,8 +111,12 @@ export class SkaterController {
     this.leaveRail(state.player, false);
   }
 
-  /** Gameplay reported a collision (crash). Ignored while invulnerable. */
-  crash(state: GameState): void {
+  /**
+   * Gameplay reported a collision (crash) with entity `entityId` of `kind`.
+   * Ignored while invulnerable. A bin dives head first into it on the rolling
+   * board (no hop); every other kind throws the skater off.
+   */
+  crash(state: GameState, kind?: EntityKind, entityId = -1): void {
     const p = state.player;
     if (p.invulnerableTimer > 0 || this.crashing) return;
     if (p.grinding) this.leaveRail(p, true);
@@ -117,6 +127,11 @@ export class SkaterController {
     this.boosting = false;
     this.buffer = 0;
     this.coyote = 0;
+    if (kind === 'bin') {
+      this.bin.start(state, entityId);
+      return;
+    }
+    this.bin.stopDiving();
     p.grounded = false;
     p.vy = Math.min(p.vy, -T.CRASH_HOP_VELOCITY);
   }
@@ -143,6 +158,7 @@ export class SkaterController {
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
     p.hitbox = hitboxFor(p);
+    this.bin.update(state, this.crashing ? this.animTime : null, dt);
   }
 
   private setDucking(ducking: boolean): void {

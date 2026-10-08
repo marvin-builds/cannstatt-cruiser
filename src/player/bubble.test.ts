@@ -3,7 +3,7 @@ import { rowsFromString } from '../core/sprite-data';
 import { B, HEAD_AT, HEAD_MOUTH } from './art';
 import { CHILL_DURATION } from '../core/chill';
 import { BUBBLE_ART, BUBBLE_PERIOD, BUBBLE_POP_TIME, bubbleFrame, bubbleTime, chillBubble, F } from './bubble';
-import { TIMELINES, type TimelineName } from './poses';
+import { isCrashTimeline, TIMELINES, type TimelineName } from './poses';
 
 const sample = (period: number, n: number) => Array.from({ length: n }, (_, i) => (i / n) * period);
 
@@ -55,7 +55,7 @@ describe('bubble gum animation (kid mode chill look)', () => {
 });
 
 describe('chillBubble placement', () => {
-  const names = (Object.keys(TIMELINES) as TimelineName[]).filter((n) => n !== 'crash');
+  const names = (Object.keys(TIMELINES) as TimelineName[]).filter((n) => !isCrashTimeline(n));
   const grownAt = sample(BUBBLE_PERIOD, 240).find((t) => bubbleFrame(t) === F.bubble3)!;
 
   it('blows the bubble in front of the mouth in every pose but the crash (incl. duck, grind, air)', () => {
@@ -78,5 +78,10 @@ describe('chillBubble placement', () => {
     expect(chillBubble('crash', B.crashThrown, grownAt, BUBBLE_POP_TIME / 2)?.frame).toBe(F.pop);
     expect(chillBubble('crash', B.crashThrown, grownAt, BUBBLE_POP_TIME)).toBeNull();
     expect(chillBubble('crash', B.crashLying, grownAt, 0.5)).toBeNull();
+  });
+
+  it('shows no bubble while the head is in the bin', () => {
+    expect(chillBubble('binCrash', B.binDive, grownAt, 0)).toBeNull();
+    expect(chillBubble('binCrash', B.airFall, grownAt, 0.8)).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import type { Game } from '../core/game';
 import type { GameEvents } from '../types';
 import { B, BODY_FRAMES, CHILL_BODY_FRAMES, HEAD_AT } from './art';
 import { chillJoint, chillStyle, SMOKE_PERIOD, smokePuffs } from './chill';
-import { poseAt, TIMELINES, type TimelineName } from './poses';
+import { isCrashTimeline, poseAt, TIMELINES, type TimelineName } from './poses';
 import { SkaterController } from './controller';
 import { createPlayerTestGame, jumpApex, tick } from './testing';
 import { CHILL_ANIM_RATE, CHILL_JUMP_SCALE, JUMP_VELOCITY, PUSH_TIME } from './tuning';
@@ -126,7 +126,7 @@ describe('chill overlay selection', () => {
     for (const name of names) {
       for (const step of TIMELINES[name].steps) {
         const joint = chillJoint(name, step.body);
-        if (name === 'crash') expect(joint).toBeNull();
+        if (isCrashTimeline(name)) expect(joint).toBeNull();
         else expect(joint, `${name} body ${step.body}`).not.toBeNull();
       }
     }

@@ -5,7 +5,7 @@
  */
 import { GROUND_Y } from '../core/config';
 import { drawText } from '../core/font';
-import type { CarriedItem, Entity, GameContext, RenderContext } from '../types';
+import type { CarriedItem, Entity, EntityKind, GameContext, RenderContext } from '../types';
 import { BOARD_FRAMES } from './art';
 import { chillStyle } from './chill';
 import { drawBoard, drawPose } from './render';
@@ -18,8 +18,8 @@ export interface PlayerDebugHook {
   grind(height?: number, length?: number): number;
   /** Removes a rail added by grind() (the player then falls off). */
   removeRail(id: number): void;
-  /** Emits a crash like gameplay would. */
-  crash(): void;
+  /** Emits a crash into `kind` like gameplay would (`bin`: head first into the bin). */
+  crash(kind?: EntityKind): void;
   /** Sets `state.chillTimer` (the joint effect; gameplay counts it down while playing). */
   chill(seconds?: number): void;
   /** Sets `state.kidMode` (bubble gum instead of the joint and red eyes). */
@@ -69,8 +69,8 @@ export function installPlayerDebug(ctx: GameContext): void {
       const i = ctx.state.entities.findIndex((e) => e.id === id);
       if (i >= 0) ctx.state.entities.splice(i, 1);
     },
-    crash() {
-      ctx.bus.emit('crash', { entityId: -1, kind: 'bin', health: ctx.state.health });
+    crash(kind = 'barrier') {
+      ctx.bus.emit('crash', { entityId: -1, kind, health: ctx.state.health });
     },
     chill(seconds = 60) {
       ctx.state.chillTimer = seconds;

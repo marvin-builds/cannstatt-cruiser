@@ -9,7 +9,7 @@ import { rowsFromString } from '../core/sprite-data';
 import type { CarriedItem } from '../types';
 import { B, BODY_FRAMES, HEAD_AT, PALETTE } from './art';
 import type { Point } from './chill';
-import type { TimelineName } from './poses';
+import { isCrashTimeline, type TimelineName } from './poses';
 
 export const ITEM_PALETTE = {
   k: PALETTE.k, // the skater's outline
@@ -139,7 +139,7 @@ export interface ItemDraw {
  * above the cap.
  */
 export function carriedItemDraw(item: CarriedItem | null, timeline: TimelineName, body: number, catching: boolean): ItemDraw | null {
-  if (!item || timeline === 'crash') return null;
+  if (!item || isCrashTimeline(timeline)) return null;
   const { w, h } = itemSize(item);
   const head = HEAD_AT[body];
   if (catching && head) {
