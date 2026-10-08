@@ -183,6 +183,12 @@ export interface GameEvents {
   stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
   /** Gameplay: the tossed item reached the skater's hands. */
   itemCaught: { item: CarriedItem };
+  /**
+   * World: a foreground vehicle passes the skater (its centre crosses PLAYER_X),
+   * in every zone. `light` is true outside Mitte's dense traffic. Audio plays a
+   * pass-by whoosh from it, so even light traffic is heard.
+   */
+  vehiclePassed: { kind: 'car' | 'van' | 'bus' | 'truck'; front: boolean; light: boolean };
   /** Gameplay: a grind trick (player.grindTrick) ended while still on the rail or bench, scoring points. */
   grindTrick: { entityId: number; ticks: number; points: number };
   /** Gameplay: the skater used the carried item (use button); state.carriedItem is cleared. */
