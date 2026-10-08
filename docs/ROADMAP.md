@@ -109,3 +109,18 @@ Pages deploy only goes live when you say so.
 - DONE: skater cleanup (15d283c), final multi-persona playtest (all personas fun 7/10) and its fix round: 1f1dd00 (touch hold from touch start, readable lowercase e), d8267d1 (>= 9-tick human take-off window for every pattern, livelier start / softer end, stomp points), 39931e8 (popups below HUD + merged + outlined, opaque plates, key hints, parent-check key labels, stronger tints), f97e64e (scenery off the riding line, tidy greying band, readable kid bubble), 2c3d908 (persona scenarios).
 - Leftovers (minor): final-phone-touch bench-grind check needs its bot to plan SWIPE_WINDOW ticks ahead (patch in workflow wf_976ad507-264 journal); portrait 'real tap on title starts a run' fails in that scenario; portrait play stays a small 390x180 strip; stomp shows two stacked popups (+points and 'Stomp!'); phone settings/parent-check still a bit empty; skater's middle-aged cue still subtle at 1x; football sprite shared art could move to core.
 - OPEN USER DECISION: hosting. GitHub Pages workflow is ready, but the repo is private (needs public repo or GitHub Pro), or use Cloudflare Pages / Netlify.
+
+## User feedback 2026-10-08 (after the final playtest), prioritised
+1. **Smoothness (HIGH):** the game does not feel fluid, the picture sometimes hangs. Measure frame times and update counts per frame in a real browser, find long frames (GC, per-frame allocations, sprite rebuilds) and uneven scroll steps (the render `alpha` is computed but unused). Fix in core; report hot spots in other slices for the next wave.
+2. **Bug: bench back edge:** landing on the rear end of the bench seat crashes, but it must grind.
+3. **Too hard:** obstacles placed too tightly (gaps too small, too close). Wider gaps and a bigger human take-off and landing margin, measured with the human bot before and after.
+4. **Start in Bad Cannstatt:** the run (and title) starts in Cannstatt, then the route goes Cannstatt → Neckar → Mitte → Neckar → Cannstatt … (zone indices stay the same).
+5. **Bin crash:** crashing into a Mülltonne makes the skater stick head-first in the bin for a moment (legs and board sticking out, legs kicking), then he pops out.
+6. **Mitte traffic:** in Stuttgart-Mitte, suddenly many cars on the foreground street (in front of the riding line, never covering obstacles or the skater), exhaust puffs and traffic noise (rumble and the odd honk, only in Mitte).
+7. **POI Neckar: Mombachquelle:** the spring's outlet into the Neckar with people chilling at the bathing pool (background scenery, not obstacles).
+8. **Using caught items** (new "use" action: key E, on touch a big item button shown while carrying):
+   - Maßkrug (never in kid mode): drink it with a "glug glug glug" sound → drunk for ~6 s, unreliable controls (deterministic random input delay, the skater and screen sway). While drunk the spawner only places easy patterns that the solver validates with the extra delay.
+   - Brezel / Lebkuchenherz: eat it → +1 health (bonus points if health is full).
+   - Football: throw it forward. Hitting a person makes them tumble (points, "Treffer!"). A miss can ricochet back (deterministic chance) and knock the skater off the board (crash, −1 health) unless he jumps or ducks it.
+
+Plan: Wave 5a (parallel): core (smoothness + use/drunk contract), world (Cannstatt start, Mombachquelle, Mitte traffic visuals), gameplay (bench edge bug, wider gaps, bin-crash entity handling), player (bin-crash pose). Wave 5b (parallel): item use in gameplay, player, ui and audio (incl. Mitte traffic sound) + perf hot spots from 5a.
