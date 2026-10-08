@@ -5,12 +5,24 @@ import type { AudioBackend, Cue, LoopName } from './backend';
 import { createAudioSystem } from './index';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { TRAFFIC, isTrafficCue } from './traffic';
+import type { ParkPlan } from '../types';
+import { PARK, boomboxAt } from './park';
+
+const PLAN: ParkPlan = {
+  start: 3000,
+  end: 3400,
+  pieces: [
+    { kind: 'bank', from: 3020, to: 3060, height: 12 },
+    { kind: 'container', from: 3120, to: 3200, height: 30 },
+  ],
+};
 
 class FakeBackend implements AudioBackend {
   calls: string[] = [];
   played: { cue: Cue; intensity: number; delay: number; pitch: number }[] = [];
   loops = new Set<LoopName>();
   traffic: number[] = [];
+  park: { ambience: number; boombox: number }[] = [];
   muted = false;
   unlock(): void {
     this.calls.push('unlock');
@@ -20,6 +32,9 @@ class FakeBackend implements AudioBackend {
   }
   setTraffic(level: number): void {
     this.traffic.push(level);
+  }
+  setPark(ambience: number, boombox: number): void {
+    this.park.push({ ambience, boombox });
   }
   startLoop(loop: LoopName): void {
     this.loops.add(loop);
@@ -275,6 +290,9 @@ describe('audio system: robustness', () => {
       setTraffic: () => {
         throw new Error('no audio');
       },
+      setPark: () => {
+        throw new Error('no audio');
+      },
     };
     const game = new Game({
       systems: [createAudioSystem({ backend: broken, store: createStore(null) })],
@@ -285,6 +303,8 @@ describe('audio system: robustness', () => {
       game.bus.emit('jump', { velocity: 250 });
       game.bus.emit('grindStart', { entityId: 1 });
       game.state.trafficDensity = 1;
+      game.state.park = PLAN;
+      game.state.distance = PLAN.start;
       game.tick();
       game.commands.setMuted(true);
       game.commands.gameOver();
@@ -887,5 +907,119 @@ describe('audio system: big drops', () => {
     expect(boom(420).intensity).toBeGreaterThan(0);
     expect(boom(800).intensity).toBeLessThanOrEqual(1);
     expect(boom(600).pitch).toBeLessThanOrEqual(boom(420).pitch);
+  });
+});
+
+describe('audio system: NorDIY park', () => {
+  /** A run that rides from `from` to `to` (run distances) past the planned park, one tick per `step` px. */
+  function ride(from: number, to: number, step = 3, s = playing()) {
+    s.game.state.park = PLAN;
+    for (let d = from; d <= to; d += step) {
+      s.game.state.distance = d;
+      s.game.tick();
+    }
+    return s;
+  }
+  const last = (s: ReturnType<typeof playing>) => s.backend.park.at(-1) ?? { ambience: 0, boombox: 0 };
+
+  it('is silent far away from the park and without one', () => {
+    expect(ride(0, PLAN.start - PARK.ambience.ahead - 10).backend.park).toEqual([]);
+    const s = playing();
+    s.game.state.distance = PLAN.start;
+    for (let i = 0; i < 60; i++) s.game.tick();
+    expect(s.backend.park).toEqual([]);
+  });
+
+  it('fades the ambience and the boombox in on approach, loudest at the boombox, out behind', () => {
+    const at = boomboxAt(PLAN);
+    const s = ride(PLAN.start - PARK.ambience.ahead, PLAN.start - 200);
+    const approach = last(s);
+    expect(approach.ambience).toBeGreaterThan(0);
+    expect(approach.ambience).toBeLessThan(1);
+    ride(PLAN.start - 200, at, 3, s);
+    const there = last(s);
+    expect(there.ambience).toBeGreaterThan(0.95);
+    expect(there.boombox).toBeGreaterThan(0.95);
+    expect(there.boombox).toBeGreaterThan(approach.boombox);
+    s.game.state.park = null;
+    ride(at, PLAN.end + PARK.ambience.behind + 30, 3, s);
+    expect(last(s)).toEqual({ ambience: 0, boombox: 0 });
+  });
+
+  it.each([
+    ['muted', (s: ReturnType<typeof playing>) => s.game.commands.setMuted(true)],
+    ['paused', (s: ReturnType<typeof playing>) => s.game.commands.pause()],
+    ['game over', (s: ReturnType<typeof playing>) => s.game.commands.gameOver()],
+    [
+      'a run restart',
+      (s: ReturnType<typeof playing>) => {
+        s.game.commands.gameOver();
+        s.game.commands.startRun();
+      },
+    ],
+  ] as const)('drops to silence when %s', (_name, act) => {
+    const s = ride(PLAN.start - 100, boomboxAt(PLAN));
+    expect(last(s).boombox).toBeGreaterThan(0.5);
+    act(s);
+    s.game.tick();
+    expect(last(s)).toEqual({ ambience: 0, boombox: 0 });
+  });
+
+  it('logs park:start and park:stop for the debug listener', () => {
+    const backend = new FakeBackend();
+    const heard: string[] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name) => heard.push(name) })],
+    });
+    game.commands.startRun();
+    game.state.park = PLAN;
+    for (let d = PLAN.start - 300; d < PLAN.end + 400; d += 3) {
+      game.state.distance = d;
+      game.tick();
+    }
+    expect(heard.filter((h) => h.startsWith('park:'))).toEqual(['park:start', 'park:stop']);
+  });
+
+  it('plays rolling wheels, clacks and laughter in the park without ducking the traffic', () => {
+    const s = playing();
+    s.game.state.park = PLAN;
+    s.game.state.distance = PLAN.start + 50;
+    s.game.state.trafficDensity = 1;
+    for (let i = 0; i < 20 * 60; i++) s.game.tick();
+    const ambient = s.cues().filter((c) => c.startsWith('park'));
+    expect(new Set(ambient)).toEqual(new Set(['parkRoll', 'parkClack', 'parkLaugh']));
+    expect(Math.min(...s.backend.traffic.slice(30))).toBeGreaterThan(TRAFFIC.duckTo + 0.1);
+  });
+
+  it('cheers louder and with a bigger crowd as the session cheering grows', () => {
+    const { game, backend } = playing();
+    for (const level of [0.1, 0.5, 1]) game.bus.emit('sessionCheer', { level });
+    expect(backend.played.map((p) => p.cue)).toEqual(['cheerSmall', 'cheerMid', 'cheerBig']);
+    const [a, b, c] = backend.played.map((p) => p.intensity);
+    expect(a).toBeLessThan(b!);
+    expect(b).toBeLessThan(c!);
+  });
+
+  it('roars and whistles at the end of a session with points, stays quiet without', () => {
+    const { game, cues } = playing();
+    game.bus.emit('sessionEnd', { level: 0, points: 0 });
+    expect(cues()).toEqual([]);
+    game.bus.emit('sessionEnd', { level: 0.8, points: 400 });
+    expect(cues()).toEqual(['sessionRoar', 'fingerWhistle']);
+  });
+
+  it('claps on a high five', () => {
+    const { game, cues } = playing();
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
+    expect(cues()).toEqual(['highFive']);
+  });
+
+  it('sounds the same in kid mode', () => {
+    const { game, cues } = playing();
+    game.state.kidMode = true;
+    game.bus.emit('sessionCheer', { level: 1 });
+    game.bus.emit('sessionEnd', { level: 1, points: 100 });
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
+    expect(cues()).toEqual(['cheerBig', 'sessionRoar', 'fingerWhistle', 'highFive']);
   });
 });

@@ -216,3 +216,27 @@ describe('sounds: stunt mix headroom', () => {
     expect(out(level, grind + duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
   });
 });
+
+describe('sounds: NorDIY park', () => {
+  const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
+
+  it('cheers with more voices and longer for more cheering', () => {
+    expect(SOUNDS.cheerMid.length).toBeGreaterThan(SOUNDS.cheerSmall.length);
+    expect(SOUNDS.cheerBig.length).toBeGreaterThan(SOUNDS.cheerMid.length);
+    expect(end('cheerMid')).toBeGreaterThan(end('cheerSmall'));
+    expect(end('cheerBig')).toBeGreaterThan(end('cheerMid'));
+    expect(end('sessionRoar')).toBeGreaterThanOrEqual(end('cheerBig'));
+  });
+
+  it('keeps the ambient park one-shots quiet and short', () => {
+    for (const cue of ['parkRoll', 'parkClack', 'parkLaugh'] as const) {
+      expect(Math.max(...SOUNDS[cue].map((v) => v.gain))).toBeLessThanOrEqual(0.2);
+      expect(end(cue)).toBeLessThan(1.5);
+    }
+  });
+
+  it('claps the high five as one short, crisp hit', () => {
+    expect(end('highFive')).toBeLessThan(0.25);
+    expect(SOUNDS.highFive.some((v) => v.wave === 'noise')).toBe(true);
+  });
+});

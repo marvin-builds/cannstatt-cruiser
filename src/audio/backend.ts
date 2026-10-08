@@ -44,7 +44,16 @@ export type Cue =
   | 'stuntFizzle'
   | 'airSpin'
   | 'airTrick'
-  | 'landHeavy';
+  | 'landHeavy'
+  | 'parkRoll'
+  | 'parkClack'
+  | 'parkLaugh'
+  | 'cheerSmall'
+  | 'cheerMid'
+  | 'cheerBig'
+  | 'sessionRoar'
+  | 'fingerWhistle'
+  | 'highFive';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';
@@ -67,6 +76,14 @@ export interface AudioBackend {
    * levels without clicks and reuses one set of nodes.
    */
   setTraffic(level: number): void;
+  /**
+   * Levels 0..1 of the NorDIY park ambience (crowd chatter bed) and of the
+   * boombox loop. The caller calls only on noticeable changes; the backend
+   * glides without clicks, builds the park sounds on the first audible level
+   * and stops and releases them when both are 0 (the loop restarts from its
+   * beginning on the next visit).
+   */
+  setPark(ambience: number, boombox: number): void;
   /** Short state for debugging, e.g. the AudioContext state ('running', 'unavailable'). */
   status?(): string;
 }

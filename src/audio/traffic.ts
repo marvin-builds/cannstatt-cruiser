@@ -10,6 +10,7 @@
 import { LIGHT_TRAFFIC } from '../world/traffic';
 import type { Cue } from './backend';
 import { PASS_CUES } from './passby';
+import { Slots, slotHash } from './slots';
 
 export const TRAFFIC = {
   /** Fraction of the remaining gap to the density closed per tick (~0.25 s to settle). */
@@ -86,34 +87,9 @@ export interface TrafficStep {
   cue: TrafficCue | null;
 }
 
-/** Deterministic 0..1 value for a slot index and a salt (integer hash). */
-function slotHash(slot: number, salt: number): number {
-  let h = Math.imul(slot ^ salt, 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return ((h ^ (h >>> 16)) >>> 0) / 0x100000000;
-}
-
 const HORN_SALT = 0x9e3779b9;
 const HORN_KIND_SALT = 0x27d4eb2f;
 const TRUCK_SALT = 0x165667b1;
-
-/** Fires once per slot of `length` seconds; tells whether a new slot began. */
-class Slots {
-  private last: number | null = null;
-  index = 0;
-  constructor(private readonly length: number) {}
-
-  enter(time: number): boolean {
-    this.index = Math.floor(time / this.length);
-    if (this.index === this.last) return false;
-    this.last = this.index;
-    return true;
-  }
-
-  reset(): void {
-    this.last = null;
-  }
-}
 
 /** The vehicles of light traffic currently swelling (fixed slots: no allocation per vehicle). */
 class Swells {

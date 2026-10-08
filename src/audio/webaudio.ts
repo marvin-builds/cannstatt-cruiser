@@ -6,7 +6,8 @@
  * leaves the backend silent; nothing here throws.
  */
 import type { AudioBackend, Cue, LoopName } from './backend';
-import { GRIND, MASTER_GAIN, SOUNDS, TRAFFIC_RUMBLE, type Voice } from './sounds';
+import { BOOMBOX, renderBoombox } from './boombox';
+import { GRIND, MASTER_GAIN, PARK_SOUND, SOUNDS, TRAFFIC_RUMBLE, type Voice } from './sounds';
 
 type ContextFactory = () => AudioContext | null;
 
@@ -15,6 +16,15 @@ interface TrafficRumble {
   bus: GainNode;
   /** Road noise lowpass: opens up with the level. */
   road: BiquadFilterNode;
+}
+
+/** The NorDIY park's nodes while it sounds (built on approach, stopped and dropped behind it). */
+interface ParkNodes {
+  ambience: GainNode;
+  boombox: GainNode;
+  /** Boombox lowpass: opens up as the skater gets closer. */
+  muffle: BiquadFilterNode;
+  sources: AudioScheduledSourceNode[];
 }
 
 interface RunningLoop {
@@ -98,6 +108,12 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   let traffic: TrafficRumble | null = null;
   /** Last requested traffic level, applied once the context runs. */
   let trafficLevel = 0;
+  /** Park sounds while audible; rebuilt for every park visit. */
+  let park: ParkNodes | null = null;
+  /** Last requested park levels, applied once the context runs. */
+  const parkLevel = { ambience: 0, boombox: 0 };
+  /** The rendered boombox loop, made once per context on the first park visit. */
+  let boomboxBuffer: AudioBuffer | null = null;
 
   const masterLevel = () => (muted ? 0 : MASTER_GAIN);
   const ready = () => (ac && master && ac.state === 'running' ? ac : null);
@@ -248,6 +264,82 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     return { bus, road: roadNoise.filter };
   }
 
+  /** A sine LFO of `hz` swinging `param` by +-`depth` (started with the park). */
+  function lfo(ctx: AudioContext, hz: number, depth: number, param: AudioParam): OscillatorNode {
+    const osc = oscillator(ctx, 'sine', hz);
+    const amount = ctx.createGain();
+    amount.gain.value = depth;
+    osc.connect(amount).connect(param);
+    return osc;
+  }
+
+  function boombox(ctx: AudioContext): AudioBuffer {
+    if (!boomboxBuffer) {
+      const samples = renderBoombox(BOOMBOX.sampleRate);
+      boomboxBuffer = ctx.createBuffer(1, samples.length, BOOMBOX.sampleRate);
+      boomboxBuffer.getChannelData(0).set(samples);
+    }
+    return boomboxBuffer;
+  }
+
+  /** Park: the chatter bed (PARK_SOUND.chatter) and the boombox loop, both silent until levels arrive. */
+  function buildPark(ctx: AudioContext): ParkNodes {
+    const { chatter, swell, boombox: box } = PARK_SOUND;
+    const ambience = ctx.createGain();
+    ambience.gain.value = 0;
+    ambience.connect(master!);
+    const crowd = ctx.createGain();
+    crowd.gain.value = 1;
+    crowd.connect(ambience);
+    const voices = noiseSource(ctx);
+    const sources: AudioScheduledSourceNode[] = [voices, lfo(ctx, swell.hz, swell.depth, crowd.gain)];
+    for (const band of chatter) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = band.freq;
+      filter.Q.value = band.q;
+      const level = ctx.createGain();
+      level.gain.value = band.gain;
+      voices.connect(filter).connect(level).connect(crowd);
+      sources.push(lfo(ctx, band.babbleHz, band.babbleDepth, level.gain));
+    }
+
+    const boomboxBus = ctx.createGain();
+    boomboxBus.gain.value = 0;
+    boomboxBus.connect(master!);
+    const muffle = ctx.createBiquadFilter();
+    muffle.type = 'lowpass';
+    muffle.frequency.value = box.cutoff;
+    muffle.Q.value = box.q;
+    const loop = ctx.createBufferSource();
+    loop.buffer = boombox(ctx);
+    loop.loop = true;
+    loop.connect(muffle).connect(boomboxBus);
+    sources.push(loop);
+
+    const now = ctx.currentTime;
+    for (const s of sources) s.start(now);
+    return { ambience, boombox: boomboxBus, muffle, sources };
+  }
+
+  /** Glides the park to `parkLevel`: builds it on the first audible level, stops and drops it at silence. */
+  function applyPark(): void {
+    const ctx = ready();
+    const audible = parkLevel.ambience > 0 || parkLevel.boombox > 0;
+    if (!ctx || (!park && !audible)) return;
+    guard(() => {
+      park ??= buildPark(ctx);
+      const { glide, boombox: box, stopAfter } = PARK_SOUND;
+      const now = ctx.currentTime;
+      park.ambience.gain.setTargetAtTime(parkLevel.ambience, now, glide);
+      park.boombox.gain.setTargetAtTime(parkLevel.boombox * box.gain, now, glide);
+      park.muffle.frequency.setTargetAtTime(box.cutoff + (box.cutoffFull - box.cutoff) * parkLevel.boombox, now, glide);
+      if (audible) return;
+      for (const s of park.sources) s.stop(now + stopAfter);
+      park = null;
+    });
+  }
+
   const guard = (fn: () => void) => {
     try {
       fn();
@@ -278,6 +370,7 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
 
   function playPending(): void {
     applyTraffic();
+    applyPark();
     const cues = pending.take(performance.now());
     const ctx = ready();
     if (!ctx || muted) return;
@@ -324,6 +417,11 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     setTraffic(level: number) {
       trafficLevel = Math.max(0, level);
       applyTraffic();
+    },
+    setPark(ambience: number, boomboxLevel: number) {
+      parkLevel.ambience = Math.max(0, ambience);
+      parkLevel.boombox = Math.max(0, boomboxLevel);
+      applyPark();
     },
     status() {
       if (unavailable) return 'unavailable';
