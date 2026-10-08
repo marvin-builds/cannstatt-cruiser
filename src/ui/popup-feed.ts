@@ -98,7 +98,8 @@ export class PopupFeed {
           if (e.action === 'throw') add('Wurf!', UI.white);
           else if (e.action === 'drink' && !kidMode) add('Prost! Gluck gluck gluck', UI.yellow);
           else if (entries.some((h) => h.kind === 'healthGained')) add('Lecker! +1', UI.pink, 'heart');
-          else add(`Lecker! ${bonus(entries[i - 1]) ?? bonus(entries[i + 1]) ?? '+Punkte'}`, UI.pink);
+          // Gameplay scores the bonus right after itemUsed; the score before it may belong to a clear.
+          else add(`Lecker! ${bonus(entries[i + 1]) ?? bonus(entries[i - 1]) ?? '+Punkte'}`, UI.pink);
           break;
         case 'ballBack':
           add('Achtung, der Ball!', UI.red);

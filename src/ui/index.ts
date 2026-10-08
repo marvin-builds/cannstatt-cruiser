@@ -213,7 +213,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (state.mode !== 'playing') return;
       view.popups.update(dt);
       view.banner.update(dt);
-      view.itemHint.update(dt);
+      view.itemHint.update(dt, view.banner.visible);
     },
 
     render: {

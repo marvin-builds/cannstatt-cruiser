@@ -82,4 +82,19 @@ describe('first-time item hint (touch)', () => {
     hint.hide();
     expect(hint.visible).toBe(false);
   });
+
+  it('waits while the zone banner shows, so it never covers it, and keeps its full time for afterwards', () => {
+    const hint = new ItemHint(memoryStore());
+    hint.caught(true);
+    hint.update(1, true);
+    expect(hint.visible).toBe(false);
+    hint.update(0.5, true);
+    expect(hint.visible).toBe(false);
+    hint.update(ITEM_HINT_TIME - 0.1, false);
+    expect(hint.visible).toBe(true);
+    hint.update(0.05, true);
+    expect(hint.visible).toBe(false);
+    hint.update(0.2, false);
+    expect(hint.visible).toBe(false);
+  });
 });

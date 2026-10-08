@@ -66,6 +66,17 @@ describe('PopupFeed', () => {
     expect(texts(feed)).toEqual(['Lecker! +Punkte']);
   });
 
+  it('eating at full health in gameplay order (itemUsed, then its scoreChanged) shows the real bonus', () => {
+    const feed = new PopupFeed();
+    feed.cleared(4, 50);
+    feed.scoreChanged(50);
+    feed.itemUsed('eat');
+    feed.scoreChanged(450);
+    const out = feed.flush(false).map((p) => p.text);
+    expect(out).toContain('Lecker! +450');
+    expect(out).toContain('+50');
+  });
+
   it('throwing: "Wurf!"; a hit: "Treffer!" merged with its points; a ricochet warns', () => {
     const feed = new PopupFeed();
     feed.itemUsed('throw');

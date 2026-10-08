@@ -294,8 +294,8 @@ function drawChillTint(r: RenderContext): void {
 
 /**
  * Woozy screen while drunk (never in kid mode): a faint double image of the
- * street that sways sideways, and a soft vignette at the left and right
- * edges. Faint enough that obstacles stay sharp where they really are.
+ * street that sways sideways, and a soft vignette that fades smoothly in from
+ * the left and right edges (no bands). Faint enough that obstacles stay sharp where they really are.
  */
 function drawDrunk(r: RenderContext, view: UiView): void {
   if (!drunkShown(r.state)) return;
@@ -312,11 +312,30 @@ function drawDrunk(r: RenderContext, view: UiView): void {
   }
   g.fillStyle = tint(UI.drunkTint, 0.08 * strength);
   g.fillRect(0, 0, w, h);
-  g.fillStyle = tint(UI.drunkEdge, 0.16 * strength);
-  for (let inset = 0; inset <= 16; inset += 8) {
-    g.fillRect(inset, 0, 8, h);
-    g.fillRect(w - inset - 8, 0, 8, h);
-  }
+  g.globalAlpha = strength;
+  g.fillStyle = drunkVignette(g, w);
+  g.fillRect(0, 0, w, h);
+  g.globalAlpha = 1;
+}
+
+/** Widest reach of the drunk vignette from each side (view px) and its alpha right at the edge. */
+const VIGNETTE_REACH = 56;
+const VIGNETTE_EDGE_ALPHA = 0.18;
+let vignette: { g: CanvasRenderingContext2D; width: number; gradient: CanvasGradient } | null = null;
+
+/** A smooth fade from both side edges to clear (no hard bands), built once per buffer and view width. */
+function drunkVignette(g: CanvasRenderingContext2D, w: number): CanvasGradient {
+  if (vignette?.g === g && vignette.width === w) return vignette.gradient;
+  const gradient = g.createLinearGradient(0, 0, w, 0);
+  const reach = Math.min(0.5, VIGNETTE_REACH / w);
+  const edge = tint(UI.drunkEdge, VIGNETTE_EDGE_ALPHA);
+  const clear = tint(UI.drunkEdge, 0);
+  gradient.addColorStop(0, edge);
+  gradient.addColorStop(reach, clear);
+  gradient.addColorStop(1 - reach, clear);
+  gradient.addColorStop(1, edge);
+  vignette = { g, width: w, gradient };
+  return gradient;
 }
 
 /** The touch item button (big, under the HUD buttons) or the desktop chip with the "E" key cap. */
@@ -348,7 +367,7 @@ function drawItemControl(r: RenderContext, view: UiView): void {
   text(r, 'E', kx + 3, ky, KEYCAP);
 }
 
-/** "Tippe auf den Gegenstand" on a plate left of the item button, with a pointer towards it (drawn above the zone banner). */
+/** "Tippe auf den Gegenstand" on a plate left of the item button, with a pointer towards it (never while the zone banner shows). */
 function drawItemHint(r: RenderContext, view: UiView): void {
   const { g, state, display } = r;
   if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { POPUP_LIFETIME, PopupPool } from './popups';
+import { POPUP_LIFETIME, PopupPool, popupHeight, type Popup } from './popups';
+
+/** Asserts no two live popups share a row: each lies wholly above or below the other. */
+function expectApart(live: readonly Popup[]): void {
+  const rows = [...live].sort((a, b) => a.y - b.y);
+  for (let i = 1; i < rows.length; i++) expect(rows[i]!.y - rows[i - 1]!.y).toBeGreaterThanOrEqual(popupHeight(rows[i - 1]!.scale));
+}
+
 
 describe('PopupPool', () => {
   it('shows a popup until its lifetime runs out', () => {
@@ -98,6 +105,56 @@ describe('PopupPool', () => {
     pool.spawn('Lecker! +1', 50, 100, '#f8b', 1, 'heart');
     pool.spawn('+50', 50, 140, '#fff');
     expect(pool.active().map((p) => p.icon)).toEqual(['heart', null]);
+  });
+
+  it('a popup spawned while another rises never runs into it ("Wurf!" then "Achtung, der Ball!")', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 40;
+    pool.spawn('Wurf!', 64, 100, '#fff');
+    for (let i = 0; i < 18; i++) pool.update(1 / 60);
+    pool.spawn('Achtung, der Ball!', 64, 100, '#f00');
+    for (let i = 0; i < 60; i++) {
+      expectApart(pool.active());
+      pool.update(1 / 60);
+    }
+  });
+
+  it('stacks the newest popup at the bottom, older ones above it', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 20;
+    pool.spawn('a', 64, 100, '#fff');
+    pool.update(0.2);
+    pool.spawn('b', 64, 100, '#fff');
+    pool.update(0.2);
+    pool.spawn('c', 64, 100, '#fff');
+    const y = (t: string) => pool.active().find((p) => p.text === t)!.y;
+    expect(y('a')).toBeLessThan(y('b'));
+    expect(y('b')).toBeLessThan(y('c'));
+  });
+
+  it('three big portrait popups at once stay apart and below the HUD for their whole life', () => {
+    const pool = new PopupPool(3);
+    pool.ceiling = 56;
+    for (const t of ['Wurf!', 'Achtung, der Ball!', '+150']) {
+      pool.spawn(t, 64, 80, '#fff', 2);
+      pool.update(0.1);
+    }
+    expect(pool.active()).toHaveLength(3);
+    for (let i = 0; i < 60; i++) {
+      expectApart(pool.active());
+      for (const p of pool.active()) expect(p.y).toBeGreaterThanOrEqual(56);
+      pool.update(1 / 60);
+    }
+  });
+
+  it('mixed scales keep the gap of the popup above', () => {
+    const pool = new PopupPool(3);
+    pool.spawn('Ball geschnappt!', 64, 100, '#fff', 2);
+    pool.spawn('+50', 64, 100, '#fff', 1);
+    for (let i = 0; i < 50; i++) {
+      expectApart(pool.active());
+      pool.update(1 / 60);
+    }
   });
 
   it('clear() removes everything', () => {

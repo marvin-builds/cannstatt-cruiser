@@ -257,6 +257,7 @@ const ITEM_PALETTE = {
   k: UI.ink,
   b: '#f4f1ea', // football white
   q: '#2a2a2e', // football patches
+  c: '#969cac', // football rim: light, so the round ball reads on the dark chip and button plates
   w: '#f7f3ea', // pretzel salt, beer foam
   z: '#c47a35', // pretzel crust
   Z: '#8a4a1c',
@@ -271,15 +272,17 @@ const ITEM_PALETTE = {
 
 /** Item icons for the touch item button (3x) and the desktop chip (1x); the beer also marks the drunk timer row. */
 export const ITEM_ICONS: Record<CarriedItem, PixelIcon> = {
+  // A round white ball with a black pentagon (point up) in the middle and cut-off patches inside a light rim.
   football: new PixelIcon(ITEM_PALETTE, [`
-    ..kkkk..
-    .kbbbbk.
-    kbbqqbbk
-    kbqqqqbk
-    kbqqqqbk
-    kbbqqbbk
-    .kbbbbk.
-    ..kkkk..
+    ..ccccc..
+    .cqbbbqc.
+    cbbbqbbbc
+    cbbqqqbbc
+    cqbqqqbqc
+    cqbbbbbqc
+    cbbbqbbbc
+    .cbqqqbc.
+    ..ccccc..
   `]),
   pretzel: new PixelIcon(ITEM_PALETTE, [`
     .kkk.kkk.

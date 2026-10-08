@@ -50,14 +50,19 @@ export function keycapChip(plate: Rect): Rect {
 export const ITEM_HINT_TIME = 3.5;
 const HINT_KEY = 'itemHintSeen';
 
-/** "Tippe auf den Gegenstand": once ever, on the first catch on a touch device. */
+/**
+ * "Tippe auf den Gegenstand": once ever, on the first catch on a touch device.
+ * It waits (hidden, its time standing still) while the zone banner shows, so
+ * it never covers the banner.
+ */
 export class ItemHint {
   private timer = 0;
+  private waiting = false;
 
   constructor(private readonly store: Store) {}
 
   get visible(): boolean {
-    return this.timer > 0;
+    return this.timer > 0 && !this.waiting;
   }
 
   caught(touch: boolean): void {
@@ -70,7 +75,9 @@ export class ItemHint {
     this.timer = 0;
   }
 
-  update(dt: number): void {
-    this.timer = Math.max(0, this.timer - dt);
+  /** Counts down, unless `bannerVisible`: then it waits. */
+  update(dt: number, bannerVisible = false): void {
+    this.waiting = bannerVisible;
+    if (!bannerVisible) this.timer = Math.max(0, this.timer - dt);
   }
 }
