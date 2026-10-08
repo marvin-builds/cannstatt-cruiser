@@ -4,8 +4,8 @@
  * the player contract), jump off the rail and the crash with recovery; then
  * the chill look (joint pickup) riding, ducking, in the air and grinding, the
  * same for the kid mode bubble gum, and 1x / 2x crops of the skater to judge
- * the hair, the red eyes and the bubble at game scale. Finally the moustache
- * and the carried items: lineups with each item (incl. catch reaches), the
+ * the hair, the red eyes and the bubble at game scale. Finally the carried
+ * items: lineups with each item (incl. catch reaches), the
  * stomp bounce, the catch reach and 1x / 2x crops with every item.
  *   npm run playtest -- --scenario scripts/scenarios/skater.ts --viewports desktop,phone-landscape,phone-portrait --name skater
  */
@@ -66,7 +66,9 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   await writeDataUrl(t, '00-pose-lineup-chill.png', await page.evaluate(() => window.__player!.lineup(6, 'chill')));
   await writeDataUrl(t, '00-pose-lineup-kid.png', await page.evaluate(() => window.__player!.lineup(6, 'kid')));
   await writeDataUrl(t, '00-pose-lineup-1x.png', await page.evaluate(() => window.__player!.lineup(1)));
+  await writeDataUrl(t, '00-pose-lineup-2x.png', await page.evaluate(() => window.__player!.lineup(2)));
   await writeDataUrl(t, '00-pose-lineup-chill-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'chill')));
+  await writeDataUrl(t, '00-pose-lineup-kid-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'kid')));
   for (const item of ITEMS) {
     await writeDataUrl(t, `00-pose-lineup-${item}.png`, await page.evaluate((i) => window.__player!.lineup(6, 'normal', i), item));
   }
@@ -164,7 +166,7 @@ async function carryShots(t: PlaytestContext): Promise<void> {
   await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
   await page.evaluate(() => window.__player!.chill(0));
   await game.step(10);
-  await skaterCrop(t, 'crop-moustache-ride');
+  await skaterCrop(t, 'crop-clean-ride');
 
   // Stomp: jump, wait until falling, then emit stomp like gameplay; the bounce comes on the next tick.
   await game.press();
@@ -209,13 +211,13 @@ async function carryShots(t: PlaytestContext): Promise<void> {
   await stepUntil(t, (s) => s.player.grounded);
   await page.evaluate(() => window.__player!.chill(60));
   await game.step(10);
-  await skaterCrop(t, 'crop-chill-moustache-gingerbread');
+  await skaterCrop(t, 'crop-chill-gingerbread');
   await page.evaluate(() => {
     window.__player!.kidMode(true);
     window.__player!.carry('pretzel');
   });
   await untilBubble(t);
-  await skaterCrop(t, 'crop-kid-moustache-pretzel');
+  await skaterCrop(t, 'crop-kid-pretzel');
   await page.evaluate(() => {
     window.__player!.kidMode(false);
     window.__player!.chill(0);

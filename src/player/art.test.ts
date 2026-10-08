@@ -37,8 +37,21 @@ function luma(hex: string): number {
   return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
 }
 
+/** Pixels of `frame` inside the head box of `head` (11 x 8), as rows. */
+const headBox = (frame: string[], head: { x: number; y: number }) =>
+  frame.slice(head.y, head.y + 8).map((row) => row.slice(head.x, head.x + 11));
+
+/** "x,y" of every `ch` pixel in `rows`. */
+const cells = (rows: string[], ch: string) =>
+  rows.flatMap((row, y) => [...row].flatMap((c, x) => (c === ch ? [`${x},${y}`] : [])));
+
+const faceFrames = () =>
+  [BODY_FRAMES, CHILL_BODY_FRAMES].flatMap((frames) =>
+    frames.flatMap((frame, i) => (HEAD_AT[i] ? [{ i, box: headBox(frame, HEAD_AT[i]!) }] : [])),
+  );
+
 describe('skater art at game scale', () => {
-  it('uses a neutral light grey and a clearly darker grey for the salt-and-pepper hair', () => {
+  it('uses a neutral light grey and a clearly darker grey base for the greying hair', () => {
     const light = parseInt(PALETTE.H.slice(1), 16);
     const [r, g, b] = [light >> 16, (light >> 8) & 255, light & 255];
     expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(8);
@@ -46,14 +59,42 @@ describe('skater art at game scale', () => {
     expect(luma(PALETTE.H) - luma(PALETTE.h)).toBeGreaterThan(90);
   });
 
-  it('shows bold hair below the cap: separate light-grey patches over a dark base in every face frame', () => {
-    BODY_FRAMES.forEach((frame, i) => {
-      if (!HEAD_AT[i]) return;
-      expect(count(frame, 'H'), `frame ${i}`).toBeGreaterThanOrEqual(12);
-      expect(count(frame, 'h'), `frame ${i}`).toBeGreaterThanOrEqual(7);
-      const patches = clusters(frame, 'H').filter((size) => size >= 3);
-      expect(patches.length, `frame ${i}`).toBeGreaterThanOrEqual(3);
-    });
+  it('keeps the face clean: no stubble colour and no hair in front of the ear', () => {
+    expect(PALETTE).not.toHaveProperty('b');
+    for (const frames of [BODY_FRAMES, CHILL_BODY_FRAMES]) expect(frames.join('')).not.toContain('b');
+    for (const { i, box } of faceFrames()) {
+      // Everything in front of the ear (columns 5..10 below the cap) is face, not hair.
+      const face = box.slice(3).map((row) => row.slice(5));
+      expect(face.join(''), `frame ${i}`).not.toMatch(/[hH]/);
+    }
+  });
+
+  it('greys the hair as two small clean blocks (temple and nape) over a dark base, identical in every face frame', () => {
+    const first = faceFrames()[0]!.box;
+    const grey = cells(first, 'H');
+    expect(grey.length).toBeGreaterThanOrEqual(3);
+    expect(grey.length).toBeLessThanOrEqual(6);
+    const blocks = clusters(first, 'H');
+    expect(blocks).toHaveLength(2);
+    for (const size of blocks) expect(size).toBeGreaterThanOrEqual(2);
+    expect(count(first, 'h')).toBeGreaterThanOrEqual(3);
+    for (const { i, box } of faceFrames()) {
+      expect(cells(box, 'H'), `frame ${i}`).toEqual(grey);
+      expect(cells(box, 'h'), `frame ${i}`).toEqual(cells(first, 'h'));
+    }
+  });
+
+  it('draws the same head in every normal face frame (no jitter) with a brim, one eye pixel and skin', () => {
+    const heads = faceFrames().filter((_, n) => n < BODY_FRAMES.filter((__, i) => HEAD_AT[i]).length);
+    const head = heads[0]!.box;
+    // Compare the head's own pixels; its transparent corners may show arms or the torso.
+    const opaque = (box: string[]) => box.map((row, y) => [...row].map((c, x) => (head[y]![x] === '.' ? '.' : c)).join(''));
+    for (const { i, box } of heads) expect(opaque(box), `frame ${i}`).toEqual(head);
+    expect(head.join('')).toContain('C');
+    expect(count(head, 's')).toBeGreaterThanOrEqual(12);
+    // One dark eye pixel inside the face, skin left and right of it.
+    const eyes = head.slice(3, 6).flatMap((row, y) => [...row].flatMap((c, x) => (c === 'k' && row[x - 1] === 's' && row[x + 1] === 's' ? [[x, y]] : [])));
+    expect(eyes).toHaveLength(1);
   });
 
   it('gives the chill face a red eye with a dark red lower lid line', () => {
@@ -65,44 +106,15 @@ describe('skater art at game scale', () => {
     });
   });
 
-  it('wears a dark-grey moustache with light-grey hairs under the nose in every face frame (normal and chill)', () => {
-    for (const frames of [BODY_FRAMES, CHILL_BODY_FRAMES]) {
-      frames.forEach((frame, i) => {
-        const head = HEAD_AT[i];
-        if (!head) return;
-        // The moustache sits on the row above the mouth, from the cheek to the front of the face.
-        const row = frame[head.y + HEAD_MOUTH.y - 1]!.slice(head.x + 5, head.x + 10);
-        expect(count([row], 'h'), `frame ${i}: ${row}`).toBeGreaterThanOrEqual(3);
-        expect(count([row], 'H'), `frame ${i}: ${row}`).toBeGreaterThanOrEqual(1);
-      });
-    }
-  });
-
-  it('makes the moustache a bold two-row block, set off from the stubble by skin, in every face frame', () => {
-    for (const frames of [BODY_FRAMES, CHILL_BODY_FRAMES]) {
-      frames.forEach((frame, i) => {
-        const head = HEAD_AT[i];
-        if (!head) return;
-        const upper = frame[head.y + HEAD_MOUTH.y - 1]!.slice(head.x + 5, head.x + 11);
-        const lower = frame[head.y + HEAD_MOUTH.y]!.slice(head.x + 5, head.x + HEAD_MOUTH.x);
-        // Upper row: skin, then a solid 5 px moustache out to the front tip.
-        expect(upper, `frame ${i}`).toMatch(/^s[hH]{5}$/);
-        // Lower row: skin, then the moustache droops over the lip up to the mouth corner.
-        expect(lower, `frame ${i}`).toMatch(/^s[hH]{3}$/);
-        const block = [upper, lower];
-        expect(count(block, 'h'), `frame ${i}`).toBeGreaterThanOrEqual(7);
-        expect(count(block, 'H'), `frame ${i}`).toBeGreaterThanOrEqual(1);
-      });
-    }
-  });
-
-  it('keeps the mouth corner (joint, bubble gum) free, just under the moustache', () => {
+  it('puts the mouth (joint, bubble gum) on the front of the face, just under the nose', () => {
     BODY_FRAMES.forEach((frame, i) => {
       const head = HEAD_AT[i];
       if (!head) return;
       const mouth = frame[head.y + HEAD_MOUTH.y]![head.x + HEAD_MOUTH.x];
-      expect(mouth, `frame ${i}`).not.toMatch(/[hH]/);
-      expect(frame[head.y + HEAD_MOUTH.y - 1]![head.x + HEAD_MOUTH.x], `frame ${i}`).toBe('h');
+      expect(mouth, `frame ${i}`).toMatch(/[ks]/);
+      // Nose: skin right above the mouth that sticks out in front of it.
+      expect(frame[head.y + HEAD_MOUTH.y - 1]![head.x + HEAD_MOUTH.x + 1], `frame ${i}`).toBe('s');
+      expect(frame[head.y + HEAD_MOUTH.y]![head.x + HEAD_MOUTH.x + 1], `frame ${i}`).toBe('.');
     });
   });
 });

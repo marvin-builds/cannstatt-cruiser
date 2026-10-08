@@ -1,6 +1,6 @@
 /**
  * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
- * salt-and-pepper hair and moustache, stubble, red hoodie, jeans, white sneakers) and his
+ * dark-grey hair greying at the temple and nape, red hoodie, jeans, white sneakers) and his
  * longboard. Body frames are composed from shared parts (see compose.ts).
  *
  * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
@@ -15,9 +15,8 @@ export const PALETTE = {
   k: '#241c24', // outline
   s: '#e3a57c', // skin
   S: '#b97456', // skin shade, ear
-  b: '#8a7569', // stubble
   h: '#47444a', // hair, dark grey base
-  H: '#bcbcbc', // hair, light grey patches (salt and pepper)
+  H: '#bcbcbc', // hair, light grey at the temple and nape
   e: '#ff2236', // red eye (chill)
   p: '#ff9aae', // bloodshot pink eye (chill)
   E: '#b0102a', // dark red lower lid line (chill)
@@ -56,45 +55,43 @@ export const BOARD_ANCHOR_X = 13;
 // ---------------------------------------------------------------- parts
 
 /**
- * Head facing right, 11 x 8. Bold salt-and-pepper hair under the cap: it
- * covers the back of the head (no outline there, the hair is the edge), runs
- * down into a sideburn at the temple and a tuft at the nape, as three
- * separate light-grey patches (H) split by dark grey (h) so they read at 1x.
- * Under the nose a dark-grey moustache (Schnauzbart) with a light-grey hair,
- * two rows deep (a walrus droop over the lip to the mouth corner) so it reads
- * as a dark block at 1x, set off from the chin stubble by a skin column.
+ * Head facing right, 11 x 8, the same in every frame. Navy cap with a dark
+ * brim over the eyes; under it dark-grey hair (h) at the back with two small
+ * light-grey blocks (H): a sideburn at the temple in front of the ear and a
+ * patch at the nape. Clean skin face: one eye pixel, the nose sticks out one
+ * pixel, the mouth is the outline pixel just under it.
  */
 const HEAD = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  hHHhhHsskk.
-  hHHhSskssk.
-  HhhHHssssSk
-  HHhHbshHhhh
-  hHkbbshhh..
+  khhHssssk..
+  khhHSsksssk
+  kHHsssssk..
+  .kHsssssk..
+  ..kkssskk..
 `;
 
 /**
  * Chill head: heavy dark lid over a bloodshot pink-and-red eye with a dark
- * red lower lid line. Same size and outline as HEAD.
+ * red lower lid line. Same size, outline and hair as HEAD.
  */
 const HEAD_CHILL = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  hHHhhHkkkk.
-  hHHhSspesk.
-  HhhHHsEEESk
-  HHhHbshHhhh
-  hHkbbshhh..
+  khhHskkkk..
+  khhHSpesssk
+  kHHsEEEsk..
+  .kHsssssk..
+  ..kkssskk..
 `;
 
 /**
- * Mouth corner of the head (where the joint and the bubble gum sit), relative
- * to the head's top-left: just under the front tip of the moustache.
+ * Mouth of the head (where the joint and the bubble gum sit), relative to the
+ * head's top-left: the front outline pixel just under the nose.
  */
-export const HEAD_MOUTH = { x: 9, y: 7 } as const;
+export const HEAD_MOUTH = { x: 8, y: 5 } as const;
 
 const TORSO_DOWN = `
   .kRrrrrk..
@@ -294,8 +291,8 @@ const CRASH_BALL = `
   .kRrrrrrjk
   kRrrrrrRkk
   kRrrrkkcck
-  .kRrkHHcck
-  ..kkhssCk.
+  .kRrkhhcck
+  ..kkHssCk.
   ....kkkk..
 `;
 
@@ -303,9 +300,9 @@ const CRASH_BALL = `
 const CRASH_LYING = `
   ............kkkkkk.kkkk.
   .kk.kkkkkkkkRrrrrrkcccck
-  kwwkjjjjjjjjrrrrrrkHcCCk
-  kwwkjJjjjJjjRrrrsrkHhsSk
-  kWWkjjjjjjjjRRRRRRkbsbsk
+  kwwkjjjjjjjjrrrrrrkhcCCk
+  kwwkjJjjjJjjRrrrsrkHssSk
+  kWWkjjjjjjjjRRRRRRkHsksk
   .kk.kkkkkkkkkkkkkk.kkkk.
 `;
 

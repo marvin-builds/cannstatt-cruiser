@@ -29,6 +29,12 @@ describe('carried item art', () => {
     expect(rows[2]).toMatch(/^ki.*ik$/);
   });
 
+  it('draws the football black-and-white like the ball people toss (gameplay item art)', () => {
+    const used = new Set(rowsFromString(ITEM_ART.football).join('').replace(/\./g, ''));
+    const colours = [...used].map((ch) => ITEM_PALETTE[ch as keyof typeof ITEM_PALETTE]);
+    expect(colours.sort()).toEqual([ITEM_PALETTE.k, '#2a2a2e', '#f4f1ea'].sort());
+  });
+
   it('gives every item its own art', () => {
     expect(new Set(ITEMS.map((i) => ITEM_ART[i])).size).toBe(ITEMS.length);
   });

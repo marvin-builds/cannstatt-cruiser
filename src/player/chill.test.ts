@@ -132,9 +132,9 @@ describe('chill overlay selection', () => {
     }
   });
 
-  it('places the joint at the mouth corner of the head in that frame, under the moustache tip', () => {
+  it('places the joint at the mouth of the head in that frame, under the nose', () => {
     const head = HEAD_AT[B.duck]!;
-    expect(chillJoint('duck', B.duck)).toEqual({ x: head.x + 9, y: head.y + 7 });
+    expect(chillJoint('duck', B.duck)).toEqual({ x: head.x + 8, y: head.y + 5 });
   });
 
   it('has a red-eyed variant of every frame that shows a head, the rest unchanged', () => {

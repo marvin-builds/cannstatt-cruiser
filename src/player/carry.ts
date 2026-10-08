@@ -13,9 +13,9 @@ import type { TimelineName } from './poses';
 
 export const ITEM_PALETTE = {
   k: PALETTE.k, // the skater's outline
-  f: '#9a5a2c', // football leather
-  F: '#663717', // football leather shade
-  w: '#f7f3ea', // white: ball seams, pretzel salt, beer foam
+  b: '#f4f1ea', // football white (as the tossed ball, gameplay/item-art.ts)
+  q: '#2a2a2e', // football black patches
+  w: '#f7f3ea', // white: pretzel salt, beer foam
   z: '#c47a35', // pretzel crust
   Z: '#8a4a1c', // pretzel crust shade
   y: '#f5b52e', // beer
@@ -30,12 +30,11 @@ export const ITEM_PALETTE = {
 /** Small side-view sprites, readable at 1x, outlined like the skater. */
 export const ITEM_ART: Record<CarriedItem, string> = {
   football: `
-    .kkkk.
-    kfwffk
-    kwwwfk
-    kfwfFk
-    kFfFFk
-    .kkkk.
+    .kkk.
+    kbqbk
+    kqqqk
+    kbqbk
+    .kkk.
   `,
   pretzel: `
     .kkk.kkk.
