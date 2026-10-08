@@ -2,8 +2,8 @@
  * Hidden settings menu and kid mode: the title shows no settings button; a
  * 3 s long press on the logo (touch / mouse) or holding K (keyboard) opens
  * "Einstellungen" without starting a run (progress only after ~1 s); kid mode
- * turns on at once, turning it off needs the parent check (a wrong answer
- * closes without change); the flag survives a reload; a kid-mode run shows the
+ * turns on and off at once (the long press is the only guard); the flag
+ * survives a reload; a kid-mode run shows the
  * bubble gum, the pink tint and the gum HUD icon. Also checks that every
  * button's tap area is >= 44 CSS px on touch viewports.
  *   npm run playtest -- --scenario scripts/scenarios/settings.ts --viewports desktop,phone-landscape,phone-portrait --name settings

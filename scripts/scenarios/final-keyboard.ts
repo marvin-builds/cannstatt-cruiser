@@ -8,6 +8,7 @@
 import { PLAYER_X } from '../../src/core/config';
 import { Rng } from '../../src/core/rng';
 import type { PlaceableKind } from '../../src/gameplay/debug';
+import { TOP_SPEED } from '../../src/gameplay/difficulty';
 import { HumanBot, planStomp, SolverBot } from '../../src/gameplay/testing';
 import type { GameState } from '../../src/types';
 import type { PlaytestContext } from '../playtest-lib';
@@ -167,7 +168,7 @@ export default async function (t: PlaytestContext) {
   await game.step(60);
   await game.seed(33);
   await game.startRun();
-  await game.setSpeed(165);
+  await game.setSpeed(TOP_SPEED);
   const r3 = await ride(t, new HumanBot(new Rng(9), true), 'run3 top speed human', 2 * 3600, 1200);
   await game.setSpeed(null);
   if (r3.s.mode === 'playing') await game.endRun();
@@ -247,7 +248,7 @@ export default async function (t: PlaytestContext) {
   await t.canvasShot('settings menu');
   await t.log('settings', await t.page.evaluate(() => (window as unknown as { __ui: { settings(): unknown } }).__ui.settings()));
 
-  // Enter toggles kid mode on, Esc closes, kid run with gum, then K again -> on->off needs parent check (keys 1-3).
+  // Enter toggles kid mode on, Esc closes, kid run with gum, then K again: Enter turns it off at once.
   await kb.press('Enter');
   await game.step(3);
   await t.canvasShot('kid mode on');

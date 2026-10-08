@@ -13,7 +13,7 @@ src/main.ts             composition root: lists the systems in update order (do 
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/changelog.ts        CHANGELOG (newest first), BUILD_VERSION, changesSince(), compareVersions() (see Changelog)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90; MAX_SPEED 165 is no longer read by gameplay, whose top speed is difficulty.ts TOP_SPEED), health, DRUNK_DELAY_MIN/MAX, DRUNK_HOLD_WOBBLE, START_ZONE
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, BASE_SPEED 90 (the top speed is gameplay's difficulty.ts TOP_SPEED), health, DRUNK_DELAY_MIN/MAX, DRUNK_HOLD_WOBBLE, START_ZONE
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
@@ -22,7 +22,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   drunk.ts              drunk input: DelayedButton (action/duck edges held back, holds wobbled while drunk), drunkDelay(), drunkHoldWobble(), drunkWindow() for the solver
   perf.ts               FrameProbe: allocation-free per-frame timing for scripts/frametimes.ts (window.__game.perf)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
-  input.ts              DOM binding: keys (hotspots first, then action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
+  input.ts              DOM binding: keys (hotspots first, then action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus; USER_GESTURE_EVENTS (audio unlock)
   renderer.ts           offscreen buffer (resized to the view width), integer scaling, letterbox colour, capture()
   scaling.ts            computeLayout() (scale + adaptive view width), screenToView() (pure math)
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
@@ -34,10 +34,10 @@ src/core/               engine pieces (foundation-owned, slices only import from
   storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage; createMemoryStore() for tests
   fullscreen.ts         toggleFullscreen() with webkit + iOS fallback, landscape lock
   testhook.ts           window.__game (see docs/TESTING.md)
-  update.ts             handleServiceWorkerMessage(): sw.js `updateReady` -> state.updateReady (see Update signal)
+  update.ts             handleServiceWorkerMessage(): sw.js `updateReady` -> state.updateReady; CHECK_FOR_UPDATE_MESSAGE, shouldCheckForUpdate(), UPDATE_CHECK_INTERVAL_MS (see Update signal)
   version.ts            loadWhatsNew() / markVersionSeen(): store key lastSeenVersion -> state.whatsNew (see Changelog)
   install.ts            InstallController, detectInstallEnvironment(): state.install, beforeinstallprompt (see Install hint)
-  app.ts                startApp(systems): wires everything in the browser, registers ./sw.js and its message listener
+  app.ts                startApp(systems): wires everything in the browser, registers ./sw.js and its message listener, watchForUpdates()
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
   world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
   world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
@@ -45,6 +45,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   world/art/traffic.ts  vehicle and exhaust art: drawBackTraffic (world layer), drawFrontTraffic (fx layer), smog haze
   world/scene.ts        DepthLayer (one parallax depth over all zones, knows the layer `behind` it for LayerSpec.props.uncover), SharedLayer (clouds)
   world/stream.ts       PropStream: props of one zone leg in a seeded order, keepClear(from, to), introX(id)
+  world/art/flags.ts    hanging window flags: FlagSpec (PALESTINE_FLAG, TRANS_FLAG), withFlag(), flagSpan() (see Flags)
   world/art/mombach.ts  the Mombachquelle scene on the far Neckar bank (mid layer, see Zones); MOMBACH_FOCUS = the basin span the near layer keeps uncovered
   world/debug.ts        window.__world (test only): trafficDensity(), traffic() {vehicles, puffs, shake}
   gameplay/difficulty.ts  speedAt(distance): BASE_SPEED 90 eases out to TOP_SPEED 190 over SPEED_RAMP_DISTANCE (46 000 px, ~5.3 min); gapAt, tierAt over RAMP_DISTANCE (24 000 px, ~3.5 min)
@@ -58,10 +59,12 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
   gameplay/drop.ts      DroppedItems: the item a ball hit knocks onto the street, lying there until picked up (see Dropped items)
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
-  gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning
+  gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
+  gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK
+  gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
-  ui/item-button.ts     touch item button / desktop "E" chip, first-catch hint (storage key itemHintSeen)
+  ui/item-button.ts     touch item button (landscape top right, portrait under the stats plate) / desktop "E" chip, first-catch hint (storage key itemHintSeen, itemHintRect, popupCeiling)
   ui/drunk-look.ts      drunk HUD row and woozy screen (two swaying double images, pulsing wash, vignette); ui/item-look.ts catch popups
   ui/notices.ts         rules for the menu notices: reloadOffered, installHintKind (INSTALL_HINT_MIN_VISITS), whatsNewLines (see Menu screens)
   ui/menu-layout.ts     one pure layout per menu screen (title, pause, game over, what's new) incl. its buttons, shared by hotspots and drawing
@@ -70,7 +73,8 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
   ui/draw-kit.ts        shared drawing primitives: shadowed text, opaque plates and ribbons, menu buttons (allocation-free)
   ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
-  audio/traffic.ts      TrafficNoise: Mitte rumble level (ducked under gameplay sounds), rng-free horns and truck passes from state.trafficDensity
+  audio/traffic.ts      TrafficNoise: Mitte rumble level from state.trafficDensity, light-traffic swells per passing vehicle (TRAFFIC.swell), ducking under gameplay sounds, rng-free horns and truck passes
+  audio/passby.ts       PassBy: vehiclePassed -> pass-by cue (passCar / passVan / passBus / passTruck) and intensity, rate-limited
   player/bin.ts         bin crash: the bin the player draws around the skater
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
@@ -88,9 +92,9 @@ foundation owner can extend it.
 |---|---|---|---|
 | `src/core/`, `src/types.ts`, `src/changelog.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
-| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
+| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, planned in Stunt Wave A, see [Stunt lines](#stunt-lines-planned-in-stunt-wave-a)) |
+| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -120,11 +124,23 @@ creates them in `public/`):
   [Menu screens](#menu-screens-ui)) and calls `ctx.commands.reloadForUpdate()` from the
   hint's hotspot; core reloads the page (`location.reload()` through the
   `Platform`, a no-op in tests).
+- **Re-check while open** (an installed app resumed from the background
+  never starts again, so the worker's check on navigation never runs):
+  `app.ts` `watchForUpdates(registration)` posts `CHECK_FOR_UPDATE_MESSAGE`
+  (`{type: 'checkForUpdate'}`) to the controlling worker and calls
+  `registration.update()` when the page becomes visible again
+  (`visibilitychange`) and every `UPDATE_CHECK_INTERVAL_MS` (5 min);
+  `shouldCheckForUpdate(last, now, resumed)` skips a resume check within
+  10 s of the last one. `sw.js` answers the message like the background
+  refresh on navigation (`cacheShell`: re-fetch the page, cache its assets,
+  post `updateReady` only for a changed, complete deploy); offline or failed
+  checks are swallowed and keep the cached build.
 - A message can be lost if the worker finishes before the loading page exists
   as a client; the next start then already runs the new build, so nothing is
   missed for long.
 - Tests: `src/core/sw.test.ts` runs `public/sw.js` against in-memory caches,
-  network and clients; `scripts/scenarios/update-hint.ts` checks it end to
+  network and clients (also the `checkForUpdate` message, offline included);
+  `src/core/update.test.ts` the check timing; `scripts/scenarios/update-hint.ts` checks it end to
   end on the preview build; `window.__game.simulateUpdateReady()` sets the
   flag without a deploy (docs/TESTING.md).
 
@@ -228,7 +244,7 @@ interface System {
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
 | `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick), `reloadForUpdate` (reloads the page; see [Update signal](#update-signal-roadmap-item-15)), `markVersionSeen` (see [Changelog](#changelog-neu-in-dieser-version-roadmap-item-16)), `promptInstall`, `dismissInstallHint` (see [Install hint](#install-hint-roadmap-item-18)) |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
-| `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
+| `onUserGesture(fn)` | runs `fn` inside every DOM event of `USER_GESTURE_EVENTS` (`core/input.ts`: keydown, pointerdown, pointerup, touchend, click), registered before the input listeners. Phones grant user activation only at a touch's end, so the up events retry the WebAudio unlock (a context resumed in pointerdown can stay silent) |
 
 ### GameState field owners
 
@@ -306,6 +322,10 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `ballHit` | `{entityId, kind}` | gameplay (the thrown ball hit a person: the person's id and kind; the person's item drops onto the street) |
 | `ballBack` | `{entityId}` | gameplay (a missed ball ricochets back towards the skater; the ball's id) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
+| `vehiclePassed` | `{kind, front, light}` | world, only while the mode is `playing` (a foreground vehicle's centre crossed `PLAYER_X`, once per vehicle, in every zone; `kind` car / van / bus / truck, `front` = front lane, `light` = set off as light traffic, density below 0.5). Audio plays the pass-by and, for light traffic, the swell (see [Light traffic](#light-traffic)) |
+| `launch` | `{entityId, velocity}` | gameplay, **planned in Stunt Wave A** (the skater rode onto a kicker; the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce; jumpsim mirrors it) |
+| `stuntStep` | `{step, steps, multiplier, points}` | gameplay, **planned in Stunt Wave A** (one piece of a stunt line was made: kicker air, ledge grind, a jump or stomp in the line; `step` 1..`steps`; the ui shows "Combo xN!", audio a rising sound) |
+| `stuntEnd` | `{steps, made, completed, points}` | gameplay, **planned in Stunt Wave A** (the line ended: `completed` when every piece was made, else the skater dropped out, never a crash or lost health; `points` = line bonus, 0 if none) |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
@@ -325,7 +345,10 @@ pause, M mute.
 
 **Use on touch and mouse:** pointers have no default for `use` (a tap
 anywhere jumps). The ui shows an item button while `state.carriedItem` is set
-and registers it as a hotspot whose `onPress` calls `ctx.commands.useItem()`.
+(`ui/item-button.ts` `itemButtonRect`: in landscape under the HUD buttons,
+top right; in portrait under the stats plate on the left, behind the skater,
+so it never hides stars flying in from the right; the first-catch hint sits
+beside it and pushes the popups below it, `popupCeiling`) and registers it as a hotspot whose `onPress` calls `ctx.commands.useItem()`.
 That presses and releases `use` in one go, so the next tick sees
 `use = {pressed: true, released: true, held: false}`, exactly like a tapped
 key, and the pointer press never reaches the action. Systems react to
@@ -644,18 +667,71 @@ layers as in Mitte, so it never covers the skater or obstacles; at density
 `>= DENSE_FROM` every lane runs on its own timer (`Lane.kinds`,
 `Lane.interval`).
 
-**Traffic audio** (`audio/traffic.ts` `TrafficNoise`, `audio/sounds.ts`
-`TRAFFIC_RUMBLE`): a layered rumble on one gain bus that follows a smoothed
-`state.trafficDensity` (lowpassed road noise whose cutoff opens with the
-level, tyre hiss and a throbbing engine drone of two detuned low saws). With
-light traffic (0.05) outside Mitte it plays quietly, in Mitte at full level.
-It is silent unless playing and unmuted, and dips to `duckTo` (0.45) for ~8 ticks
-whenever a gameplay sound plays, then glides back (traffic sounds never duck
-it). One-shot cues are rng-free (a hash of the run-time slot), so they only
-sound in and around Mitte: horns from density 0.5 (`honk` car, `honkShort` small-car double beep, `hornDeep`
-bus / truck; at most one per 1.5 s slot) and a passing truck (`truckPass`,
-from density 0.6, at most one per 6 s slot). `window.__audio.log` records
-`traffic:start` / `traffic:stop` and the cues.
+**Pass-bys** (`vehiclePassed`): `Traffic.update(dt, scroll, density,
+viewWidth, onPass?)` calls `onPass` once per vehicle when its centre crosses
+`PLAYER_X` (`reportPasses`, after moving). The listener gets one reused
+`VehiclePass` object (copy what you keep); the world passes a listener that
+emits `vehiclePassed` with a copy **only while the mode is `playing`** (none
+on the title, pause or game over, although traffic is drawn there). Each
+vehicle remembers whether it was set off as light traffic (`light`, density
+below `LIGHT_BELOW` 0.5 at launch) and whether it `passed`.
+
+**Traffic audio** (`audio/traffic.ts` `TrafficNoise`, `audio/passby.ts`
+`PassBy`, `audio/sounds.ts` `TRAFFIC_RUMBLE`): a layered rumble on one gain
+bus (lowpassed road noise whose cutoff opens with the level, tyre hiss and a
+throbbing engine drone of two detuned low saws).
+
+- **Steady hum** only in and around Mitte: `humLevel(density)` maps the
+  density above `LIGHT_TRAFFIC` to 0..1 (`TRAFFIC.humCurve`), so light
+  traffic (0.05) has **no steady hum** and Mitte plays at full level.
+- **Light-traffic swells**: on each `vehiclePassed` with `light`,
+  `TrafficNoise.swell(strength, time)` (strength `PASS_BY.lane`: front 1,
+  back 0.6) lets the rumble rise for `TRAFFIC.swell.rise` (0.25 s) and fade
+  out by `length` (1.2 s) at up to `peak` (0.35); up to `voices` (4)
+  overlapping vehicles are summed (fixed slots, no allocation). The street
+  outside Mitte is silent between vehicles.
+- **Pass-by whoosh** (`PassBy.pass`): a cue per vehicle kind (`passCar`,
+  `passVan`, `passBus`, `passTruck`), louder for the front lane; in dense
+  Mitte traffic quieter (`dense` 0.4) and at most one per second, in light
+  traffic every vehicle (at least `lightGap` 0.12 s apart). Ducked like the
+  rumble.
+- Everything is silent unless playing and unmuted; the rumble dips to
+  `duckTo` (0.45) for ~8 ticks whenever a gameplay sound plays, then glides
+  back (traffic sounds never duck it).
+- One-shot cues are rng-free (a hash of the run-time slot), so they only
+  sound in and around Mitte: horns from density 0.5 (`honk` car,
+  `honkShort` small-car double beep, `hornDeep` bus / truck; at most one per
+  1.5 s slot) and a passing truck (`truckPass`, from density 0.6, at most
+  one per 6 s slot).
+- `window.__audio.log` records `traffic:start` / `traffic:stop` whenever the
+  backend starts or stops hearing any rumble or swell (`TrafficNoise.sounding`):
+  in light traffic that is once per passing vehicle, in Mitte once on the way
+  in and out; plus the cues.
+
+### Flags
+
+Two small flags hang from a window sill of a mid-layer house
+(`world/art/flags.ts`): a Palestine flag on a Fachwerk house in Bad
+Cannstatt (`fachwerkAFlag`, `CANNSTATT_FLAG_X`) and a trans pride flag on
+the tall Mitte terrace (`housesBFlag`, `MITTE_FLAG_X`).
+
+- **Hanging vertically**: a `FlagSpec` is the flag turned 90 degrees
+  clockwise, hoist edge on top at the sill, stripes running vertically
+  (`stripes` left to right, the Palestine triangle pointing down from the
+  hoist). Four pre-rendered flutter frames (`FLAG_FRAMES`, 2 fps) with a 1 px
+  drape and a wandering shaded fold row, plus a soft wall shadow; nothing is
+  allocated per frame. The flag logic (`flagColor`, `drapeShift`,
+  `foldRow`) is pure and unit-tested.
+- **Once per zone visit**: `withFlag(house, houseH, flag, dx, top)` returns
+  a `Prop` with `flag` set to the flag's name. The flagged house is only in
+  its layer's stream `intro`, never in the fillers or landmarks (those use
+  the plain house), so each flag shows once per visit of its zone.
+- **Never covered**: the near layer of the zone keeps the flag clear with
+  `LayerSpec.props.uncover = {id, ...flagSpan(flag, dx)}` (the flag, its
+  sway and wall shadow in house-local x), the same mechanism as the
+  Mombachquelle, so the street props (Litfaßsäule, lamps, trees) never pass in
+  front of it.
+- Tests: `world/art/flags.test.ts`, `world/art/flags-placement.test.ts`.
 
 ## Menu screens (ui)
 
@@ -687,15 +763,19 @@ picks one (null while riding or while the settings menu covers it):
   `commands.promptInstall()` inside the tap), otherwise `'ios'` on iOS
   ("Teilen" with the share icon, arrow, "Zum Home-Bildschirm"); other
   platforms without a captured prompt get none. "×" calls
-  `commands.dismissInstallHint()`. On a crowded game over the hint goes
-  before the stars and distance rows; the title keeps it.
+  `commands.dismissInstallHint()`. On game over the prompt kind shows as a
+  **compact card** (`InstallCard` `'compact'`: just the button "App
+  installieren" and "×"); on a crowded game over it goes before the stars
+  and distance rows. The title keeps the full card.
 - **"Neu in dieser Version"**: a headline and one bullet line per item of
   `state.whatsNew` (`whatsNewLines`, newest first; core caps them to
   `WHATS_NEW_MAX_ITEMS`).
 - **Layout**: `ui/menu-layout.ts` has one pure function per screen
   (`titleLayout`, `pauseLayout`, `gameOverLayout`, `whatsNewLayout`)
   returning `MenuLayout {blocks, buttons, panel}`; `currentMenu(r, view)`
-  computes the one showing. The hotspots (`index.ts`) and the drawing
+  computes the one showing (`MenuLayout.install` says which install card
+  kind was placed). The title's opaque panel starts at `TITLE_PANEL_Y` (64)
+  with `PANEL_PAD` on all four sides. The hotspots (`index.ts`) and the drawing
   (`menu-screens.ts`) use the same rects, so what is drawn is what can be
   tapped. `ui/column.ts` `fitColumn` stacks the blocks centred between a
   top and a bottom and drops optional ones (highest `drop` level first, all blocks of that level at once) until the
@@ -721,15 +801,13 @@ picks one (null while riding or while the settings menu covers it):
   things already on the street, so when the menu closes with kid mode
   switched, the ui ends the paused run like "Zum Startbildschirm" (its score
   and stars count for the highscore and star total) and starts a new run.
-- Kindermodus turns on at once. Turning it off asks a parent check
-  ("Wie viel ist a × b?", factors 6-9, `parentQuestion(state.frame)`, no
-  gameplay rng) with three answers: right turns it off and returns to the
-  menu, wrong closes the menu without change. Zurück and Escape close
-  (Zurück on the check goes back to the menu). Keys: Enter / Space toggles,
-  1-3 answer.
+- The Kindermodus button switches kid mode on **and off at once**; the 3 s
+  long press is the only guard (the parent check was removed in Wave 9).
+  Zurück and Escape close the menu. Keys: Enter / Space toggles.
+  `SettingsMenu.screen` is `'closed' | 'menu'`.
 - Logic in `ui/settings.ts` (DOM-free: `LongPress`, `SettingsMenu`,
-  `parentQuestion`, `loadKidMode` / `saveKidMode`), layout in
-  `ui/layout.ts` (`settingsLayout`), drawing in `ui/screens.ts`; the pause
+  `loadKidMode` / `saveKidMode`), layout in `ui/layout.ts` (`settingsLayout`
+  → `{toggle, back}`), drawing in `ui/screens.ts`; the pause
   logo's rect comes from `ui/menu-layout.ts` (`pauseLayout`).
 - What kid mode changes: gameplay draws the joint entity as a pink bubble
   gum (`chillPickupArt`), the ui shows the gum HUD icon, a sweet pink tint and
@@ -909,6 +987,11 @@ pattern:
 - **Across pattern boundaries**: the spawner passes the previous pattern's
   pieces (`PlanOptions.before`, shifted by its length plus the gap) and the
   combined course must be clearable at every pace, with real people motion.
+- **Lead and runout** (`patterns.ts`): every pattern starts with
+  `leadFor(speed)` = 20 + 0.3 x speed px of free run-up (plus
+  `DRUNK_LEAD_SECONDS` while maybe drunk) and ends with `runoutFor(speed)` =
+  32 + 0.55 x speed px in which the skater must be back on the ground, so a
+  late landing still lands on free street (sized for `TOP_SPEED` 190).
 - **Drunk**: see [Drunk planning](#drunk-planning).
 
 ### Drunk planning
@@ -937,6 +1020,30 @@ and drink it). Such patterns:
 - replace sober plans: when the situation turns drunk, patterns planned ahead
   but not yet on the street are thrown away and planned again (the rng stays
   where it is, so runs still replay).
+
+### Effect street
+
+ROADMAP 26 (Wave 9): during a drunk or chill phase the street never goes
+empty, there is always something easy to jump (`spawner.ts`, `patterns.ts`).
+A pattern counts as ridden under an effect while the player may be drunk
+(see above) or is chilled (it starts before `chilledUntil` = the joint
+pattern's end plus `chillStreet(fast)`, the street the slowed effect lasts).
+Such patterns:
+
+- never are an empty star pattern (`PlanOptions.effect`);
+- while chilled come only up to `CHILLED_TIER` (1: lone pieces and pairs,
+  no combos);
+- are followed by a shorter gap (`effectGap`): just enough for
+  `EFFECT_FREE_SECONDS` (1.1 s of riding at the fastest speed) of free street
+  after the last obstacle or rail, never more than the normal `gapAt`;
+- fall back to a lone low obstacle (`EFFECT_FALLBACK`: curb gap, then bench,
+  pushed out by `EFFECT_PUSH_SECONDS` 0 / 0.5 / 1 s of riding until it is
+  fair after the previous pattern) when nothing fair is found, instead of
+  empty street.
+
+No joint comes while the player may be drunk: it waits until sober. Test
+tooling `effect-street.ts` `rideEffect(seed, from, 'drunk' | 'chill')` rides
+a phase and reports its longest empty stretch (`effect-street.test.ts`).
 
 ## Planning budget
 
@@ -1026,8 +1133,10 @@ top. Rules in `gameplay/rules.ts`, shared by contacts and the solver:
 
 Contract between gameplay, player and ui:
 
-- **Gameplay** spawns the rare `joint` entity (never in the first 30 s, then at
-  most one per ~45-60 s). Touching it sets `state.chillTimer = CHILL_DURATION`
+- **Gameplay** spawns the rare `joint` entity (never in the first 30 s,
+  `JOINT_FIRST_DISTANCE` 3300 px; then every `JOINT_SPACING` 8600 px plus up
+  to `JOINT_JITTER` 2400 px of street, at least 45 s even at `TOP_SPEED`;
+  never while the player may be drunk, see [Effect street](#effect-street)). Touching it sets `state.chillTimer = CHILL_DURATION`
   (6 s, `core/chill.ts`) and emits `chillStart {entityId, duration}`. Gameplay
   counts the timer down every playing tick (before it sets the speed) and the
   speed becomes `speedAt(distance) * chillSpeedFactor(chillTimer)`: it eases to
@@ -1046,6 +1155,39 @@ Contract between gameplay, player and ui:
 - **UI** shows a warm, steady screen tint scaled by `chillStrength(timer)`
   and a draining timer bar with a joint icon in the HUD plate (kid mode: the
   bubble-gum look, see [Settings menu and kid mode](#settings-menu-and-kid-mode)).
+
+## Stunt lines (planned in Stunt Wave A)
+
+ROADMAP 27: optional bonus lines that make runs more fun, **not harder**.
+The contract is in `src/types.ts` (added by the orchestrator); the slices
+implement it in Stunt Wave A, and this section is finalised once they land.
+
+- **Kinds** (`StuntKind`, part of `EntityKind`): `kicker`, a small ramp on
+  the street that launches the skater high; `ledge`, a slim grindable
+  structure of the upper level 40-60 px above the street (railing, ledge,
+  thin roof edge), drawn per zone. A ledge's entity `y` is its grind surface
+  (like the bench, see [Bench](#bench-ledge-contract)).
+- **Events**: `launch {entityId, velocity}` (riding onto a kicker; the
+  player takes off on the next tick with `velocity`, no hold, like the stomp
+  bounce, and jumpsim mirrors it), `stuntStep {step, steps, multiplier,
+  points}` per piece made (kicker air, ledge grind, a jump or stomp in the
+  line), `stuntEnd {steps, made, completed, points}` when the line ends. See
+  [Events](#events-gameevents).
+- **Design rules**: the camera never moves; the upper level is slim
+  structures in the space above the riding line and covers little
+  background; the street below always stays clearable, and falling off or
+  missing a stunt piece never crashes or costs health (the skater lands on
+  the street, the line ends); generous timing; roughly one line every
+  30-45 s of riding (a tunable constant); no lines while drunk or chilled;
+  kid mode works the same.
+- **Ownership** (planned): gameplay spawns the lines, detects kicker and
+  ledge contacts, scores them and emits the events (art for the new kinds in
+  `gameplay/art.ts`, debug hook `window.__gameplay.place('kicker' |
+  'ledge', x)`); the player takes off on `launch` and shows the grab pose and
+  hard landing (`GRAB_HEIGHT`, `HARD_LANDING_IMPACT` in `player/tuning.ts`);
+  the ui shows "Combo xN!" and the line result from `stuntStep` /
+  `stuntEnd`; audio plays a rising sound per step. Playtest:
+  `scripts/scenarios/stunts.ts`.
 
 ## How state flows
 

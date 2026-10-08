@@ -31,7 +31,9 @@ and on desktop (keyboard and mouse). The UI language is German.
   finger lifts) before it jumps. Ducking works on the ground only (not on
   rails, no fast fall in the air); jumping while ducked stands up and jumps.
 - Use the carried item: E on the keyboard; on touch (and mouse) a big item
-  button that shows only while the skater carries an item (see Using items).
+  button that shows only while the skater carries an item (see Using items):
+  top right under the HUD buttons in landscape, under the stats plate on the
+  left (behind the skater, so it never hides what comes) in portrait.
 - Grind trick: down (↓ / S, swipe down) while grinding (see Obstacles and
   scoring).
 - Coyote time (~80 ms) and jump buffering (~120 ms).
@@ -122,7 +124,8 @@ empties the hands:
   the spawner places only easy patterns (single or paired ground obstacles,
   no people, nothing overhead, no rails, a longer run-up) that are clearable
   with that delay and hold wobble by a player who holds the button long
-  (~0.7 s) for a sure full jump. Not used within ~6 s (counted from when it
+  (~0.7 s) for a sure full jump. The street never goes empty while drunk
+  (see Difficulty). Not used within ~6 s (counted from when it
   came into the hands), it is drunk by itself.
 - **Brezel / Lebkuchenherz**: eating it gives +1 health ("Lecker! +1"); at
   full health 150 bonus points instead (times the multiplier).
@@ -189,9 +192,8 @@ kid mode refers to drugs.
 - Switching kid mode from the pause screen restarts the run (the menu says
   "Lauf wird neu gestartet"); the run so far still counts for the highscore
   and the star total.
-- Kindermodus turns on at once. Turning it off asks a simple parent check:
-  "Wie viel ist 7 × 8?" (factors 6-9) with three large answer buttons; a
-  wrong answer closes the menu without change.
+- Kindermodus turns on and off at once; the hidden 3 s long press is the
+  only guard (the earlier parent check was dropped in Wave 9).
 - "Zurück" and Escape close the menu. All text is German.
 
 ## Difficulty
@@ -206,12 +208,34 @@ kid mode refers to drugs.
   while the player is still learning, then at least 12 ticks (~200 ms), with
   a tap, half or full press at every speed, chilled too, and room to land.
   Every pattern is also checked together with the end of the previous one.
+- Drunk and chilled phases keep the street busy with easy things to jump:
+  no empty star stretches, only easy patterns while chilled (single pieces
+  and pairs), at most ~1.1 s of free street after each pattern, and a lone
+  curb gap or bench where nothing else fits. No joint comes while the skater
+  is (or may soon be) drunk.
 - People come alone in their pattern, with at least ~1 s of free street
   before and after them (nobody walks into other obstacles); where their
   window is impossible (e.g. chilled at the slowest speeds) no person comes.
   Acceptance: a bot with human timing (take-off +-4 ticks, three press
   lengths, sloppy ducking) has no crash into or within 1 s of a person in 20
   runs of 3 minutes.
+
+## Stunt lines (planned in Stunt Wave A)
+
+ROADMAP 27, approved plan: epic stunt lines that make runs more fun, not
+harder.
+
+- Kicker ramps on the street launch the skater high (no button needed);
+  slim ledges, railings and roof edges of an upper level 40-60 px above the
+  street can be ground; a line chains kicker air, ledge grinds, jumps and
+  stomps for a growing combo ("Combo xN!") and a line bonus.
+- The camera never moves; the upper level is slim and covers little of the
+  background.
+- Falling off or missing a stunt piece never costs health or crashes: the
+  skater lands on the street, which always stays clearable, and the line
+  ends. Generous timing.
+- Roughly one line every 30-45 s of riding; none while drunk or chilled.
+  Kid mode works the same.
 
 ## Zones
 
@@ -233,8 +257,12 @@ Cannstatt -> Neckar -> Stuttgart-Mitte -> Neckar -> Cannstatt -> ...
    car, small-car and deep bus / truck horns, and passing trucks.
    Everywhere else (Neckar, Bad Cannstatt) the street has light traffic:
    a single car or van now and then (a bus rarely, no trucks), one at a
-   time with 4-11 s of empty street between, under the same rules; its
-   rumble is quiet and has no horns or trucks.
+   time with 4-11 s of empty street between, under the same rules. There
+   is no steady hum there: each vehicle is heard as it passes (its noise
+   swells in and out, with a pass-by whoosh by vehicle kind), and the
+   street is quiet in between; no horns or trucks.
+   A small trans pride flag hangs vertically from a top-floor window of a
+   city terrace, once per Mitte visit, never covered by street props.
 2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette, the
    Mombachquelle's outlet into the river after the real place, without any
    sign: a basin of light grey boulders at the foot of a green embankment,
@@ -243,6 +271,9 @@ Cannstatt -> Neckar -> Stuttgart-Mitte -> Neckar -> Cannstatt -> ...
 3. **Bad Cannstatt:** Altstadt half-timbered houses, Kursaal, Mineralbad /
    mineral water fountain, Cannstatter Wasen with Fruchtsäule, Riesenrad (Ferris
    wheel) and beer tents (Volksfest), the Grabkapelle on the vineyard-covered Württemberg in the distance.
+   A small Palestine flag hangs vertically from an upper window of a
+   half-timbered house, once per Cannstatt visit, never covered by street
+   props.
 
 The art is recognisable but stylised.
 
@@ -271,6 +302,8 @@ The art is recognisable but stylised.
   deploy, title, pause and game over (never mid-run) show "Neue Version da"
   with a real button "Neu laden" (touch-sized; keyboard U) that reloads the
   page. It is a button because the installed app has no browser reload.
+  An app that stays open (or comes back from the background) re-checks for
+  a new deploy on resume and every 5 minutes.
 - **"Neu in dieser Version":** every build has a version id and a short
   German changelog (a few bullet points per version, never about drugs or
   alcohol, since kid mode shows them too). After an update (the stored
@@ -284,15 +317,18 @@ The art is recognisable but stylised.
   "Installieren" button where the browser offers an install prompt
   (Android / Chromium), or "Teilen [share icon] -> Zum Home-Bildschirm" on
   iPhone / iPad (no API there; installed it runs fullscreen and offline).
-  "×" hides it for good.
+  "×" hides it for good. On game over it is a compact card ("App
+  installieren" and "×") so the results stay readable.
 
 ## Audio
 
 - Chiptune-style SFX generated with WebAudio: jump, land, grind loop, star,
   crash, game over.
-- The audio context is unlocked on the first input. Mute is persisted.
+- The audio context is unlocked on the first input (also when the finger
+  lifts, so phones never start silent). Mute is persisted.
 - Stuttgart-Mitte adds the traffic noise (rumble, horns, passing trucks; see
-  Zones); outside Mitte the light traffic only rumbles quietly.
+  Zones); outside Mitte each passing vehicle swells in and out with a
+  pass-by sound, with silence in between.
 
 ## PWA
 
