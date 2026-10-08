@@ -105,25 +105,17 @@ async function toggleKidMode(t: PlaytestContext): Promise<void> {
   t.check('Kindermodus turns on at once', (await game.state()).kidMode && (await storedKidMode(t)) === 'true', await storedKidMode(t));
   await t.canvasShot('settings menu kid mode on');
 
-  // Off needs the parent check: first a wrong answer.
+  // Off again at once: no question, the menu stays open.
   await tap(t, l.menu.toggle);
-  let menu = await settings(t);
-  t.check('turning it off asks the parent check', menu.screen === 'check' && menu.question !== null, menu);
-  await t.canvasShot('parent check');
-  await t.screenshot('parent check page');
-  await checkTapSizes(t, 'parent check', [...l.menu.answers, l.menu.back]);
-  const wrong = (menu.question!.correct + 1) % 3;
-  await tap(t, l.menu.answers[wrong]!);
-  menu = await settings(t);
-  t.check('a wrong answer closes and keeps kid mode', menu.screen === 'closed' && (await game.state()).kidMode, menu);
+  const menu = await settings(t);
+  t.check('Kindermodus turns off at once, no question', menu.screen === 'menu' && !(await game.state()).kidMode && (await storedKidMode(t)) === 'false', menu);
+  await t.canvasShot('settings menu kid mode off');
+  await t.screenshot('settings menu kid mode off page');
 
-  // Then the right one.
+  // The menu still opens again the same way.
+  await tap(t, l.menu.back);
   await openMenu(t);
   t.check(`reopened (${t.viewport.touch ? 'long press' : 'K held'})`, (await settings(t)).screen === 'menu');
-  await tap(t, l.menu.toggle);
-  menu = await settings(t);
-  await tap(t, l.menu.answers[menu.question!.correct]!);
-  t.check('the right answer turns kid mode off', !(await game.state()).kidMode && (await storedKidMode(t)) === 'false');
 
   // On again for the run, then close.
   await tap(t, l.menu.toggle);

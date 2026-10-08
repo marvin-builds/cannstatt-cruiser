@@ -277,15 +277,10 @@ export default async function (t: PlaytestContext) {
   await game.step(2);
   await kb.press('Enter');
   await game.step(3);
-  const st = await t.page.evaluate(() => (window as unknown as { __ui: { settings(): { screen: string; question: { answers: unknown[]; correct: number } | null } } }).__ui.settings());
-  await t.canvasShot('parent check');
-  await t.log('parent check', st);
-  if (st.question) {
-    await kb.press(`Digit${st.question.correct + 1}`);
-    await game.step(3);
-    await t.canvasShot('after right answer');
-  }
-  t.check('kid mode off after parent check', !(await game.state()).kidMode);
+  const st = await t.page.evaluate(() => (window as unknown as { __ui: { settings(): { screen: string } } }).__ui.settings());
+  await t.canvasShot('kid mode off');
+  await t.log('settings after Enter', st);
+  t.check('Enter turns kid mode off at once', !(await game.state()).kidMode);
   // Highscore survives a reload.
   const hsBefore = await t.page.evaluate(() => JSON.stringify(localStorage));
   await t.page.reload();

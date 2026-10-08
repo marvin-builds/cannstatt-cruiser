@@ -519,16 +519,9 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   const lay3 = await layout(t);
   await f.tap(centre(lay3.menu.toggle).x, centre(lay3.menu.toggle).y);
   await game.step(2);
-  await t.screenshot('parent check page');
-  await t.canvasShot('parent check');
-  const q = await settings(t);
-  await t.log('parent check', q);
-  if (q.question) {
-    const a = lay3.menu.answers[q.question.correct]!;
-    await f.tap(centre(a).x, centre(a).y);
-    await game.step(2);
-    await t.screenshot('after parent answer page');
-  }
+  await t.screenshot('kid mode off page');
+  await t.canvasShot('kid mode off');
+  await t.log('kid mode off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await t.log('summary', { r1: { crashes: r1.crashes, ended: r1.ended, frames: r1.frames }, compare });
   await cdp.detach();
 }

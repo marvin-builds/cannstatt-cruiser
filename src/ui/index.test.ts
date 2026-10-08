@@ -9,7 +9,7 @@ import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { gameOverLayout, type MenuInput, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
-import { loadKidMode, parentQuestion, saveKidMode } from './settings';
+import { loadKidMode, saveKidMode } from './settings';
 
 function memoryStore(): Store & { raw: Map<string, string> } {
   const raw = new Map<string, string>();
@@ -254,40 +254,27 @@ describe('hidden settings menu', () => {
     expect(loadKidMode(t.store)).toBe(true);
   });
 
-  it('turning it off needs the right answer to the parent check', () => {
+  it('turning it off is immediate too: no question, persisted, the menu stays open', () => {
     const t = title(true);
     t.longPress();
-    const q = parentQuestion(t.game.state.frame);
     t.press(t.menu().toggle);
-    expect(t.game.state.kidMode).toBe(true);
-    t.press(t.menu().answers[q.correct]);
     expect(t.game.state.kidMode).toBe(false);
     expect(loadKidMode(t.store)).toBe(false);
-  });
-
-  it('a wrong answer keeps kid mode on and closes the menu', () => {
-    const t = title(true);
-    t.longPress();
-    const q = parentQuestion(t.game.state.frame);
-    t.press(t.menu().toggle);
-    t.press(t.menu().answers[(q.correct + 1) % 3]);
+    expect(t.press(t.menu().toggle)).toBe(true); // still the menu: toggles back on
     expect(t.game.state.kidMode).toBe(true);
-    expect(loadKidMode(t.store)).toBe(true);
-    expect(t.press(t.menu().back)).toBe(false); // menu closed
-    expect(t.game.state.mode).toBe('title');
   });
 
-  it('the keyboard can answer too: 1-3 pick an answer, Enter toggles', () => {
+  it('Enter toggles in both directions from the keyboard', () => {
     const t = title(true);
     keyDown(t.game, 'KeyK');
     t.ticks(180);
     keyUp(t.game, 'KeyK');
-    const q = parentQuestion(t.game.state.frame);
     keyDown(t.game, 'Enter');
     keyUp(t.game, 'Enter');
-    keyDown(t.game, `Digit${q.correct + 1}`);
-    keyUp(t.game, `Digit${q.correct + 1}`);
     expect(t.game.state.kidMode).toBe(false);
+    keyDown(t.game, 'Enter');
+    keyUp(t.game, 'Enter');
+    expect(t.game.state.kidMode).toBe(true);
   });
 
   it('touch devices get the large HUD tap areas', () => {
@@ -537,6 +524,15 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(t.game.state.mode).toBe('paused'); // the note shows until the menu closes
     t.press(menu.back);
     expect(starts()).toBe(2);
+    expect(t.game.state.mode).toBe('playing');
+
+    // And off again without any question: another restart.
+    t.game.commands.pause();
+    openMenu();
+    t.press(menu.toggle);
+    expect(t.game.state.kidMode).toBe(false);
+    t.press(menu.back);
+    expect(starts()).toBe(3);
     expect(t.game.state.mode).toBe('playing');
   });
 });

@@ -1,10 +1,9 @@
 /**
  * The hidden settings menu ("Einstellungen") and its only setting, the kid
- * mode (state.kidMode). DOM-free logic: the long press that opens the menu,
- * the parent check that guards switching kid mode off, and persistence.
+ * mode (state.kidMode). DOM-free logic: the long press that opens the menu
+ * (the only guard: 3 s on the logo or K), the toggle and persistence.
  * Hotspots and drawing live in index.ts and screens.ts.
  */
-import { Rng } from '../core/rng';
 import type { Store } from '../core/storage';
 import type { GameState } from '../types';
 
@@ -53,33 +52,6 @@ export class LongPress {
   }
 }
 
-export interface ParentQuestion {
-  a: number;
-  b: number;
-  /** Three distinct choices; answers[correct] === a * b. */
-  answers: number[];
-  correct: number;
-}
-
-/** "Wie viel ist a × b?" with factors 6-9, the product and two near misses, shuffled. */
-export function parentQuestion(seed: number): ParentQuestion {
-  const rng = new Rng(seed);
-  const a = rng.int(6, 9);
-  const b = rng.int(6, 9);
-  const product = a * b;
-  const misses = [product + a, product - a, product + b, product - b, product + 10, product - 10];
-  const answers = [product];
-  while (answers.length < 3) {
-    const n = rng.pick(misses);
-    if (!answers.includes(n)) answers.push(n);
-  }
-  for (let i = answers.length - 1; i > 0; i--) {
-    const j = rng.int(0, i);
-    [answers[i], answers[j]] = [answers[j]!, answers[i]!];
-  }
-  return { a, b, answers, correct: answers.indexOf(product) };
-}
-
 const KID_MODE_KEY = 'kidMode';
 
 export function loadKidMode(store: Store): boolean {
@@ -90,16 +62,15 @@ export function saveKidMode(store: Store, on: boolean): void {
   store.set(KID_MODE_KEY, on);
 }
 
-export type SettingsScreen = 'closed' | 'menu' | 'check';
+export type SettingsScreen = 'closed' | 'menu';
 
 /**
- * Which screen of the hidden menu is showing, and the parent check's question.
+ * Whether the hidden menu is showing, and its Kindermodus switch.
  * `onClose(switched)` runs whenever the menu closes: `switched` tells whether
  * kid mode differs from when it opened (a run in progress restarts then).
  */
 export class SettingsMenu {
   screen: SettingsScreen = 'closed';
-  question: ParentQuestion | null = null;
   private kidModeAtOpen = false;
   /** Kid mode differs from when the menu opened. */
   switched = false;
@@ -117,47 +88,20 @@ export class SettingsMenu {
   openMenu(kidMode: boolean): void {
     this.kidModeAtOpen = kidMode;
     this.switched = false;
-    this.showMenu();
+    this.screen = 'menu';
   }
 
+  /** Closes the menu ("Zurück", Esc). */
   close(): void {
     if (!this.open) return;
     this.screen = 'closed';
-    this.question = null;
     this.onClose(this.switched);
   }
 
-  /** The Kindermodus button: on at once; off only after the parent check (question from `seed`). */
-  toggle(state: GameState, seed: number): void {
+  /** The Kindermodus button: switches kid mode on or off at once. */
+  toggle(state: GameState): void {
     if (this.screen !== 'menu') return;
-    if (!state.kidMode) {
-      this.setKidMode(state, true);
-      return;
-    }
-    this.screen = 'check';
-    this.question = parentQuestion(seed);
-  }
-
-  /** An answer button of the parent check: right turns kid mode off, wrong closes without change. */
-  answer(state: GameState, index: number): void {
-    if (this.screen !== 'check' || !this.question) return;
-    if (index === this.question.correct) {
-      this.setKidMode(state, false);
-      this.showMenu();
-    } else {
-      this.close();
-    }
-  }
-
-  /** "Zurück": from the check back to the menu, from the menu out. */
-  back(): void {
-    if (this.screen === 'check') this.showMenu();
-    else this.close();
-  }
-
-  private showMenu(): void {
-    this.screen = 'menu';
-    this.question = null;
+    this.setKidMode(state, !state.kidMode);
   }
 
   private setKidMode(state: GameState, on: boolean): void {

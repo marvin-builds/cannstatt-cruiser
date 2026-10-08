@@ -102,10 +102,8 @@ async function portraitStart(t: PlaytestContext): Promise<void> {
   await tapRect(t, l.menu.toggle);
   await t.screenshot('portrait kid mode on');
   await tapRect(t, l.menu.toggle);
-  await t.screenshot('portrait parent check');
-  const q = (await settings(t)).question!;
-  await tapRect(t, l.menu.answers[q.correct]!);
-  await t.log('after parent check', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
+  await t.screenshot('portrait kid mode off');
+  await t.log('after switching off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await tapRect(t, l.menu.back);
 
   // Start a run with a real tap in portrait.

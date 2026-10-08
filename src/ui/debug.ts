@@ -12,7 +12,7 @@ import type { MenuButtons } from './menu-layout';
 import { currentMenu } from './menu-state';
 import type { PopupFeed } from './popup-feed';
 import type { UiView } from './screens';
-import type { ParentQuestion, SettingsScreen } from './settings';
+import type { SettingsScreen } from './settings';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -31,8 +31,8 @@ export interface UiDebugHook {
   trickHintVisible(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over). */
   setRecords(highscore?: number, starsTotal?: number): void;
-  /** The hidden settings menu: screen, parent check question and the logo hold progress (0..1). */
-  settings(): { screen: SettingsScreen; question: ParentQuestion | null; holdProgress: number };
+  /** The hidden settings menu: screen and the logo hold progress (0..1). */
+  settings(): { screen: SettingsScreen; holdProgress: number };
   /**
    * Current tap areas (view px) for this display: HUD buttons, settings buttons, the logo (title, or
    * the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter), null off menus.
@@ -88,7 +88,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       view.records = { highscore, starsTotal };
     },
     settings() {
-      return { screen: view.settings.screen, question: view.settings.question, holdProgress: view.logoHold.progress };
+      return { screen: view.settings.screen, holdProgress: view.logoHold.progress };
     },
     layout() {
       const { display } = ctx;

@@ -78,34 +78,24 @@ export function buttonPlate(hit: Rect, m: UiMetrics): Rect {
   return { x: hit.x + inset, y: hit.y + inset, w: m.plate, h: m.plate };
 }
 
-/** Buttons of the settings menu: the Kindermodus toggle and Zurück; the parent check's three answers and Zurück. */
+/** Buttons of the settings menu: the Kindermodus toggle and Zurück. */
 export interface SettingsLayout {
   toggle: Rect;
   back: Rect;
-  answers: [Rect, Rect, Rect];
 }
 
 const TOGGLE_W = 170;
 const TOGGLE_Y = 44;
 const BACK_W = 100;
-const ANSWER_W = 72;
-const ANSWER_GAP = 12;
-const ANSWERS_Y = 56;
-/** Gap between the lowest content (answers, or the toggle and its note) and Zurück. */
-const BACK_GAP = 20;
+/** Gap between the toggle and Zurück: room for the toggle's note and, on desktop, the key hint. */
+const BACK_GAP = 32;
 
 /** The settings screens as one compact block: Zurück sits right under the content, not at the bottom. */
 export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout {
   const cx = centreX(viewWidth);
   const h = m.menuButtonH;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
-  const rowX = cx - Math.floor((3 * ANSWER_W + 2 * ANSWER_GAP) / 2);
-  const answer = (i: number): Rect => ({ x: rowX + i * (ANSWER_W + ANSWER_GAP), y: ANSWERS_Y, w: ANSWER_W, h });
-  return {
-    toggle: centred(TOGGLE_W, TOGGLE_Y),
-    back: centred(BACK_W, Math.max(TOGGLE_Y, ANSWERS_Y) + h + BACK_GAP),
-    answers: [answer(0), answer(1), answer(2)],
-  };
+  return { toggle: centred(TOGGLE_W, TOGGLE_Y), back: centred(BACK_W, TOGGLE_Y + h + BACK_GAP) };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */
@@ -122,11 +112,6 @@ export const POPUP_MARGIN = 4;
  */
 export function popupLeft(cx: number, w: number, viewWidth: number): number {
   return Math.max(POPUP_MARGIN, Math.min(cx - Math.floor(w / 2), viewWidth - POPUP_MARGIN - w));
-}
-
-/** A parent-check answer labelled with the key that picks it: "1: 48". */
-export function answerLabel(index: number, answer: number): string {
-  return `${index + 1}: ${answer}`;
 }
 
 /**

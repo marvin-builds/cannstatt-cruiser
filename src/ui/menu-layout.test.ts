@@ -96,7 +96,7 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it('title: the panel pads every row and button on the sides and at the bottom', () => {
+  it('title: the panel pads every row and button on all four sides', () => {
     for (const input of inputs()) {
       const l = titleLayout(input);
       const p = l.panel!;
@@ -105,8 +105,18 @@ describe('menu screen layouts', () => {
         expect(r.x - p.x, at).toBeGreaterThanOrEqual(PANEL_PAD);
         expect(p.x + p.w - (r.x + r.w), at).toBeGreaterThanOrEqual(PANEL_PAD);
         expect(p.y + p.h - (r.y + r.h), at).toBeGreaterThanOrEqual(PANEL_PAD);
+        expect(r.y - p.y, at).toBeGreaterThanOrEqual(PANEL_PAD);
       }
       expect(inside(p, input.viewWidth), `${input.label}: panel inside`).toBe(true);
+    }
+  });
+
+  it('title: the panel keeps clear of the logo and of the view bottom', () => {
+    for (const input of inputs()) {
+      const p = titleLayout(input).panel!;
+      const logo = logoRect(input.viewWidth);
+      expect(p.y, `${input.label}: below the logo`).toBeGreaterThanOrEqual(logo.y + logo.h);
+      expect(VIEW_H - (p.y + p.h), `${input.label}: ${JSON.stringify(p)} off the bottom`).toBeGreaterThanOrEqual(2);
     }
   });
 
@@ -172,6 +182,28 @@ describe('menu screen layouts', () => {
     }
   });
 
+  it('game over keeps the score and highscore rows outside portrait, notices give way first', () => {
+    for (const input of inputs()) {
+      if (input.portrait) continue;
+      for (const newRecord of [false, true]) {
+        const l = gameOverLayout({ ...input, newRecord });
+        const at = `${input.label} record=${newRecord}`;
+        expect(l.blocks.has('row0') && l.blocks.has('row1'), `${at}: Punkte and Highscore`).toBe(true);
+        if (input.reload) expect(!!l.buttons.reload, `${at}: reload`).toBe(true);
+        if (newRecord && !input.install) expect(l.blocks.has('record'), `${at}: Neuer Rekord!`).toBe(true);
+        // The install hint is compacted to "App installieren" + "×" instead of costing rows.
+        if (l.blocks.has('install')) expect(l.install, at).toBe(input.install === 'prompt' ? 'compact' : input.install);
+      }
+    }
+  });
+
+  it('the title shows the install hint in full', () => {
+    for (const input of inputs()) {
+      const l = titleLayout(input);
+      expect(l.install, input.label).toBe(l.blocks.has('install') ? input.install : null);
+    }
+  });
+
   it("what's new: title, up to six lines and Weiter fit, all variants", () => {
     const lines = Array.from({ length: 6 }, () => 'Gefangene Sachen benutzen (E / Knopf) xx');
     for (const input of inputs()) {
@@ -204,5 +236,16 @@ describe('notice cards', () => {
     const ios = installParts(titleLayout({ ...input, install: 'ios' }).blocks.get('install')!, 'ios', m);
     expect(ios.button).toBeNull();
     expect(ios.dismiss.w).toBe(m.menuButtonH);
+  });
+
+  it('the compact install card is just "App installieren" and the ×, inside the card', () => {
+    const input = { viewWidth: 320, touch: true, portrait: false, fullscreenAvailable: true, reload: false, install: 'prompt' as const };
+    const m = uiMetrics(input);
+    const card = gameOverLayout({ ...input, newRecord: false }).blocks.get('install')!;
+    const parts = installParts(card, 'compact', m);
+    expect(parts.button!.x).toBe(card.x);
+    expect(parts.dismiss.x + parts.dismiss.w).toBe(card.x + card.w);
+    expect(overlap(parts.button!, parts.dismiss)).toBe(false);
+    expect(card.w).toBeLessThan(titleLayout(input).blocks.get('install')!.w);
   });
 });
