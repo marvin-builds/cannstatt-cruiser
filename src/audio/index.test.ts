@@ -311,3 +311,51 @@ describe('audio system: robustness', () => {
     ]);
   });
 });
+
+describe('audio system: stomp and carried items', () => {
+  function listening() {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    return { game, backend, heard };
+  }
+
+  it('plays a boing for the bounce and a hoppla for the stomped person', () => {
+    const { game, heard } = listening();
+    game.bus.emit('stomp', { entityId: 3, kind: 'wasenGuest', item: 'beer' });
+    expect(heard).toEqual([
+      ['boing', false],
+      ['hoppla', false],
+    ]);
+  });
+
+  it('plays a cheerful catch jingle when the item is caught', () => {
+    const { game, heard } = listening();
+    game.bus.emit('itemCaught', { item: 'pretzel' });
+    expect(heard).toEqual([['catch', false]]);
+  });
+
+  it('keeps the stomp and catch sounds inaudible while muted', () => {
+    const { game, heard, backend } = listening();
+    game.commands.setMuted(true);
+    game.bus.emit('stomp', { entityId: 3, kind: 'vfbFan', item: 'football' });
+    game.bus.emit('itemCaught', { item: 'football' });
+    expect(heard).toEqual([
+      ['boing', true],
+      ['hoppla', true],
+      ['catch', true],
+    ]);
+    expect(backend.muted).toBe(true);
+  });
+
+  it('uses the same sounds in kid mode', () => {
+    const { game, heard } = listening();
+    game.state.kidMode = true;
+    game.bus.emit('stomp', { entityId: 3, kind: 'vfbFan', item: 'gingerbread' });
+    game.bus.emit('itemCaught', { item: 'gingerbread' });
+    expect(heard.map(([name]) => name)).toEqual(['boing', 'hoppla', 'catch']);
+  });
+});

@@ -4,7 +4,9 @@
  * the player contract), jump off the rail and the crash with recovery; then
  * the chill look (joint pickup) riding, ducking, in the air and grinding, the
  * same for the kid mode bubble gum, and 1x / 2x crops of the skater to judge
- * the hair, the red eyes and the bubble at game scale.
+ * the hair, the red eyes and the bubble at game scale. Finally the moustache
+ * and the carried items: lineups with each item (incl. catch reaches), the
+ * stomp bounce, the catch reach and 1x / 2x crops with every item.
  *   npm run playtest -- --scenario scripts/scenarios/skater.ts --viewports desktop,phone-landscape,phone-portrait --name skater
  */
 import { writeFile } from 'node:fs/promises';
@@ -13,7 +15,7 @@ import { PLAYER_X } from '../../src/core/config';
 import type {} from '../../src/audio/debug'; // window.__audio
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import type {} from '../../src/player/debug'; // window.__player
-import type { GameState } from '../../src/types';
+import type { CarriedItem, GameState } from '../../src/types';
 import { bubbleFrame, F } from '../../src/player/bubble';
 import type { PlaytestContext } from '../playtest-lib';
 
@@ -65,6 +67,13 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   await writeDataUrl(t, '00-pose-lineup-kid.png', await page.evaluate(() => window.__player!.lineup(6, 'kid')));
   await writeDataUrl(t, '00-pose-lineup-1x.png', await page.evaluate(() => window.__player!.lineup(1)));
   await writeDataUrl(t, '00-pose-lineup-chill-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'chill')));
+  for (const item of ITEMS) {
+    await writeDataUrl(t, `00-pose-lineup-${item}.png`, await page.evaluate((i) => window.__player!.lineup(6, 'normal', i), item));
+  }
+  await writeDataUrl(t, '00-pose-lineup-chill-beer.png', await page.evaluate(() => window.__player!.lineup(6, 'chill', 'beer')));
+  await writeDataUrl(t, '00-pose-lineup-kid-gingerbread.png', await page.evaluate(() => window.__player!.lineup(6, 'kid', 'gingerbread')));
+  await writeDataUrl(t, '00-pose-lineup-pretzel-1x.png', await page.evaluate(() => window.__player!.lineup(1, 'normal', 'pretzel')));
+  await writeDataUrl(t, '00-pose-lineup-football-2x.png', await page.evaluate(() => window.__player!.lineup(2, 'normal', 'football')));
 
   await game.pause();
   const { viewWidth, touch, portrait } = await game.display();
@@ -144,6 +153,74 @@ export default async function skater(t: PlaytestContext): Promise<void> {
 
   await chillShots(t);
   await kidShots(t);
+  await carryShots(t);
+}
+
+const ITEMS: CarriedItem[] = ['football', 'pretzel', 'beer', 'gingerbread'];
+
+/** Stomp bounce, catch reach, and every item carried riding, in the air and grinding (1x / 2x crops). */
+async function carryShots(t: PlaytestContext): Promise<void> {
+  const { game, page } = t;
+  await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
+  await page.evaluate(() => window.__player!.chill(0));
+  await game.step(10);
+  await skaterCrop(t, 'crop-moustache-ride');
+
+  // Stomp: jump, wait until falling, then emit stomp like gameplay; the bounce comes on the next tick.
+  await game.press();
+  await game.step(2);
+  await game.release();
+  await stepUntil(t, (s) => s.player.vy > 0);
+  await page.evaluate(() => window.__player!.stomp('pretzel'));
+  const same = await game.state();
+  const next = await game.step(1);
+  t.check('stomp bounces up on the next tick', same.player.vy > 0 && next.player.vy < 0 && !next.player.grounded, {
+    before: same.player.vy,
+    after: next.player.vy,
+  });
+  await page.evaluate(() => window.__player!.catchItem('pretzel'));
+  await game.step(4);
+  await t.canvasShot('catch reach pretzel');
+  await skaterCrop(t, 'crop-catch-pretzel');
+  await game.step(12);
+  await t.canvasShot('carry pretzel after catch');
+  await stepUntil(t, (s) => s.player.grounded);
+  const sounds = await page.evaluate(() => (window.__audio?.log ?? []).map((e) => e.sound));
+  t.check('stomp and catch sounds play', ['boing', 'hoppla', 'catch'].every((x) => sounds.includes(x)), sounds.slice(-6));
+
+  for (const item of ITEMS) {
+    await page.evaluate((i) => window.__player!.carry(i), item);
+    await stepUntil(t, (s) => s.player.state === 'ride');
+    await game.step(5);
+    await t.canvasShot(`carry ${item} ride`);
+    await skaterCrop(t, `crop-carry-${item}-ride`);
+    await game.press();
+    await game.step(1);
+    await stepUntil(t, (s) => s.player.vy >= 0);
+    await skaterCrop(t, `crop-carry-${item}-air`);
+    await game.release();
+    await stepUntil(t, (s) => s.player.grounded);
+    await game.step(10);
+  }
+  const railId = await page.evaluate(() => window.__player!.grind(26));
+  await game.step(10);
+  await skaterCrop(t, 'crop-carry-gingerbread-grind');
+  await page.evaluate((id) => window.__player!.removeRail(id), railId);
+  await stepUntil(t, (s) => s.player.grounded);
+  await page.evaluate(() => window.__player!.chill(60));
+  await game.step(10);
+  await skaterCrop(t, 'crop-chill-moustache-gingerbread');
+  await page.evaluate(() => {
+    window.__player!.kidMode(true);
+    window.__player!.carry('pretzel');
+  });
+  await untilBubble(t);
+  await skaterCrop(t, 'crop-kid-moustache-pretzel');
+  await page.evaluate(() => {
+    window.__player!.kidMode(false);
+    window.__player!.chill(0);
+    window.__player!.carry(null);
+  });
 }
 
 /** The chill look (state.chillTimer > 0) in every situation, and the lower chill jump. */

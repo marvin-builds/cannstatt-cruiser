@@ -63,3 +63,5 @@ export const CHILL_ANIM_RATE = 0.7;
 
 /** Upward velocity of the bounce after landing on a person (stomp event). */
 export const STOMP_BOUNCE_VELOCITY = 150;
+/** Seconds the arm reaches up after catching a tossed item (itemCaught). Looks only. */
+export const CATCH_TIME = 0.2;

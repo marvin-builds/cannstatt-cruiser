@@ -1,6 +1,6 @@
 /** Drawing of the skater and his board (player render layer). */
-import { sprite } from '../core/sprite';
-import type { GameState } from '../types';
+import { type Sprite, sprite } from '../core/sprite';
+import type { CarriedItem, GameState } from '../types';
 import {
   BOARD_ANCHOR_X,
   BOARD_DECK_ROW,
@@ -13,6 +13,7 @@ import {
   PALETTE,
 } from './art';
 import { BUBBLE_ART, BUBBLE_PALETTE, chillBubble } from './bubble';
+import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView } from './controller';
 import { type Pose, poseAt, type TimelineName, timelineFor } from './poses';
@@ -22,6 +23,17 @@ const CHILL_BODY = sprite(PALETTE, CHILL_BODY_FRAMES);
 const BOARD = sprite(PALETTE, BOARD_FRAMES);
 /** One sprite per bubble frame: they differ in size. */
 const BUBBLES = BUBBLE_ART.map((art) => sprite(BUBBLE_PALETTE, [art]));
+const ITEMS = Object.fromEntries(
+  Object.entries(ITEM_ART).map(([item, art]) => [item, sprite(ITEM_PALETTE, [art])]),
+) as Record<CarriedItem, Sprite>;
+const ARM = sprite(PALETTE, [CATCH_ARM]);
+
+/** The carried item to add to a pose (state.carriedItem) and whether the catch reach is showing. */
+export interface CarryLook {
+  item: CarriedItem;
+  timeline: TimelineName;
+  catching: boolean;
+}
 
 /**
  * The chill look to add to a pose: red eyes if the style says so, and the
@@ -37,14 +49,25 @@ export interface ChillLook {
 }
 
 /** Draws `pose` with the wheel contact point at (x, y); everything snaps to whole pixels together. */
-export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: number, chill: ChillLook | null = null): void {
+export function drawPose(
+  g: CanvasRenderingContext2D,
+  pose: Pose,
+  x: number,
+  y: number,
+  chill: ChillLook | null = null,
+  carry: CarryLook | null = null,
+): void {
   const x0 = Math.round(x);
   const y0 = Math.round(y);
   const boardTop = y0 - BOARD_H;
   drawBoard(g, pose.board, x0 + (pose.boardDx ?? 0), y0 + (pose.boardDy ?? 0));
   const left = x0 - BODY_ANCHOR_X + (pose.bodyDx ?? 0);
   const top = boardTop + BOARD_DECK_ROW - BODY_DECK_ROW + (pose.bodyDy ?? 0);
+  const item = carry && carriedItemDraw(carry.item, carry.timeline, pose.body, carry.catching);
+  // The reaching arm comes from behind the head, so the body covers its root.
+  if (item?.arm) ARM.draw(g, 0, left + item.arm.x, top + item.arm.y);
   (chill?.style.redEyes ? CHILL_BODY : BODY).draw(g, pose.body, left, top);
+  if (item) drawItem(g, item, left, top);
   if (chill?.style.mouth === 'joint') {
     const joint = chillJoint(chill.timeline, pose.body);
     if (joint) drawJoint(g, { x: left + joint.x, y: top + joint.y }, chill.time);
@@ -52,6 +75,14 @@ export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: 
     const bubble = chillBubble(chill.timeline, pose.body, chill.time, chill.animTime);
     if (bubble) BUBBLES[bubble.frame]!.draw(g, 0, left + bubble.x, top + bubble.y);
   }
+}
+
+/** The item at its body-frame position; a tucked item gets the hand drawn over it, so the arm grips it. */
+function drawItem(g: CanvasRenderingContext2D, item: ItemDraw, left: number, top: number): void {
+  ITEMS[item.item].draw(g, 0, left + item.x, top + item.y);
+  if (item.grip !== 'side') return;
+  g.fillStyle = PALETTE.s;
+  g.fillRect(left + item.hand.x, top + item.hand.y, 1, 1);
 }
 
 /** Draws board frame `frame` with the wheel contact point at the whole-pixel (x, y). */
@@ -78,5 +109,6 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const timeline = timelineFor(view, p.vy);
   const style = chillStyle(state);
   const chill = style ? { style, timeline, time: state.time, animTime: view.time } : null;
-  drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill);
+  const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
+  drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill, carry);
 }

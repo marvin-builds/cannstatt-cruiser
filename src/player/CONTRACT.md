@@ -80,10 +80,38 @@ in any slice's Vitest tests.
   `chill.test.ts`).
 - Look only: ride/push animation plus push rhythm at `CHILL_ANIM_RATE` (0.7),
   and a face overlay chosen by `chillStyle(state)` (`chill.ts`): adult mode
-  (`state.kidMode` false) shows red eyes and a joint with smoke (dropped on a
-  crash); kid mode shows normal eyes and bubble gum instead, a pink bubble
+  (`state.kidMode` false) shows red eyes and a joint at the mouth corner under
+  the moustache tip, with smoke (dropped on a crash); kid mode shows normal eyes and bubble gum instead, a pink bubble
   that grows and pops on a `BUBBLE_PERIOD` loop of `state.time` and pops at
   once on a crash (`bubble.ts`). No physics change.
+
+## Stomp bounce (landing on a person)
+
+- Gameplay emits `stomp { entityId, kind, item }` when the **falling** board
+  lands on a person's head. Gameplay runs after the player, so the player
+  applies the bounce at the start of its **next** update, before the jump
+  check and the physics: `grounded = false`, `vy = -STOMP_BOUNCE_VELOCITY`
+  (150, `tuning.ts`), hold boost off, coyote time cleared. That tick then
+  integrates normal `GRAVITY` (no `HOLD_GRAVITY`, even with the action held),
+  exactly like a jump take-off whose action was already released:
+  `vy = -150 + GRAVITY * dt`, `y += vy * dt`. `gameplay/jumpsim.ts` must mirror
+  this. `y` is not snapped; afterwards the normal air and landing rules apply.
+- No `jump` event is emitted (audio plays its own `boing`). A stomp is
+  ignored while the crash animation plays (or on a rail), a crash drops a
+  pending one, and a run start clears it. One stomp, one bounce.
+- Covered in `stomp.test.ts`.
+
+## Carried item (state.carriedItem)
+
+- Gameplay sets `state.carriedItem` on `itemCaught` and clears it on a crash;
+  the player only draws it (`carry.ts`, `render.ts`): football, pretzel, beer
+  mug, gingerbread heart, in the front hand in every pose (`HOLD_AT` per body
+  frame): tucked under the arm on the ground and while ducking, hanging from
+  the outstretched hand in the air tuck / grind / landing, held up with the
+  raised arm while falling. Nothing is drawn during the crash.
+- `itemCaught` starts the catch reach for `CATCH_TIME` (0.2 s): the front arm
+  goes up past the face and holds the item above the cap. Looks only, no
+  physics change; a crash cuts it short.
 
 ## Duck
 
@@ -116,7 +144,9 @@ jumpApex(game, 2);        // tap from the current support, returns apex height
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
 length)`, `removeRail(id)`, `crash()`, `chill(seconds)` (sets
-`state.chillTimer`), `kidMode(on)` (sets `state.kidMode`) and
-`lineup(scale, look)` (`look`: `'normal'`, `'chill'` or `'kid'`) for playtest
-scenarios (see `scripts/scenarios/skater.ts`). Rails it adds carry
+`state.chillTimer`), `kidMode(on)` (sets `state.kidMode`), `carry(item)` (sets
+`state.carriedItem`, `null` drops it), `stomp(item)` (emits `stomp`),
+`catchItem(item)` (sets the item and emits `itemCaught`) and
+`lineup(scale, look, item)` (`look`: `'normal'`, `'chill'` or `'kid'`; `item`
+adds it in every pose plus a row of catch reaches) for playtest scenarios (see `scripts/scenarios/skater.ts`). Rails it adds carry
 `data.debugRail` and are drawn by the player slice; gameplay may ignore them.

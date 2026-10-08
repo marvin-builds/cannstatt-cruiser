@@ -5,7 +5,7 @@
  */
 import { GROUND_Y } from '../core/config';
 import { drawText } from '../core/font';
-import type { Entity, GameContext, RenderContext } from '../types';
+import type { CarriedItem, Entity, GameContext, RenderContext } from '../types';
 import { BOARD_FRAMES } from './art';
 import { chillStyle } from './chill';
 import { drawBoard, drawPose } from './render';
@@ -24,11 +24,18 @@ export interface PlayerDebugHook {
   chill(seconds?: number): void;
   /** Sets `state.kidMode` (bubble gum instead of the joint and red eyes). */
   kidMode(on?: boolean): void;
+  /** Sets `state.carriedItem` (null drops it) without the catch reach. */
+  carry(item: CarriedItem | null): void;
+  /** Emits a stomp like gameplay would (the player bounces on the next tick). */
+  stomp(item?: CarriedItem): void;
+  /** Sets `state.carriedItem` and emits itemCaught like gameplay would (catch reach + jingle). */
+  catchItem(item: CarriedItem): void;
   /**
    * PNG data URL: every animation step and board frame, upscaled by `scale`;
-   * `look` adds the adult chill look (joint, red eyes) or the kid one (bubble gum).
+   * `look` adds the adult chill look (joint, red eyes) or the kid one (bubble
+   * gum); `item` puts that item under the arm and adds a row of catch reaches.
    */
-  lineup(scale?: number, look?: LineupLook): string;
+  lineup(scale?: number, look?: LineupLook, item?: CarriedItem): string;
 }
 
 declare global {
@@ -71,7 +78,17 @@ export function installPlayerDebug(ctx: GameContext): void {
     kidMode(on = true) {
       ctx.state.kidMode = on;
     },
-    lineup: (scale = 6, look = 'normal') => renderLineup(scale, look),
+    carry(item) {
+      ctx.state.carriedItem = item;
+    },
+    stomp(item = 'football') {
+      ctx.bus.emit('stomp', { entityId: -1, kind: 'vfbFan', item });
+    },
+    catchItem(item) {
+      ctx.state.carriedItem = item;
+      ctx.bus.emit('itemCaught', { item });
+    },
+    lineup: (scale = 6, look = 'normal', item) => renderLineup(scale, look, item ?? null),
   };
 }
 
@@ -91,15 +108,19 @@ export function drawDebugRails({ g, state }: RenderContext): void {
 }
 
 const CELL_W = 70;
-const CELL_H = 60;
+const CELL_H = 64;
 
-function renderLineup(scale: number, look: LineupLook): string {
+/** Timelines whose first steps get a catch-reach cell in the lineup's catch row. */
+const CATCH_ROW: TimelineName[] = ['ride', 'push', 'airRise', 'airFall', 'grind', 'duck', 'land'];
+
+function renderLineup(scale: number, look: LineupLook, item: CarriedItem | null): string {
   const style = look === 'normal' ? null : chillStyle({ kidMode: look === 'kid', chillTimer: 1 });
   const names = Object.keys(TIMELINES) as TimelineName[];
-  const cols = Math.max(...names.map((n) => TIMELINES[n].steps.length));
+  const cols = Math.max(CATCH_ROW.length, ...names.map((n) => TIMELINES[n].steps.length));
+  const rows = names.length + 1 + (item ? 1 : 0);
   const canvas = document.createElement('canvas');
   canvas.width = (cols * CELL_W + 40) * scale;
-  canvas.height = ((names.length + 1) * CELL_H) * scale;
+  canvas.height = rows * CELL_H * scale;
   const g = canvas.getContext('2d')!;
   g.imageSmoothingEnabled = false;
   g.scale(scale, scale);
@@ -117,11 +138,22 @@ function renderLineup(scale: number, look: LineupLook): string {
       g.fillRect(x - 24, groundY, 48, 2);
       // Spread the loops over the columns, so the lineup shows several bubble sizes and smoke phases.
       const chill = style && { style, timeline: name, time: 0.9 + col * 0.47, animTime: time };
-      drawPose(g, poseAt(name, time + 0.0001), x, groundY, chill);
+      const carry = item && { item, timeline: name, catching: false };
+      drawPose(g, poseAt(name, time + 0.0001), x, groundY, chill, carry);
       time += step.t;
     });
   });
-  const top = names.length * CELL_H;
+  if (item) {
+    const top = names.length * CELL_H;
+    drawText(g, 'catch', 2, top + 2, { color: '#241c24' });
+    CATCH_ROW.forEach((name, col) => {
+      const x = 40 + col * CELL_W + CELL_W / 2;
+      const groundY = top + CELL_H - 6;
+      const chill = style && { style, timeline: name, time: 0.9 + col * 0.47, animTime: 0 };
+      drawPose(g, poseAt(name, 0.0001), x, groundY, chill, { item, timeline: name, catching: true });
+    });
+  }
+  const top = (rows - 1) * CELL_H;
   drawText(g, 'board', 2, top + 2, { color: '#241c24' });
   BOARD_FRAMES.forEach((_, i) => drawBoard(g, i, 40 + i * CELL_W + CELL_W / 2, top + 40));
   return canvas.toDataURL('image/png');

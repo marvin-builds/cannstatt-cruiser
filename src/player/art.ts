@@ -1,6 +1,6 @@
 /**
  * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
- * salt-and-pepper hair, stubble, red hoodie, jeans, white sneakers) and his
+ * salt-and-pepper hair and moustache, stubble, red hoodie, jeans, white sneakers) and his
  * longboard. Body frames are composed from shared parts (see compose.ts).
  *
  * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
@@ -60,6 +60,9 @@ export const BOARD_ANCHOR_X = 13;
  * covers the back of the head (no outline there, the hair is the edge), runs
  * down into a sideburn at the temple and a tuft at the nape, as three
  * separate light-grey patches (H) split by dark grey (h) so they read at 1x.
+ * Under the nose a dark-grey moustache (Schnauzbart) with a light-grey hair,
+ * two rows deep (a walrus droop over the lip to the mouth corner) so it reads
+ * as a dark block at 1x, set off from the chin stubble by a skin column.
  */
 const HEAD = `
   ..kkkkk....
@@ -68,8 +71,8 @@ const HEAD = `
   hHHhhHsskk.
   hHHhSskssk.
   HhhHHssssSk
-  HHhHbsssbk.
-  hHkbbbbbk..
+  HHhHbshHhhh
+  hHkbbshhh..
 `;
 
 /**
@@ -83,12 +86,15 @@ const HEAD_CHILL = `
   hHHhhHkkkk.
   hHHhSspesk.
   HhhHHsEEESk
-  HHhHbsssbk.
-  hHkbbbbbk..
+  HHhHbshHhhh
+  hHkbbshhh..
 `;
 
-/** Mouth pixel of the head (where the joint sits), relative to the head's top-left. */
-export const HEAD_MOUTH = { x: 9, y: 6 } as const;
+/**
+ * Mouth corner of the head (where the joint and the bubble gum sit), relative
+ * to the head's top-left: just under the front tip of the moustache.
+ */
+export const HEAD_MOUTH = { x: 9, y: 7 } as const;
 
 const TORSO_DOWN = `
   .kRrrrrk..

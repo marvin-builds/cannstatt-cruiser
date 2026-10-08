@@ -98,7 +98,7 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
   },
 };
 
-export function timelineFor(view: AnimView, vy: number): TimelineName {
+export function timelineFor(view: Pick<AnimView, 'anim' | 'standingUp'>, vy: number): TimelineName {
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
   if (view.standingUp && (view.anim === 'ride' || view.anim === 'push')) return 'standUp';
   return view.anim;

@@ -104,6 +104,26 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     ...POP.map((v) => ({ ...v, at: v.at + 0.48 })),
   ],
   pop: POP,
+  // Stomp bounce: a springy 'boing', a triangle that dips and shoots up with a wobbling square on top.
+  boing: [
+    { wave: 'triangle', at: 0, dur: 0.06, freq: 220, to: 140, gain: 0.4 },
+    { wave: 'triangle', at: 0.05, dur: 0.22, freq: 140, to: 620, gain: 0.35 },
+    { wave: 'square', at: 0.05, dur: 0.12, freq: 280, to: 560, gain: 0.05 },
+    { wave: 'square', at: 0.17, dur: 0.1, freq: 520, to: 600, gain: 0.04 },
+  ],
+  // The stomped person stumbles: a two-syllable 'hop-pla', up then tumbling down, after the boing.
+  hoppla: [
+    { wave: 'square', at: 0.1, dur: 0.07, freq: N.E4, to: N.A4, gain: 0.08 },
+    { wave: 'triangle', at: 0.1, dur: 0.07, freq: N.E4, to: N.A4, gain: 0.2 },
+    { wave: 'square', at: 0.19, dur: 0.16, freq: N.C5, to: N.D4, gain: 0.07 },
+    { wave: 'triangle', at: 0.19, dur: 0.16, freq: N.C5, to: N.D4, gain: 0.2 },
+    { wave: 'noise', at: 0.3, dur: 0.06, freq: 600, gain: 0.12, filter: 'lowpass' },
+  ],
+  // Caught the tossed item: a cheerful rising arpeggio with a high sparkle on top.
+  catch: [
+    ...notes('square', [N.G5, N.C6, N.E6, N.G6], 0.055, 0.1, 0.16),
+    { wave: 'triangle', at: 0.22, dur: 0.18, freq: N.C7, gain: 0.12 },
+  ],
 };
 
 /** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */

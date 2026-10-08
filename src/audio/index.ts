@@ -92,6 +92,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         // The skater's bubble gum bubble pops (see player/bubble.ts).
         if (ctx.state.kidMode && ctx.state.chillTimer > 0) play('pop');
       });
+      // Landing on a person: the springy bounce, and the person's 'hoppla' as they stumble.
+      bus.on('stomp', () => {
+        play('boing');
+        play('hoppla');
+      });
+      bus.on('itemCaught', () => play('catch'));
       bus.on('gameOver', () => {
         stopGrind();
         play('gameOver');

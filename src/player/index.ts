@@ -24,6 +24,8 @@ export function createPlayerSystem(): System {
       ctx.bus.on('grindStart', (e) => c.startGrind(ctx.state, e.entityId));
       ctx.bus.on('grindEnd', (e) => c.endGrindExternally(ctx.state, e.entityId));
       ctx.bus.on('crash', () => c.crash(ctx.state));
+      ctx.bus.on('stomp', () => c.stomp());
+      ctx.bus.on('itemCaught', () => c.catchItem());
       debug = typeof window !== 'undefined' && testHookEnabled();
       if (debug) installPlayerDebug(ctx);
     },

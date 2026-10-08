@@ -1,7 +1,7 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
- * rail riding, ducking (on the ground only), crash/invulnerability and the
- * animation state. One instance
+ * rail riding, ducking (on the ground only), the stomp bounce, crash/
+ * invulnerability and the animation state (incl. the catch reach). One instance
  * per player system; `reset()` at every run start.
  */
 import { GROUND_Y } from '../core/config';
@@ -17,6 +17,8 @@ export interface AnimView {
   visible: boolean;
   /** Just stood up from a duck (show the short crouch). */
   standingUp: boolean;
+  /** Reaching up for a caught item (CATCH_TIME after itemCaught). */
+  catching: boolean;
 }
 
 export class SkaterController {
@@ -36,6 +38,9 @@ export class SkaterController {
   private animTime = 0;
   /** state.chillTimer > 0 at the start of this tick (gameplay counts it down after the player). */
   private chill = false;
+  /** A stomp arrived after the player's update: bounce at the start of the next tick. */
+  private bouncePending = false;
+  private catchTimer = 0;
 
   constructor(private readonly bus: GameBus) {}
 
@@ -55,6 +60,8 @@ export class SkaterController {
     this.anim = 'ride';
     this.animTime = 0;
     this.chill = false;
+    this.bouncePending = false;
+    this.catchTimer = 0;
   }
 
   get crashing(): boolean {
@@ -64,7 +71,17 @@ export class SkaterController {
   view(p: PlayerState): AnimView {
     const blinking = p.invulnerableTimer > 0 && !this.crashing;
     const visible = !blinking || Math.floor(p.invulnerableTimer / (T.BLINK_PERIOD / 2)) % 2 === 0;
-    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0 };
+    return { anim: this.anim, time: this.animTime, visible, standingUp: this.standUpTimer > 0, catching: this.catchTimer > 0 };
+  }
+
+  /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
+  stomp(): void {
+    if (!this.crashing) this.bouncePending = true;
+  }
+
+  /** Gameplay: the tossed item reached the skater (itemCaught). Starts the catch reach. */
+  catchItem(): void {
+    if (!this.crashing) this.catchTimer = T.CATCH_TIME;
   }
 
   /** Gameplay put the player on rail `entityId` (grindStart). */
@@ -94,6 +111,8 @@ export class SkaterController {
     if (p.invulnerableTimer > 0 || this.crashing) return;
     if (p.grinding) this.leaveRail(p, true);
     this.crashTimer = T.CRASH_TIME;
+    this.bouncePending = false;
+    this.catchTimer = 0;
     p.invulnerableTimer = T.INVULNERABLE_TIME;
     this.boosting = false;
     this.buffer = 0;
@@ -112,6 +131,7 @@ export class SkaterController {
     this.countDown(p, dt);
     if (action.pressed && !this.crashing) this.buffer = T.JUMP_BUFFER;
     if (!action.held) this.boosting = false;
+    this.bounce(p);
     this.tryJump(p);
 
     if (p.grinding) this.ride(state);
@@ -135,6 +155,7 @@ export class SkaterController {
     p.invulnerableTimer = Math.max(0, p.invulnerableTimer - dt);
     this.standUpTimer = Math.max(0, this.standUpTimer - dt);
     this.crashTimer = Math.max(0, this.crashTimer - dt);
+    this.catchTimer = Math.max(0, this.catchTimer - dt);
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.sinceJump += dt;
     this.cruiseTime += dt * this.cruiseRate();
@@ -156,6 +177,20 @@ export class SkaterController {
     const velocity = jumpVelocity(this.chill);
     p.vy = -velocity;
     this.bus.emit('jump', { velocity });
+  }
+
+  /**
+   * The stomp bounce: a take-off like a jump with the action already released
+   * (normal gravity from this tick on, no hold boost) and no jump event.
+   */
+  private bounce(p: PlayerState): void {
+    if (!this.bouncePending) return;
+    this.bouncePending = false;
+    if (p.grinding || this.crashing) return;
+    this.boosting = false;
+    this.coyote = 0;
+    p.grounded = false;
+    p.vy = -T.STOMP_BOUNCE_VELOCITY;
   }
 
   private ride(state: GameState): void {

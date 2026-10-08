@@ -4,7 +4,21 @@
  */
 
 /** One-shot sound effects. */
-export type Cue = 'jump' | 'boost' | 'land' | 'star' | 'cleared' | 'crash' | 'gameOver' | 'chill' | 'bubble' | 'pop' | 'oof';
+export type Cue =
+  | 'jump'
+  | 'boost'
+  | 'land'
+  | 'star'
+  | 'cleared'
+  | 'crash'
+  | 'gameOver'
+  | 'chill'
+  | 'bubble'
+  | 'pop'
+  | 'oof'
+  | 'boing'
+  | 'hoppla'
+  | 'catch';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';
