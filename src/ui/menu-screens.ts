@@ -5,7 +5,7 @@
  * hotspots use.
  */
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
-import { measureText } from '../core/font';
+import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
 import { ARROW_RIGHT, DISMISS_ICON, SHARE_ICON, STAR, UI } from './art';
 import { centred, fill, menuButton, panel, ribbon, text } from './draw-kit';
@@ -13,6 +13,7 @@ import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
 import {
   BULLET_W,
+  controlsLine,
   GAMEOVER_KEYS,
   gameOverPrompt,
   installParts,
@@ -25,6 +26,7 @@ import {
   reloadLabel,
   reloadParts,
   STEP_GAP,
+  startPrompt,
   toTitleLabel,
   trickKeysHint,
 } from './menu-layout';
@@ -40,7 +42,10 @@ export interface MenuScreensView {
   logoHold: { progress: number };
 }
 
-const hint = (r: RenderContext, touch: string, keys: string) => (r.display.touch ? touch : keys);
+/** Text centred on a layout block (a line may sit right of the skater instead of at the view centre). */
+function centredIn(r: RenderContext, s: string, block: Rect, options: TextOptions = {}): void {
+  text(r, s, block.x + Math.floor(block.w / 2), block.y, { align: 'center', ...options });
+}
 
 /** A 2 px yellow bar at the bottom of the logo that fills while it is held (shown only after the hint delay). */
 function drawHoldProgress(r: RenderContext, progress: number, logo: Rect): void {
@@ -132,10 +137,10 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   const y = (id: string) => l.blocks.get(id)?.y;
   const tagline = y('tagline');
   if (tagline !== undefined) centred(r, 'Mit dem Longboard durch Stuttgart', tagline, { color: UI.muted });
-  const prompt = y('prompt');
-  if (prompt !== undefined && blinkOn(r.state.modeTime)) {
-    centred(r, hint(r, 'Tippen zum Starten', 'Leertaste zum Starten'), prompt, { color: UI.yellow });
-  }
+  const prompt = l.blocks.get('prompt');
+  if (prompt && blinkOn(r.state.modeTime)) text(r, startPrompt(r.display.touch), prompt.x, prompt.y, { color: UI.yellow });
+  const controls = l.blocks.get('controls');
+  if (controls) text(r, controlsLine(r.display.touch), controls.x, controls.y);
   const help = y('help');
   if (help !== undefined) titleHelp(r.display.touch).forEach((line, i) => centred(r, line, help + i * LINE));
   const keys = y('keys');
@@ -186,16 +191,16 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
     drawHoldProgress(r, view.logoHold.progress, logo);
   }
   const pause = l.blocks.get('pause');
-  if (pause) centred(r, MENU_TEXT.pause, pause.y, { scale: 2 });
+  if (pause) centredIn(r, MENU_TEXT.pause, pause, { scale: 2 });
   const prompt = l.blocks.get('prompt');
   if (prompt) {
     ribbon(r, prompt.x, prompt.y, prompt.w, prompt.h);
-    if (blinkOn(r.state.modeTime)) centred(r, pausePrompt(r.display.touch), prompt.y + 4, { color: UI.yellow });
+    if (blinkOn(r.state.modeTime)) centredIn(r, pausePrompt(r.display.touch), { ...prompt, y: prompt.y + 4 }, { color: UI.yellow });
   }
   const keys = l.blocks.get('keys');
-  if (keys) centred(r, PAUSE_KEYS, keys.y, { color: UI.muted });
+  if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted });
   const trick = l.blocks.get('trick');
-  if (trick) centred(r, trickKeysHint(r.display.touch), trick.y, { color: UI.muted });
+  if (trick) centredIn(r, trickKeysHint(r.display.touch), trick, { color: UI.muted });
   drawNotices(r, l);
 }
 
@@ -215,7 +220,7 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
   const title = l.blocks.get('title')!;
   text(r, MENU_TEXT.gameOver, title.x, title.y, { scale: 2, color: UI.red });
   const record = l.blocks.get('record');
-  if (record && blinkOn(state.modeTime * 2)) centred(r, MENU_TEXT.newRecord, record.y, { scale: 2, color: UI.yellow });
+  if (record && blinkOn(state.modeTime * 2)) centredIn(r, MENU_TEXT.newRecord, record, { scale: 2, color: UI.yellow });
 
   const values = [
     formatNumber(state.score),
@@ -234,8 +239,8 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
 
   if (!gameOverReady(state)) return;
   const prompt = l.blocks.get('prompt');
-  if (prompt && blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) centred(r, gameOverPrompt(r.display.touch), prompt.y, { color: UI.yellow });
+  if (prompt && blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow });
   const keys = l.blocks.get('keys');
-  if (keys) centred(r, GAMEOVER_KEYS, keys.y, { color: UI.muted });
+  if (keys) centredIn(r, GAMEOVER_KEYS, keys, { color: UI.muted });
   drawNotices(r, l);
 }

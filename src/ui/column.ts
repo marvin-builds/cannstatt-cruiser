@@ -2,7 +2,8 @@
  * A centred column of screen blocks (text rows, button cards) that drops the
  * least important blocks until the rest fits between `top` and `bottom`, so
  * every menu screen works on desktop, phone landscape and portrait
- * (where buttons are 44 view px tall).
+ * (where buttons are 44 view px tall). An optional clear zone (the skater)
+ * stays uncovered: lines that would cover it move to its right.
  */
 import type { Rect } from '../types';
 
@@ -26,10 +27,14 @@ export interface ColumnBounds {
   centre: number;
   /** Widest a line of inline blocks may get. */
   maxWidth: number;
+  /** A region no block may cover (e.g. the skater): such lines move right of it, else optional blocks give way. */
+  clear?: Rect;
 }
 
 /** Horizontal space between blocks that share a line. */
 export const INLINE_GAP = 8;
+/** Least space between the clear zone and a line moved to its right. */
+export const CLEAR_GAP = 4;
 
 interface Line {
   blocks: Block[];
@@ -38,43 +43,74 @@ interface Line {
   gap: number;
 }
 
-function lines(blocks: readonly Block[], maxWidth: number): Line[] {
-  const out: Line[] = [];
-  for (const block of blocks) {
-    const last = out[out.length - 1];
-    if (block.inline && last && last.w + INLINE_GAP + block.w <= maxWidth) {
-      last.blocks.push(block);
-      last.w += INLINE_GAP + block.w;
-      last.h = Math.max(last.h, block.h);
-    } else {
-      out.push({ blocks: [block], w: block.w, h: block.h, gap: block.gap });
-    }
-  }
-  return out;
+/**
+ * Left x of a line `w` wide whose top is at `y`: centred, or right of the
+ * clear zone when centred it would cover it; null when it cannot keep clear.
+ */
+function lineX(w: number, h: number, y: number, bounds: ColumnBounds): number | null {
+  const x = bounds.centre - Math.floor(w / 2);
+  const c = bounds.clear;
+  if (!c || y >= c.y + c.h || c.y >= y + h || x >= c.x + c.w || c.x >= x + w) return x;
+  const right = c.x + c.w + CLEAR_GAP;
+  return right + w <= bounds.centre + Math.floor(bounds.maxWidth / 2) ? right : null;
 }
 
-const height = (ls: readonly Line[]) => ls.reduce((sum, l) => sum + l.gap + l.h, 0);
+interface Laid {
+  lines: Line[];
+  /** Top of every line. */
+  ys: number[];
+  /** Some line covers the clear zone. */
+  clash: boolean;
+}
+
+/** Breaks the blocks into lines from `top`: inline blocks join the previous line when it stays within maxWidth and clear. */
+function layLines(blocks: readonly Block[], bounds: ColumnBounds): Laid {
+  const lines: Line[] = [];
+  const ys: number[] = [];
+  let y = bounds.top;
+  for (const block of blocks) {
+    const last = lines[lines.length - 1];
+    if (block.inline && last) {
+      const w = last.w + INLINE_GAP + block.w;
+      const h = Math.max(last.h, block.h);
+      const top = ys[ys.length - 1]!;
+      if (w <= bounds.maxWidth && lineX(w, h, top, bounds) !== null) {
+        last.blocks.push(block);
+        last.w = w;
+        y += h - last.h;
+        last.h = h;
+        continue;
+      }
+    }
+    y += block.gap;
+    lines.push({ blocks: [block], w: block.w, h: block.h, gap: block.gap });
+    ys.push(y);
+    y += block.h;
+  }
+  const clash = lines.some((l, i) => lineX(l.w, l.h, ys[i]!, bounds) === null);
+  return { lines, ys, clash };
+}
+
+const bottomOf = (laid: Laid) => (laid.lines.length ? laid.ys[laid.ys.length - 1]! + laid.lines[laid.lines.length - 1]!.h : 0);
 
 /** Rects of the kept blocks by id, in column order (dropped blocks are missing). */
 export function fitColumn(blocks: readonly Block[], bounds: ColumnBounds): Map<string, Rect> {
   let kept = blocks;
-  let laid = lines(kept, bounds.maxWidth);
-  while (bounds.top + height(laid) > bounds.bottom) {
+  let laid = layLines(kept, bounds);
+  while (bottomOf(laid) > bounds.bottom || laid.clash) {
     const level = Math.max(...kept.map((b) => b.drop ?? -Infinity));
     if (level === -Infinity) break;
     kept = kept.filter((b) => b.drop !== level);
-    laid = lines(kept, bounds.maxWidth);
+    laid = layLines(kept, bounds);
   }
   const placed = new Map<string, Rect>();
-  let y = bounds.top;
-  for (const line of laid) {
-    y += line.gap;
-    let x = bounds.centre - Math.floor(line.w / 2);
+  laid.lines.forEach((line, i) => {
+    const y = laid.ys[i]!;
+    let x = lineX(line.w, line.h, y, bounds) ?? bounds.centre - Math.floor(line.w / 2);
     for (const block of line.blocks) {
       placed.set(block.id, { x, y, w: block.w, h: block.h });
       x += block.w + INLINE_GAP;
     }
-    y += line.h;
-  }
+  });
   return placed;
 }
