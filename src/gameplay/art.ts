@@ -1,6 +1,7 @@
 /**
  * Palette sprites and drawing for obstacles, rails, stars, the joint and the
- * pickup sparkle (people live in people-art.ts). Every sprite has a dark
+ * pickup sparkle (people live in people-art.ts, stunt pieces in stunt-art.ts,
+ * the NorDIY park's pieces and high fiver in park-art.ts). Every sprite has a dark
  * outline so it reads against the busy Stuttgart backgrounds. Sizes match
  * catalogue.ts.
  */
@@ -12,6 +13,7 @@ import { ITEM_SPRITES } from './item-art';
 import { ComposedCache } from './composed';
 import { drawOverhead, isOverheadArt, overheadSize, warmOverheads } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
+import { drawHighFiver, drawParkPiece } from './park-art';
 import { drawStunt } from './stunt-art';
 
 const K = '#1a1418';
@@ -283,7 +285,12 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
       return;
     case 'kicker':
     case 'ledge':
-      drawStunt(g, e, x);
+      // The NorDIY park's banks and ledges (data.park) have their own look; the world draws the structures.
+      if (e.data?.park !== undefined) drawParkPiece(g, e, x);
+      else drawStunt(g, e, x);
+      return;
+    case 'highFiver':
+      drawHighFiver(g, e, x, frame);
       return;
     case 'joint':
       // Bobs gently like the stars; the smoke curls (or the gum shines) every 16 ticks.

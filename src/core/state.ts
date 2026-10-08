@@ -38,6 +38,7 @@ export function createInitialState(): GameState {
     maxHealth: MAX_HEALTH,
     zoneIndex: START_ZONE,
     trafficDensity: 0,
+    park: null,
     muted: false,
     kidMode: false,
     updateReady: false,

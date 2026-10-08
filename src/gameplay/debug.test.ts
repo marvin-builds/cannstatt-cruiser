@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GROUND_Y, PLAYER_X } from '../core/config';
+import { GROUND_Y, PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { tick } from '../player/testing';
 import { KICKER } from './catalogue';
 import { installGameplayDebug } from './debug';
@@ -58,5 +58,28 @@ describe('gameplay debug hook (window.__gameplay)', () => {
     for (let i = 0; i < 100 && launches.length === 0; i++) tick(game);
     lines.made(game.ctx, game.state.entities.find((e) => e.id === launches[0]!.entityId)!);
     expect(window.__gameplay!.stunts()).toMatchObject({ steps: 2, made: 1, multiplier: 1 });
+  });
+
+  it('plans a NorDIY park right ahead: state.park and its pieces 1:1 at screen x PLAYER_X + d - distance, the street there cleared', () => {
+    vi.stubGlobal('window', {});
+    const game = quietGame(120);
+    installGameplayDebug(game.ctx, new DroppedItems(), new StuntLines());
+    const hook = window.__gameplay!;
+    expect(hook.parkPlan()).toBeNull();
+    hook.place('bin', VIEW_MAX_W + 100);
+    const plan = hook.park();
+    const { distance } = game.state;
+    expect(game.state.park).toBe(plan);
+    expect(hook.parkPlan()).toBe(plan);
+    expect(PLAYER_X + plan.start - distance).toBe(VIEW_MAX_W + 16);
+    expect(game.state.entities.some((e) => e.kind === 'bin')).toBe(false);
+    expect(game.state.entities.filter((e) => e.kind === 'highFiver').length).toBe(1);
+    const structures = game.state.entities.filter((e) => e.data?.park !== undefined).sort((a, b) => a.x - b.x);
+    const at = (d: number) => Math.round(d * 1000) / 1000;
+    expect(structures.map((e) => [e.data!.park, at(e.x - PLAYER_X + distance), GROUND_Y - e.y])).toEqual(plan.pieces.map((p) => [p.kind, at(p.from), p.height]));
+    // Planning again replaces the park.
+    const near = hook.park(100);
+    expect(near.start).toBe(game.state.distance + 100);
+    expect(game.state.entities.filter((e) => e.kind === 'highFiver').length).toBe(1);
   });
 });

@@ -14,12 +14,16 @@
  * (grind-trick.ts) and air tricks (air-trick.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts), score/combo (scoring.ts) and the stunt lines:
  * kickers, ledges of the upper level and their combo (stunt-line.ts plans
- * them, stunts.ts launches and scores, stunt-art.ts draws them).
+ * them, stunts.ts launches and scores, stunt-art.ts draws them), and the
+ * NorDIY park in Bad Cannstatt (spawner.ts plans it into state.park with its
+ * line, park-line.ts; park.ts cheers and pays the session; high-five.ts;
+ * park-art.ts draws the high fiver and the park's banks and ledges; the
+ * speed ramp pauses inside, spawner.rampDistance).
  */
 import { START_ZONE } from '../core/config';
 import { Rng } from '../core/rng';
 import { testHookEnabled } from '../core/testhook';
-import type { CarriedItem, Entity, GameContext, System } from '../types';
+import type { CarriedItem, Entity, GameContext, ParkPlan, System } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
 import { AirTrickScore } from './air-trick';
@@ -34,6 +38,7 @@ import { GrindTrick } from './grind-trick';
 import { DroppedItems } from './drop';
 import { drawDrops, drawToss } from './item-art';
 import { ITEM_POINTS, itemOf } from './items';
+import { ParkSession } from './park';
 import { anchorOf, moveTo } from './motion';
 import { addPoints, breakCombo } from './scoring';
 import { StuntLines } from './stunts';
@@ -80,6 +85,9 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const autoDrink = new AutoDrink();
   const stunts = new StuntLines();
   const airTrick = new AirTrickScore(() => stunts.multiplier());
+  const session = new ParkSession();
+  /** The spawner's park plan last put into state.park. */
+  let spawnerPark: ParkPlan | null = null;
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
   const hands: Point = { x: 0, y: 0 };
   let nextBallId = BALL_IDS;
@@ -113,6 +121,17 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
     situation.drunk = mayBeDrunk(ctx);
     situation.kidMode = state.kidMode;
     spawner.spawn(entities, state.distance + dx, ctx.display.viewWidth, ctx.speedOverride, situation);
+    followPark(ctx);
+  }
+
+  /** A new park plan goes into state.park; a dropped one (replanned while drunk) leaves it before the park was reached. */
+  function followPark(ctx: GameContext): void {
+    const planned = spawner.park;
+    if (planned === spawnerPark) return;
+    const { state } = ctx;
+    if (planned) state.park = planned;
+    else if (state.park === spawnerPark && state.distance < spawnerPark!.start) state.park = null;
+    spawnerPark = planned;
   }
 
   /** No obstacle or rail (and no pattern still to come) between screen x `from` and `to`: room for a ricochet. */
@@ -158,7 +177,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       game = ctx;
       // All art rasterised at startup: a first draw mid-run was a render spike on phones.
       warmArt();
-      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops, stunts);
+      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops, stunts, (start, end, distance) => spawner.reserve(start, end, distance));
       ctx.bus.on('runStarted', () => {
         route.snap(START_ZONE, 0);
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));
@@ -169,6 +188,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         autoDrink.reset();
         stunts.reset();
         airTrick.reset();
+        session.reset();
+        spawnerPark = null;
       });
       ctx.bus.on('gameOver', () => {
         ctx.state.drunkTimer = 0;
@@ -213,6 +234,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         airTrick.crashedNow();
       });
       ctx.bus.on('itemCaught', () => autoDrink.reset());
+      const cheer = () => session.trick(ctx);
+      ctx.bus.on('grindTrick', cheer);
+      ctx.bus.on('airTrick', cheer);
+      ctx.bus.on('stuntStep', cheer);
       ctx.bus.on('itemUsed', () => autoDrink.reset());
     },
 
@@ -221,7 +246,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       if (state.mode !== 'playing') return;
       countDownChill(ctx, dt);
       countDownDrunk(ctx, dt);
-      if (ctx.speedOverride === null) state.speed = speedAt(state.distance) * chillSpeedFactor(state.chillTimer);
+      if (ctx.speedOverride === null) state.speed = speedAt(spawner.rampDistance(state.distance)) * chillSpeedFactor(state.chillTimer);
       const dx = state.speed * dt;
       scroll(ctx, dx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
@@ -236,6 +261,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       resolveContacts(ctx);
       stunts.update(ctx);
       airTrick.settle(ctx);
+      session.update(ctx);
       despawn(state.entities);
       updateSparkles(dx);
     },

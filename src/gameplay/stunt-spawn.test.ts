@@ -54,14 +54,20 @@ function ride(seed: number, seconds: number, options: { speed?: number; situatio
   };
 }
 
-/** Each line's first kicker. */
-const lineStarts = (r: Ride) => r.seen.filter((s) => s.e.kind === 'kicker' && s.e.data?.step === 1);
+/** A piece of the NorDIY park's line (park-spawn.test.ts checks those). */
+const inPark = (s: Seen) => s.e.data?.park !== undefined;
+
+/** Each line's first kicker (not the park's). */
+const lineStarts = (r: Ride) => r.seen.filter((s) => s.e.kind === 'kicker' && s.e.data?.step === 1 && !inPark(s));
+
+/** Run time (s) at which the skater reaches the end of each park (its last piece) on the street. */
+const parkEnds = (r: Ride) => r.seen.filter((s) => inPark(s) && s.e.data?.step === s.e.data?.steps).map((s) => r.timeAt(s.street + s.e.w));
 
 /** The pieces of each line (by line id). */
 function linesOf(r: Ride): Map<number, Seen[]> {
   const lines = new Map<number, Seen[]>();
   for (const s of r.seen) {
-    if (s.e.kind !== 'kicker' && s.e.kind !== 'ledge') continue;
+    if ((s.e.kind !== 'kicker' && s.e.kind !== 'ledge') || inPark(s)) continue;
     const id = Number(s.e.data!.line);
     lines.set(id, [...(lines.get(id) ?? []), s]);
   }
@@ -71,17 +77,21 @@ function linesOf(r: Ride): Map<number, Seen[]> {
 const RIDES = [1, 2, 3].map((seed) => ride(seed, 300));
 
 describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
-  it(`come about every ${STUNT_LINE_INTERVAL[0]}-${STUNT_LINE_INTERVAL[1]} s of riding, never in the first ${STUNT_FIRST_SECONDS} s`, () => {
+  it(`come about every ${STUNT_LINE_INTERVAL[0]}-${STUNT_LINE_INTERVAL[1]} s of riding (at least ${STUNT_LINE_INTERVAL[0]} s after a NorDIY park), never in the first ${STUNT_FIRST_SECONDS} s`, () => {
     for (const r of RIDES) {
       const times = lineStarts(r)
         .map((s) => r.timeAt(s.street))
         .filter((t) => t < Infinity);
-      expect(times.length).toBeGreaterThanOrEqual(6);
+      const parks = parkEnds(r);
+      expect(parks.length).toBeGreaterThanOrEqual(2);
+      expect(times.length).toBeGreaterThanOrEqual(5);
       expect(times[0]!).toBeGreaterThanOrEqual(20);
       for (let i = 1; i < times.length; i++) {
         const gap = times[i]! - times[i - 1]!;
+        const park = parks.find((t) => t > times[i - 1]! && t < times[i]!);
         expect(gap).toBeGreaterThanOrEqual(STUNT_LINE_INTERVAL[0] - 1);
-        expect(gap).toBeLessThanOrEqual(STUNT_LINE_INTERVAL[1] + 6);
+        expect(gap).toBeLessThanOrEqual(Math.max(STUNT_LINE_INTERVAL[1], park === undefined ? 0 : park - times[i - 1]! + STUNT_LINE_INTERVAL[0]) + 6);
+        if (park !== undefined) expect(times[i]! - park).toBeGreaterThanOrEqual(STUNT_LINE_INTERVAL[0] - 1);
       }
     }
   });

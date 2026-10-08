@@ -31,6 +31,23 @@
  * length covers every landing off it, so the next pattern needs no check
  * across the boundary (its pieces are no obstacles or rails).
  *
+ * The NorDIY park (ROADMAP 36, park-line.ts): once per Bad Cannstatt visit
+ * (`zoneAt` gives PARK_ZONE; any other zone arms the next visit) the next
+ * pattern is the park, never before PARK_FIRST_SECONDS of the run, never
+ * while the player may be drunk or in the chill effect's street, never right
+ * after a stunt line (PARK_AFTER_LINE_SECONDS), and only where the whole park
+ * fits in the zone's stretch (parkMaxLength, PARK_ZONE_MARGIN), never at a
+ * pinned speed below PARK_MIN_SPEED. Its start
+ * may be pulled back to PARK_FIRST_SECONDS or (planning ahead with
+ * `workPerTick`, as the game does) pushed out to PARK_ANNOUNCE ahead of the
+ * player by empty street (at most PARK_MAX_LEAD), so the plan (`park`) is
+ * known well before the park comes on screen. The park pattern
+ * is never delayed by planning (its plan finishes when due), so its pieces
+ * lie exactly where the plan says: a piece at run distance d is at screen x
+ * `PLAYER_X + d - distance`. Inside the park the speed ramp pauses
+ * (`rampDistance`), the next regular stunt line comes STUNT_LINE_INTERVAL[0]
+ * seconds after it at the earliest.
+ *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
  * planSteps), so no tick stalls on a hard pattern. If a pattern is due before
@@ -41,7 +58,7 @@
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
 import type { Rng } from '../core/rng';
-import type { Entity } from '../types';
+import type { Entity, ParkPlan } from '../types';
 import { CHILL_SPEED_SCALE, chillStreet } from './chill';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { takeoffWindowAt } from './fairness';
@@ -49,6 +66,7 @@ import { isObstacle, isRail } from './catalogue';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
+import { PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
 import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
 import type { WorkBudget } from './solver';
 
@@ -84,6 +102,25 @@ const JOINT_JITTER = 2400;
 export const STUNT_LINE_INTERVAL: [number, number] = [30, 45];
 /** Seconds of riding before the first stunt line of a run (fixed: no rng draw, so a run's first patterns stay as they were). */
 export const STUNT_FIRST_SECONDS = 25;
+
+/** Seconds of riding before the NorDIY park can start: first-timers learn the street first. */
+export const PARK_FIRST_SECONDS = 20;
+/** The park's zone: Bad Cannstatt. */
+const PARK_ZONE = 2;
+/**
+ * The park plan is shown at least this much street before its start reaches
+ * the player: then the start is more than a whole (widest) view width beyond
+ * the right screen edge.
+ */
+export const PARK_ANNOUNCE = 2 * VIEW_MAX_W - PLAYER_X + 32;
+/** Street ridden while the park's plan is worked out under the per-tick budget (a park costs up to ~8000 units, 20 ticks). */
+const PARK_PLAN_SLACK = 96;
+/** The most empty street put before the park to start it later (the run's first seconds, the announcement). */
+const PARK_MAX_LEAD = 640;
+/** Street kept between the park and its zone's gateways (their landmarks). */
+const PARK_ZONE_MARGIN = 128;
+/** Seconds of riding between the end of a stunt line and the park. */
+const PARK_AFTER_LINE_SECONDS = 4;
 
 /** Street the chill effect can last after the pickup (it runs CHILL_DURATION, never faster than TOP_SPEED). */
 export const CHILL_REACH = Math.ceil(CHILL_DURATION * TOP_SPEED);
@@ -136,6 +173,14 @@ interface Cursor {
   /** Line shapes still to come in this round of the shuffle bag (stunt-line.ts drawShape), and the last one laid. */
   stuntBag: readonly StuntShape[];
   lastShape: StuntShape | null;
+  /** A park may come: no park yet in this Bad Cannstatt visit (set by a pattern in another zone). */
+  parkArmed: boolean;
+  /** The park comes from this street distance on (null: not drawn yet, set at the run's first plan). */
+  parkFrom: number | null;
+  /** Street distance where the last stunt line ended. */
+  lineEnd: number;
+  /** The planned parks' spans [start, end): the speed ramp pauses there. */
+  pauses: readonly (readonly [number, number])[];
 }
 
 interface Planned {
@@ -145,12 +190,16 @@ interface Planned {
   drunk: boolean;
   /** The cursor before this plan. */
   before: Cursor;
+  /** The park this pattern is, or null. */
+  park: ParkPlan | null;
 }
 
 interface Job {
   steps: Generator<void, Planned>;
   drunk: boolean;
   before: Cursor;
+  /** The park's start street when this job plans the park (it is never delayed), else null. */
+  park: number | null;
 }
 
 export class Spawner {
@@ -158,7 +207,7 @@ export class Spawner {
   /** Screen x of the next pattern not on the street yet. */
   private nextStart = 0;
   private nextId = 1;
-  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null };
+  private cursor: Cursor = freshCursor(0);
   /** Street distance at the run start (the first spawn call), for the first stunt line. */
   private runStart: number | null = null;
   /** Planned patterns, in street order, starting at nextStart. */
@@ -170,6 +219,10 @@ export class Spawner {
   private readonly budget: WorkBudget = { left: UNLIMITED };
   private readonly workPerTick: number | null;
   private work = 0;
+  /** The distance the last spawn() call got (the player's run distance matching the entities). */
+  private distance = 0;
+  /** The last park planned (also once passed), until the next one. */
+  private planned: ParkPlan | null = null;
 
   /** `zoneAt(street)`: the background zone at a street distance (themes the people). */
   constructor(
@@ -184,11 +237,45 @@ export class Spawner {
     return this.work;
   }
 
+  /** The NorDIY park planned last (in run distances), known from PARK_ANNOUNCE before its start on; null before the first. */
+  get park(): ParkPlan | null {
+    return this.planned;
+  }
+
+  /**
+   * The distance the speed ramp has got to at run distance `distance`: the
+   * ramp pauses inside every planned park and goes on from there after it.
+   */
+  rampDistance(distance: number): number {
+    let ramp = distance;
+    for (const [start, end] of this.cursor.pauses) ramp -= Math.max(0, Math.min(distance, end) - start);
+    return ramp;
+  }
+
+  /**
+   * Keeps the run distances [start, end) free for a park laid from outside
+   * (the debug hook, distance = the current run distance): plans not on the
+   * street yet start over after it, and the speed ramp pauses there. What is
+   * already on the street stays (the caller clears the span).
+   */
+  reserve(start: number, end: number, distance: number): void {
+    const before = this.queue[0]?.before ?? this.job?.before;
+    if (before) this.cursor = { ...before };
+    if (this.queue.some((p) => p.park === this.planned)) this.planned = null;
+    this.queue = [];
+    this.job = null;
+    this.nextStart = Math.max(this.nextStart, PLAYER_X + end - distance + gapAt(end));
+    this.cursor.previous = [];
+    this.cursor.parkArmed = false;
+    this.cursor.pauses = [...this.cursor.pauses, [start, end]];
+  }
+
   reset(rng: Rng): void {
     this.rng = rng;
     this.nextStart = PLAYER_X + FIRST_START;
     this.nextId = 1;
-    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null };
+    this.cursor = freshCursor(JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER));
+    this.planned = null;
     this.runStart = null;
     this.queue = [];
     this.job = null;
@@ -213,6 +300,7 @@ export class Spawner {
   spawn(entities: Entity[], distance: number, viewWidth: number, speedOverride: number | null, situation: SpawnSituation = SOBER): void {
     this.work = 0;
     if (!this.rng) return;
+    this.distance = distance;
     this.runStart ??= distance;
     if (situation.drunk && this.hasSoberPlans()) this.discardPlans();
     if (this.workPerTick !== null) this.planAhead(distance, speedOverride, situation);
@@ -221,7 +309,7 @@ export class Spawner {
       const planned = this.queue.shift();
       if (planned) {
         this.materialise(planned, entities);
-      } else if (this.workPerTick !== null && this.delayed < PLAN_DELAY_MAX) {
+      } else if (this.workPerTick !== null && this.delayed < PLAN_DELAY_MAX && this.job?.park == null) {
         // Not planned yet: a little more empty street while the plan goes on.
         const wait = Math.min(PLAN_DELAY_MAX - this.delayed, edge + 1 - this.nextStart);
         this.nextStart += wait;
@@ -251,8 +339,7 @@ export class Spawner {
       this.job ??= this.startJob(distance, speedOverride, situation);
       const step = this.job.steps.next();
       if (!step.done) break;
-      this.queue.push(step.value);
-      this.job = null;
+      this.queue.push(this.done(step.value));
     }
     this.work += units - Math.max(0, this.budget.left);
   }
@@ -263,9 +350,15 @@ export class Spawner {
     this.job ??= this.startJob(distance, speedOverride, situation);
     let step = this.job.steps.next();
     while (!step.done) step = this.job.steps.next();
-    this.job = null;
     this.work += UNLIMITED - this.budget.left;
-    return step.value;
+    return this.done(step.value);
+  }
+
+  /** The job's plan is done: a park plan is shown from now on. */
+  private done(planned: Planned): Planned {
+    this.job = null;
+    if (planned.park) this.planned = planned.park;
+    return planned;
   }
 
   /** A plan for the pattern after the queued ones. */
@@ -275,7 +368,48 @@ export class Spawner {
     const street = distance + start - PLAYER_X;
     const drunk = situation.drunk || street < this.cursor.drunkUntil;
     const before = { ...this.cursor };
-    return { steps: this.plan(this.rng!, street, speedOverride, drunk, situation.kidMode, before), drunk, before };
+    const park = drunk ? null : this.parkStart(street, speedOverride);
+    const steps = park === null ? this.plan(this.rng!, street, speedOverride, drunk, situation.kidMode, before) : this.planPark(this.rng!, street, park, speedOverride, before);
+    return { steps, drunk, before, park };
+  }
+
+  /** Where the park starts if the pattern at `street` is the park (see the class comment), else null. Moves the visit's arming on. */
+  private parkStart(street: number, speedOverride: number | null): number | null {
+    const c = this.cursor;
+    if (this.zoneAt(street) !== PARK_ZONE) c.parkArmed = true;
+    c.parkFrom ??= rideStreet(this.runStart ?? street, PARK_FIRST_SECONDS, speedOverride);
+    if (!c.parkArmed || street < c.chillUntil || street < c.lineEnd) return null;
+    // Planned when due (no workPerTick, tests only), the park is not announced ahead: the layout stays the budgeted one.
+    const announced = this.workPerTick === null ? street : this.distance + PARK_ANNOUNCE + PARK_PLAN_SLACK;
+    const start = Math.max(street, c.parkFrom, announced);
+    if (start - street > PARK_MAX_LEAD) return null;
+    const speed = speedOverride ?? speedAt(this.rampDistance(start));
+    // A pinned crawl or standstill (tests, debug): no park, it stays armed for when the speed is free.
+    if (speed < PARK_MIN_SPEED) return null;
+    const length = parkMaxLength(speed);
+    const fits = this.zoneAt(start - PARK_ZONE_MARGIN) === PARK_ZONE && this.zoneAt(start + length + PARK_ZONE_MARGIN) === PARK_ZONE;
+    return fits ? start : null;
+  }
+
+  /**
+   * Plans the park starting at `start` as the pattern at `street` (the street
+   * before it stays empty). Inside the park the speed stays at the ramp's
+   * speed at its start (or the pinned one).
+   */
+  private *planPark(rng: Rng, street: number, start: number, speedOverride: number | null, before: Cursor): Generator<void, Planned> {
+    const speed = speedOverride ?? speedAt(this.rampDistance(start));
+    const line = yield* planParkLine(rng, [speed], Math.round(start), this.budget);
+    const lead = start - street;
+    const end = start + line.length;
+    const c = this.cursor;
+    const pattern: Pattern = { name: line.name, pieces: line.pieces.map((p) => ({ ...p, x: p.x + lead })), length: line.length + lead };
+    const advance = pattern.length + gapAt(street);
+    c.previous = pattern.pieces.map((p) => shifted(p, -advance));
+    c.parkArmed = false;
+    c.pauses = [...c.pauses, [start, end]];
+    c.lineEnd = end;
+    c.nextStunt = Math.max(c.nextStunt ?? rideStreet(this.runStart ?? street, STUNT_FIRST_SECONDS, speedOverride), rideStreet(end, STUNT_LINE_INTERVAL[0], speedOverride));
+    return { pattern, advance, drunk: false, before, park: { start, end, pieces: parkPiecesOf(line, start) } };
   }
 
   private hasSoberPlans(): boolean {
@@ -291,6 +425,8 @@ export class Spawner {
     const sober = this.queue.findIndex((p) => !p.drunk);
     // No sober plan in the queue: then the job is sober (hasSoberPlans).
     this.cursor = { ...(sober >= 0 ? this.queue[sober]!.before : this.job!.before) };
+    const dropped = sober >= 0 ? this.queue.slice(sober) : [];
+    if (dropped.some((p) => p.park === this.planned)) this.planned = null;
     if (sober >= 0) this.queue.length = sober;
     this.job = null;
   }
@@ -298,7 +434,7 @@ export class Spawner {
   /** Plans the pattern starting at `street` and moves the cursor on (only at the end, so a dropped plan leaves it as it was). */
   private *plan(rng: Rng, street: number, speedOverride: number | null, drunk: boolean, kidMode: boolean, before: Cursor): Generator<void, Planned> {
     const pinned = speedOverride !== null;
-    const speeds = pinned ? [speedOverride] : [speedAt(street), speedAt(street + SPEED_SPAN + PLAN_DELAY_MAX)];
+    const speeds = pinned ? [speedOverride] : [speedAt(this.rampDistance(street)), speedAt(this.rampDistance(street + SPEED_SPAN + PLAN_DELAY_MAX))];
     let pattern: Pattern;
     const fast = Math.max(...speeds);
     const pace = pinned ? speedOverride : null;
@@ -314,6 +450,7 @@ export class Spawner {
       this.cursor.stuntBag = bag;
       this.cursor.lastShape = shape;
       this.cursor.nextStunt = rideStreet(street, rng.range(...STUNT_LINE_INTERVAL), pace);
+      this.cursor.lineEnd = rideStreet(street + pattern.length, PARK_AFTER_LINE_SECONDS, pace);
     } else {
       const chilled = street < this.cursor.chilledUntil;
       const effect = drunk || chilled;
@@ -336,8 +473,12 @@ export class Spawner {
         if (p.kind === 'wasenGuest' && itemOf(p, false) === 'beer') this.cursor.drunkUntil = Math.max(this.cursor.drunkUntil, street + p.x + BEER_REACH);
       }
     }
-    return { pattern, advance, drunk, before };
+    return { pattern, advance, drunk, before, park: null };
   }
+}
+
+function freshCursor(nextJoint: number): Cursor {
+  return { previous: [], nextJoint, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null, parkArmed: true, parkFrom: null, lineEnd: -Infinity, pauses: [] };
 }
 
 /** Street distance reached `seconds` of riding after `street`: at the difficulty speed, or at `pinned`. */
