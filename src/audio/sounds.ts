@@ -143,6 +143,40 @@ export function stuntStepPitch(step: number): number {
   return 2 ** (STUNT_SCALE[index] / 12);
 }
 
+/** Tiny deterministic 0..1 sequence (LCG) so generated crowds sound the same every time. */
+function sequence(seed: number): () => number {
+  let x = seed >>> 0;
+  return () => {
+    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+    return x / 0x100000000;
+  };
+}
+
+/**
+ * A cheering crowd of `voices` people over `len` seconds: soft lowpassed saw
+ * 'yeah's that slide up at staggered times, a hiss swell under them and
+ * `claps` scattered hand claps.
+ */
+function crowd(voices: number, claps: number, len: number, seed: number): Voice[] {
+  const r = sequence(seed);
+  const out: Voice[] = [{ wave: 'noise', at: 0, dur: len, freq: 2400, to: 1600, gain: 0.07, filter: 'bandpass', attack: len * 0.3 }];
+  for (let i = 0; i < voices; i++) {
+    const freq = 200 + r() * 260;
+    const at = r() * len * 0.35;
+    out.push({ wave: 'sawtooth', at, dur: len * (0.5 + r() * 0.4), freq, to: freq * (1.2 + r() * 0.3), gain: 0.05, filter: 'lowpass', attack: 0.08 });
+  }
+  for (let i = 0; i < claps; i++) out.push(...clap(0.05 + r() * (len - 0.15), 0.08 + r() * 0.06, 0.8 + r() * 0.5));
+  return out;
+}
+
+/** One hand clap: a sharp band-passed noise crack with a quick bright tail. */
+function clap(at: number, gain: number, pitch = 1): Voice[] {
+  return [
+    { wave: 'noise', at, dur: 0.06, freq: 1500 * pitch, gain, filter: 'bandpass', attack: 0.002 },
+    { wave: 'noise', at: at + 0.004, dur: 0.035, freq: 4200 * pitch, gain: gain * 0.6, filter: 'highpass', attack: 0.002 },
+  ];
+}
+
 export const SOUNDS: Record<Cue, Voice[]> = {
   // Quick rising square blip.
   jump: [{ wave: 'square', at: 0, dur: 0.11, freq: 300, to: 720, gain: 0.22 }],
@@ -337,6 +371,36 @@ export const SOUNDS: Record<Cue, Voice[]> = {
   passBus: passBy({ wave: 'sawtooth', hz: 72, engineGain: 0.12, muffled: true, air: 900, airGain: 0.11, len: 1.2, rattleHz: 38 }),
   // ... and the even deeper truck.
   passTruck: passBy({ wave: 'sawtooth', hz: 60, engineGain: 0.13, muffled: true, air: 800, airGain: 0.12, len: 1.25, rattleHz: 32 }),
+  // NorDIY park ambience: a board rolling over concrete (a low rumbling swell) ...
+  parkRoll: [
+    { wave: 'noise', at: 0, dur: 1.1, freq: 380, to: 520, gain: 0.14, filter: 'lowpass', attack: 0.35 },
+    { wave: 'triangle', at: 0, dur: 1.1, freq: 68, to: 74, gain: 0.04, attack: 0.35 },
+  ],
+  // ... a board clacking down (tail, then nose) ...
+  parkClack: [
+    { wave: 'triangle', at: 0, dur: 0.05, freq: 720, to: 260, gain: 0.14 },
+    { wave: 'noise', at: 0, dur: 0.03, freq: 2200, gain: 0.16, filter: 'bandpass' },
+    { wave: 'triangle', at: 0.11, dur: 0.05, freq: 640, to: 240, gain: 0.1 },
+    { wave: 'noise', at: 0.11, dur: 0.03, freq: 2000, gain: 0.12, filter: 'bandpass' },
+  ],
+  // ... and someone laughing on the container edge: a soft falling 'ha-ha-ha-ha'.
+  parkLaugh: [520, 480, 450, 410].flatMap((freq, i): Voice[] => [
+    { wave: 'triangle', at: i * 0.12, dur: 0.09, freq, to: freq * 0.9, gain: 0.09 },
+    { wave: 'noise', at: i * 0.12, dur: 0.06, freq: 1300, gain: 0.04, filter: 'bandpass' },
+  ]),
+  // The NorDIY crowd cheers a trick: more people and a longer swell the more they cheer.
+  cheerSmall: crowd(3, 3, 0.7, 11),
+  cheerMid: crowd(5, 7, 1.0, 23),
+  cheerBig: crowd(8, 12, 1.4, 37),
+  // "Session!": the whole crowd roars and claps.
+  sessionRoar: crowd(10, 20, 2.0, 41),
+  // A two-finger whistle on top of it: 'fweet - fwiu'.
+  fingerWhistle: [
+    { wave: 'sine', at: 0, dur: 0.22, freq: 1700, to: 2700, gain: 0.14, attack: 0.03 },
+    { wave: 'sine', at: 0.28, dur: 0.38, freq: 2700, to: 1500, gain: 0.14, attack: 0.02 },
+  ],
+  // High five: one crisp hand clap with a tiny skin 'pat' under it.
+  highFive: [...clap(0, 0.5), { wave: 'triangle', at: 0, dur: 0.05, freq: 320, to: 160, gain: 0.18 }],
 };
 
 /**
@@ -351,6 +415,25 @@ export const TRAFFIC_RUMBLE = {
   hiss: { freq: 700, q: 0.9, gain: 0.07 },
   drone: { freqs: [46, 61.5], cutoff: 170, gain: 0.09, throbHz: 0.7, throbDepth: 0.04 },
   glide: 0.06,
+} as const;
+
+/**
+ * NorDIY park (ROADMAP 36). Ambience: a crowd chatter bed of two noise bands
+ * (low voices, brighter voices) whose gains wobble at syllable rates, all
+ * slowly swelling, on one bus whose gain is the ambience level. Boombox: the
+ * looped buffer of boombox.ts through a lowpass that opens as the skater gets
+ * closer, at up to `boombox.gain`. Both glide with `glide` (time constant, s)
+ * and are stopped `stopAfter` seconds after both reach 0.
+ */
+export const PARK_SOUND = {
+  chatter: [
+    { freq: 480, q: 2.5, gain: 0.22, babbleHz: 3.1, babbleDepth: 0.14 },
+    { freq: 1250, q: 3, gain: 0.1, babbleHz: 4.7, babbleDepth: 0.07 },
+  ],
+  swell: { hz: 0.21, depth: 0.25 },
+  boombox: { gain: 0.32, cutoff: 700, cutoffFull: 2400, q: 0.5 },
+  glide: 0.15,
+  stopAfter: 0.8,
 } as const;
 
 /** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */

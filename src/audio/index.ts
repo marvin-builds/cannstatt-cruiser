@@ -1,14 +1,16 @@
 /**
  * Audio system: maps bus events to chiptune cues on an AudioBackend, keeps
- * the grind loop and the traffic rumble in sync with the game, unlocks
- * audio on user gestures and persists the mute flag. Sound design lives in
- * sounds.ts, traffic logic in traffic.ts, WebAudio in webaudio.ts.
+ * the grind loop, the traffic rumble and the NorDIY park sounds in sync with
+ * the game, unlocks audio on user gestures and persists the mute flag. Sound
+ * design lives in sounds.ts, traffic logic in traffic.ts, park logic in
+ * park.ts, WebAudio in webaudio.ts.
  */
 import { store as defaultStore, type Store } from '../core/storage';
 import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
+import { cheerCue, cheerIntensity, isParkCue, ParkSound } from './park';
 import { PASS_BY, PassBy } from './passby';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
@@ -18,7 +20,8 @@ export interface AudioSystemOptions {
   backend?: AudioBackend;
   store?: Store;
   /**
-   * Called with every cue name and `grind:start` / `grind:stop` (debug log,
+   * Called with every cue name, `grind:start` / `grind:stop`, `traffic:start` /
+   * `traffic:stop` and `park:start` / `park:stop` (debug log,
    * playtests), also while muted; `muted` tells whether it was inaudible.
    */
   onSound?: (name: string, muted: boolean) => void;
@@ -44,11 +47,14 @@ const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGue
 const TRICK_FULL_POINTS = 100;
 /** Grind trick points from which a sparkle follows the sting. */
 const TRICK_BIG_POINTS = 100;
+/** Seconds after the session roar starts until the finger whistle cuts through it. */
+const SESSION_WHISTLE_DELAY = 0.35;
 
 export function createAudioSystem(options: AudioSystemOptions = {}): System {
   const backend = options.backend ?? createWebAudioBackend();
   const store = options.store ?? defaultStore;
-  const onSound = options.onSound ?? exposeAudioDebug(backend);
+  const park = new ParkSound();
+  const onSound = options.onSound ?? exposeAudioDebug(backend, park);
   let grinding = false;
   let muted = false;
   /** Ticks the jump has been held so far, or null when no boost is pending. */
@@ -71,8 +77,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   };
   const play = (cue: Cue, intensity = 1, delay = 0, pitch = 1) => {
     onSound?.(cue, muted);
-    // Gameplay sounds stay clearly audible over the Mitte rumble.
-    if (!isTrafficCue(cue)) traffic.duck();
+    // Gameplay sounds stay clearly audible over the Mitte rumble and the park.
+    if (!isTrafficCue(cue) && !isParkCue(cue)) traffic.duck();
     safely(() => backend.play(cue, intensity, delay, pitch));
   };
   /** One tick of the traffic rumble, horns and trucks: silent unless playing and unmuted. */
@@ -83,6 +89,16 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
     if (step.level !== null) safely(() => backend.setTraffic(step.level!));
     if (wasSounding !== traffic.sounding) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
     if (step.cue) play(step.cue);
+  };
+  /** One tick of the NorDIY park ambience and boombox: silent unless playing and unmuted. */
+  const updatePark = (ctx: GameContext) => {
+    const { state } = ctx;
+    const wasSounding = park.sounding;
+    const active = state.mode === 'playing' && !muted;
+    const step = park.update(state.park, state.distance, active, state.time, traffic.duckFactor);
+    if (step.ambience !== null || step.boombox !== null) safely(() => backend.setPark(park.ambience, park.boombox));
+    if (wasSounding !== park.sounding) onSound?.(wasSounding ? 'park:stop' : 'park:start', muted);
+    if (step.cue) play(step.cue, park.level);
   };
   /** The air trick spin, once as each trick starts (before the traffic tick, so it ducks the rumble at once). */
   const updateSpin = (ctx: GameContext) => {
@@ -194,6 +210,15 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('stuntEnd', ({ completed }) => play(completed ? 'stuntFanfare' : 'stuntFizzle'));
       // Air trick: the spin plays as the trick starts (update), a bright ping when it is made.
       bus.on('airTrick', () => play('airTrick'));
+      // NorDIY park: the crowd cheers each trick (bigger with the session), roars and
+      // whistles for a "Session!" bonus, and a crisp clap for a high five. Same in kid mode.
+      bus.on('sessionCheer', ({ level }) => play(cheerCue(level), cheerIntensity(level)));
+      bus.on('sessionEnd', ({ points }) => {
+        if (points <= 0) return;
+        play('sessionRoar');
+        play('fingerWhistle', 1, SESSION_WHISTLE_DELAY);
+      });
+      bus.on('highFive', () => play('highFive'));
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);
@@ -207,6 +232,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         traffic.reset();
         passBy.reset();
         clears.reset();
+        park.reset();
       });
     },
     update(ctx: GameContext) {
@@ -214,6 +240,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       for (let n = clears.flush(); n > 0; n--) play('cleared');
       updateSpin(ctx);
       updateTraffic(ctx);
+      updatePark(ctx);
       if (ctx.state.mode !== 'playing') {
         stopGrind();
         boostTicks = null;

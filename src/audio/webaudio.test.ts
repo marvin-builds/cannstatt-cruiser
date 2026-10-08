@@ -228,6 +228,7 @@ describe('WebAudio backend', () => {
         backend.startLoop('grind');
         backend.stopLoop('grind');
         backend.setTraffic(1);
+        backend.setPark(1, 1);
       }).not.toThrow();
       expect(backend.status?.()).toBe('unavailable');
     }
@@ -363,5 +364,43 @@ describe('WebAudio backend: pitch', () => {
     await Promise.resolve();
     const base = SOUNDS.stuntStep.filter((v) => v.wave !== 'noise').map((v) => (v.to ?? v.freq) * 2);
     expect(ctx.oscillators.map((o) => o.frequency.value)).toEqual(base);
+  });
+});
+
+describe('WebAudio backend: NorDIY park', () => {
+  it('builds no park nodes for silence or before unlock', () => {
+    const { backend, ctx } = setup();
+    backend.setPark(0.5, 0.5);
+    backend.unlock();
+    const before = ctx.started.length;
+    backend.setPark(0, 0);
+    expect(ctx.started.length).toBe(before);
+  });
+
+  it('builds the park sounds on the first audible level and reuses them while they sound', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    const before = ctx.started.length;
+    backend.setPark(0.1, 0);
+    const sources = ctx.started.length - before;
+    expect(sources).toBeGreaterThan(0);
+    expect(ctx.started.slice(before)).toContain('buffer');
+    for (let i = 1; i <= 100; i++) backend.setPark(i / 100, i / 100);
+    expect(ctx.started.length - before).toBe(sources);
+    expect(ctx.stopped).toEqual([]);
+  });
+
+  it('stops every park source at silence and leaks none over many park visits', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    const before = ctx.started.length;
+    for (let visit = 0; visit < 50; visit++) {
+      for (let i = 1; i <= 10; i++) backend.setPark(i / 10, i / 10);
+      backend.setPark(0, 0);
+      backend.setPark(0, 0);
+    }
+    const started = ctx.started.length - before;
+    expect(started).toBeGreaterThan(0);
+    expect(ctx.stopped.length).toBe(started);
   });
 });
