@@ -3,20 +3,20 @@ import { Game } from '../core/game';
 import { createStore } from '../core/storage';
 import type { AudioBackend, Cue, LoopName } from './backend';
 import { createAudioSystem } from './index';
-import { GLUG_LENGTH } from './sounds';
+import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { TRAFFIC, isTrafficCue } from './traffic';
 
 class FakeBackend implements AudioBackend {
   calls: string[] = [];
-  played: { cue: Cue; intensity: number; delay: number }[] = [];
+  played: { cue: Cue; intensity: number; delay: number; pitch: number }[] = [];
   loops = new Set<LoopName>();
   traffic: number[] = [];
   muted = false;
   unlock(): void {
     this.calls.push('unlock');
   }
-  play(cue: Cue, intensity: number, delay = 0): void {
-    this.played.push({ cue, intensity, delay });
+  play(cue: Cue, intensity: number, delay = 0, pitch = 1): void {
+    this.played.push({ cue, intensity, delay, pitch });
   }
   setTraffic(level: number): void {
     this.traffic.push(level);
@@ -475,7 +475,7 @@ describe('audio system: using items', () => {
   it('plays the woozy sting right away when drunk without a drink sound', () => {
     const { game, backend } = playing();
     game.bus.emit('drunkStart', { duration: 6 });
-    expect(backend.played).toEqual([{ cue: 'woozy', intensity: 1, delay: 0 }]);
+    expect(backend.played).toEqual([{ cue: 'woozy', intensity: 1, delay: 0, pitch: 1 }]);
   });
 
   it('lets the woozy sting wait until the gulps are done', () => {
@@ -727,5 +727,63 @@ describe('audio system: vehicles passing by', () => {
     pass(s, { light: false });
     wait(s, 1);
     expect(s.backend.traffic.length).toBe(sent);
+  });
+});
+
+describe('audio system: stunt lines', () => {
+  const step = (n: number, steps = 4) => ({ step: n, steps, multiplier: n, points: 50 * n });
+
+  it('plays the springy take-off on launch', () => {
+    const { game, cues } = playing();
+    game.bus.emit('launch', { entityId: 3, velocity: 420 });
+    expect(cues()).toEqual(['launch']);
+  });
+
+  it('plays a melody note per stunt step that climbs with the step', () => {
+    const { game, backend } = playing();
+    for (let n = 1; n <= 4; n++) game.bus.emit('stuntStep', step(n));
+    expect(backend.played.map((p) => p.cue)).toEqual(['stuntStep', 'stuntStep', 'stuntStep', 'stuntStep']);
+    expect(backend.played.map((p) => p.pitch)).toEqual([1, 2, 3, 4].map(stuntStepPitch));
+    for (let i = 1; i < 4; i++) expect(backend.played[i].pitch).toBeGreaterThan(backend.played[i - 1].pitch);
+  });
+
+  it('plays a fanfare when a line is completed', () => {
+    const { game, cues } = playing();
+    game.bus.emit('stuntEnd', { steps: 4, made: 4, completed: true, points: 500 });
+    expect(cues()).toEqual(['stuntFanfare']);
+  });
+
+  it('only plays a soft falling blip when the skater drops out of a line', () => {
+    const { game, cues } = playing();
+    game.bus.emit('stuntEnd', { steps: 4, made: 2, completed: false, points: 0 });
+    expect(cues()).toEqual(['stuntFizzle']);
+    expect(cues()).not.toContain('crash');
+  });
+
+  it('reuses the grind loop for a ledge grind', () => {
+    const { game, backend } = playing();
+    game.bus.emit('grindStart', { entityId: 9 });
+    expect(backend.loops.has('grind')).toBe(true);
+    game.bus.emit('grindEnd', { entityId: 9, ticks: 40 });
+    expect(backend.loops.has('grind')).toBe(false);
+  });
+
+  it('keeps every stunt sound inaudible while muted', () => {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    game.commands.setMuted(true);
+    game.bus.emit('launch', { entityId: 3, velocity: 420 });
+    game.bus.emit('stuntStep', step(1));
+    game.bus.emit('stuntEnd', { steps: 4, made: 4, completed: true, points: 500 });
+    expect(heard).toEqual([
+      ['launch', true],
+      ['stuntStep', true],
+      ['stuntFanfare', true],
+    ]);
+    expect(backend.muted).toBe(true);
   });
 });

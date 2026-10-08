@@ -15,6 +15,8 @@ class FakeContext {
   stopped: string[] = [];
   resumes = 0;
   master: { gain: { value: number } } | null = null;
+  /** Every oscillator created, to read back the pitch it was given. */
+  oscillators: { frequency: { value: number } }[] = [];
 
   constructor(state = 'running') {
     this.state = state;
@@ -72,7 +74,9 @@ class FakeContext {
     return n;
   }
   createOscillator() {
-    return this.node('osc');
+    const osc = this.node('osc');
+    this.oscillators.push(osc);
+    return osc;
   }
   createBufferSource() {
     return this.node('buffer');
@@ -332,5 +336,32 @@ describe('WebAudio backend: delayed cues while the context resumes', () => {
     backend.play('woozy', 1, 0.5);
     await resumeAt(3000);
     expect(ctx.started.length - before).toBe(0);
+  });
+});
+
+describe('WebAudio backend: pitch', () => {
+  /** Oscillator start frequencies of one cue played at `pitch`. */
+  function freqs(pitch?: number) {
+    const { ctx, backend } = setup();
+    backend.unlock();
+    backend.play('stuntStep', 1, 0, pitch);
+    return ctx.oscillators.map((o) => o.frequency.value);
+  }
+
+  it('transposes every tonal voice of a cue by the pitch factor', () => {
+    const base = freqs();
+    expect(base.length).toBeGreaterThan(0);
+    expect(freqs(1.5)).toEqual(base.map((f) => f * 1.5));
+  });
+
+  it('keeps the pitch of a cue that waits for the context to resume', async () => {
+    const ctx = new FakeContext('suspended');
+    const backend = createWebAudioBackend(() => ctx as unknown as AudioContext);
+    backend.unlock();
+    backend.play('stuntStep', 1, 0, 2);
+    await Promise.resolve();
+    await Promise.resolve();
+    const base = SOUNDS.stuntStep.filter((v) => v.wave !== 'noise').map((v) => (v.to ?? v.freq) * 2);
+    expect(ctx.oscillators.map((o) => o.frequency.value)).toEqual(base);
   });
 });
