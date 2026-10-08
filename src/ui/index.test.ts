@@ -5,6 +5,7 @@ import { createStore, type Store } from '../core/storage';
 import { createUiSystem } from './index';
 import type { Rect, System } from '../types';
 import { HudModel } from './hud-model';
+import { PLAYER_X } from '../core/config';
 import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
@@ -112,6 +113,26 @@ describe('ui system', () => {
     game.tick();
     expect(uses()).toBe(1);
     expect(game.state.player.grounded).toBe(true);
+  });
+
+  it('during a high five window the touch item button is pressable with empty hands, outside it is not', () => {
+    for (const portrait of [false, true]) {
+      const { game, uses } = setup();
+      game.display.touch = true;
+      game.display.portrait = portrait;
+      game.commands.startRun();
+      if (portrait) game.hitHotspot(160, 90); // dismiss the portrait hint
+      game.commands.resume();
+      const [x, y] = centre(itemButtonRect(game.display.viewWidth, game.display));
+      const fiver = { id: 7, kind: 'highFiver' as const, x: PLAYER_X - 6, y: 120, w: 12, h: 30, done: false };
+      game.state.entities.push(fiver);
+      expect(game.hitHotspot(x, y)).toBe(true);
+      game.tick();
+      expect(uses()).toBe(1);
+      expect(game.state.player.grounded).toBe(true);
+      fiver.x = PLAYER_X + 80;
+      expect(game.hitHotspot(x, y)).toBe(false);
+    }
   });
 
   it('on desktop the E key cap chip is clickable while carrying', () => {

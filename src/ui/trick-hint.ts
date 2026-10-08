@@ -1,19 +1,18 @@
 /**
  * The grind trick hint: while grinding, until the player has done a grind
- * trick once ever (storage key grindTrickSeen), a small plate under the
- * skater says "↓ = Trick!" (desktop, with a key cap) or "Wisch runter =
- * Trick!" (touch). Only on the first TRICK_HINT_GRINDS grinds of a run.
+ * trick once ever (storage key grindTrickSeen), a small plate at the hint spot
+ * under the skater says "[↓] = Trick!" (desktop, with a key cap), "Wisch
+ * runter = Trick!" (touch landscape) or the compact "Wisch ↓ = Trick!" (the
+ * big portrait font). Only on the first TRICK_HINT_GRINDS grinds of a run.
  */
-import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
 import type { Rect } from '../types';
-import { popupLeft } from './layout';
+import { type HintRow, hintPlateRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
+import { popupScale } from './layout';
 
 /** Grinds per run that show the hint. */
 export const TRICK_HINT_GRINDS = 3;
 const SEEN_KEY = 'grindTrickSeen';
-/** Gap between the riding line and the hint plate. */
-const BELOW_GROUND = 4;
 
 export class TrickHint {
   private seen: boolean;
@@ -55,16 +54,17 @@ export class TrickHint {
   }
 }
 
-/** The text after the key cap on desktop, the whole text on touch. */
-export function trickHintLabel(touch: boolean): string {
-  return touch ? 'Wisch runter = Trick!' : '= Trick!';
-}
+const DESKTOP_ROWS: readonly HintRow[] = [[KEY_DOWN, '= Trick!']];
+const TOUCH_ROWS: readonly HintRow[] = [['Wisch runter = Trick!']];
+const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [['Wisch', SWIPE_DOWN, '= Trick!']];
 
-/**
- * The plate `w` x `h`, centred under the skater just below the riding line:
- * clear of the skater, rails, obstacles (all above the line), the rising
- * popups and the zone banner, and kept off the view edges like a popup.
- */
-export function trickHintRect(w: number, h: number, viewWidth: number): Rect {
-  return { x: popupLeft(PLAYER_X, w, viewWidth), y: GROUND_Y + BELOW_GROUND, w, h };
+/** The plate's rows, font scale (as the other hints) and rect at the hint spot for `display`. */
+export function trickHintPlate(display: { touch: boolean; portrait: boolean; viewWidth: number }): {
+  rows: readonly HintRow[];
+  scale: number;
+  rect: Rect;
+} {
+  const scale = popupScale(display, false);
+  const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : TOUCH_ROWS;
+  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth) };
 }

@@ -34,6 +34,11 @@ export interface UiDebugHook {
   stuntEnd(completed: boolean, points: number): void;
   /** Emits an air trick like gameplay ("Air-Trick! +points" popup, the air trick hint is never shown again). */
   airTrick(points: number): void;
+  /** Emits the NorDIY events like gameplay: a high five ("High Five! +points") and the park's session end ("Session! +points"). */
+  highFive(points: number): void;
+  sessionEnd(points: number): void;
+  /** Whether the one-time high five hint shows now. */
+  highFiveHintVisible(): boolean;
   /** Whether the first-time air trick hint wants to show now (shownHint picks one plate if several do). */
   airHintVisible(): boolean;
   /**
@@ -104,6 +109,15 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     },
     airTrick(points) {
       ctx.bus.emit('airTrick', { ticks: 20, points });
+    },
+    highFive(points) {
+      ctx.bus.emit('highFive', { entityId: -1, points });
+    },
+    sessionEnd(points) {
+      ctx.bus.emit('sessionEnd', { level: points > 0 ? 1 : 0, points });
+    },
+    highFiveHintVisible() {
+      return view.highFiveHint.visible;
     },
     airHintVisible() {
       return view.airHint.visible;

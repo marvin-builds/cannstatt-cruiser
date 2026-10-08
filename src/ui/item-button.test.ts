@@ -11,9 +11,11 @@ import {
   itemHintPlace,
   itemHintRect,
   keycapChip,
+  popupAvoid,
   popupCeiling,
 } from './item-button';
-import { PopupPool } from './popups';
+import { measureText } from '../core/font';
+import { POPUP_LIFETIME, popupHeight, PopupPool } from './popups';
 import { SKATER_CLEAR } from './menu-layout';
 import { statsLayout } from './stats';
 
@@ -38,6 +40,16 @@ describe('item control', () => {
     expect(itemControl(TOUCH_LANDSCAPE, 'playing', null)).toBeNull();
     expect(itemControl(TOUCH_LANDSCAPE, 'paused', 'beer')).toBeNull();
     expect(itemControl(TOUCH_LANDSCAPE, 'gameover', 'beer')).toBeNull();
+  });
+
+  it('during a high five window it shows even with empty hands; outside it only while carrying', () => {
+    expect(itemControl(TOUCH_LANDSCAPE, 'playing', null, true)).toBe('button');
+    expect(itemControl(TOUCH_PORTRAIT, 'playing', null, true)).toBe('button');
+    expect(itemControl(TOUCH_LANDSCAPE, 'playing', 'beer', true)).toBe('button');
+    expect(itemControl(DESKTOP, 'playing', null, true)).toBe('keycap');
+    expect(itemControl(TOUCH_LANDSCAPE, 'playing', null, false)).toBeNull();
+    expect(itemControl(TOUCH_LANDSCAPE, 'paused', null, true)).toBeNull();
+    expect(itemControl(DESKTOP, 'gameover', null, true)).toBeNull();
   });
 
   it('desktop: an E key cap next to the item, also on the pause screen', () => {
@@ -171,6 +183,42 @@ describe('first-time item hint (touch)', () => {
         pool.ceiling = popupCeiling(base, hint);
         for (const text of ['Autsch!', '+50']) pool.spawn(text, PLAYER_X, GROUND_Y - 28 - 44, '#fff', popupScale(display, false));
         for (const p of pool.active()) expect(p.y, `${at}: ${p.text}`).toBeGreaterThanOrEqual(hint.y + hint.h);
+      }
+    }
+  });
+});
+
+describe('popups keep clear of the item button (popupAvoid)', () => {
+  const skater: Rect = { x: PLAYER_X - 14, y: GROUND_Y - 34, w: 30, h: 34 };
+  const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+  it('lists the skater alone without the touch button, else both left to right', () => {
+    const portrait = { touch: true, portrait: true };
+    expect(popupAvoid(320, portrait, null, skater, [])).toEqual([skater]);
+    expect(popupAvoid(320, portrait, 'keycap', skater, [])).toEqual([skater]);
+    const both = popupAvoid(320, portrait, 'button', skater, []);
+    expect(both).toEqual([itemButtonRect(320, portrait), skater]);
+    const landscape = { touch: true, portrait: false };
+    expect(popupAvoid(427, landscape, 'button', skater, [])).toEqual([skater, itemButtonRect(427, landscape)]);
+  });
+
+  it('phone portrait: "High Five! +100" over the skater never covers the hand button, at any height or width', () => {
+    const display = { touch: true, portrait: true };
+    const scale = popupScale(display, false);
+    for (const viewWidth of [320, 390, 427]) {
+      const button = itemButtonRect(viewWidth, display);
+      for (let y = button.y - popupHeight(scale); y <= button.y + button.h; y += 4) {
+        const pool = new PopupPool(3);
+        pool.avoid = popupAvoid(viewWidth, display, 'button', skater, []);
+        pool.spawn('High Five! +100', PLAYER_X, y, '#fff', scale);
+        for (let t = 0; t < 10; t++) {
+          const p = pool.active()[0]!;
+          const w = measureText(p.text, p.scale) + 2;
+          const box = { x: p.x - w / 2, y: p.y - 1, w, h: 8 * p.scale + 2 };
+          expect(overlaps(box, button)).toBe(false);
+          expect(overlaps(box, skater)).toBe(false);
+          pool.update(POPUP_LIFETIME / 12);
+        }
       }
     }
   });

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
-import { POPUP_MARGIN } from './layout';
-import { TRICK_HINT_GRINDS, TrickHint, trickHintLabel, trickHintRect } from './trick-hint';
+import { airTrickHintPlate } from './air-trick-hint';
+import { hintPlateSize, hintSpotRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
+import { kickerHintRect } from './kicker-hint';
+import { POPUP_MARGIN, popupScale } from './layout';
+import { TRICK_HINT_GRINDS, TrickHint, trickHintPlate } from './trick-hint';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -74,9 +77,27 @@ describe('grind trick hint', () => {
     expect(hint.visible).toBe(false);
   });
 
-  it('labels: key cap text on desktop, swipe on touch', () => {
-    expect(trickHintLabel(false)).toBe('= Trick!');
-    expect(trickHintLabel(true)).toBe('Wisch runter = Trick!');
+  describe('plate', () => {
+    it('desktop: a ↓ key cap and "= Trick!"; touch landscape: "Wisch runter = Trick!"', () => {
+      const desk = trickHintPlate({ touch: false, portrait: false, viewWidth: 320 });
+      expect(desk.rows).toEqual([[KEY_DOWN, '= Trick!']]);
+      expect(desk.scale).toBe(1);
+      expect(trickHintPlate({ touch: true, portrait: false, viewWidth: 384 }).rows).toEqual([['Wisch runter = Trick!']]);
+    });
+
+    it('touch portrait (big font): compact "Wisch ↓ = Trick!", no larger than the kicker and air trick hints', () => {
+      for (const viewWidth of [320, 390, 427]) {
+        const display = { touch: true, portrait: true, viewWidth };
+        const p = trickHintPlate(display);
+        expect(p.rows).toEqual([['Wisch', SWIPE_DOWN, '= Trick!']]);
+        expect(p.scale).toBe(popupScale(display, false));
+        const kicker = kickerHintRect(p.scale, viewWidth);
+        const air = airTrickHintPlate(display).rect;
+        expect(p.rect.w).toBeLessThanOrEqual(Math.min(kicker.w, air.w));
+        expect(p.rect.h).toBeLessThanOrEqual(Math.min(kicker.h, air.h));
+        expect(p.rect).toEqual(hintSpotRect(hintPlateSize(p.rows, p.scale).w, hintPlateSize(p.rows, p.scale).h, viewWidth));
+      }
+    });
   });
 
   describe('placement', () => {
@@ -90,7 +111,7 @@ describe('grind trick hint', () => {
       [180, 22, 320],
     ] as const) {
       it(`${w}x${h} in a ${viewWidth} wide view: under the riding line, on screen, clear of skater and banner`, () => {
-        const r = trickHintRect(w, h, viewWidth);
+        const r = hintSpotRect(w, h, viewWidth);
         expect(r.y).toBeGreaterThan(GROUND_Y);
         expect(r.y + r.h).toBeLessThanOrEqual(VIEW_H);
         expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);

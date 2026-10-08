@@ -1,7 +1,8 @@
 /**
  * The stunt line callout (ROADMAP 27): "Combo xN!" on every `stuntStep`
  * (punching in a size bigger for a moment), "Stunt-Linie!" and the points on
- * a completed line. A missed line says nothing: falling off stays quiet.
+ * a completed line, "Session!" and the bonus when the skater leaves the
+ * NorDIY park with points. A missed line says nothing: falling off stays quiet.
  *
  * It lives in the top strip of the view, between the HUD stats plate (and
  * the desktop item chip) and the HUD buttons, right of the skater and above
@@ -76,6 +77,11 @@ export class StuntCallout {
       return;
     }
     this.show(points > 0 ? ['Stunt-Linie!', plusPoints(points)] : ['Stunt-Linie!'], UI.yellow, LINE_DONE_TIME, false);
+  }
+
+  /** The NorDIY park session ended (sessionEnd): "Session!" and its bonus; nothing without points. */
+  session(points: number): void {
+    if (points > 0) this.show(['Session!', plusPoints(points)], UI.yellow, LINE_DONE_TIME, false);
   }
 
   /** Advances its time while `shown`; while it cannot be shown (zone banner) it waits. */

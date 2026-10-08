@@ -3,8 +3,8 @@ import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { createStore, type Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
 import { KICKER_HINT_AHEAD, KICKER_HINT_RUNS, KickerHint, kickerHintRect, KICKER_HINT_LABEL } from './kicker-hint';
+import { hintSpotRect } from './hint-plate';
 import { POPUP_MARGIN } from './layout';
-import { trickHintRect } from './trick-hint';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -112,7 +112,7 @@ describe('kicker hint', () => {
           expect(r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h).toBe(false);
         }
         // Same spot as the grind trick hint, so the player looks in one place for hints.
-        expect(r.y).toBe(trickHintRect(r.w, r.h, viewWidth).y);
+        expect(r.y).toBe(hintSpotRect(r.w, r.h, viewWidth).y);
       });
     }
   });

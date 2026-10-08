@@ -13,6 +13,7 @@ import {
   buttonPlateSprite,
   GUM_ICON,
   HEART,
+  HAND_ICON,
   HEART_ICON,
   ICON_FULLSCREEN,
   ICON_PAUSE,
@@ -24,6 +25,7 @@ import {
   type PixelIcon,
   ROTATE,
   STAR,
+  SWIPE_ARROW,
   UI,
 } from './art';
 import { type Banner, BANNER_H, BANNER_Y } from './banner';
@@ -38,12 +40,15 @@ import {
   HINT_PAD_Y,
   type HintRow,
   hintRowHeight,
+  KEY_DOWN,
   KEYCAP_H,
   KEYCAP_W,
   PIECE_GAP,
   ROW_GAP,
   shownHint,
+  SWIPE_DOWN_W,
 } from './hint-plate';
+import { type HighFiveHint, highFiveHintPlate, highFiveOpen } from './high-five';
 import { KICKER_HINT_ROWS, type KickerHint, kickerHintRect } from './kicker-hint';
 import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
@@ -65,7 +70,7 @@ import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
-import { type TrickHint, trickHintLabel, trickHintRect } from './trick-hint';
+import { type TrickHint, trickHintPlate } from './trick-hint';
 
 export interface UiView {
   records: Records;
@@ -90,6 +95,8 @@ export interface UiView {
   kickerHint: KickerHint;
   /** "In der Luft ↓ = Trick!" in the air after a launch, until an air trick was done once. */
   airHint: AirTrickHint;
+  /** "[E] = High Five!" / "Knopf: High Five!" the first time a NorDIY high-fiver approaches. */
+  highFiveHint: HighFiveHint;
   /** "Combo xN!" and "Stunt-Linie! +…" in the top strip between the HUD plate and the buttons. */
   stunt: StuntCallout;
   /** Where the stunt callout is drawn this tick (set in update), null while hidden. */
@@ -280,18 +287,28 @@ function drunkVignette(g: CanvasRenderingContext2D, w: number): CanvasGradient {
   return gradient;
 }
 
-/** The touch item button (big, under the HUD buttons) or the desktop chip with the "E" key cap. */
+/** Alpha of the hand button shown ahead of the high five window, while its touch hint points at it (not pressable yet). */
+const HAND_PREVIEW_ALPHA = 0.5;
+
+/**
+ * The touch item button (big, under the HUD buttons) or the desktop chip with
+ * the "E" key cap; a raised hand instead of the item during a high five window.
+ */
 function drawItemControl(r: RenderContext, view: UiView): void {
   const { state, display, g } = r;
-  const item = state.carriedItem;
-  const control = itemControl(display, state.mode, item);
-  if (!item || !control) return;
-  const icon = ITEM_ICONS[item];
+  const highFive = highFiveOpen(state.entities);
+  const control = itemControl(display, state.mode, state.carriedItem, highFive);
+  if (!control) {
+    // The touch hint points at the button before the window opens: show where the hand will be.
+    if (!display.touch || state.mode !== 'playing' || !view.highFiveHint.visible) return;
+    g.globalAlpha = HAND_PREVIEW_ALPHA;
+    drawItemButton(r, HAND_ICON);
+    g.globalAlpha = 1;
+    return;
+  }
+  const icon = highFive || !state.carriedItem ? HAND_ICON : ITEM_ICONS[state.carriedItem];
   if (control === 'button') {
-    const b = itemButtonRect(display.viewWidth, display);
-    buttonPlateSprite(b.w).draw(g, 0, b.x, b.y);
-    const scale = Math.floor((b.w - 12) / Math.max(icon.width, icon.height));
-    icon.draw(g, 0, b.x + Math.floor((b.w - icon.width * scale) / 2), b.y + Math.floor((b.h - icon.height * scale) / 2), scale);
+    drawItemButton(r, icon);
     return;
   }
   const chip = view.hud.chip;
@@ -305,43 +322,42 @@ function drawItemControl(r: RenderContext, view: UiView): void {
   text(r, 'E', kx + 3, ky, KEYCAP);
 }
 
-/** "Tippe auf den Gegenstand" on a plate beside the item button, with a pointer towards it (never while the zone banner shows). */
-function drawItemHint(r: RenderContext, view: UiView): void {
-  const { g, state, display } = r;
-  if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;
-  const scale = popupScale(display, false);
-  const { x, y, w, h, pointsRight } = itemHintRect(display.viewWidth, display, scale);
+function drawItemButton(r: RenderContext, icon: PixelIcon): void {
+  const { display, g } = r;
+  const b = itemButtonRect(display.viewWidth, display);
+  buttonPlateSprite(b.w).draw(g, 0, b.x, b.y);
+  const scale = Math.floor((b.w - 12) / Math.max(icon.width, icon.height));
+  icon.draw(g, 0, b.x + Math.floor((b.w - icon.width * scale) / 2), b.y + Math.floor((b.h - icon.height * scale) / 2), scale);
+}
+
+/** A label on a plate beside the item button, with a pointer towards it. */
+function drawButtonHint(r: RenderContext, label: string, scale: number, p: Rect & { pointsRight: boolean }): void {
+  const { g } = r;
+  const { x, y, w, h, pointsRight } = p;
   ribbon(r, x, y, w, h);
   g.fillStyle = UI.yellow;
   for (let i = 0; i < 4; i++) g.fillRect(pointsRight ? x + w + i : x - 1 - i, y + Math.floor(h / 2) - 3 + i, 1, 7 - 2 * i);
-  text(r, ITEM_HINT_LABEL, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+  text(r, label, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
 }
 
 /**
- * The grind trick hint on a plate centred under the skater, below the riding
- * line, with a caret pointing up at the skater: a "↓" key cap and "= Trick!"
- * on desktop, "Wisch runter = Trick!" on touch.
+ * Beside the touch item button: "Knopf: High Five!" while the high five hint
+ * shows, else "Tippe auf den Gegenstand" (never while the zone banner shows).
  */
-function drawTrickHint(r: RenderContext, view: UiView): void {
-  if (!view.trickHint.visible) return;
-  const { g, display } = r;
-  const scale = popupScale(display, false);
-  const label = trickHintLabel(display.touch);
-  const cap = display.touch ? 0 : KEYCAP_W + 3;
-  const h = display.touch ? 8 * scale + 6 : 14;
-  const p = trickHintRect(cap + measureText(label, scale) + 8, h, display.viewWidth);
-  ribbon(r, p.x, p.y, p.w, p.h);
-  g.fillStyle = UI.yellow;
-  const tip = Math.min(Math.max(PLAYER_X, p.x + 4), p.x + p.w - 4);
-  for (let i = 0; i < 3; i++) g.fillRect(tip - i, p.y - 3 + i, 1 + 2 * i, 1);
-  if (cap) {
-    keyCap(r, p.x + 4, p.y + 2);
-    ARROW_DOWN.draw(g, 0, p.x + 6, p.y + 3);
+function drawItemHint(r: RenderContext, view: UiView): void {
+  const { state, display } = r;
+  if (!display.touch || state.mode !== 'playing') return;
+  if (view.highFiveHint.visible) {
+    const p = highFiveHintPlate(display);
+    if (p.kind === 'button') drawButtonHint(r, p.label, p.scale, p.rect);
+    return;
   }
-  text(r, label, p.x + 4 + cap, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+  if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;
+  const scale = popupScale(display, false);
+  drawButtonHint(r, ITEM_HINT_LABEL, scale, itemHintRect(display.viewWidth, display, scale));
 }
 
-/** A hint plate at the hint spot: the plate, a caret up at the skater and its rows (texts and key caps). */
+/** A hint plate at the hint spot: the plate, a caret up at the skater and its rows (texts, key caps, arrows). */
 function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number, p: Rect): void {
   const { g } = r;
   ribbon(r, p.x, p.y, p.w, p.h);
@@ -354,24 +370,39 @@ function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number
     const h = hintRowHeight(row, scale);
     let x = p.x + HINT_PAD_X;
     for (const piece of row) {
-      if (typeof piece !== 'string') {
+      if (typeof piece === 'string') {
+        text(r, piece, x, y + ((h - 8 * scale) >> 1), options);
+        x += measureText(piece, scale) + PIECE_GAP;
+      } else if ('key' in piece) {
         keyCap(r, x, y);
-        ARROW_DOWN.draw(g, 0, x + 2, y + 1);
+        if (piece === KEY_DOWN) ARROW_DOWN.draw(g, 0, x + 2, y + 1);
+        else text(r, piece.key, x + 3, y, KEYCAP);
         x += KEYCAP_W + PIECE_GAP;
-        continue;
+      } else {
+        SWIPE_ARROW.draw(g, 0, x, y + ((h - SWIPE_ARROW.height * scale) >> 1), scale);
+        x += SWIPE_DOWN_W * scale + PIECE_GAP;
       }
-      text(r, piece, x, y + ((h - 8 * scale) >> 1), options);
-      x += measureText(piece, scale) + PIECE_GAP;
     }
     y += h + ROW_GAP;
   }
 }
 
-/** The kicker hint (before a launch) or the air trick hint (after it); the grind trick hint wins over both. */
-function drawStuntHints(r: RenderContext, view: UiView): void {
+/**
+ * The riding hint at the hint spot, one at a time (shownHint): the keyboard
+ * high five hint, the grind trick hint, the air trick hint (after a launch)
+ * or the kicker hint (before it).
+ */
+function drawRidingHints(r: RenderContext, view: UiView): void {
   const { display } = r;
-  const shown = shownHint({ trick: view.trickHint.visible, air: view.airHint.visible, kicker: view.kickerHint.visible });
-  if (shown === 'kicker') {
+  const highFive = view.highFiveHint.visible && !display.touch;
+  const shown = shownHint({ highFive, trick: view.trickHint.visible, air: view.airHint.visible, kicker: view.kickerHint.visible });
+  if (shown === 'highFive') {
+    const p = highFiveHintPlate(display);
+    if (p.kind === 'spot') drawHintPlate(r, p.rows, p.scale, p.rect);
+  } else if (shown === 'trick') {
+    const plate = trickHintPlate(display);
+    drawHintPlate(r, plate.rows, plate.scale, plate.rect);
+  } else if (shown === 'kicker') {
     const scale = popupScale(display, false);
     drawHintPlate(r, KICKER_HINT_ROWS, scale, kickerHintRect(scale, display.viewWidth));
   } else if (shown === 'air') {
@@ -460,8 +491,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawLive(r, view);
       drawStunt(r, view);
       drawItemHint(r, view);
-      drawTrickHint(r, view);
-      drawStuntHints(r, view);
+      drawRidingHints(r, view);
       break;
     case 'paused':
       if (view.settings.open) {

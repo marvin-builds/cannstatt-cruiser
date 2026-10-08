@@ -60,6 +60,27 @@ describe('stunt callout', () => {
     expect(c.visible).toBe(false);
   });
 
+  it('the end of a park session with points shows "Session!" and its points, like a completed line', () => {
+    const c = new StuntCallout();
+    c.session(1500);
+    expect(c.lines).toEqual(['Session!', '+1.500']);
+    expect(c.combo).toBe(false);
+    c.update(LINE_DONE_TIME - 0.01);
+    expect(c.visible).toBe(true);
+    c.update(0.02);
+    expect(c.visible).toBe(false);
+  });
+
+  it('a session without points shows nothing and leaves a showing combo alone', () => {
+    const c = new StuntCallout();
+    c.session(0);
+    expect(c.visible).toBe(false);
+    c.step(3);
+    c.session(0);
+    expect(c.lines).toEqual(['Combo x3!']);
+    expect(c.visible).toBe(true);
+  });
+
   it('a completed line without points shows only the title', () => {
     const c = new StuntCallout();
     c.end(true, 0);

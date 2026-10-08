@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { measureText } from '../core/font';
+import type { Rect } from '../types';
 import { POPUP_LIFETIME, PopupPool, popupHeight, type Popup } from './popups';
+
+/** The box a popup covers: its text (1 px outline round it) centred on x. */
+const box = (p: Popup): Rect => {
+  const w = measureText(p.text, p.scale) + 2;
+  return { x: p.x - w / 2, y: p.y - 1, w, h: 8 * p.scale + 2 };
+};
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** Asserts no two live popups share a row: each lies wholly above or below the other. */
 function expectApart(live: readonly Popup[]): void {
@@ -201,5 +210,63 @@ describe('PopupPool', () => {
     pool.spawn('a', 0, 0, '#fff');
     pool.clear();
     expect(pool.active().length).toBe(0);
+  });
+
+  describe('keeps clear of the skater (avoid)', () => {
+    const skater: Rect = { x: 50, y: 116, w: 30, h: 34 };
+
+    it('a popup spawned above the head stays where it is', () => {
+      const pool = new PopupPool(3);
+      pool.avoid = [skater];
+      pool.spawn('Air-Trick! +150', 64, skater.y - 20, '#fff', 2);
+      const [p] = pool.active();
+      expect(p!.x).toBe(64);
+      expect(overlaps(box(p!), skater)).toBe(false);
+    });
+
+    it('a popup that would cover the skater (pushed down by the ceiling) moves beside him, in every phase', () => {
+      const high: Rect = { x: 50, y: 40, w: 30, h: 34 };
+      const pool = new PopupPool(3);
+      pool.ceiling = 45;
+      pool.avoid = [high];
+      pool.spawn('Air-Trick! +150', 64, high.y - 20, '#fff', 2);
+      pool.spawn('Grind!', 64, high.y - 20, '#fff', 2);
+      for (let t = 0; t < 8; t++) {
+        for (const p of pool.active()) {
+          expect(overlaps(box(p), high)).toBe(false);
+          expect(box(p).x).toBeGreaterThanOrEqual(high.x + high.w);
+        }
+        pool.update(POPUP_LIFETIME / 10);
+      }
+    });
+
+    it('several boxes (the portrait item button left of the skater): right of every box it would cover', () => {
+      const button: Rect = { x: 2, y: 47, w: 46, h: 46 };
+      const pool = new PopupPool(3);
+      pool.avoid = [button, skater];
+      pool.spawn('High Five! +100', 64, 85, '#fff', 2);
+      const [p] = pool.active();
+      expect(overlaps(box(p!), button)).toBe(false);
+      expect(overlaps(box(p!), skater)).toBe(false);
+      expect(box(p!).x).toBeGreaterThanOrEqual(button.x + button.w);
+    });
+
+    it('once moved aside a popup stays there, also when the skater moves away again', () => {
+      const pool = new PopupPool(3);
+      const jumping: Rect = { ...skater, y: 80 };
+      pool.avoid = [jumping];
+      pool.spawn('Stern!', 64, 90, '#fff', 2);
+      const aside = pool.active()[0]!.x;
+      expect(aside).toBeGreaterThan(64);
+      jumping.y = 116;
+      pool.update(0.05);
+      expect(pool.active()[0]!.x).toBe(aside);
+    });
+
+    it('without a box to avoid nothing moves aside', () => {
+      const pool = new PopupPool(3);
+      pool.spawn('Grind!', 64, 120, '#fff', 2);
+      expect(pool.active()[0]!.x).toBe(64);
+    });
   });
 });

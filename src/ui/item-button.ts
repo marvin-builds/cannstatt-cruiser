@@ -15,13 +15,18 @@ import { statsLayout } from './stats';
 
 export type ItemControl = 'button' | 'keycap';
 
-/** Which item control shows: the touch button only while playing, the desktop chip during a run. */
+/**
+ * Which item control shows: the touch button only while playing, the desktop
+ * chip during a run; while carrying, or during a high five window (then in the
+ * high five look, so empty hands can high five too).
+ */
 export function itemControl(
   display: { touch: boolean },
   mode: GameMode,
   carried: CarriedItem | null,
+  highFive = false,
 ): ItemControl | null {
-  if (!carried) return null;
+  if (!carried && !highFive) return null;
   if (display.touch) return mode === 'playing' ? 'button' : null;
   return riding(mode) ? 'keycap' : null;
 }
@@ -68,13 +73,14 @@ export function itemHintPlace(button: Rect, w: number, h: number, viewWidth: num
 /** The first-time hint's label. */
 export const ITEM_HINT_LABEL = 'Tippe auf den Gegenstand';
 
-/** Where the first-time hint (label at font `scale`, on its plate) sits beside the touch item button. */
+/** Where a hint beside the touch item button (`label` at font `scale`, on its plate) sits: the first-time hint by default. */
 export function itemHintRect(
   viewWidth: number,
   display: { touch: boolean; portrait: boolean },
   scale: number,
+  label = ITEM_HINT_LABEL,
 ): Rect & { pointsRight: boolean } {
-  const w = measureText(ITEM_HINT_LABEL, scale) + 8;
+  const w = measureText(label, scale) + 8;
   const h = 8 * scale + 6;
   return { ...itemHintPlace(itemButtonRect(viewWidth, display), w, h, viewWidth), w, h };
 }
@@ -88,6 +94,29 @@ const POPUP_BELOW_HINT = 2;
  */
 export function popupCeiling(base: number, hint: Rect | null): number {
   return hint ? Math.max(base, hint.y + hint.h + POPUP_BELOW_HINT) : base;
+}
+
+/**
+ * The boxes popups keep clear of (PopupPool.avoid), left to right: the
+ * `skater`, plus the touch item button while it shows (`control`). Filled
+ * into `out` (reused every tick, so nothing allocates).
+ */
+export function popupAvoid(
+  viewWidth: number,
+  display: { touch: boolean; portrait: boolean },
+  control: ItemControl | null,
+  skater: Rect,
+  out: Rect[],
+): readonly Rect[] {
+  out.length = 0;
+  if (control !== 'button') {
+    out.push(skater);
+    return out;
+  }
+  const button = itemButtonRect(viewWidth, display);
+  if (button.x < skater.x) out.push(button, skater);
+  else out.push(skater, button);
+  return out;
 }
 
 /** Desktop chip: item icon + "E" key cap, as tall as a HUD button. */
