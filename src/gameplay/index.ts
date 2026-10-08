@@ -11,7 +11,7 @@
  * item (use.ts: drink, eat, throw the ball, ball.ts; a Maßkrug kept too
  * long is drunk by itself, auto-drink.ts), the item a person hit by the
  * ball drops onto the street for the skater to pick up (drop.ts), grind tricks
- * (grind-trick.ts), the human margins for every take-off, around people and
+ * (grind-trick.ts) and air tricks (air-trick.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts), score/combo (scoring.ts) and the stunt lines:
  * kickers, ledges of the upper level and their combo (stunt-line.ts plans
  * them, stunts.ts launches and scores, stunt-art.ts draws them).
@@ -22,6 +22,7 @@ import { testHookEnabled } from '../core/testhook';
 import type { CarriedItem, Entity, GameContext, System } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
+import { AirTrickScore } from './air-trick';
 import { AutoDrink } from './auto-drink';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
@@ -78,6 +79,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const trick = new GrindTrick();
   const autoDrink = new AutoDrink();
   const stunts = new StuntLines();
+  const airTrick = new AirTrickScore(() => stunts.multiplier());
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
   const hands: Point = { x: 0, y: 0 };
   let nextBallId = BALL_IDS;
@@ -166,6 +168,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         trick.reset();
         autoDrink.reset();
         stunts.reset();
+        airTrick.reset();
       });
       ctx.bus.on('gameOver', () => {
         ctx.state.drunkTimer = 0;
@@ -177,13 +180,16 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('land', () => {
         breakCombo(ctx.state);
         stunts.landed(ctx);
+        airTrick.touchedDown();
       });
       ctx.bus.on('grindStart', (e) => {
         trick.grindStarted(ctx, e.entityId);
+        if (!ctx.state.player.grinding) return;
+        airTrick.touchedDown();
         const ledge = ctx.state.entities.find((s) => s.id === e.entityId);
-        if (ledge && isLedge(ledge.kind) && ctx.state.player.grinding) stunts.made(ctx, ledge);
+        if (ledge && isLedge(ledge.kind)) stunts.made(ctx, ledge);
       });
-      ctx.bus.on('grindEnd', (e) => stunts.grindEnded(ctx, e.entityId));
+      ctx.bus.on('grindEnd', (e) => stunts.grindEnded(e.entityId));
       const sparkleAt = (id: number) => {
         const e = ctx.state.entities.find((s) => s.id === id);
         if (e) sparkles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, age: 0 });
@@ -204,6 +210,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('crash', () => {
         toss.cancel();
         stunts.crashed(ctx);
+        airTrick.crashedNow();
       });
       ctx.bus.on('itemCaught', () => autoDrink.reset());
       ctx.bus.on('itemUsed', () => autoDrink.reset());
@@ -219,6 +226,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       scroll(ctx, dx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
       trick.update(ctx);
+      airTrick.update(ctx);
       useCarriedItem(ctx, ballThrower, autoDrink.due(state));
       updateBalls(ctx, dt, freeStreet);
       drops.update(dx, dt);
@@ -227,6 +235,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
       resolveContacts(ctx);
       stunts.update(ctx);
+      airTrick.settle(ctx);
       despawn(state.entities);
       updateSparkles(dx);
     },

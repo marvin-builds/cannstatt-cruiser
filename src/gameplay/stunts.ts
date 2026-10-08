@@ -4,24 +4,36 @@
  * A line is a run of stunt pieces (kickers on the street, ledges of the upper
  * level) whose entities carry `data.line` (the line's id), `data.step`
  * (1..steps) and `data.steps`. A piece is *made* when a kicker launches the
- * skater or a ledge is ground (grindStart). The line starts with its step 1
- * and counts on while the pieces are made in order:
+ * skater or a ledge is ground (grindStart).
  *
- * - every made piece emits `stuntStep` with the line multiplier = its step
- *   (x1, x2, x3 ..., capped at STUNT_MAX_MULTIPLIER) and scores
- *   STUNT_POINTS[kind] times it;
- * - leaving the last piece (its grind ends, or the landing after a last
- *   kicker) completes the line: `stuntEnd` with the bonus
- *   STUNT_LINE_BONUS per step;
- * - landing on the street while the next piece is a ledge, the next kicker
- *   passing behind the skater (jumped over), a piece out of order, a crash
- *   or the next piece leaving the street ends it incomplete: `stuntEnd`
- *   without bonus. Nothing else happens: no crash, no health, no penalty.
+ * Lifecycle (one attempt at a line at a time):
+ *
+ * - **Start**: the first piece made while no line runs starts an attempt at
+ *   its line, whichever piece it is (a skipped first kicker or an earlier
+ *   drop-out does not lose the rest of the line). It scores
+ *   STUNT_POINTS[kind] (x1) quietly: the launch or the grind is its feedback,
+ *   so there is never a "Combo x1!". A line the skater never makes a piece
+ *   of says nothing at all: no stuntStep, no stuntEnd.
+ * - **Step**: every further piece made in order (data.step + 1) emits
+ *   `stuntStep` with the line multiplier = pieces made in this attempt
+ *   (x2, x3 ..., capped at STUNT_MAX_MULTIPLIER) and scores
+ *   STUNT_POINTS[kind] times it. `step` is the piece's place in the line.
+ * - **End**: every started attempt ends exactly once with `stuntEnd`
+ *   (`made` = pieces made in the attempt):
+ *   - completed (bonus STUNT_LINE_BONUS per made piece) when the skater
+ *     leaves the line's last piece (its grind ends, or the landing after a
+ *     last kicker) with at least 2 pieces made;
+ *   - incomplete (no bonus) on a street landing while the next piece is a
+ *     ledge, when the next kicker passes behind the skater (jumped over),
+ *     a piece out of order (it then starts a new attempt), a crash, the next
+ *     piece leaving the street, or a single made piece being the last one.
+ *   Nothing else happens: no crash, no health, no penalty.
  *
  * Score: stunt points are added as they are (scoring.ts addBonus), not times
  * `state.multiplier`: the line multiplier is its own. The normal combo goes on
  * as before around it (a ledge landing is a trick like a rail landing, a
- * street landing breaks the combo), so a line pays both.
+ * street landing breaks the combo), so a line pays both. An air trick in a
+ * line uses the line multiplier when it is higher (air-trick.ts).
  */
 import type { Entity, GameContext, StuntKind } from '../types';
 import { isKicker, isLedge } from './catalogue';
@@ -30,9 +42,9 @@ import { addBonus } from './scoring';
 
 /** Base points per made piece (times the line multiplier). */
 export const STUNT_POINTS: Record<StuntKind, number> = { kicker: 50, ledge: 100 };
-/** The line multiplier is the step number, up to this (the longest line has 6 pieces). */
+/** The line multiplier is the number of pieces made in the attempt, up to this (the longest line has 6 pieces). */
 export const STUNT_MAX_MULTIPLIER = 6;
-/** Bonus per piece of a completed line. */
+/** Bonus per made piece of a completed line. */
 export const STUNT_LINE_BONUS = 150;
 /** Ledge height a kicker without line data launches for (debug-placed pieces). */
 export const DEFAULT_LEDGE_HEIGHT = 48;
@@ -41,7 +53,10 @@ export const DEFAULT_LEDGE_HEIGHT = 48;
 export interface StuntLineView {
   line: number;
   steps: number;
+  /** Pieces made in this attempt. */
   made: number;
+  /** The place in the line (data.step) of the last made piece. */
+  step: number;
   multiplier: number;
   /** Stunt points scored by this line so far (no bonus yet). */
   points: number;
@@ -62,10 +77,13 @@ export class StuntLines {
   private line: StuntLineView | null = null;
   /** Entity id of the last made piece (its grind end or landing may finish the line). */
   private lastPiece = -1;
+  /** The skater left the line's last ledge: the line completes in the next update. */
+  private leftLast = false;
 
   reset(): void {
     this.line = null;
     this.lastPiece = -1;
+    this.leftLast = false;
   }
 
   /** A copy of the running line, or null. */
@@ -73,10 +91,16 @@ export class StuntLines {
     return this.line && { ...this.line };
   }
 
+  /** The running line's multiplier, 1 without a line. */
+  multiplier(): number {
+    return this.line?.multiplier ?? 1;
+  }
+
   /** Every playing tick after the contacts: launches from kickers, and whether the next piece was passed by. */
   update(ctx: GameContext): void {
     this.launchFromKickers(ctx);
-    if (this.line && this.line.made < this.line.steps) this.checkNext(ctx);
+    if (this.leftLast && this.line) this.end(ctx);
+    else if (this.line && !this.atLastPiece()) this.checkNext(ctx);
   }
 
   /** A piece was made (a kicker launched, a ledge ground). */
@@ -84,39 +108,42 @@ export class StuntLines {
     const id = num(e, 'line');
     const step = num(e, 'step');
     if (id === 0 || step === 0) return;
-    const line = this.line;
-    if (line && (line.line !== id || step !== line.made + 1)) this.end(ctx, false);
-    if (!this.line) {
-      if (step !== 1) return;
-      this.line = { line: id, steps: 0, made: 0, multiplier: 1, points: 0 };
-    }
-    const running = this.line!;
-    running.made = step;
+    if (this.line && (this.line.line !== id || step !== this.line.step + 1)) this.end(ctx);
+    const line = (this.line ??= { line: id, steps: 0, made: 0, step, multiplier: 1, points: 0 });
+    line.made++;
+    line.step = step;
     // Debug lines grow while pieces are placed: the newest piece knows the length.
-    running.steps = Math.max(running.made, num(e, 'steps'));
-    running.multiplier = Math.min(STUNT_MAX_MULTIPLIER, step);
-    const points = STUNT_POINTS[isKicker(e.kind) ? 'kicker' : 'ledge'] * running.multiplier;
-    running.points += points;
+    line.steps = Math.max(line.steps, step, num(e, 'steps'));
+    line.multiplier = Math.min(STUNT_MAX_MULTIPLIER, line.made);
+    const points = STUNT_POINTS[isKicker(e.kind) ? 'kicker' : 'ledge'] * line.multiplier;
+    line.points += points;
     this.lastPiece = e.id;
     addBonus(ctx.state, ctx.bus, points);
-    ctx.bus.emit('stuntStep', { step, steps: running.steps, multiplier: running.multiplier, points });
+    if (line.made > 1) ctx.bus.emit('stuntStep', { step, steps: line.steps, multiplier: line.multiplier, points });
   }
 
-  /** The player left a rail or ledge (grindEnd): leaving the line's last ledge completes it. */
-  grindEnded(ctx: GameContext, entityId: number): void {
-    if (this.line && this.line.made === this.line.steps && entityId === this.lastPiece) this.end(ctx, true);
+  /**
+   * The player left a rail or ledge (grindEnd): leaving the line's last ledge
+   * completes it in this tick's update, unless a crash (its grind end comes
+   * first) ends it before.
+   */
+  grindEnded(entityId: number): void {
+    if (this.line && this.atLastPiece() && entityId === this.lastPiece) this.leftLast = true;
   }
 
   /** The player touched the street (land). */
   landed(ctx: GameContext): void {
     const line = this.line;
     if (!line) return;
-    if (line.made === line.steps) this.end(ctx, true);
-    else if (this.next(ctx)?.kind !== 'kicker') this.end(ctx, false);
+    if (this.atLastPiece() || this.next(ctx)?.kind !== 'kicker') this.end(ctx);
   }
 
   crashed(ctx: GameContext): void {
-    if (this.line) this.end(ctx, false);
+    if (this.line) this.end(ctx, true);
+  }
+
+  private atLastPiece(): boolean {
+    return this.line!.step === this.line!.steps;
   }
 
   private launchFromKickers(ctx: GameContext): void {
@@ -140,7 +167,7 @@ export class StuntLines {
     const entities = ctx.state.entities;
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i]!;
-      if ((isKicker(e.kind) || isLedge(e.kind)) && num(e, 'line') === line.line && num(e, 'step') === line.made + 1) return e;
+      if ((isKicker(e.kind) || isLedge(e.kind)) && num(e, 'line') === line.line && num(e, 'step') === line.step + 1) return e;
     }
     return null;
   }
@@ -148,14 +175,17 @@ export class StuntLines {
   /** Ends the line when its next piece left the street, or is a kicker the skater passed without a launch. */
   private checkNext(ctx: GameContext): void {
     const next = this.next(ctx);
-    if (!next || (isKicker(next.kind) && !next.done && next.x + next.w < ctx.state.player.x)) this.end(ctx, false);
+    if (!next || (isKicker(next.kind) && !next.done && next.x + next.w < ctx.state.player.x)) this.end(ctx);
   }
 
-  private end(ctx: GameContext, completed: boolean): void {
+  /** Ends the attempt: completed when it got to the line's last piece with at least 2 pieces made (never on a crash). */
+  private end(ctx: GameContext, crashed = false): void {
     const line = this.line!;
+    const completed = !crashed && line.step === line.steps && line.made >= 2;
     this.line = null;
     this.lastPiece = -1;
-    const points = completed ? STUNT_LINE_BONUS * line.steps : 0;
+    this.leftLast = false;
+    const points = completed ? STUNT_LINE_BONUS * line.made : 0;
     if (points > 0) addBonus(ctx.state, ctx.bus, points);
     ctx.bus.emit('stuntEnd', { steps: line.steps, made: line.made, completed, points });
   }

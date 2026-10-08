@@ -7,7 +7,7 @@ import { isObstacle, isRail } from './catalogue';
 import { speedAt } from './difficulty';
 import { anchorOf } from './motion';
 import { CHILL_REACH, Spawner, type SpawnSituation, STUNT_FIRST_SECONDS, STUNT_LINE_INTERVAL } from './spawner';
-import { stuntWorstLanding } from './stunt-line';
+import { shapeOf, STUNT_SHAPES, stuntWorstLanding } from './stunt-line';
 
 interface Seen {
   e: Entity;
@@ -84,6 +84,19 @@ describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
         expect(gap).toBeLessThanOrEqual(STUNT_LINE_INTERVAL[1] + 6);
       }
     }
+  });
+
+  it('brings every line shape about evenly (one shuffle bag round per three lines)', () => {
+    const counts = new Map<string, number>();
+    let total = 0;
+    for (const r of RIDES) {
+      for (const pieces of linesOf(r).values()) {
+        const shape = shapeOf(pieces.map((p) => p.e).sort((a, b) => Number(a.data!.step) - Number(b.data!.step)));
+        counts.set(shape, (counts.get(shape) ?? 0) + 1);
+        total++;
+      }
+    }
+    for (const shape of STUNT_SHAPES) expect(counts.get(shape) ?? 0, JSON.stringify([...counts])).toBeGreaterThanOrEqual(0.2 * total);
   });
 
   it('the street under a line holds nothing but its kickers, and every way off it lands well before the next pattern', () => {

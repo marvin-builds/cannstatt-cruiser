@@ -34,6 +34,10 @@ function onQuarterStack<T>(work: () => T): T {
 
 const binCourse = (): Course => ({ obstacles: [bin], overhead: [], rails: [], goal: 90, limit: 490 });
 
+// A crawl searches thousands of ticks: alone it takes about a second, under the
+// full parallel suite it can pass the default 5 s.
+const SLOW_SEARCH_TIMEOUT = 20_000;
+
 describe('solver at a standstill or a crawl', () => {
   for (const speed of [0, 0.1, 0.5, 3]) {
     it(`answers every question at ${speed} px/s without overflowing the stack`, () => {
@@ -43,7 +47,7 @@ describe('solver at a standstill or a crawl', () => {
       expect(onQuarterStack(() => s.fair([3, 10, 20], 12, undefined, 5))).toBe(false);
       expect(onQuarterStack(() => s.bestJump())).toBeNull();
       expect(onQuarterStack(() => s.takeoffWindow())).toBe(0);
-    });
+    }, SLOW_SEARCH_TIMEOUT);
   }
 
   it('an empty course is still solvable at a crawl that reaches its end in time', () => {
@@ -60,7 +64,7 @@ describe('solver at a standstill or a crawl', () => {
     const s = new Solver(long, 9);
     expect(onQuarterStack(() => s.solvable())).toBe(true);
     expect(onQuarterStack(() => s.fair([3, 10, 20], 12))).toBe(true);
-  });
+  }, SLOW_SEARCH_TIMEOUT);
 });
 
 describe('the live game with the speed pinned at 0', () => {

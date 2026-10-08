@@ -97,29 +97,56 @@ const FULL_HOLD = 20;
 const MAX_PIECES = 6;
 const MAX_TRAIL_STARS = 3;
 const STAR_SPACING = 14;
+/** Stars along a ledge: at most this many, from this share of its length to that one (after the launch landings). */
+const MAX_LEDGE_STARS = 3;
+const LEDGE_STARS_FROM = 0.35;
+const LEDGE_STARS_TO = 0.85;
+/** Star centres this far above the feet: the middle of the tucked body (also on a grind). */
+const STAR_BODY_Y = 13;
 
 /** What follows a ledge: a gap jump to the next ledge, or a drop to the street onto a kicker and its ledge. */
 type Segment = 'gap' | 'drop';
 
-/** Designs after the opening kicker and ledge: 3-6 pieces in all. */
-const DESIGNS: { segments: Segment[]; weight: number }[] = [
-  { segments: ['gap'], weight: 3 },
-  { segments: ['drop'], weight: 2 },
-  { segments: ['gap', 'gap'], weight: 3 },
-  { segments: ['gap', 'drop'], weight: 2 },
-  { segments: ['drop', 'gap'], weight: 2 },
-  { segments: ['gap', 'gap', 'gap'], weight: 1 },
-  { segments: ['gap', 'drop', 'gap'], weight: 2 },
-  { segments: ['drop', 'gap', 'gap'], weight: 1 },
-];
+/**
+ * Line shapes, each with its designs after the opening kicker and ledge
+ * (3-6 pieces in all): `stairs` climbs from ledge to ledge with gap jumps
+ * only; `hops` drops to the street onto a second kicker right after the first
+ * ledge; `mixed` jumps a gap first and then drops onto a kicker. (Three gaps
+ * in a row never came out fair within the level's 42-58 px, so stairs stop
+ * at two.)
+ */
+export type StuntShape = 'stairs' | 'hops' | 'mixed';
+const DESIGNS: Record<StuntShape, Segment[][]> = {
+  stairs: [['gap'], ['gap', 'gap']],
+  hops: [['drop'], ['drop', 'gap'], ['drop', 'gap', 'gap']],
+  mixed: [['gap', 'drop'], ['gap', 'drop', 'gap']],
+};
+export const STUNT_SHAPES = Object.keys(DESIGNS) as StuntShape[];
 
-function pickDesign(rng: Rng): Segment[] {
-  let roll = rng.next() * DESIGNS.reduce((sum, d) => sum + d.weight, 0);
-  for (const d of DESIGNS) {
-    roll -= d.weight;
-    if (roll < 0) return d.segments;
+/** The shape of a planned line from its stunt pieces in order (stars are ignored). */
+export function shapeOf(pieces: readonly { kind: string }[]): StuntShape {
+  const kinds = pieces.filter((p) => p.kind === 'kicker' || p.kind === 'ledge').map((p) => p.kind);
+  if (kinds.lastIndexOf('kicker') === 0) return 'stairs';
+  return kinds[2] === 'kicker' ? 'hops' : 'mixed';
+}
+
+/**
+ * The next line shape from a shuffle bag (spawner.ts keeps it per run): an
+ * empty `bag` is refilled with every shape in random order, never starting
+ * with the `last` one, so the shapes come evenly and never twice in a row.
+ */
+export function drawShape(rng: Rng, bag: readonly StuntShape[], last: StuntShape | null): { shape: StuntShape; bag: readonly StuntShape[] } {
+  let next = bag;
+  if (next.length === 0) {
+    const round = [...STUNT_SHAPES];
+    for (let i = round.length - 1; i > 0; i--) {
+      const j = rng.int(0, i);
+      [round[i], round[j]] = [round[j]!, round[i]!];
+    }
+    if (round[0] === last) [round[0], round[1]] = [round[1]!, round[0]!];
+    next = round;
   }
-  return DESIGNS[DESIGNS.length - 1]!.segments;
+  return { shape: next[0]!, bag: next.slice(1) };
 }
 
 const clampLength = (w: number): number => Math.max(LEDGE.minLength, Math.min(LEDGE.maxLength, Math.round(w)));
@@ -241,11 +268,23 @@ class LineBuilder {
     const middle = path.slice(Math.floor(path.length * 0.2), Math.ceil(path.length * 0.8));
     for (const p of middle) {
       if (added >= MAX_TRAIL_STARS || p.x - lastX < STAR_SPACING) continue;
-      const cy = p.y - 13;
+      const cy = p.y - STAR_BODY_Y;
       if (cy > GROUND_Y - STAR_SIZE) continue;
       lastX = p.x;
       added++;
       this.stars.push({ kind: 'star', ...starRect(p.x, cy) });
+    }
+  }
+
+  /** Stars along `ledge` where the grinding skater passes, apart from the trail stars already there. */
+  ledgeStars(ledge: Rect): void {
+    const cy = ledge.y - STAR_BODY_Y;
+    let added = 0;
+    for (let x = ledge.x + ledge.w * LEDGE_STARS_FROM; x <= ledge.x + ledge.w * LEDGE_STARS_TO && added < MAX_LEDGE_STARS; x += STAR_SPACING) {
+      const star = starRect(x, cy);
+      if (this.stars.some((s) => Math.abs(s.x - star.x) < STAR_SPACING && Math.abs(s.y - star.y) < STAR_SPACING)) continue;
+      added++;
+      this.stars.push({ kind: 'star', ...star });
     }
   }
 }
@@ -264,8 +303,13 @@ export function stuntWorstLanding(pieces: readonly Piece[], fast: number): numbe
   return Math.ceil(worst);
 }
 
-/** A stunt line for the speed range `speeds` in `zone` (ledge art), its pieces carrying line id `line`. */
-export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: number, budget?: WorkBudget): Generator<void, Pattern> {
+/**
+ * A stunt line for the speed range `speeds` in `zone` (ledge art), its pieces
+ * carrying line id `line`, of `shape` (drawn with `rng` when not given). A
+ * gap that cannot be made fair turns into a drop, so the planned shape
+ * differs from the asked one now and then.
+ */
+export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: number, budget?: WorkBudget, shape?: StuntShape): Generator<void, Pattern> {
   const b = new LineBuilder(rng, speeds, zone, line);
   function* spend(): Generator<void> {
     if (!budget) return;
@@ -273,7 +317,8 @@ export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: n
     b.work = 0;
     if (budget.left <= 0) yield;
   }
-  const segments = pickDesign(rng);
+  const designs = DESIGNS[shape ?? STUNT_SHAPES[rng.int(0, STUNT_SHAPES.length - 1)]!];
+  const segments = designs[rng.int(0, designs.length - 1)]!;
   const runupFor = (i: number) => (segments[i] === 'gap' ? GAP_RUNUP_SECONDS : FINAL_GRIND_SECONDS);
   /** Height of a ledge a kicker launches onto before segment i: low enough for the gaps after it to climb. */
   const launchHeight = (i: number) => {
@@ -308,6 +353,7 @@ export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: n
     yield* spend();
   }
   b.trail(flightPath(onLedge(ledge), endOf(ledge) - 1, stepOf(b.mid)));
+  for (const piece of b.pieces) if (piece.kind === 'ledge') b.ledgeStars(piece);
   const steps = b.pieces.length;
   b.pieces.forEach((p, i) => Object.assign(p.data!, { step: i + 1, steps }));
   const worst = stuntWorstLanding(b.pieces, b.fast);

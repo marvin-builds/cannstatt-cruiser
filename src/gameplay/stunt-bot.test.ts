@@ -32,8 +32,9 @@ describe('the human stunt bot', { timeout: 120_000 }, () => {
           expect(ride.crashes).toBe(0);
           expect(ride.healthLost).toBe(0);
           expect(ride.end, `seed ${seed} at ${speed}: the line ends`).not.toBeNull();
-          expect(ride.steps.map((s) => s.step)).toEqual(ride.steps.map((_, i) => i + 1));
-          expect(ride.steps.map((s) => s.multiplier)).toEqual(ride.steps.map((_, i) => i + 1));
+          // The kicker starts the line quietly: steps from the second piece on, from x2.
+          expect(ride.steps.map((s) => s.step)).toEqual(ride.steps.map((_, i) => i + 2));
+          expect(ride.steps.map((s) => s.multiplier)).toEqual(ride.steps.map((_, i) => i + 2));
           if (ride.end!.completed) completed++;
           else missed.push(`seed ${seed} at ${speed}: ${ride.end!.made}/${ride.end!.steps}`);
         }
