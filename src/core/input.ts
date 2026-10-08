@@ -52,6 +52,15 @@ interface PendingTouch {
   x: number;
   y: number;
   token: number;
+  /** game.state.frame when the finger went down. */
+  frame: number;
+}
+
+/** A pointer whose action press is down. */
+interface ActivePress {
+  source: string;
+  /** Ticks the press reached the action late (an undecided touch); its release is delayed as long. */
+  lag: number;
 }
 
 /**
@@ -59,14 +68,17 @@ interface PendingTouch {
  * touches outside a run press the action at once. A touch during a run is
  * held back for at most SWIPE_WINDOW ticks: moving SWIPE_DISTANCE roughly
  * down (see SWIPE_SLOPE) ducks (and never jumps), lifting the finger, moving
- * another way or the window running out presses the action. A hotspot that
- * took a press hears its release (InputHotspot.onRelease). DOM-free so it can
- * be unit tested.
+ * another way or the window running out presses the action. Such a late
+ * press releases as late as it started, so the action is held exactly as long
+ * as the finger was down and a touch jumps as high as an equally long key
+ * press. A hotspot that took a press hears its release
+ * (InputHotspot.onRelease). DOM-free so it can be unit tested.
  */
 export class PointerControls {
   private readonly pending = new Map<number, PendingTouch>();
   /** Pointers whose press a hotspot (or, null, a swipe) took: their release is no action release. */
   private readonly swallowed = new Map<number, InputHotspot | null>();
+  private readonly active = new Map<number, ActivePress>();
   private nextToken = 1;
   private swipeDuck = 0;
 
@@ -83,7 +95,7 @@ export class PointerControls {
       return;
     }
     const token = this.nextToken++;
-    this.pending.set(id, { x, y, token });
+    this.pending.set(id, { x, y, token, frame: this.game.state.frame });
     this.game.after(SWIPE_WINDOW, () => {
       if (this.pending.get(id)?.token === token) this.press(id);
     });
@@ -107,7 +119,12 @@ export class PointerControls {
       return;
     }
     if (this.pending.has(id)) this.press(id);
-    this.game.buttons.action.release(`pointer:${id}`);
+    const press = this.active.get(id);
+    if (!press) return;
+    this.active.delete(id);
+    const action = this.game.buttons.action;
+    if (press.lag > 0) this.game.after(press.lag, () => action.release(press.source));
+    else action.release(press.source);
   }
 
   /** The browser took the touch over: no jump for an undecided one. */
@@ -119,6 +136,7 @@ export class PointerControls {
   /** Focus lost: forget undecided touches and release every button. */
   releaseAll(): void {
     this.pending.clear();
+    this.active.clear();
     const held = [...this.swallowed.values()];
     this.swallowed.clear();
     for (const hotspot of held) hotspot?.onRelease?.();
@@ -128,9 +146,13 @@ export class PointerControls {
   }
 
   private press(id: number): void {
+    const pending = this.pending.get(id);
     this.pending.delete(id);
     this.endSwipeDuck();
-    this.game.buttons.action.press(`pointer:${id}`);
+    const token = pending?.token ?? this.nextToken++;
+    const source = `pointer:${id}:${token}`;
+    this.active.set(id, { source, lag: pending ? this.game.state.frame - pending.frame : 0 });
+    this.game.buttons.action.press(source);
   }
 
   private duck(id: number): void {

@@ -53,8 +53,8 @@ describe('touch gestures while playing', () => {
     pointers.down(1, 100, 100, true);
     tick();
     pointers.up(1);
-    const f = tick();
-    expect(f.action).toMatchObject({ pressed: true, released: true });
+    expect(tick().action).toMatchObject({ pressed: true, held: true });
+    expect(tick().action.released).toBe(true);
     expect(frames.filter((x) => x.duck.held)).toHaveLength(0);
   });
 
@@ -65,6 +65,7 @@ describe('touch gestures while playing', () => {
     expect(frames.some((f) => f.action.pressed)).toBe(true);
     expect(tick().action.held).toBe(true);
     pointers.up(1);
+    expect(tick(SWIPE_WINDOW).action.held).toBe(true);
     expect(tick().action.released).toBe(true);
   });
 
@@ -132,6 +133,66 @@ describe('touch gestures while playing', () => {
     pointers.move(1, 100, 130);
     tick();
     expect(frames.some((f) => f.duck.held)).toBe(false);
+  });
+});
+
+describe('touch hold counts from touch start', () => {
+  /** Ticks with the action held during `ticks` ticks of key hold, plus enough ticks to settle. */
+  function keyHeldTicks(ticks: number) {
+    const { game, tick, frames } = setup();
+    keyDown(game, 'Space');
+    tick(ticks);
+    keyUp(game, 'Space');
+    tick(SWIPE_WINDOW + ticks + 2);
+    return frames.filter((f) => f.action.held).length;
+  }
+
+  function touchHeldTicks(ticks: number) {
+    const { pointers, tick, frames, presses } = setup();
+    pointers.down(1, 100, 100, true);
+    tick(ticks);
+    pointers.up(1);
+    tick(SWIPE_WINDOW + ticks + 2);
+    expect(presses()).toBe(1);
+    return frames.filter((f) => f.action.held).length;
+  }
+
+  for (const ticks of [1, 2, 3, 4, 5, 6, 8, 12, 20]) {
+    it(`a finger held ${ticks} ticks holds the jump as long as a ${ticks}-tick key press`, () => {
+      expect(touchHeldTicks(ticks)).toBe(ticks);
+      expect(keyHeldTicks(ticks)).toBe(ticks);
+    });
+  }
+
+  it('a touch decided by moving sideways also credits the ticks it was already down', () => {
+    const { pointers, tick, frames } = setup();
+    pointers.down(1, 100, 100, true);
+    tick(3);
+    pointers.move(1, 100 + SWIPE_DISTANCE, 100);
+    tick(4);
+    pointers.up(1);
+    tick(SWIPE_WINDOW + 4);
+    expect(frames.filter((f) => f.action.held)).toHaveLength(7);
+  });
+
+  it('a new touch with the same id is not released by the old touch\'s late release', () => {
+    const { pointers, tick } = setup();
+    pointers.down(1, 100, 100, true);
+    tick(SWIPE_WINDOW + 1);
+    pointers.up(1);
+    tick();
+    pointers.down(1, 100, 100, true);
+    pointers.move(1, 110, 100);
+    expect(tick(SWIPE_WINDOW + 2).action.held).toBe(true);
+  });
+
+  it('releaseAll also drops a touch whose release is still pending', () => {
+    const { pointers, tick } = setup();
+    pointers.down(1, 100, 100, true);
+    tick(SWIPE_WINDOW + 1);
+    pointers.up(1);
+    pointers.releaseAll();
+    expect(tick().action.held).toBe(false);
   });
 });
 

@@ -21,6 +21,12 @@ describe('pixel font', () => {
     expect(rowOf(',')).toBeGreaterThan(FONT_BASELINE);
   });
 
+  it('draws e with a hole in its bowl above the bar, so it never reads as an epsilon or "="', () => {
+    const rows = glyphFor('e')!.rows;
+    expect(rows[3]).toMatch(/^#\.+#/); // first row below the x-height top: left side, counter, right side
+    expect(rows[4]).toMatch(/^##/); // the bar leaves the left side
+  });
+
   it('draws umlauts as their base letter plus dots above', () => {
     const a = glyphFor('a')!;
     const ae = glyphFor('ä')!;
