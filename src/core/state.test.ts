@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { START_ZONE } from './config';
 import { createInitialState, resetRun } from './state';
 
 describe('chill effect state', () => {
@@ -50,5 +51,22 @@ describe('drunk state', () => {
     state.drunkTimer = 4;
     resetRun(state, 7);
     expect(state.drunkTimer).toBe(0);
+  });
+});
+
+describe('wave 5b contract', () => {
+  it('starts a run in the start zone (Bad Cannstatt)', () => {
+    expect(START_ZONE).toBe(2);
+    const state = createInitialState();
+    expect(state.zoneIndex).toBe(START_ZONE);
+    state.zoneIndex = 0;
+    resetRun(state, 3);
+    expect(state.zoneIndex).toBe(START_ZONE);
+  });
+
+  it('starts without traffic and without a grind trick', () => {
+    const state = createInitialState();
+    expect(state.trafficDensity).toBe(0);
+    expect(state.player.grindTrick).toBe(false);
   });
 });

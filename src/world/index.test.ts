@@ -27,10 +27,9 @@ describe('world system zones', () => {
     const game = playing();
     const seen = zoneEvents(game);
     game.tick();
-    expect(game.state.zoneIndex).toBe(2);
-    expect(seen).toEqual([{ index: 2, previous: 0 }]);
     game.tick();
-    expect(seen).toHaveLength(1);
+    expect(game.state.zoneIndex).toBe(2);
+    expect(seen).toEqual([]);
   });
 
   it('emits zoneChanged only when the gateway reaches the player', () => {
@@ -66,7 +65,7 @@ describe('world system zones', () => {
   it('does not advance outside a running game', () => {
     const game = new Game({ systems: [createWorldSystem()] });
     rideTo(game, ZONE_LENGTH * 2);
-    expect(game.state.zoneIndex).toBe(0);
+    expect(game.state.zoneIndex).toBe(2);
   });
 
   it('snaps to a zone set from outside and restarts the zone length there', () => {

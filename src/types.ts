@@ -28,6 +28,11 @@ export interface PlayerState {
   vy: number;
   grounded: boolean;
   grinding: boolean;
+  /**
+   * Grind trick: down (duck) held while grinding turns the skater to face the
+   * player. The player system sets it; gameplay scores it and emits grindTrick.
+   */
+  grindTrick: boolean;
   state: PlayerAnim;
   /** Collision box in screen coordinates, kept up to date by the player system. */
   hitbox: Rect;
@@ -119,8 +124,10 @@ export interface GameState {
   drunkTimer: number;
   health: number;
   maxHealth: number;
-  /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt). */
+  /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt); a run starts in START_ZONE. */
   zoneIndex: number;
+  /** Foreground traffic in Stuttgart-Mitte, 0..1. The world writes it each tick; audio reads it for traffic noise. */
+  trafficDensity: number;
   muted: boolean;
   /**
    * Kid-friendly mode (hidden settings menu, persisted by the UI): the joint
@@ -154,6 +161,8 @@ export interface GameEvents {
   stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
   /** Gameplay: the tossed item reached the skater's hands. */
   itemCaught: { item: CarriedItem };
+  /** Gameplay: a grind trick (player.grindTrick) ended while still on the rail or bench, scoring points. */
+  grindTrick: { entityId: number; ticks: number; points: number };
   /** Gameplay: the skater used the carried item (use button); state.carriedItem is cleared. */
   itemUsed: { item: CarriedItem; action: ItemAction };
   /** Gameplay: drinking started the drunk effect (`state.drunkTimer = duration`). */

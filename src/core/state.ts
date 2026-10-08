@@ -1,5 +1,5 @@
 import type { GameState, PlayerState } from '../types';
-import { BASE_SPEED, GROUND_Y, MAX_HEALTH, PLAYER_X } from './config';
+import { BASE_SPEED, GROUND_Y, MAX_HEALTH, PLAYER_X, START_ZONE } from './config';
 
 /** Default skater: standing on the ground at PLAYER_X with a 12x28 hitbox. */
 export function createPlayer(): PlayerState {
@@ -10,6 +10,7 @@ export function createPlayer(): PlayerState {
     vy: 0,
     grounded: true,
     grinding: false,
+    grindTrick: false,
     state: 'ride',
     hitbox: { x: PLAYER_X - 6, y: GROUND_Y - 28, w: 12, h: 28 },
     invulnerableTimer: 0,
@@ -33,7 +34,8 @@ export function createInitialState(): GameState {
     drunkTimer: 0,
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
-    zoneIndex: 0,
+    zoneIndex: START_ZONE,
+    trafficDensity: 0,
     muted: false,
     kidMode: false,
     seed: 0,

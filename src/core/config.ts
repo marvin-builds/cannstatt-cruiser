@@ -37,3 +37,6 @@ export const DEFAULT_LETTERBOX = '#1b1f2e';
  */
 export const DRUNK_DELAY_MIN = 3;
 export const DRUNK_DELAY_MAX = 8;
+
+/** Zone a run (and the title screen) starts in: 2 = Bad Cannstatt. */
+export const START_ZONE = 2;

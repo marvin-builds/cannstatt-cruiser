@@ -137,9 +137,9 @@ describe('Game', () => {
     const game = new Game({ systems: [] });
     const fn = vi.fn();
     game.bus.on('zoneChanged', fn);
-    game.commands.setZone(2);
-    expect(game.state.zoneIndex).toBe(2);
-    expect(fn).toHaveBeenCalledWith({ index: 2, previous: 0 });
+    game.commands.setZone(1);
+    expect(game.state.zoneIndex).toBe(1);
+    expect(fn).toHaveBeenCalledWith({ index: 1, previous: 2 });
   });
 
   it('initialises systems once and renders layers back to front', () => {
