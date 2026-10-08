@@ -39,3 +39,16 @@ describe('carried item state', () => {
     expect(state.carriedItem).toBeNull();
   });
 });
+
+describe('drunk state', () => {
+  it('starts sober', () => {
+    expect(createInitialState().drunkTimer).toBe(0);
+  });
+
+  it('sobers up when a new run starts', () => {
+    const state = createInitialState();
+    state.drunkTimer = 4;
+    resetRun(state, 7);
+    expect(state.drunkTimer).toBe(0);
+  });
+});

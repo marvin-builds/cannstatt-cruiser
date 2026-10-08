@@ -54,6 +54,9 @@ only available with `?test=1` in the URL.
 | `input.press()` / `input.release()` | holds / releases the action (source `test`) |
 | `input.tap(frames = 2)` / `input.hold(frames = 30)` | press, keep down for `frames` ticks, release. When frozen this steps synchronously; when running the release is scheduled. |
 | `input.duck.press()` / `input.duck.release()` | holds / releases duck (source `test`), like ArrowDown |
+| `input.use()` | uses the carried item: the use button pressed for one tick (`commands.useItem()`, like the ui item button); key E does the same in the browser |
+| `setDrunk(seconds)` | sets `state.drunkTimer`; while > 0 in a run, action / duck reach the systems 3-8 ticks late (see ARCHITECTURE, Drunk input) |
+| `perf.start(frames = 3600)` / `perf.stop()` | frame-time probe: records every real rAF frame (elapsed, updates, update/render ms per system, scroll, JS heap) until stopped; used by `scripts/frametimes.ts` |
 | `input.duck.hold(frames = 72)` | duck for `frames` ticks (default = one swipe down, `SWIPE_DUCK_TICKS`, 1.2 s), then release; steps synchronously when frozen like `hold` |
 | `pauseGame()` / `resumeGame()` | in-game pause screen (`mode` paused / playing) |
 | `setZone(i)` | sets `state.zoneIndex` and emits `zoneChanged` |
@@ -258,3 +261,53 @@ The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,
 
 `captureCanvas(page, file, scale)` from `playtest-lib.ts` saves the upscaled
 buffer from any Playwright script.
+
+## Frame times (`scripts/frametimes.ts`)
+
+```
+npx tsx scripts/frametimes.ts                         # build, preview, desktop, 20 s, headless
+npx tsx scripts/frametimes.ts --headed --seconds 30 --name before
+npx tsx scripts/frametimes.ts --viewport phone-landscape --cpu 4   # phone size, 4x CPU throttling
+npx tsx scripts/frametimes.ts --url http://localhost:5173/        # running dev server
+```
+
+It rides a seeded run (health refilled, auto-pause undone every 0.5 s),
+records every rAF frame through `window.__game.perf` and a CDP trace (GC
+pauses), prints a summary and writes `playtest-output/frametimes/<name>.json`
+(summary + raw frames). The summary has: the elapsed-time histogram, the share
+of frames with 0 / 1 / 2+ fixed updates, long frames (> 20 ms) with their top
+system costs and GCs, frame work (update + render) percentiles, per-system
+update / render ms, the per-frame scroll step in view px, the JS heap rise per
+frame (allocation rate, exact thanks to `--enable-precise-memory-info`) and
+the GC count / total / longest pause. `performance.now()` is coarsened to
+0.1 ms in the page. Headless Chromium renders in software, so compositor
+costs are exaggerated there. Headed runs miss vsyncs when the machine is busy
+(e.g. other test runs): compare runs made under the same load.
+
+### Wave 5a measurements (2026-10-08, seed 1, HEAD + core changes only)
+
+| Run | 0 / 1 / 2+ updates per frame | Long frames > 20 ms | Frame work mean / p99 | Scroll steps (px per frame) | Heap rise per frame |
+|---|---|---|---|---|---|
+| before, desktop headless | 4.2 % / 91.7 % / 4.1 % | 0 | 1.6 / 4.4 ms | 1: 38, 2: 376, 3: 455, 4: 33, 5: 4 (incl. 0 and 3-5 px jumps) | 22.5 KB |
+| before, desktop headed (60 Hz) | 0.1 % / 97.4 % / 2.5 % | 2.6 % (missed vsyncs) | 1.9 / 5.2 ms | 1-2 mostly, 16 x 3, 6 x >= 4 | 24.6 KB |
+| before (full-res canvas), phone-landscape, CPU x4 | 0-0.4 % / 21 % / 79 % | 78 % | 6.3 ms | many 3-5 px | 15.9 KB |
+| after, desktop headless | 0 / **100 %** / 0 | 0 | 0.8 / 2.2 ms | only 1 and 2 (1.5 px per tick at 90 px/s) | 18.5 KB |
+| after, phone-landscape, CPU x4 | 0 / **99.5 %** / 0.5 % | **0.5 %** | 3.3 / 7.0 ms | 1 and 2, 3 jumps | 20.4 KB |
+
+Causes found and fixed in core:
+- 0/2-update frames came from rAF jitter of only +-0.1 ms with the
+  accumulator sitting on a step boundary: fixed with vsync snapping
+  (`loop.ts`, unit tests for 60 / 59.94 / 120 / 144 Hz with jitter).
+- The visible canvas had the full device resolution (2532x1170 on the phone
+  profile), redrawn by a scaled `drawImage` every frame; the compositor missed
+  most frames. It now has the view size and CSS scales it (`renderer.ts`).
+- Allocation: font rendering split strings and drew one `fillRect` per font
+  pixel (ui render 8.4 KB per frame before, 1.8 KB after); `Sprite.draw` built a
+  key string per draw (world render 11.4 KB before, 6.0 KB after); `Game.render`
+  allocated a context per frame. Core itself now allocates ~0.5 KB per frame
+  (InputFrame snapshots per tick).
+
+Remaining hot spots are in other slices (heap rise is total, measured per system
+by heap deltas): gameplay update ~7 KB per frame plus spikes of 10-86 ms when
+the spawner plans a pattern (a missed frame each time), world render ~6 KB per
+frame, gameplay render ~1.8 KB, ui render ~1.8 KB. See the Wave 5b backlog.

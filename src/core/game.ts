@@ -6,14 +6,17 @@ import type {
   GameState,
   Hotspot,
   InputFrame,
+  RenderContext,
   System,
 } from '../types';
 import { RENDER_LAYERS } from '../types';
 import { ActionButton, IDLE_ACTION } from './action';
 import { GAMEOVER_INPUT_DELAY, TICK_DT, VIEW_H, VIEW_W } from './config';
+import { DelayedButton, drunkDelay } from './drunk';
 import { EventBus } from './events';
 import { type ModeCommand, nextMode } from './modes';
 import { Rng } from './rng';
+import type { FrameProbe } from './perf';
 import { createInitialState, resetRun } from './state';
 
 /** Browser-side effects the game can trigger; no-ops by default (tests, headless). */
@@ -44,7 +47,18 @@ export interface GameOptions {
   platform?: Partial<Platform>;
 }
 
-const IDLE_INPUT: InputFrame = { action: IDLE_ACTION, duck: IDLE_ACTION, pausePressed: false, mutePressed: false };
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+const IDLE_INPUT: InputFrame = {
+  action: IDLE_ACTION,
+  duck: IDLE_ACTION,
+  use: IDLE_ACTION,
+  pausePressed: false,
+  mutePressed: false,
+};
+/** Mixed into the run seed for the drunk-input rng, so it never shares a sequence with gameplay's rng. */
+const DRUNK_SEED_SALT = 0x9e3779b9;
+const USE_ITEM_SOURCE = 'command:useItem';
 
 /**
  * Owns the GameState, the event bus, input buttons and the mode machine, and
@@ -54,13 +68,21 @@ export class Game {
   readonly state: GameState = createInitialState();
   readonly bus = new EventBus<GameEvents>();
   readonly rng = new Rng(0);
+  /** Draws the drunk input delays; seeded per run from the run seed, separate from the gameplay rng. */
+  private readonly drunkRng = new Rng(0);
+  private readonly drunkClock = {
+    frame: () => this.state.frame,
+    delay: () => (this.state.mode === 'playing' && this.state.drunkTimer > 0 ? drunkDelay(this.drunkRng) : 0),
+  };
+  /** Logical buttons. action and duck are delayed while drunk (core/drunk.ts). */
   readonly buttons = {
-    action: new ActionButton(),
-    duck: new ActionButton(),
+    action: new DelayedButton(this.drunkClock),
+    duck: new DelayedButton(this.drunkClock),
+    use: new ActionButton(),
     pause: new ActionButton(),
     mute: new ActionButton(),
   };
-  readonly display: { -readonly [K in keyof DisplayInfo]: DisplayInfo[K] } = {
+  readonly display: Mutable<DisplayInfo> = {
     portrait: false,
     touch: false,
     fullscreen: false,
@@ -69,6 +91,8 @@ export class Game {
   };
   readonly commands: GameCommands;
   readonly ctx: GameContext;
+  /** Set by the measurement hook (window.__game.perf): books each system's update / render time. */
+  probe: FrameProbe | null = null;
 
   private readonly systems: System[];
   private readonly hotspots = new Set<InputHotspot>();
@@ -77,6 +101,15 @@ export class Game {
   private readonly gestureListeners = new Set<() => void>();
   private readonly scheduled: { at: number; fn: () => void }[] = [];
   private input: InputFrame = IDLE_INPUT;
+  /** Reused every frame (render() allocates nothing). */
+  private readonly renderContext: Mutable<RenderContext> = {
+    g: null as unknown as CanvasRenderingContext2D,
+    state: this.state,
+    alpha: 0,
+    display: this.display,
+    scroll: 0,
+    scrollLead: 0,
+  };
   private seedOverride: number | null = null;
   private speedOverride: number | null = null;
 
@@ -97,6 +130,10 @@ export class Game {
       setZone: (index) => this.setZone(index),
       toggleFullscreen: () => platform.toggleFullscreen(),
       setLetterboxColor: (color) => platform.setLetterboxColor(color),
+      useItem: () => {
+        this.buttons.use.press(USE_ITEM_SOURCE);
+        this.buttons.use.release(USE_ITEM_SOURCE);
+      },
     };
     const game = this;
     this.ctx = {
@@ -143,6 +180,7 @@ export class Game {
     this.input = {
       action: this.buttons.action.tick(TICK_DT),
       duck: this.buttons.duck.tick(TICK_DT),
+      use: this.buttons.use.tick(TICK_DT),
       pausePressed: this.buttons.pause.tick(TICK_DT).pressed,
       mutePressed: this.buttons.mute.tick(TICK_DT).pressed,
     };
@@ -155,7 +193,7 @@ export class Game {
     if (this.input.mutePressed) this.setMuted(!s.muted);
 
     this.applySpeedOverride();
-    for (const sys of this.systems) sys.update?.(this.ctx, TICK_DT);
+    this.updateSystems();
     this.applySpeedOverride();
 
     if (s.mode === 'playing') {
@@ -173,10 +211,36 @@ export class Game {
 
   /** Calls every system's render hooks layer by layer, back to front. */
   render(g: CanvasRenderingContext2D, alpha: number): void {
-    const r = { g, state: this.state, alpha, display: this.display };
+    const r = this.renderContext;
+    const s = this.state;
+    r.g = g;
+    r.alpha = alpha;
+    r.scrollLead = s.mode === 'playing' ? alpha * s.speed * TICK_DT : 0;
+    r.scroll = s.distance + r.scrollLead;
+    const probe = this.probe;
     for (const layer of RENDER_LAYERS) {
-      for (const sys of this.systems) sys.render?.[layer]?.(r);
+      for (let i = 0; i < this.systems.length; i++) {
+        const draw = this.systems[i]!.render?.[layer];
+        if (!draw) continue;
+        if (!probe) {
+          draw(r);
+          continue;
+        }
+        const start = performance.now();
+        draw(r);
+        probe.addSystem(i, 'render', performance.now() - start);
+      }
     }
+  }
+
+  /** RenderContext.scroll of the last rendered frame (for measurements). */
+  get renderedScroll(): number {
+    return this.renderContext.scroll;
+  }
+
+  /** System names in update order (for measurements). */
+  get systemNames(): string[] {
+    return this.systems.map((s) => s.name);
   }
 
   /** Called by the DOM input layer inside each key / pointer event. */
@@ -251,6 +315,7 @@ export class Game {
     resetRun(this.state, seed);
     this.applySpeedOverride();
     this.rng.seed(seed);
+    this.drunkRng.seed(seed ^ DRUNK_SEED_SALT);
     this.bus.emit('runStarted', { seed });
   }
 
@@ -259,6 +324,7 @@ export class Game {
     const { score, stars, distance } = this.state;
     this.buttons.action.releaseAll();
     this.buttons.duck.releaseAll();
+    this.buttons.use.releaseAll();
     this.bus.emit('gameOver', { score, stars, distance });
   }
 
@@ -277,9 +343,29 @@ export class Game {
     if (this.speedOverride !== null) this.state.speed = this.speedOverride;
   }
 
+  private updateSystems(): void {
+    const probe = this.probe;
+    for (let i = 0; i < this.systems.length; i++) {
+      const sys = this.systems[i]!;
+      if (!sys.update) continue;
+      if (!probe) {
+        sys.update(this.ctx, TICK_DT);
+        continue;
+      }
+      const start = performance.now();
+      sys.update(this.ctx, TICK_DT);
+      probe.addSystem(i, 'update', performance.now() - start);
+    }
+  }
+
+  private hasDueTask(): boolean {
+    for (const task of this.scheduled) if (task.at <= this.state.frame) return true;
+    return false;
+  }
+
   private runScheduled(): void {
+    if (!this.hasDueTask()) return;
     const due = this.scheduled.filter((t) => t.at <= this.state.frame);
-    if (due.length === 0) return;
     this.scheduled.splice(0, this.scheduled.length, ...this.scheduled.filter((t) => t.at > this.state.frame));
     for (const t of due) t.fn();
   }

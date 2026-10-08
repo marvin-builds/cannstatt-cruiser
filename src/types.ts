@@ -51,8 +51,11 @@ export type ObstacleKind =
   | 'banner'
   | 'stopSign';
 export type RailKind = 'handrail' | 'pipe';
-/** `joint`: the rare pickup that starts the chill effect (state.chillTimer, event chillStart). */
-export type EntityKind = ObstacleKind | RailKind | 'star' | 'joint';
+/**
+ * `joint`: the rare pickup that starts the chill effect (state.chillTimer, event chillStart).
+ * `ball`: the football the skater threw (gameplay owns it; player and ui only read it).
+ */
+export type EntityKind = ObstacleKind | RailKind | 'star' | 'joint' | 'ball';
 
 /**
  * Anything gameplay spawns. Coordinates are screen space (view pixels): the
@@ -73,6 +76,9 @@ export interface Entity {
 
 /** Loot the skater carries after landing on a person (see the stomp event). */
 export type CarriedItem = 'football' | 'pretzel' | 'beer' | 'gingerbread';
+
+/** What using a carried item does: Maßkrug drink, Brezel / Lebkuchenherz eat, football throw. */
+export type ItemAction = 'drink' | 'eat' | 'throw';
 
 export interface GameState {
   mode: GameMode;
@@ -104,6 +110,13 @@ export interface GameState {
    * it on itemCaught and clears it on crash; the player draws it.
    */
   carriedItem: CarriedItem | null;
+  /**
+   * Seconds left of being drunk after drinking a Maßkrug (0 = sober).
+   * Gameplay sets and counts it down; while it is > 0 during a run, core
+   * delivers action / duck input late (DRUNK_DELAY_MIN..MAX ticks, core/drunk.ts).
+   * Core zeroes it at every run start.
+   */
+  drunkTimer: number;
   health: number;
   maxHealth: number;
   /** Current background zone (0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt). */
@@ -141,6 +154,18 @@ export interface GameEvents {
   stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
   /** Gameplay: the tossed item reached the skater's hands. */
   itemCaught: { item: CarriedItem };
+  /** Gameplay: the skater used the carried item (use button); state.carriedItem is cleared. */
+  itemUsed: { item: CarriedItem; action: ItemAction };
+  /** Gameplay: drinking started the drunk effect (`state.drunkTimer = duration`). */
+  drunkStart: { duration: number };
+  /** Gameplay: eating gave health back; `health` is the new value. */
+  healthGained: { health: number };
+  /** Gameplay: the football left the hands as entity `entityId` (kind 'ball'). */
+  ballThrown: { entityId: number };
+  /** Gameplay: the thrown ball hit a person (`entityId` is the person, `kind` its kind). */
+  ballHit: { entityId: number; kind: EntityKind };
+  /** Gameplay: a missed ball ricochets back towards the skater (ball entity `entityId`). */
+  ballBack: { entityId: number };
   scoreChanged: { score: number; delta: number; combo: number; multiplier: number };
   zoneChanged: { index: number; previous: number };
   runStarted: { seed: number };
@@ -166,6 +191,11 @@ export interface InputFrame {
   readonly pausePressed: boolean;
   /** M went down this tick. */
   readonly mutePressed: boolean;
+  /**
+   * Use the carried item: E, or `commands.useItem()` (a ui hotspot's onPress,
+   * pressed and released for one tick). Never delayed by drunk input.
+   */
+  readonly use: ActionSnapshot;
 }
 
 /**
@@ -206,6 +236,11 @@ export interface GameCommands {
   toggleFullscreen(): void;
   /** CSS colour shown around the letterboxed canvas. */
   setLetterboxColor(color: string): void;
+  /**
+   * Presses the use button for one tick (a tap: `input.use` is pressed and
+   * released on the next tick). For a ui hotspot's onPress, e.g. the item button.
+   */
+  useItem(): void;
 }
 
 export interface GameContext {
@@ -239,9 +274,22 @@ export interface RenderContext {
   /** The offscreen buffer, `display.viewWidth` x `display.viewHeight`. Draw at integer coordinates. */
   readonly g: CanvasRenderingContext2D;
   readonly state: GameState;
-  /** Fraction (0..1) of a tick since the last update, for optional interpolation. */
+  /** Fraction (0..1) of a tick since the last update (what scroll extrapolates by). */
   readonly alpha: number;
   readonly display: DisplayInfo;
+  /**
+   * Street distance (view px) to draw the world at this frame: `state.distance`
+   * plus `scrollLead` while playing. Use it instead of `state.distance` for
+   * parallax and ground offsets, so scrolling moves evenly on 120/144 Hz
+   * displays and in frames without an update.
+   */
+  readonly scroll: number;
+  /**
+   * `scroll - state.distance` (0 .. one tick of scroll, 0 unless playing).
+   * Things that move with the street and live in screen x (entities) are drawn
+   * at `x - scrollLead`; round once, after subtracting.
+   */
+  readonly scrollLead: number;
 }
 
 export type RenderFn = (r: RenderContext) => void;

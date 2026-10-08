@@ -30,6 +30,7 @@ export function createInitialState(): GameState {
     stars: 0,
     chillTimer: 0,
     carriedItem: null,
+    drunkTimer: 0,
     health: MAX_HEALTH,
     maxHealth: MAX_HEALTH,
     zoneIndex: 0,

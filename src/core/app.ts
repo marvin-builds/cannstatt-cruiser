@@ -4,6 +4,7 @@ import { isFullscreen, toggleFullscreen } from './fullscreen';
 import { Game } from './game';
 import { bindInput } from './input';
 import { FixedTimestep } from './loop';
+import type { FrameProbe } from './perf';
 import { Renderer } from './renderer';
 import { createTestHook, testHookEnabled } from './testhook';
 
@@ -38,16 +39,35 @@ export function startApp(systems: System[]): Game {
   const draw = () => {
     renderer.beginFrame();
     game.render(renderer.g, loop.alpha);
-    renderer.present();
   };
 
+  const tick = () => game.tick();
   let last = performance.now();
   const frame = (now: number) => {
     const elapsed = (now - last) / 1000;
     last = now;
-    if (!frozen) loop.advance(elapsed, () => game.tick());
-    draw();
+    if (game.probe) measuredFrame(game.probe, now, elapsed);
+    else {
+      if (!frozen) loop.advance(elapsed, tick);
+      draw();
+    }
     requestAnimationFrame(frame);
+  };
+  /** The same frame, timed piece by piece for window.__game.perf (scripts/frametimes.ts). */
+  const measuredFrame = (probe: FrameProbe, now: number, elapsed: number) => {
+    probe.beginFrame(now, elapsed * 1000);
+    const t0 = performance.now();
+    const updates = frozen ? 0 : loop.advance(elapsed, tick);
+    const t1 = performance.now();
+    draw();
+    probe.endFrame({
+      updates,
+      updateMs: t1 - t0,
+      renderMs: performance.now() - t1,
+      distance: game.state.distance,
+      scroll: game.renderedScroll,
+      heap: usedHeap(),
+    });
   };
   requestAnimationFrame(frame);
 
@@ -69,6 +89,11 @@ export function startApp(systems: System[]): Game {
 
   registerServiceWorker();
   return game;
+}
+
+/** Chromium's JS heap size (exact with --enable-precise-memory-info), 0 elsewhere. */
+function usedHeap(): number {
+  return (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
 }
 
 /** Registers public/sw.js (shipped by the PWA slice) once it is actually served as a script. */

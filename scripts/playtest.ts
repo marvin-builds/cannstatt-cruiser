@@ -13,12 +13,12 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { build, preview, type PreviewServer } from 'vite';
 import {
   captureCanvas,
   type Check,
   createGameDriver,
   ensureDir,
+  serveGame,
   join,
   type LogEntry,
   type PlaytestContext,
@@ -46,15 +46,6 @@ Viewports: ${Object.keys(VIEWPORTS).join(', ')}`);
   process.exit(0);
 }
 
-async function startServer(): Promise<{ url: string; server?: PreviewServer }> {
-  if (values.url) return { url: values.url };
-  await build({ logLevel: 'warn' });
-  const server = await preview({ preview: { port: 4317, strictPort: false, host: '127.0.0.1' }, logLevel: 'warn' });
-  const url = server.resolvedUrls?.local[0];
-  if (!url) throw new Error('vite preview did not report a URL');
-  return { url, server };
-}
-
 async function main(): Promise<void> {
   const scenarioPath = resolve(values.scenario);
   const scenario = ((await import(pathToFileURL(scenarioPath).href)) as { default: Scenario }).default;
@@ -64,7 +55,7 @@ async function main(): Promise<void> {
   for (const v of viewportNames) if (!VIEWPORTS[v]) throw new Error(`Unknown viewport "${v}"`);
 
   const runDir = await ensureDir(resolve('playtest-output', values.name));
-  const { url, server } = await startServer();
+  const { url, server } = await serveGame(values.url);
   const target = new URL(url);
   target.searchParams.set('test', '1');
 

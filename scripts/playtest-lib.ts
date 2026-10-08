@@ -5,6 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContextOptions, CDPSession, Page } from 'playwright';
+import { build, preview, type PreviewServer } from 'vite';
 import type { DisplayInfo, GameEvents, GameState } from '../src/types';
 import type { LoggedEvent } from '../src/core/testhook';
 
@@ -110,6 +111,16 @@ export interface PlaytestContext {
 
 /** A scenario module default-exports this. */
 export type Scenario = (t: PlaytestContext) => Promise<void>;
+
+/** Serves the game: `url` as given (e.g. a running `npm run dev`), otherwise a fresh build on vite preview. */
+export async function serveGame(url?: string): Promise<{ url: string; server?: PreviewServer }> {
+  if (url) return { url };
+  await build({ logLevel: 'warn' });
+  const server = await preview({ preview: { port: 4317, strictPort: false, host: '127.0.0.1' }, logLevel: 'warn' });
+  const local = server.resolvedUrls?.local[0];
+  if (!local) throw new Error('vite preview did not report a URL');
+  return { url: local, server };
+}
 
 export function createGameDriver(page: Page): GameDriver {
   const call = <T>(fn: (args: unknown[]) => T, ...args: unknown[]) => page.evaluate(fn, args) as Promise<Awaited<T>>;

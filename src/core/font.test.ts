@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FONT_BASELINE, FONT_LINE_HEIGHT, glyphFor, measureText } from './font-data';
+import { FONT_BASELINE, FONT_LINE_HEIGHT, glyphFor, measureLine, measureText } from './font-data';
 
 describe('pixel font', () => {
   it('has glyphs for German letters, digits and punctuation', () => {
@@ -44,6 +44,13 @@ describe('pixel font', () => {
   it('scales measurement and keeps rows at line height', () => {
     expect(measureText('AB', 2)).toBe(measureText('AB') * 2);
     expect(glyphFor('A')!.rows.length).toBe(FONT_LINE_HEIGHT);
+  });
+
+  it('measures one line of a multi-line text by index range', () => {
+    const text = 'AB\nCDE';
+    expect(measureLine(text, 0, 2)).toBe(measureText('AB'));
+    expect(measureLine(text, 3, 6)).toBe(measureText('CDE'));
+    expect(measureText(text)).toBe(Math.max(measureText('AB'), measureText('CDE')));
   });
 
   it('falls back to "?" for unknown characters', () => {

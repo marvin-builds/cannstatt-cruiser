@@ -47,6 +47,18 @@ describe('keyboard', () => {
   });
 });
 
+describe('use button', () => {
+  it('E presses use while held and leaves action and duck alone', () => {
+    const { game, tick } = setup();
+    keyDown(game, 'KeyE');
+    const down = tick();
+    expect(down.use).toMatchObject({ pressed: true, held: true });
+    expect(down.action.held || down.duck.held).toBe(false);
+    keyUp(game, 'KeyE');
+    expect(tick().use.released).toBe(true);
+  });
+});
+
 describe('touch gestures while playing', () => {
   it('a tap still jumps: the press lands at the latest when the finger lifts', () => {
     const { pointers, tick, frames } = setup();

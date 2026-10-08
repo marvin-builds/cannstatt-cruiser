@@ -17,7 +17,8 @@ export class Sprite {
   readonly width: number;
   readonly height: number;
   private readonly frames: SpriteData[];
-  private readonly cache = new Map<string, HTMLCanvasElement>();
+  /** Rasterised frames at `index * 2 + (flip ? 1 : 0)`, filled on first draw. */
+  private readonly cache: (HTMLCanvasElement | undefined)[] = [];
 
   constructor(palette: Palette, frames: readonly FrameArt[]) {
     if (frames.length === 0) throw new Error('Sprite needs at least one frame');
@@ -36,20 +37,15 @@ export class Sprite {
     return this.frames.length;
   }
 
-  /** Draws frame `frame` (wrapped) with its top-left corner at the rounded (x, y). */
-  draw(g: CanvasRenderingContext2D, frame: number, x: number, y: number, options: DrawOptions = {}): void {
+  /** Draws frame `frame` (wrapped) with its top-left corner at the rounded (x, y). Allocates nothing once cached. */
+  draw(g: CanvasRenderingContext2D, frame: number, x: number, y: number, options?: DrawOptions): void {
     const index = ((Math.floor(frame) % this.frameCount) + this.frameCount) % this.frameCount;
-    g.drawImage(this.canvasFor(index, options.flip ?? false), Math.round(x), Math.round(y));
+    g.drawImage(this.canvasFor(index, options?.flip ?? false), Math.round(x), Math.round(y));
   }
 
   private canvasFor(index: number, flip: boolean): HTMLCanvasElement {
-    const key = `${index}:${flip ? 1 : 0}`;
-    let canvas = this.cache.get(key);
-    if (!canvas) {
-      canvas = rasterise(this.frames[index]!, flip);
-      this.cache.set(key, canvas);
-    }
-    return canvas;
+    const slot = index * 2 + (flip ? 1 : 0);
+    return (this.cache[slot] ??= rasterise(this.frames[index]!, flip));
   }
 }
 

@@ -29,3 +29,11 @@ export const GAMEOVER_INPUT_DELAY = 0.75;
 
 /** Fallback page colour around the letterboxed canvas. */
 export const DEFAULT_LETTERBOX = '#1b1f2e';
+
+/**
+ * Drunk input (state.drunkTimer > 0 while playing): every action / duck press
+ * and release reaches the systems this many ticks late, drawn per edge from a
+ * run-seeded rng (see core/drunk.ts). Presses are never dropped.
+ */
+export const DRUNK_DELAY_MIN = 3;
+export const DRUNK_DELAY_MAX = 8;

@@ -15,9 +15,11 @@ async function pageLayout(t: PlaytestContext) {
       scrollX: window.scrollX,
       scrollY: window.scrollY,
       zoom: window.visualViewport?.scale ?? 1,
+      /** Backing store: the view itself (CSS scales it up). */
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       cssWidth: canvas.getBoundingClientRect().width,
+      cssHeight: canvas.getBoundingClientRect().height,
       dpr: window.devicePixelRatio,
       windowWidth: window.innerWidth,
       windowHeight: window.innerHeight,
@@ -29,12 +31,11 @@ async function pageLayout(t: PlaytestContext) {
 async function checkAdaptiveView(t: PlaytestContext, label: string): Promise<void> {
   const layout = await pageLayout(t);
   const { viewWidth } = await t.game.display();
-  const scale = layout.canvasHeight / VIEW_H;
-  t.check(`${label}: integer device-pixel scale`, Number.isInteger(scale) && layout.canvasWidth === viewWidth * scale, {
-    ...layout,
-    viewWidth,
-  });
-  const spareDevicePx = layout.windowWidth * layout.dpr - layout.canvasWidth;
+  const deviceWidth = Math.round(layout.cssWidth * layout.dpr);
+  const scale = Math.round(layout.cssHeight * layout.dpr) / VIEW_H;
+  const ok = Number.isInteger(scale) && deviceWidth === viewWidth * scale && layout.canvasWidth === viewWidth && layout.canvasHeight === VIEW_H;
+  t.check(`${label}: integer device-pixel scale`, ok, { ...layout, viewWidth });
+  const spareDevicePx = layout.windowWidth * layout.dpr - deviceWidth;
   const fills = viewWidth === VIEW_MAX_W || spareDevicePx < scale;
   t.check(`${label}: view width fills the screen`, fills, { viewWidth, spareDevicePx, scale });
 }

@@ -10,6 +10,7 @@ const KEY_BUTTONS: Readonly<Record<string, ButtonName>> = {
   KeyW: 'action',
   ArrowDown: 'duck',
   KeyS: 'duck',
+  KeyE: 'use',
   KeyP: 'pause',
   Escape: 'pause',
   KeyM: 'mute',

@@ -12,12 +12,14 @@ index.html              canvas#game, viewport/touch CSS, PWA <link>s
 src/main.ts             composition root: lists the systems in update order (do not edit from slices)
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
-  loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale)
+  loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale, vsync snapping, see Frame loop)
+  drunk.ts              drunk input: DelayedButton (action/duck edges held back while drunk), drunkDelay(), drunkWindow() for the solver
+  perf.ts               FrameProbe: allocation-free per-frame timing for scripts/frametimes.ts (window.__game.perf)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
   input.ts              DOM binding: keys (hotspots first, then action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
   renderer.ts           offscreen buffer (resized to the view width), integer scaling, letterbox colour, capture()
@@ -25,7 +27,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
   sprite.ts             Sprite / sprite(): palette + string art -> cached canvases, frames, flip
   font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation, ×), measureText()
-  font.ts               drawText(g, text, x, y, {color, scale, align, shadow})
+  font.ts               drawText(g, text, x, y, {color, scale, align, shadow}); glyphs cached per colour
   rng.ts                Rng (mulberry32): next/range/int/pick/chance
   events.ts             EventBus<E>: on/onAny/emit
   storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage
@@ -34,6 +36,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   app.ts                startApp(systems): wires everything in the browser, registers ./sw.js
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts)
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
+scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
 ```
 
 ## Ownership
@@ -85,7 +88,10 @@ interface System {
   should only advance while `mode === 'playing'`.
 - **Render layers**, back to front: `background`, `world`, `entities`, `player`,
   `fx`, `ui`. Core clears the buffer to the letterbox colour before drawing.
-  Always draw at integer coordinates.
+  Always draw at integer coordinates. `RenderContext` is `{g, state, alpha,
+  display, scroll, scrollLead}`; draw scrolling things from `r.scroll` /
+  `r.scrollLead` (see [Frame loop](#frame-loop-and-smooth-scrolling)). Core
+  reuses the same context object every frame: read it, never keep it.
 - Always reach state through `ctx.state` / `r.state` and don't cache sub-objects,
   because `resetRun` replaces `state.player` and `state.entities` at every run start.
 
@@ -96,10 +102,10 @@ interface System {
 | `state` | the single mutable `GameState` |
 | `bus` | typed event bus (`GameEvents`) |
 | `rng` | seeded `Rng`, re-seeded with `state.seed` at every run start. Use it for all gameplay randomness (never `Math.random`), so test runs replay deterministically. |
-| `input` | this tick's `InputFrame`: `action` and `duck` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-and-duck). |
+| `input` | this tick's `InputFrame`: `action`, `duck` and `use` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-duck-and-use). |
 | `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
-| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor` |
+| `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick) |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
 | `onUserGesture(fn)` | runs `fn` inside every key/pointer DOM event (WebAudio unlock) |
 
@@ -108,7 +114,7 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
-| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` at every run start) |
+| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
 | `player.*` (position, velocity, grounded, grinding, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`) |
 
@@ -165,19 +171,68 @@ behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
 | `itemCaught` | `{item}` | gameplay (the tossed item reached the hands; `state.carriedItem = item`) |
+| `itemUsed` | `{item, action}` | gameplay (use button with an item in hand; `action` is `'drink' \| 'eat' \| 'throw'`; clears `state.carriedItem`) |
+| `drunkStart` | `{duration}` | gameplay (Maßkrug drunk; `state.drunkTimer = duration`) |
+| `healthGained` | `{health}` | gameplay (Brezel / Lebkuchenherz eaten; the new health) |
+| `ballThrown` | `{entityId}` | gameplay (the football left the hands as a `ball` entity) |
+| `ballHit` | `{entityId, kind}` | gameplay (the thrown ball hit a person: the person's id and kind) |
+| `ballBack` | `{entityId}` | gameplay (a missed ball ricochets back towards the skater; the ball's id) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
 
-## Input: action and duck
+## Input: action, duck and use
 
-`InputFrame` has two logical buttons with the same `ActionSnapshot` shape:
+`InputFrame` has three logical buttons with the same `ActionSnapshot` shape:
 
 | Button | Sources |
 |---|---|
 | `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
 | `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck` |
+| `use` | E (held while the key is down); `commands.useItem()`; test hook `input.use()` |
+
+Key hints for players: Space / ↑ / W jump, ↓ / S duck, **E use item**, P / Esc
+pause, M mute.
+
+**Use on touch and mouse:** pointers have no default for `use` (a tap
+anywhere jumps). The ui shows an item button while `state.carriedItem` is set
+and registers it as a hotspot whose `onPress` calls `ctx.commands.useItem()`.
+That presses and releases `use` in one go, so the next tick sees
+`use = {pressed: true, released: true, held: false}`, exactly like a tapped
+key, and the pointer press never reaches the action. Systems react to
+`input.use.pressed` only (no holds), so key and button behave the same:
+
+```ts
+const itemButton: Hotspot = {
+  rect: () => (ctx.state.carriedItem && ctx.state.mode === 'playing' ? itemRect(ctx.display) : null),
+  onPress: () => ctx.commands.useItem(),
+};
+ctx.addHotspot(itemButton);
+```
+
+### Drunk input
+
+While `state.drunkTimer > 0` **and** the mode is `playing`, `core/drunk.ts`
+holds back every press and release of `action` and `duck` by a random
+`DRUNK_DELAY_MIN`..`DRUNK_DELAY_MAX` (3..8) extra ticks (`core/config.ts`):
+
+- each edge draws its own delay, so a hold can shrink or grow by up to
+  `MAX - MIN` ticks; a release never arrives before its press (it may arrive
+  in the same tick: a tap), and no press is ever dropped;
+- the delays come from a separate rng seeded from the run seed at every run
+  start, so runs replay deterministically and the gameplay rng (`ctx.rng`) is
+  untouched;
+- `use`, pause and mute are never delayed; focus loss and game over release
+  everything at once and drop queued edges.
+
+Gameplay's solver validates drunk patterns with
+`drunkWindow(holdTicks)` → `{pressMin, pressMax, holdMin, holdMax}` (every
+take-off from `pressMin` to `pressMax` ticks late with any hold in
+`[holdMin, holdMax]` must clear the pattern) and `drunkDelay(rng)` for its own
+simulations. Under the hood `Game.buttons.action` / `.duck` are
+`DelayedButton`s (same `press/release/releaseAll/tick` interface as
+`ActionButton`), so tests and the test hook press them as before.
 
 `core/input.ts` maps DOM events through two DOM-free pieces that unit tests
 drive directly: `keyDown/keyUp(game, code)` and `PointerControls`
@@ -205,6 +260,35 @@ lands (a quick tap: when the finger lifts, which is usually sooner), and a
 held touch counts its hold time from the decision. Keyboard and mouse presses,
 and touches on the title, pause and game-over screens, are not delayed at all.
 Hotspots still take presses first.
+
+## Frame loop and smooth scrolling
+
+`app.ts` runs `FixedTimestep` (`loop.ts`) once per `requestAnimationFrame`:
+0..n fixed 1/60 s ticks, then one render.
+
+- **Vsync snapping:** rAF timestamps jitter around the display interval. Fed
+  raw, an accumulator near a step boundary ran 0 updates in one frame and 2 in
+  the next (measured: 8 % of frames at 60 Hz, a visible hitch). The loop
+  estimates the display cadence (median of the last 15 frames, snapped to
+  60 / 120 / 30 Hz within 4 %) and snaps each frame's elapsed time to a whole
+  number of display frames when within 25 %. Result: exactly one tick per
+  frame at 60 Hz, clean alternation at 120 Hz, even spreading at 144 Hz, and a
+  missed vsync still catches up. Game time follows the display (a 59.94 Hz
+  screen runs the game 0.1 % fast instead of hitching every 16 s).
+- **Interpolated scroll:** `RenderContext.scroll` is `state.distance` plus
+  `scrollLead = alpha * speed * TICK_DT` while playing (else 0), i.e. where
+  the street is at the moment of the frame. Systems use `r.scroll` instead of
+  `state.distance` for parallax / ground offsets and draw street-bound
+  entities at `Math.round(e.x - r.scrollLead)`. At 60 Hz `alpha` is ~0 (no
+  visible change); at 120/144 Hz and after a missed frame the street then moves
+  in even steps instead of 0 / 3 px jumps. The player stays at its tick
+  position (it does not scroll).
+- **No per-frame allocation in core:** `Game.render` reuses one render
+  context, `Sprite.draw` looks frames up by index (no key strings),
+  `drawText` draws cached glyph canvases (one `drawImage` per character
+  instead of one `fillRect` per font pixel). Keep slices allocation-free in
+  render and update too: no template strings, spreads, `map`/`filter`,
+  closures or object literals per frame in hot paths.
 
 ## View size (adaptive width)
 
@@ -448,7 +532,7 @@ Contract between gameplay, player and ui:
 ## How state flows
 
 ```
-DOM events -> core/input -> ActionButton latches -> Game.tick():
+DOM events -> core/input -> ActionButton latches (action/duck via DelayedButton while drunk) -> Game.tick():
    InputFrame -> systems.update (world, player, gameplay, audio, ui) -> core integrate / mode
    events emitted along the way are delivered synchronously to subscribers
 requestAnimationFrame -> FixedTimestep (0..n ticks) -> Game.render(layers) -> Renderer.present

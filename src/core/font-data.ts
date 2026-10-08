@@ -144,13 +144,26 @@ export function glyphFor(ch: string): Glyph | null {
   return GLYPHS.get(ch) ?? GLYPHS.get('?') ?? null;
 }
 
+/** Width in font pixels of `text` from index `start` up to (not incl.) `end`, one line. Allocation-free. */
+export function measureLine(text: string, start: number, end: number): number {
+  let w = 0;
+  for (let i = start; i < end; i++) w += glyphFor(text[i]!)!.width + FONT_LETTER_SPACING;
+  return w > 0 ? w - FONT_LETTER_SPACING : 0;
+}
+
 /** Width in view pixels of the widest line of `text` at the given integer scale. */
 export function measureText(text: string, scale = 1): number {
   let widest = 0;
-  for (const line of text.split('\n')) {
-    let w = 0;
-    for (const ch of line) w += glyphFor(ch)!.width + FONT_LETTER_SPACING;
-    widest = Math.max(widest, w > 0 ? w - FONT_LETTER_SPACING : 0);
+  for (let start = 0; start <= text.length; ) {
+    const end = lineEnd(text, start);
+    widest = Math.max(widest, measureLine(text, start, end));
+    start = end + 1;
   }
   return widest * scale;
+}
+
+/** Index of the "\n" ending the line that starts at `start`, or the text length. */
+export function lineEnd(text: string, start: number): number {
+  const end = text.indexOf('\n', start);
+  return end < 0 ? text.length : end;
 }

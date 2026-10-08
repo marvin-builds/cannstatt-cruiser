@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { GameEvents, RenderLayer, System } from '../types';
+import type { EntityKind, GameEvents, RenderContext, RenderLayer, System } from '../types';
 import { BASE_SPEED, GAMEOVER_INPUT_DELAY, MAX_HEALTH, TICK_DT, VIEW_H, VIEW_W } from './config';
 import { Game } from './game';
 
@@ -150,6 +150,58 @@ describe('Game', () => {
     const game = new Game({ systems: [a, b] });
     game.render({} as CanvasRenderingContext2D, 0);
     expect(calls).toEqual(['init:a', 'b:background', 'a:world', 'a:ui', 'b:ui']);
+  });
+
+  it('renders at a scroll position extrapolated by alpha while playing', () => {
+    const seen: { scroll: number; scrollLead: number; alpha: number }[] = [];
+    const sys: System = { name: 'spy', render: { world: (r) => void seen.push({ scroll: r.scroll, scrollLead: r.scrollLead, alpha: r.alpha }) } };
+    const game = new Game({ systems: [sys] });
+    game.render({} as CanvasRenderingContext2D, 0.5);
+    expect(seen[0]).toEqual({ scroll: 0, scrollLead: 0, alpha: 0.5 });
+    game.commands.startRun();
+    ticks(game, 10);
+    const d = game.state.distance;
+    game.render({} as CanvasRenderingContext2D, 0.5);
+    expect(seen[1]!.scroll).toBeCloseTo(d + 0.5 * BASE_SPEED * TICK_DT, 6);
+    expect(seen[1]!.scrollLead).toBeCloseTo(0.5 * BASE_SPEED * TICK_DT, 6);
+    game.commands.pause();
+    game.render({} as CanvasRenderingContext2D, 0.5);
+    expect(seen[2]).toEqual({ scroll: d, scrollLead: 0, alpha: 0.5 });
+  });
+
+  it('reuses one render context per frame instead of allocating', () => {
+    const contexts: RenderContext[] = [];
+    const sys: System = { name: 'spy', render: { world: (r) => void contexts.push(r) } };
+    const game = new Game({ systems: [sys] });
+    game.render({} as CanvasRenderingContext2D, 0);
+    game.render({} as CanvasRenderingContext2D, 0);
+    expect(contexts[0]).toBe(contexts[1]);
+  });
+
+  it('useItem presses the use button for exactly one tick (for a ui item hotspot)', () => {
+    const uses: { pressed: boolean; held: boolean; released: boolean }[] = [];
+    const sys: System = { name: 'spy', update: (ctx) => void uses.push(ctx.input.use) };
+    const game = new Game({ systems: [sys] });
+    game.commands.startRun();
+    game.ctx.addHotspot({ rect: () => ({ x: 0, y: 0, w: 10, h: 10 }), onPress: () => game.ctx.commands.useItem() });
+    game.hitHotspot(5, 5);
+    ticks(game, 2);
+    expect(uses[0]).toMatchObject({ pressed: true, held: false, released: true });
+    expect(uses[1]).toMatchObject({ pressed: false, held: false, released: false });
+  });
+
+  it('carries the item-use events and the ball entity kind on the bus', () => {
+    const game = new Game({ systems: [] });
+    const names = recordEvents(game);
+    const ball: EntityKind = 'ball';
+    game.bus.emit('itemUsed', { item: 'beer', action: 'drink' });
+    game.bus.emit('drunkStart', { duration: 6 });
+    game.bus.emit('healthGained', { health: 4 });
+    game.bus.emit('ballThrown', { entityId: 1 });
+    game.bus.emit('ballHit', { entityId: 2, kind: 'vfbFan' });
+    game.bus.emit('ballBack', { entityId: 1 });
+    game.bus.emit('crash', { entityId: 1, kind: ball, health: 3 });
+    expect(names).toEqual(['itemUsed', 'drunkStart', 'healthGained', 'ballThrown', 'ballHit', 'ballBack', 'crash']);
   });
 
   it('routes pointer presses inside a hotspot to it instead of the action', () => {

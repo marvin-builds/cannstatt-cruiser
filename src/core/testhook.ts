@@ -1,6 +1,6 @@
 import type { DisplayInfo, GameEvents, GameState } from '../types';
-import type { ActionButton } from './action';
 import type { Game } from './game';
+import { FrameProbe, type ProbeDump } from './perf';
 import { SWIPE_DUCK_TICKS } from './input';
 
 export interface LoggedEvent {
@@ -45,6 +45,8 @@ export interface TestHook {
       release(): void;
       hold(frames?: number): void;
     };
+    /** Uses the carried item: the use button pressed for one tick (commands.useItem, like a ui item button). */
+    use(): void;
   };
   /** Game-mode pause / resume (the in-game pause screen), unlike pause()/resume(). */
   pauseGame(): void;
@@ -55,6 +57,8 @@ export interface TestHook {
   setHealth(health: number): void;
   /** Sets `state.score` (gameplay keeps adding to it). */
   setScore(score: number): void;
+  /** Sets `state.drunkTimer` (seconds; gameplay counts it down, input is delayed while > 0). */
+  setDrunk(seconds: number): void;
   /** Forces the scroll speed (difficulty override) until called with null. */
   setSpeed(speed: number | null): void;
   /** Forces game over now (emits gameOver). Throws unless the mode is `playing`. */
@@ -68,6 +72,11 @@ export interface TestHook {
   display(): DisplayInfo;
   /** PNG data URL of the view buffer (current view width x 180) upscaled by `scale`. */
   capture(scale?: number): string;
+  /** Frame-time probe (scripts/frametimes.ts): records up to `frames` real rAF frames until stop(). */
+  perf: {
+    start(frames?: number): void;
+    stop(): ProbeDump;
+  };
 }
 
 const MAX_LOG = 5000;
@@ -85,7 +94,7 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     clock.redraw();
     return snapshot();
   };
-  const pressFor = (button: ActionButton, frames: number) => {
+  const pressFor = (button: Game['buttons']['action'], frames: number) => {
     button.press('test');
     if (clock.frozen) {
       step(frames);
@@ -116,6 +125,7 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
         release: () => duck.release('test'),
         hold: (frames = SWIPE_DUCK_TICKS) => pressFor(duck, frames),
       },
+      use: () => game.commands.useItem(),
     },
     pauseGame: () => game.commands.pause(),
     resumeGame: () => game.commands.resume(),
@@ -123,6 +133,7 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     setTimeScale: (s) => clock.setTimeScale(s),
     setHealth: (health) => void (game.state.health = health),
     setScore: (score) => void (game.state.score = score),
+    setDrunk: (seconds) => void (game.state.drunkTimer = seconds),
     setSpeed: (speed) => game.setSpeedOverride(speed),
     endRun: () => {
       if (game.state.mode !== 'playing') {
@@ -135,6 +146,14 @@ export function createTestHook(game: Game, clock: Clock): TestHook {
     clearEvents: () => void log.splice(0),
     display: () => ({ ...game.display }),
     capture: (scale = 4) => clock.capture(scale),
+    perf: {
+      start: (frames = 3600) => void (game.probe = new FrameProbe(game.systemNames, frames)),
+      stop: () => {
+        const dump = game.probe?.dump() ?? { systems: game.systemNames, frames: [] };
+        game.probe = null;
+        return dump;
+      },
+    },
   };
 }
 
