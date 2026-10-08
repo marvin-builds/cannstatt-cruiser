@@ -78,10 +78,16 @@ and on desktop (keyboard and mouse). The UI language is German.
   held. It ends when down is released or the grind ends and scores 3 trick
   points per tick (times the multiplier) on top of the grind, with the popup
   "Grind-Trick! +…".
+- Grind trick hint: until the player has done a grind trick once (stored on
+  the device), the first 3 grinds of a run show a small plate under the
+  skater: "↓ = Trick!" with a key cap on desktop, "Wisch runter = Trick!" on
+  touch. It hides while the trick is held and when the grind ends.
 
 ## Stomp and carried items
 
-- Landing on top of a person while falling is not a crash but a stomp: the
+- Landing on top of a person while falling is not a crash but a stomp
+  (coming down on the head or shoulders, or just beside the head; the window
+  is about a quarter second of take-off timing at every speed): the
   skater bounces off (like a small jump without hold), the person tumbles onto
   their back and sits up dazed with stars circling their head, then laughs.
   Friendly, no violence. Afterwards the person is harmless.
@@ -102,12 +108,15 @@ The carried item can be used (E, or the item button on touch); using it
 empties the hands:
 
 - **Maßkrug** (never in kid mode): the skater drinks it (popup "Prost! Gluck
-  gluck gluck", glug sound) and is drunk for 6 s: jump and duck react 3-8
-  ticks late (a deterministic random delay), the skater and the screen sway
+  gluck gluck", glug sound) and is drunk for 6 s: jump and duck react
+  clearly late, ~130-330 ms (8-20 ticks, a deterministic random delay), and
+  every press's hold comes out up to 10 ticks shorter or longer, so a tap
+  can become a high jump and a long hold a small one (no press is ever
+  lost); the skater and the screen sway
   and the HUD shows a draining Maßkrug timer. Meanwhile (and already while a
   Maßkrug is in hand or within reach) the spawner places only easy patterns
   (single or paired ground obstacles and stars, no people, nothing overhead,
-  no rails, wider gaps) that are clearable with that delay. Not used within
+  no rails, wider gaps) that are clearable with that delay and hold wobble. Not used within
   ~6 s, it is drunk by itself.
 - **Brezel / Lebkuchenherz**: eating it gives +1 health ("Lecker! +1"); at
   full health 150 bonus points instead (times the multiplier).
@@ -188,12 +197,19 @@ Cannstatt -> Neckar -> Stuttgart-Mitte -> Neckar -> Cannstatt -> ...
 1. **Stuttgart-Mitte:** Fernsehturm, Hauptbahnhof tower with the rotating
    Mercedes star, Stäffele (stair lanes), vineyards on the hills around the
    basin, a yellow Stadtbahn (U-Bahn) train.
-   Suddenly lots of cars, vans and buses on the foreground street (in front of
-   the riding line, never covering obstacles or the skater), with exhaust
-   puffs and traffic noise (rumble and the odd honk, only here).
+   Suddenly dense, big traffic on the foreground street close to the camera
+   (below the riding line, never covering obstacles, people or the skater):
+   a back lane of cars and vans driving with the skater and an oncoming front
+   lane with city buses and trucks. Big exhaust clouds drift up behind the
+   action, headlights flash now and then, and the street rumbles by a pixel
+   while a bus or truck passes. Loud traffic noise: a layered rumble (road
+   noise, tyre hiss, engine drone) that dips briefly under gameplay sounds,
+   car, small-car and deep bus / truck horns, and passing trucks.
 2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette, the
-   Mombachquelle's outlet into the river with people chilling at its bathing
-   pool (scenery, not obstacles).
+   Mombachquelle's outlet into the river after the real place, without any
+   sign: a basin of light grey boulders at the foot of a green embankment,
+   a stair, two benches, the spring jetting from a culvert into the basin, a
+   bin on a tree and people chilling there (scenery, not obstacles).
 3. **Bad Cannstatt:** Altstadt half-timbered houses, Kursaal, Mineralbad /
    mineral water fountain, Cannstatter Wasen with Fruchtsäule, Riesenrad (Ferris
    wheel) and beer tents (Volksfest), the Grabkapelle on the vineyard-covered Württemberg in the distance.
@@ -219,6 +235,8 @@ The art is recognisable but stylised.
 - Chiptune-style SFX generated with WebAudio: jump, land, grind loop, star,
   crash, game over.
 - The audio context is unlocked on the first input. Mute is persisted.
+- Stuttgart-Mitte adds the traffic noise (rumble, horns, passing trucks; see
+  Zones).
 
 ## PWA
 

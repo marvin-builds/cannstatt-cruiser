@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InputFrame, System } from '../types';
-import { DRUNK_DELAY_MAX, DRUNK_DELAY_MIN } from './config';
-import { DelayedButton, drunkDelay, drunkWindow } from './drunk';
+import { DRUNK_DELAY_MAX, DRUNK_DELAY_MIN, DRUNK_HOLD_WOBBLE } from './config';
+import { DelayedButton, drunkDelay, drunkHoldWobble, drunkWindow } from './drunk';
 import { Game } from './game';
 import { keyDown, keyUp } from './input';
 import { Rng } from './rng';
@@ -33,40 +33,62 @@ describe('drunk timing helpers', () => {
     expect(Math.max(...delays)).toBe(DRUNK_DELAY_MAX);
   });
 
-  it('describes every way a press held for n ticks can arrive (for the solver)', () => {
-    const spread = DRUNK_DELAY_MAX - DRUNK_DELAY_MIN;
-    expect(drunkWindow(10)).toEqual({
+  it('draws every hold wobble from -DRUNK_HOLD_WOBBLE..+DRUNK_HOLD_WOBBLE', () => {
+    const rng = new Rng(5);
+    const wobbles = Array.from({ length: 500 }, () => drunkHoldWobble(rng));
+    expect(Math.min(...wobbles)).toBe(-DRUNK_HOLD_WOBBLE);
+    expect(Math.max(...wobbles)).toBe(DRUNK_HOLD_WOBBLE);
+  });
+
+  it('describes every way a press held for n ticks can arrive, release delay and hold wobble included (for the solver)', () => {
+    const spread = DRUNK_DELAY_MAX - DRUNK_DELAY_MIN + DRUNK_HOLD_WOBBLE;
+    expect(drunkWindow(40)).toEqual({
       pressMin: DRUNK_DELAY_MIN,
       pressMax: DRUNK_DELAY_MAX,
-      holdMin: 10 - spread,
-      holdMax: 10 + spread,
+      holdMin: 40 - spread,
+      holdMax: 40 + spread,
     });
-    expect(drunkWindow(2).holdMin).toBe(0);
+    expect(drunkWindow(3).holdMin).toBe(1);
+    expect(drunkWindow(0).holdMax).toBe(spread);
   });
 });
 
 describe('DelayedButton', () => {
   it('passes presses through at once while the delay is 0', () => {
     let frame = 0;
-    const b = new DelayedButton({ frame: () => frame, delay: () => 0 });
+    const b = new DelayedButton({ frame: () => frame, delay: () => 0, holdWobble: () => 0 });
     b.press('key');
     frame++;
     expect(b.tick(DT)).toMatchObject({ pressed: true, held: true });
   });
 
-  it('keeps press and release in order per source even when the release draws a shorter delay', () => {
+  /** A button with scripted delays / wobbles; `hold`: ticks between press and release; returns the ticks seen pressed / released. */
+  function scripted(delays: number[], wobble: number, hold: number) {
     let frame = 0;
-    const delays = [6, 3];
-    const b = new DelayedButton({ frame: () => frame, delay: () => delays.shift() ?? 0 });
-    b.press('key');
-    b.release('key');
+    const b = new DelayedButton({ frame: () => frame, delay: () => delays.shift() ?? 0, holdWobble: () => wobble });
     const seen = [];
-    for (let i = 0; i < 8; i++) {
+    b.press('key');
+    for (let i = 0; i < 40; i++) {
+      if (i === hold) b.release('key');
       frame++;
       seen.push(b.tick(DT));
     }
-    expect(seen.findIndex((s) => s.pressed)).toBe(6);
-    expect(seen[6]).toMatchObject({ pressed: true, released: true, held: false });
+    return { pressed: seen.findIndex((s) => s.pressed), released: seen.findIndex((s) => s.released) };
+  }
+
+  it('stretches or shortens the hold of a delayed press by its wobble', () => {
+    expect(scripted([5, 5], 0, 6)).toEqual({ pressed: 5, released: 11 });
+    expect(scripted([5, 5], 4, 6)).toEqual({ pressed: 5, released: 15 });
+    expect(scripted([5, 5], -3, 6)).toEqual({ pressed: 5, released: 8 });
+  });
+
+  it('keeps a drunk press held at least 1 tick: the release never arrives with or before its press', () => {
+    expect(scripted([6, 3], 0, 0)).toEqual({ pressed: 6, released: 7 });
+    expect(scripted([5, 5], -10, 6)).toEqual({ pressed: 5, released: 6 });
+  });
+
+  it('does not wobble presses that pass through sober', () => {
+    expect(scripted([0, 5], 8, 3)).toEqual({ pressed: 0, released: 8 });
   });
 });
 
@@ -78,15 +100,33 @@ describe('drunk input in the game', () => {
       game.buttons.action.press('test');
       tick(3);
       game.buttons.action.release('test');
-      tick(DRUNK_DELAY_MAX + 4);
+      tick(DRUNK_DELAY_MAX + DRUNK_HOLD_WOBBLE + 4);
       const pressed = ticksWhere(from, (f) => f.action.pressed);
       expect(pressed).toHaveLength(1);
       expect(pressed[0]! - 1).toBeGreaterThanOrEqual(DRUNK_DELAY_MIN);
       expect(pressed[0]! - 1).toBeLessThanOrEqual(DRUNK_DELAY_MAX);
       const released = ticksWhere(from, (f) => f.action.released);
       expect(released).toHaveLength(1);
-      expect(released[0]!).toBeGreaterThanOrEqual(pressed[0]!); // same tick = the hold shrank to a tap
+      expect(released[0]!).toBeGreaterThan(pressed[0]!); // held at least 1 tick
     }
+  });
+
+  it('wobbles hold lengths beyond the release delay alone, always inside drunkWindow', () => {
+    const { game, tick, ticksWhere, frames } = drunkGame(3, 60);
+    const hold = 12;
+    const w = drunkWindow(hold);
+    const holds: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const from = frames.length;
+      game.buttons.action.press('test');
+      tick(hold);
+      game.buttons.action.release('test');
+      tick(DRUNK_DELAY_MAX + DRUNK_HOLD_WOBBLE + 2);
+      holds.push(ticksWhere(from, (f) => f.action.released)[0]! - ticksWhere(from, (f) => f.action.pressed)[0]!);
+    }
+    expect(Math.min(...holds)).toBeGreaterThanOrEqual(w.holdMin);
+    expect(Math.max(...holds)).toBeLessThanOrEqual(w.holdMax);
+    expect(Math.max(...holds) - Math.min(...holds)).toBeGreaterThan(2 * (DRUNK_DELAY_MAX - DRUNK_DELAY_MIN));
   });
 
   it('delays duck too, but not pause, mute or use', () => {
@@ -111,8 +151,8 @@ describe('drunk input in the game', () => {
         keyDown(game, 'Space');
         tick();
         keyUp(game, 'Space');
-        tick(DRUNK_DELAY_MAX + 2);
-        out.push(ticksWhere(from, (f) => f.action.pressed)[0]!);
+        tick(DRUNK_DELAY_MAX + DRUNK_HOLD_WOBBLE + 2);
+        out.push(ticksWhere(from, (f) => f.action.pressed)[0]!, ticksWhere(from, (f) => f.action.released)[0]!);
       }
       return out;
     };
@@ -143,11 +183,11 @@ describe('drunk input in the game', () => {
     tick();
     game.state.drunkTimer = 0;
     game.buttons.action.release('test');
-    tick(DRUNK_DELAY_MAX + 2);
+    tick(DRUNK_DELAY_MAX + DRUNK_HOLD_WOBBLE + 2);
     const pressedAt = frames.findIndex((f) => f.action.pressed);
     const releasedAt = frames.findIndex((f) => f.action.released);
     expect(pressedAt).toBeGreaterThanOrEqual(DRUNK_DELAY_MIN);
-    expect(releasedAt).toBe(pressedAt);
+    expect(releasedAt).toBeGreaterThan(pressedAt);
   });
 
   it('releases everything at once on focus loss, dropping queued edges', () => {

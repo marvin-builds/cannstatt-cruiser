@@ -12,7 +12,7 @@ import type {
 import { RENDER_LAYERS } from '../types';
 import { ActionButton, IDLE_ACTION } from './action';
 import { GAMEOVER_INPUT_DELAY, TICK_DT, VIEW_H, VIEW_W } from './config';
-import { DelayedButton, drunkDelay } from './drunk';
+import { DelayedButton, drunkDelay, drunkHoldWobble } from './drunk';
 import { EventBus } from './events';
 import { type InstallEnvironment, InstallController } from './install';
 import { type ModeCommand, nextMode } from './modes';
@@ -77,11 +77,12 @@ export class Game {
   readonly state: GameState = createInitialState();
   readonly bus = new EventBus<GameEvents>();
   readonly rng = new Rng(0);
-  /** Draws the drunk input delays; seeded per run from the run seed, separate from the gameplay rng. */
+  /** Draws the drunk input delays and hold wobbles; seeded per run from the run seed, separate from the gameplay rng. */
   private readonly drunkRng = new Rng(0);
   private readonly drunkClock = {
     frame: () => this.state.frame,
-    delay: () => (this.state.mode === 'playing' && this.state.drunkTimer > 0 ? drunkDelay(this.drunkRng) : 0),
+    delay: () => (this.drunk() ? drunkDelay(this.drunkRng) : 0),
+    holdWobble: () => (this.drunk() ? drunkHoldWobble(this.drunkRng) : 0),
   };
   /** Logical buttons. action and duck are delayed while drunk (core/drunk.ts). */
   readonly buttons = {
@@ -315,6 +316,11 @@ export class Game {
   /** Runs `fn` at the end of the tick `ticks` ticks from now. */
   after(ticks: number, fn: () => void): void {
     this.scheduled.push({ at: this.state.frame + Math.max(1, Math.round(ticks)), fn });
+  }
+
+  /** Whether action / duck input is delayed right now (core/drunk.ts). */
+  private drunk(): boolean {
+    return this.state.mode === 'playing' && this.state.drunkTimer > 0;
   }
 
   private canStartFromInput(): boolean {
