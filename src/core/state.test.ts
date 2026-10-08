@@ -64,10 +64,11 @@ describe('wave 5b contract', () => {
     expect(state.zoneIndex).toBe(START_ZONE);
   });
 
-  it('starts without traffic and without a grind trick', () => {
+  it('starts without traffic, grind trick or air trick', () => {
     const state = createInitialState();
     expect(state.trafficDensity).toBe(0);
     expect(state.player.grindTrick).toBe(false);
+    expect(state.player.airTrick).toBe(false);
   });
 });
 

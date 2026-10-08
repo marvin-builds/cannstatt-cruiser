@@ -35,6 +35,14 @@ export interface PlayerState {
    * player. The player system sets it; gameplay scores it and emits grindTrick.
    */
   grindTrick: boolean;
+  /**
+   * Air trick (Stunt Wave B): down (duck) pressed while airborne high enough
+   * (after a kicker launch or a big jump) starts a kickflip-style trick. The
+   * player system sets it while the trick animation runs (it always finishes
+   * before the landing, so it never makes a landing harder); gameplay scores
+   * it and emits airTrick.
+   */
+  airTrick: boolean;
   state: PlayerAnim;
   /** Collision box in screen coordinates, kept up to date by the player system. */
   hitbox: Rect;
@@ -217,6 +225,8 @@ export interface GameEvents {
    * pass-by whoosh from it, so even light traffic is heard.
    */
   vehiclePassed: { kind: 'car' | 'van' | 'bus' | 'truck'; front: boolean; light: boolean };
+  /** Gameplay: an air trick (player.airTrick) was completed and the skater landed or caught a ledge, scoring points. */
+  airTrick: { ticks: number; points: number };
   /** Gameplay: a grind trick (player.grindTrick) ended while still on the rail or bench, scoring points. */
   grindTrick: { entityId: number; ticks: number; points: number };
   /** Gameplay: the skater used the carried item (use button); state.carriedItem is cleared. */
