@@ -12,7 +12,7 @@
  * Drunk: while the player may ride a pattern drunk (SpawnSituation.drunk:
  * drunk, or a Maßkrug in hand or flying there; and the street a quick
  * drinker reaches after a Wasen visitor with a Maßkrug, BEER_REACH) only easy
- * patterns come, fair for the drunk input delay, with a wider gap. When the
+ * patterns come, fair for the drunk input, with a longer run-up. When the
  * situation turns drunk, sober patterns planned ahead but not yet on the
  * street are planned again (and every plan after them).
  *
@@ -29,7 +29,7 @@ import type { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { CHILL_SPEED_SCALE } from './chill';
 import { gapAt, speedAt, tierAt } from './difficulty';
-import { DRUNK_GAP_SECONDS, takeoffWindowAt } from './fairness';
+import { takeoffWindowAt } from './fairness';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
@@ -269,7 +269,7 @@ export class Spawner {
       }
       pattern = yield* planSteps(rng, tierAt(street), speeds, options);
     }
-    const advance = pattern.length + gapAt(street) + (drunk ? Math.round(DRUNK_GAP_SECONDS * Math.max(...speeds)) : 0);
+    const advance = pattern.length + gapAt(street);
     this.cursor.previous = pattern.pieces.map((p) => shifted(p, -advance));
     if (!kidMode) {
       for (const p of pattern.pieces) {

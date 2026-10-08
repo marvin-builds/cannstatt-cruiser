@@ -13,10 +13,11 @@
  *   there are >= PERSON_ROOM_SECONDS of free street on both sides and nobody
  *   walks into other obstacles.
  * - while the player may be drunk (spawner.ts) patterns come only from
- *   DRUNK_TEMPLATES (no people, nothing overhead, no rails) with a wider
- *   gap, and must stay fair for the worst-case drunk input (drunkFairness:
- *   the window grows by the press delay range, every hold may come out
- *   shorter or longer by the release delay range).
+ *   DRUNK_TEMPLATES (no people, nothing overhead, no rails) with a longer
+ *   run-up, and must stay fair for the worst-case drunk
+ *   input (drunkFairness: the window grows by the press delay range, and the
+ *   player holds on long enough that every hold wobble still gives a full
+ *   jump).
  * The touch decision delay (core/input.ts, up to 5 ticks) is a constant lag a
  * player learns, not jitter, so it does not narrow the window.
  * src/gameplay/fairness.test.ts and the human bot (human-bot-*.test.ts) hold
@@ -45,29 +46,55 @@ export function takeoffWindowAt(street: number): number {
 /** Free street before and after every person, in seconds of riding at the current speed. */
 export const PERSON_ROOM_SECONDS = 1;
 
-/** The only templates (patterns.ts) planned while the player may be drunk: lone or paired ground obstacles and stars. */
-export const DRUNK_TEMPLATES = ['single', 'stars', 'pair'] as const;
+/** The only templates (patterns.ts) planned while the player may be drunk: lone or paired ground obstacles (no empty star patterns: drunk streets still have something to jump). */
+export const DRUNK_TEMPLATES = ['single', 'pair'] as const;
 
-/** Extra empty street between drunk patterns, in seconds of riding. */
-export const DRUNK_GAP_SECONDS = 0.8;
+
+/** A full press in ticks: holding longer adds no height (player/tuning.ts MAX_JUMP_HOLD). */
+export const FULL_PRESS = HUMAN_HOLDS[HUMAN_HOLDS.length - 1];
+
+/**
+ * How long a drunk player holds the button: so long that even the shortest
+ * outcome of drunkWindow (release delay and hold wobble, core/drunk.ts) is a
+ * full press. Hold lengths are a lottery while drunk, so a player who knows it
+ * holds on (~0.7 s) and always gets the full jump.
+ */
+export const DRUNK_HOLD = drunkHoldFor(FULL_PRESS);
+
+function drunkHoldFor(full: number): number {
+  let hold = full;
+  while (drunkWindow(hold).holdMin < full) hold++;
+  return hold;
+}
+
+/** A human margin for the solver (Solver.fair): take-off window, the holds a player uses and how far each may be off. */
+export interface Margin {
+  window: number;
+  holds: readonly number[];
+  spread: number;
+}
+
+/** The sober margin: the human take-off window with HUMAN_HOLDS, holds exact. */
+export function soberFairness(window: number): Margin {
+  return { window, holds: HUMAN_HOLDS, spread: 0 };
+}
 
 /**
  * The margin a drunk player needs on top of the human `window`: every press
  * arrives drunkWindow's pressMin..pressMax ticks late (a constant lag the
- * player learns plus jitter that widens the window), and every hold may come
- * out `spread` ticks shorter or longer.
+ * player learns plus jitter that widens the window), and the player holds
+ * DRUNK_HOLD, whose every outcome (DRUNK_HOLD +- spread) is a full jump.
  */
-export function drunkFairness(window: number): { window: number; spread: number } {
-  const hold = HUMAN_HOLDS[0];
-  const w = drunkWindow(hold);
-  return { window: window + w.pressMax - w.pressMin, spread: w.holdMax - hold };
+export function drunkFairness(window: number): Margin {
+  const w = drunkWindow(DRUNK_HOLD);
+  return { window: window + w.pressMax - w.pressMin, holds: [DRUNK_HOLD], spread: w.holdMax - DRUNK_HOLD };
 }
 
 /** Every take-off on the course (also after landing) leaves a human take-off window of `window` ticks, at every pace. */
 export function humanFairAtAll(course: Course, paces: (number | Pace)[], window = LATE_TAKEOFF_WINDOW): boolean {
   return humanFair(
     paces.map((pace) => new Solver(course, pace)),
-    window,
+    soberFairness(window),
   );
 }
 
@@ -76,12 +103,8 @@ export function solversFor(course: Course, paces: readonly (number | Pace)[], bu
   return paces.map((pace) => new Solver(course, pace, { budget }));
 }
 
-/**
- * Like humanFairAtAll, with one solver per pace (the caller can reuse their
- * caches afterwards); `spread`: holds may come out that much shorter or
- * longer (drunk, see drunkFairness).
- */
-export function humanFair(solvers: Solver[], window = LATE_TAKEOFF_WINDOW, spread = 0): boolean {
+/** Like humanFairAtAll, with one solver per pace (the caller can reuse their caches afterwards) and any margin (drunk: drunkFairness). */
+export function humanFair(solvers: Solver[], margin: Margin = soberFairness(LATE_TAKEOFF_WINDOW)): boolean {
   // Fair implies solvable: the cheap frame-perfect check rejects most bad courses first and warms the solvers' caches.
-  return solvers.every((s) => s.solvable()) && solvers.every((s) => s.fair(HUMAN_HOLDS, window, groundBody(), spread));
+  return solvers.every((s) => s.solvable()) && solvers.every((s) => s.fair(margin.holds, margin.window, groundBody(), margin.spread));
 }

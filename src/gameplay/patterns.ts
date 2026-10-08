@@ -23,7 +23,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
 import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
-import { DRUNK_TEMPLATES, drunkFairness, HUMAN_HOLDS, humanFair, LATE_TAKEOFF_WINDOW, solversFor } from './fairness';
+import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
@@ -86,9 +86,12 @@ const JUMP_THEN_DUCK: [number, number] = [52, 130];
 const OBSTACLE_TO_RAIL: [number, number] = [26, 78];
 const RAIL_TO_OBSTACLE: [number, number] = [26, 91];
 
-/** Free run-up before the first piece, growing with speed. */
-function leadFor(speed: number): number {
-  return Math.round(20 + 0.3 * speed);
+/** Extra run-up while the player may be drunk, in seconds of riding: the late, full drunk jumps take off far before the piece. */
+const DRUNK_LEAD_SECONDS = 0.4;
+
+/** Free run-up before the first piece, growing with speed (longer while the player may be drunk). */
+function leadFor(speed: number, drunk = false): number {
+  return Math.round(20 + 0.3 * speed + (drunk ? DRUNK_LEAD_SECONDS * speed : 0));
 }
 
 /** Room after the last piece in which the player must be back on the ground (a late landing still lands here). */
@@ -105,8 +108,9 @@ class Builder {
     readonly rng: Rng,
     private readonly speed: number,
     private readonly zone: number,
+    drunk: boolean,
   ) {
-    this.lead = leadFor(speed);
+    this.lead = leadFor(speed, drunk);
   }
 
   /**
@@ -292,24 +296,24 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   const before = lastPieces((options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind)));
   const drunk = options.drunk ?? false;
   const human = options.window ?? LATE_TAKEOFF_WINDOW;
-  const { window, spread } = drunk ? drunkFairness(human) : { window: human, spread: 0 };
+  const margin = drunk ? drunkFairness(human) : soberFairness(human);
   const budget = options.budget;
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone, drunk);
-    const builder = new Builder(rng, fast, zone);
+    const builder = new Builder(rng, fast, zone, drunk);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = solversFor(courseOf(pattern), paces, budget);
-    if (!(yield* resumable(() => humanFair(solvers, window, spread)))) continue;
+    if (!(yield* resumable(() => humanFair(solvers, margin)))) continue;
     if (before.length > 0) {
-      const across = solversFor(courseAfter(pattern, before, leadFor(fast)), paces, budget);
-      if (!(yield* resumable(() => humanFair(across, window, spread)))) continue;
+      const across = solversFor(courseAfter(pattern, before, leadFor(fast, drunk)), paces, budget);
+      if (!(yield* resumable(() => humanFair(across, margin)))) continue;
     }
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
-    // Stars mark a jump a human can repeat (one of the human holds).
+    // Stars mark a jump a human can repeat (one of the margin's holds: the full jump while drunk).
     else if (rng.chance(STAR_CHANCE)) {
       const guide = solvers[paces.indexOf(slow)]!;
-      addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), HUMAN_HOLDS)))?.path ?? []);
+      addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), margin.holds)))?.path ?? []);
     }
     return pattern;
   }

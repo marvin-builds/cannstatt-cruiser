@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, DRUNK_DELAY_MAX, DRUNK_DELAY_MIN } from '../core/config';
+import { BASE_SPEED, TICK_DT } from '../core/config';
 import { drunkWindow } from '../core/drunk';
 import { Game } from '../core/game';
 import { Rng } from '../core/rng';
@@ -7,7 +7,8 @@ import type { EntityKind } from '../types';
 import { createGameplaySystem } from './index';
 import { isObstacle, isOverhead, isPerson, isRail } from './catalogue';
 import { speedAt } from './difficulty';
-import { DRUNK_TEMPLATES, drunkFairness, HUMAN_HOLDS, LATE_TAKEOFF_WINDOW } from './fairness';
+import { MAX_JUMP_HOLD } from '../player/tuning';
+import { DRUNK_HOLD, DRUNK_TEMPLATES, drunkFairness, FULL_PRESS, LATE_TAKEOFF_WINDOW } from './fairness';
 import { courseOf, planPattern, planSteps } from './patterns';
 import { Solver, type WorkBudget } from './solver';
 
@@ -24,11 +25,17 @@ function drunkPatterns() {
 }
 
 describe('patterns while drunk', () => {
-  it('the drunk margin follows drunkWindow: the press may come DRUNK_DELAY_MAX - MIN ticks later, each hold that much shorter or longer', () => {
-    const spread = DRUNK_DELAY_MAX - DRUNK_DELAY_MIN;
-    const w = drunkWindow(10);
-    expect(w.holdMax - 10).toBe(spread);
-    expect(drunkFairness(LATE_TAKEOFF_WINDOW)).toEqual({ window: LATE_TAKEOFF_WINDOW + w.pressMax - w.pressMin, spread });
+  it('the drunk margin follows drunkWindow: the press may come pressMax - pressMin ticks later, and the player holds on so long that every outcome is a full jump', () => {
+    const { window, holds, spread } = drunkFairness(LATE_TAKEOFF_WINDOW);
+    const w = drunkWindow(DRUNK_HOLD);
+    expect(window).toBe(LATE_TAKEOFF_WINDOW + w.pressMax - w.pressMin);
+    expect(holds).toEqual([DRUNK_HOLD]);
+    // The shortest outcome is still a full press (holding longer adds no height): the hold wobble cannot shrink the jump.
+    expect(DRUNK_HOLD - spread).toBe(w.holdMin);
+    expect(DRUNK_HOLD + spread).toBe(w.holdMax);
+    expect(w.holdMin).toBe(FULL_PRESS);
+    expect(FULL_PRESS).toBe(Math.ceil(MAX_JUMP_HOLD / TICK_DT));
+    expect(drunkWindow(DRUNK_HOLD - 1).holdMin).toBeLessThan(FULL_PRESS);
   });
 
   it('only easy templates: no people, nothing overhead, no rails, at most a pair', () => {
@@ -43,11 +50,11 @@ describe('patterns while drunk', () => {
     }
   });
 
-  it('every drunk pattern is fair with the worst-case drunk delay (wider window, holds +-spread)', () => {
+  it('every drunk pattern is fair with the worst-case drunk delay (wider window, every hold outcome)', () => {
     for (const { speed, pattern } of drunkPatterns()) {
-      const { window, spread } = drunkFairness(LATE_TAKEOFF_WINDOW);
+      const { window, holds, spread } = drunkFairness(LATE_TAKEOFF_WINDOW);
       const s = new Solver(courseOf(pattern), speed);
-      expect(s.fair(HUMAN_HOLDS, window, undefined, spread), JSON.stringify(pattern)).toBe(true);
+      expect(s.fair(holds, window, undefined, spread), JSON.stringify(pattern)).toBe(true);
     }
   });
 
@@ -55,6 +62,10 @@ describe('patterns while drunk', () => {
     const all = drunkPatterns();
     const withObstacles = all.filter(({ pattern }) => pattern.pieces.some((p) => isObstacle(p.kind)));
     expect(withObstacles.length / all.length).toBeGreaterThan(0.4);
+  });
+  it('has more than curb gaps: taller obstacles come too (a longer run-up leaves room for the drunk take-off window)', () => {
+    const kinds = new Set(drunkPatterns().flatMap(({ pattern }) => pattern.pieces.filter((p) => isObstacle(p.kind)).map((p) => p.kind)));
+    expect([...kinds].filter((k) => k !== 'curbGap'), [...kinds].join()).toHaveLength(4);
   });
 });
 

@@ -26,7 +26,7 @@
 import { TICK_DT } from '../core/config';
 import type { Rect } from '../types';
 import { type Body, copyBody, copyInto, groundBody, hitboxInto, hitboxOf, type MutableBody, snapToRailInto, stepBodyInto, stompInto } from './jumpsim';
-import { HITBOX_W } from '../player/tuning';
+import { HITBOX_W, MAX_JUMP_HOLD } from '../player/tuning';
 import { type Motion, motionOffset } from './motion';
 import { type Feet, landsOnHead, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
 
@@ -97,6 +97,8 @@ const KEY_TICKS = 1 << 14;
 const HORIZON = KEY_TICKS - 1;
 const KEY_SUPPORTS = 1 << 8;
 const KEY_HOLDS = 64;
+/** Ticks of a full press: holding longer adds no height (MAX_JUMP_HOLD), so longer holds fly like it. */
+const FULL_HOLD = Math.ceil(MAX_JUMP_HOLD / TICK_DT);
 /** Any rail landing window beats every ground landing window. */
 const GRIND_BONUS = 10_000;
 
@@ -519,7 +521,8 @@ export class Solver {
   }
 
   /** Presses now from a supported node and holds `hold` ticks, until supported again; null on a crash. */
-  private jump(node: Node, hold: number): Flight | null {
+  private jump(node: Node, held: number): Flight | null {
+    const hold = Math.min(held, FULL_HOLD);
     const key = this.keyOf(node) * KEY_HOLDS + hold;
     if (this.jumps.has(key)) return this.jumps.get(key)!;
     const flight = this.fly(node, hold);

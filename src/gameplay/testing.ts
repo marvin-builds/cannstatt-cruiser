@@ -11,7 +11,7 @@ import type { Entity, GameState, ObstacleKind } from '../types';
 import { chillSpeedFactor } from './chill';
 import { hitBox, isGrindable, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
-import { HUMAN_HOLDS } from './fairness';
+import { drunkFairness, HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
 import { LEDGE_FRONT_REACH } from './rules';
 import { type Course, HOLDS, type Jump, type Pace, Solver } from './solver';
@@ -193,8 +193,9 @@ export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, d
  * Plays like a real, imperfect human: plans like SolverBot but only with a
  * few hold lengths, and takes off up to `takeoffJitter` ticks early or late;
  * ducks with jittered timing. While drunk it presses DRUNK_LAG ticks early
- * (it feels the mean input delay, core/drunk.ts) and aims where the window
- * also absorbs the delay's spread. The jitter comes from its own `rng`, so
+ * (it feels the mean input delay, core/drunk.ts), aims where the window
+ * also absorbs the delay's spread and holds on for a sure full jump
+ * (fairness.ts drunkFairness). The jitter comes from its own `rng`, so
  * runs replay per seed. Same driving protocol as SolverBot.
  */
 export class HumanBot {
@@ -205,6 +206,8 @@ export class HumanBot {
   private holding = 0;
   /** Per overhead obstacle id: ticks of look-ahead before ducking. */
   private readonly duckLead = new Map<number, number>();
+  /** Whether the jump it waits for was planned drunk: a plan made sober is dropped when the drink kicks in. */
+  private plannedDrunk = false;
 
   constructor(
     private readonly rng: Rng,
@@ -218,12 +221,18 @@ export class HumanBot {
       return this.holding === 0 ? 'release' : null;
     }
     const p = state.player;
+    const drunk = state.drunkTimer > 0;
+    if (drunk !== this.plannedDrunk) {
+      this.plannedDrunk = drunk;
+      this.wait = -1;
+      this.idle = null;
+    }
     if (this.wait < 0) {
       if (!(p.grounded || p.grinding) || p.state === 'crash' || planKey(state) === this.idle) return null;
       // Aims where its jitter (and the drunk delay's spread) still lands somewhere fair, and grinds only when that window absorbs it.
-      const drunk = state.drunkTimer > 0;
-      const window = 2 * this.style.takeoffJitter + 1 + (drunk ? DRUNK_DELAY_MAX - DRUNK_DELAY_MIN : 0);
-      const jump = planJump(state, this.speedPinned, this.style.holds, window);
+      const human = 2 * this.style.takeoffJitter + 1;
+      const { window, holds } = drunk ? drunkFairness(human) : { window: human, holds: this.style.holds };
+      const jump = planJump(state, this.speedPinned, holds, window);
       this.idle = jump ? null : planKey(state);
       if (!jump) return null;
       const j = this.style.takeoffJitter;

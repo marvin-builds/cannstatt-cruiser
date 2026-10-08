@@ -259,3 +259,15 @@ describe('hold spread (drunk input: the release comes early or late)', () => {
     }
   });
 });
+
+describe('holds longer than a full press (a drunk player holding on)', () => {
+  it('fly exactly like the full press: holding longer adds no height, even far beyond the hold keys', () => {
+    const c = course([block(80, 10, 18)]);
+    for (let tick = 0; tick < 40; tick++) {
+      const primed = new Solver(c, BASE_SPEED);
+      // The next tick's full press is cached first: a long hold must not read another take-off's flight.
+      primed.jumpWorks(tick + 1, 20);
+      expect(primed.jumpWorks(tick, 20 + 64), `tick ${tick}`).toBe(new Solver(c, BASE_SPEED).jumpWorks(tick, 20));
+    }
+  });
+});

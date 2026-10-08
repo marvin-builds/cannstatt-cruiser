@@ -9,7 +9,8 @@
  * contacts and crashes (contacts.ts, health.ts), stomps on people with the
  * tossed item (stomp.ts, items.ts, toss.ts, item-art.ts), using the carried
  * item (use.ts: drink, eat, throw the ball, ball.ts; a Maßkrug kept too
- * long is drunk by itself, auto-drink.ts), grind tricks
+ * long is drunk by itself, auto-drink.ts), the item a person hit by the
+ * ball drops onto the street for the skater to pick up (drop.ts), grind tricks
  * (grind-trick.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts) and score/combo (scoring.ts).
  */
@@ -27,8 +28,9 @@ import { isLive, resolveContacts } from './contacts';
 import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
 import { GrindTrick } from './grind-trick';
-import { drawToss } from './item-art';
-import { ITEM_POINTS } from './items';
+import { DroppedItems } from './drop';
+import { drawDrops, drawToss } from './item-art';
+import { ITEM_POINTS, itemOf } from './items';
 import { anchorOf, moveTo } from './motion';
 import { addPoints, breakCombo } from './scoring';
 import { PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
@@ -49,7 +51,7 @@ interface Sparkle {
 /** Thrown balls get ids from here (the spawner counts from 1, the debug hook from 800 000). */
 const BALL_IDS = 700_000;
 
-/** The tossed item reached the hands: carry it, score the bonus, tell everyone. */
+/** The tossed item reached the hands (or a dropped one was picked up): carry it, score the bonus, tell everyone. */
 function catchItem(ctx: GameContext, item: CarriedItem | null): void {
   if (!item) return;
   ctx.state.carriedItem = item;
@@ -67,6 +69,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const situation: SpawnSituation = { drunk: false, kidMode: false };
   const sparkles: Sparkle[] = [];
   const toss = new ItemToss();
+  const drops = new DroppedItems();
   const trick = new GrindTrick();
   const autoDrink = new AutoDrink();
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
@@ -153,6 +156,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));
         sparkles.length = 0;
         toss.reset();
+        drops.reset();
         trick.reset();
         autoDrink.reset();
       });
@@ -175,6 +179,13 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         const person = ctx.state.entities.find((s) => s.id === e.entityId);
         if (person) toss.launch(e.item, { x: person.x + person.w / 2, y: person.y + 2 }, handsOf(ctx));
       });
+      // The person hit by the ball lets go of their item: it falls onto free street ahead.
+      ctx.bus.on('ballHit', (e) => {
+        const person = ctx.state.entities.find((s) => s.id === e.entityId);
+        if (!person) return;
+        const hand = { x: person.x + person.w / 2, y: person.y + Math.round(person.h / 3) };
+        drops.drop(itemOf(person, ctx.state.kidMode), hand, ctx.state.speed, freeStreet);
+      });
       ctx.bus.on('crash', () => toss.cancel());
       ctx.bus.on('itemCaught', () => autoDrink.reset());
       ctx.bus.on('itemUsed', () => autoDrink.reset());
@@ -192,8 +203,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       trick.update(ctx);
       useCarriedItem(ctx, ballThrower, autoDrink.due(state));
       updateBalls(ctx, dt, freeStreet);
+      drops.update(dx, dt);
       // Before the contacts, so an item tossed by this tick's stomp starts flying next tick.
       catchItem(ctx, toss.update(handsOf(ctx), dt));
+      if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
       resolveContacts(ctx);
       despawn(state.entities);
       updateSparkles(dx);
@@ -211,6 +224,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
           const e = entities[i]!;
           if (isLive(e) && !isRail(e.kind) && !isPickup(e)) drawEntity(g, e, state, scrollLead);
         }
+        drawDrops(g, drops, state.frame, scrollLead);
         for (let i = 0; i < entities.length; i++) {
           const e = entities[i]!;
           if (isLive(e) && isPickup(e)) drawEntity(g, e, state, scrollLead);
