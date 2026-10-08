@@ -12,6 +12,7 @@ import { ITEM_SPRITES } from './item-art';
 import { ComposedCache } from './composed';
 import { drawOverhead, isOverheadArt, overheadSize, warmOverheads } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
+import { drawStunt } from './stunt-art';
 
 const K = '#1a1418';
 
@@ -279,6 +280,10 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
     case 'ball':
       // The thrown football (types.ts): the same art as the carried and tossed one.
       ITEM_SPRITES.football.draw(g, 0, x, y);
+      return;
+    case 'kicker':
+    case 'ledge':
+      drawStunt(g, e, x);
       return;
     case 'joint':
       // Bobs gently like the stars; the smoke curls (or the gum shines) every 16 ticks.

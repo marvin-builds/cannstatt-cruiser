@@ -193,7 +193,8 @@ describe('fair people: the street around them (spawner rides, 20 seeds x 3 min)'
         }
       }
     }
-    expect(people).toBeGreaterThan(100);
+    // Stunt lines (no people) take some of the street.
+    expect(people).toBeGreaterThan(80);
   }, 60_000);
 });
 

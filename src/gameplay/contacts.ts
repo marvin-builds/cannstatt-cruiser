@@ -1,6 +1,6 @@
 /**
- * Per-tick contacts between the player's hitbox and the entities: rail and
- * bench landings (grindStart; coming down anywhere on the bench top, from its
+ * Per-tick contacts between the player's hitbox and the entities: rail,
+ * stunt ledge (with its magnet) and bench landings (grindStart; coming down anywhere on the bench top, from its
  * front corner to its rear end, grinds, and landing behind it never crashes),
  * stomps on people's heads, crashes (a bin that swallows the skater leaves the
  * street at once), clean clears, star and joint pickups.
@@ -10,9 +10,9 @@
 import { TICK_DT } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, PlayerState, Rect } from '../types';
 import { collectJoints } from './chill';
-import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
+import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isLedge, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
 import { crashInto } from './health';
-import { feetOf, LEDGE_FRONT_REACH, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
+import { feetOf, LEDGE_FRONT_REACH, landsOnHighLedge, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
 import { addPoints, addTrick } from './scoring';
 import { stompPeople } from './stomp';
 
@@ -37,7 +37,7 @@ function landOnRails(ctx: GameContext): void {
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i]!;
     if (!isLive(e) || !isGrindable(e.kind) || e.done) continue;
-    if (!(isRail(e.kind) ? landsOnRail(f, e) : landsOnLedge(f, e))) continue;
+    if (!(isRail(e.kind) ? landsOnRail(f, e) : isLedge(e.kind) ? landsOnHighLedge(f, e) : landsOnLedge(f, e))) continue;
     ctx.bus.emit('grindStart', { entityId: e.id });
     if (ctx.state.player.grinding) addTrick(ctx.state, ctx.bus, GRIND_LANDING_POINTS);
     return;
