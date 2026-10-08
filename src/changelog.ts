@@ -20,6 +20,17 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.5',
+    date: '2026-10-08',
+    items: [
+      'Kindermodus ohne Rechenaufgabe',
+      'Weniger leere Straße bei Effekten',
+      'Update-Hinweis auch nach App-Wechsel',
+      'Kein Dauerbrummen außerhalb Mitte',
+      'Aufgeräumter Titel am Handy',
+    ],
+  },
+  {
     version: '2026-10-08.4',
     date: '2026-10-08',
     items: [
