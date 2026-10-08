@@ -95,6 +95,9 @@ async function stomp(t: PlaytestContext, kind: 'vfbFan' | 'wasenGuest', zone: nu
   await t.game.step(plan.hold);
   await t.game.release();
   await stepWhile(t, (x) => !x.entities.some((e) => typeof e.data?.stompedAt === 'number'), { max: 120 });
+  const stompFrame = (await t.game.state()).frame - 1;
+  const scored = await t.game.eventsSince(stompFrame, 'obstacleCleared');
+  t.check(`${label}: the stomp scores at impact (obstacleCleared -> +points popup and clear sound)`, scored.some((e) => { const p = e.payload as { kind: string; points: number }; return p.kind === kind && p.points > 0; }), scored);
   // Slow the street so the person stays in view for the dazed and laughing shots.
   await t.game.setSpeed(20);
   await t.game.step(3);

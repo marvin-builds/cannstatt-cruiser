@@ -51,12 +51,17 @@ export function stepBot(game: Game, bot: HumanBot): void {
   game.tick();
 }
 
-/** The human bot rides `seconds` of a seeded run at the real difficulty speed; health never runs out. */
-export function rideHuman(seed: number, seconds: number): HumanRun {
+/**
+ * The human bot rides `seconds` of a seeded run at the real difficulty speed
+ * from street distance `from` (0 = the run start; past the ramps = full
+ * difficulty); health never runs out.
+ */
+export function rideHuman(seed: number, seconds: number, from = 0): HumanRun {
   const game = new Game({ systems: [createPlayerSystem(), createGameplaySystem()] });
   game.seed(seed);
   game.commands.startRun();
   game.state.health = Number.MAX_SAFE_INTEGER;
+  game.state.distance = from;
   const run: HumanRun = { seed, seconds, crashes: [], stomps: 0, score: 0 };
   game.bus.on('crash', (e) => {
     const near = nearby(game.state);

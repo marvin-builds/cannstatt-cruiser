@@ -6,7 +6,8 @@
  * jumpsim.ts), difficulty (difficulty.ts) and the chill effect (chill.ts),
  * contacts and crashes (contacts.ts, health.ts), stomps on people with the
  * tossed item (stomp.ts, items.ts, toss.ts, item-art.ts), the human margins
- * around people (fairness.ts) and score/combo (scoring.ts).
+ * for every take-off and around people (fairness.ts) and score/combo
+ * (scoring.ts).
  */
 import { Rng } from '../core/rng';
 import { testHookEnabled } from '../core/testhook';

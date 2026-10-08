@@ -2,9 +2,10 @@
  * Stomps: the falling skater's board lands on a person's head. That is no
  * crash: the person tumbles over and sits up dazed (people-art.ts draws it
  * from `data.stompedAt`), stops moving and stays harmless (done), the stomp
- * counts as a trick, and gameplay emits `stomp` with the item the person
- * carried; the player bounces off on the next tick (player contract) and the
- * item flies to the skater's hands (toss.ts).
+ * counts as a trick scored like a clean clear (`obstacleCleared`), and
+ * gameplay emits `stomp` with the item the person carried; the player
+ * bounces off on the next tick (player contract) and the item flies to the
+ * skater's hands (toss.ts).
  */
 import type { Entity, GameContext, ObstacleKind } from '../types';
 import { hitBox, isPerson, OBSTACLES } from './catalogue';
@@ -29,6 +30,8 @@ function stomp(ctx: GameContext, e: Entity): void {
   e.done = true;
   // Sits where it fell: no more walking or swaying.
   e.data = { ...e.data, walk: 0, sway: 0, ax: e.x, stompedAt: state.time };
-  addTrick(state, ctx.bus, OBSTACLES[e.kind as ObstacleKind].points);
+  const points = addTrick(state, ctx.bus, OBSTACLES[e.kind as ObstacleKind].points);
+  // Scored like a clean clear, so the usual +points popup and clear sound come at impact.
+  ctx.bus.emit('obstacleCleared', { entityId: e.id, kind: e.kind, points });
   ctx.bus.emit('stomp', { entityId: e.id, kind: e.kind, item: itemOf(e, state.kidMode) });
 }

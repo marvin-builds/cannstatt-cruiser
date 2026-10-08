@@ -111,6 +111,9 @@ export class Solver {
   private readonly rails: Rect[];
   private readonly stomps: boolean;
   private readonly memo = new Map<string, boolean>();
+  /** wait() and jump() results per node (and hold): the searches visit the same nodes many times. */
+  private readonly waits = new Map<string, Node | null>();
+  private readonly jumps = new Map<string, Flight | null>();
 
   constructor(
     private readonly course: Course,
@@ -133,7 +136,7 @@ export class Solver {
   /** Pressing after `tick` ticks of riding, holding `hold` ticks, passes the course. */
   jumpWorks(tick: number, hold: number, start: Body = groundBody()): boolean {
     const node = this.rideTo(start, tick);
-    const flight = node && this.fly(node, hold);
+    const flight = node && this.jump(node, hold);
     return !!flight && this.solve(flight);
   }
 
@@ -141,18 +144,22 @@ export class Solver {
    * The most forgiving first jump: the middle of the widest window of
    * take-off ticks (per hold) that still passes the course, preferring rail
    * landings. Null when nothing works, or when riding on passes and no rail
-   * can be reached.
+   * can be reached. With a `humanWindow`, plans like a human: the jump must
+   * land where the rest is fair (see fair) for `holds` and that window, and
+   * a rail landing is preferred only when its window is that wide (a human
+   * skips a grind too tight to hit).
    */
-  bestJump(start: Body = groundBody(), holds: readonly number[] = HOLDS): Jump | null {
+  bestJump(start: Body = groundBody(), holds: readonly number[] = HOLDS, humanWindow = 0): Jump | null {
+    const passes = humanWindow > 0 ? this.fairJudge(holds, humanWindow) : undefined;
     let best: { score: number; tick: number; hold: number } | null = null;
-    for (const w of this.windows(start, holds)) {
-      const score = w.ticks.length + (w.grinds ? GRIND_BONUS : 0);
+    for (const w of this.windows({ tick: 0, body: start, stomped: 0 }, holds, passes)) {
+      const score = w.ticks.length + (w.grinds && w.ticks.length >= humanWindow ? GRIND_BONUS : 0);
       if (!best || score > best.score) best = { score, tick: w.ticks[w.ticks.length >> 1]!, hold: w.hold };
     }
     if (!best) return null;
     const { tick, hold } = best;
-    const flight = this.fly(this.rideTo(start, tick)!, hold)!;
-    if (!flight.body.onRail && this.ridesThrough(start)) return null;
+    const flight = this.jump(this.rideTo(start, tick)!, hold)!;
+    if (!flight.body.onRail && this.ridesThrough({ tick: 0, body: start, stomped: 0 })) return null;
     return { tick, hold, grinds: flight.body.onRail, path: flight.path };
   }
 
@@ -161,18 +168,78 @@ export class Solver {
    * whose first jump passes the course (0 when no jump does).
    */
   takeoffWindow(holds: readonly number[] = HOLDS, start: Body = groundBody()): number {
-    return Math.max(0, ...this.windows(start, holds).map((w) => w.ticks.length));
+    return Math.max(0, ...this.windows({ tick: 0, body: start, stomped: 0 }, holds).map((w) => w.ticks.length));
   }
 
-  /** Every run of consecutive working take-off ticks, per hold (a run also ends where grinding starts or stops). */
-  private windows(start: Body, holds: readonly number[]): Window[] {
-    // A first jump has to happen before the player is past the first piece,
-    // and must not land before reaching it (a useless hop, e.g. in front of an
-    // overhead obstacle, which is ducked under, not jumped).
-    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)];
-    const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
-    const firstStart = Math.min(...pieces.map((r) => r.x));
-    const useful = (f: Flight) => f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart;
+  /**
+   * The human margin for the whole course, not only the first jump: every
+   * take-off on the way has a run of >= `window` consecutive ticks with one
+   * of `holds` whose jump lands where the rest is fair again (recursively),
+   * so a human hitting any tick of that run is never left with a take-off
+   * that needs frame-perfect timing or an in-between hold. Riding through
+   * (ducking) and rolling off a rail need no timing.
+   */
+  fair(holds: readonly number[], window: number, start: Body = groundBody()): boolean {
+    return this.fairJudge(holds, window)({ tick: 0, body: start, stomped: 0 });
+  }
+
+  /** Whether the course is fair from a supported node on (see fair), memoised per call. */
+  private fairJudge(holds: readonly number[], window: number): (node: Node) => boolean {
+    const memo = new Map<string, boolean>();
+    const fairFrom = (node: Node): boolean => {
+      if (this.x(node.tick) > this.course.limit) return false;
+      if (this.passed(node)) return true;
+      const key = this.keyOf(node);
+      const known = memo.get(key);
+      if (known !== undefined) return known;
+      memo.set(key, false);
+      const rolled = node.body.onRail ? this.rollOff(node) : null;
+      const ok = this.ridesThrough(node) || (!!rolled && fairFrom(rolled)) || this.hasRun(node, holds, window, fairFrom);
+      memo.set(key, ok);
+      return ok;
+    };
+    return fairFrom;
+  }
+
+  /**
+   * Whether `window` consecutive take-offs from `from` with one hold all
+   * pass. Tests the last tick of a candidate run first and restarts after
+   * any failure, so most ticks of a hopeless stretch are never flown.
+   */
+  private hasRun(from: Node, holds: readonly number[], window: number, passes: (f: Flight) => boolean): boolean {
+    const { nodes, useful } = this.takeoffs(from);
+    // Longest hold first: it clears most pieces, so the search usually ends early.
+    for (const hold of [...holds].sort((a, b) => b - a)) {
+      const known = new Map<number, boolean>();
+      const works = (i: number) => {
+        let ok = known.get(i);
+        if (ok === undefined) {
+          const flight = this.jump(nodes[i]!, hold);
+          ok = !!flight && useful(flight) && passes(flight);
+          known.set(i, ok);
+        }
+        return ok;
+      };
+      let first = 0;
+      search: while (first + window <= nodes.length) {
+        for (let i = first + window - 1; i >= first; i--) {
+          if (works(i)) continue;
+          first = i + 1;
+          continue search;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Every run of consecutive take-off ticks from `from`, per hold, whose jump
+   * `passes` (default: the rest is solvable); a run also ends where grinding
+   * starts or stops.
+   */
+  private windows(from: Node, holds: readonly number[], passes = (f: Flight) => this.solve(f)): Window[] {
+    const { nodes, useful } = this.takeoffs(from);
     const found: Window[] = [];
     for (const hold of holds) {
       let run: Window = { hold, ticks: [], grinds: false };
@@ -180,37 +247,70 @@ export class Solver {
         if (run.ticks.length > 0) found.push(run);
         run = { hold, ticks: [], grinds: false };
       };
-      let node: Node | null = { tick: 0, body: start, stomped: 0 };
-      while (node && !this.passed(node) && this.x(node.tick) <= lastTakeoff) {
-        const flight = this.fly(node, hold);
-        if (flight && useful(flight) && this.solve(flight)) {
+      for (const node of nodes) {
+        const flight = this.jump(node, hold);
+        if (flight && useful(flight) && passes(flight)) {
           if (run.ticks.length > 0 && flight.body.onRail !== run.grinds) close();
           run.grinds = flight.body.onRail;
           run.ticks.push(node.tick);
         } else close();
-        node = this.wait(node);
       }
       close();
     }
     return found;
   }
 
-  private ridesThrough(start: Body): boolean {
-    let node: Node | null = { tick: 0, body: start, stomped: 0 };
+  /**
+   * The supported nodes riding on from `from` at which a jump can still
+   * matter, and which flights are useful: a jump has to happen before the
+   * player is past the next piece (the rail being ridden aside), and must
+   * land on another rail or past that piece's start, not before it (a
+   * useless hop, e.g. in front of an overhead obstacle, which is ducked
+   * under, not jumped, or back onto the same rail).
+   */
+  private takeoffs(from: Node): { nodes: Node[]; useful: (f: Flight) => boolean } {
+    const behind = hitboxOf(from.body, this.x(from.tick)).x;
+    const ridden = (b: Body, r: Rect) => b.onRail && r.y === b.railTop && r.x + r.w === b.railEnd;
+    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)].filter(
+      (r) => r.x + r.w > behind && !ridden(from.body, r),
+    );
+    const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
+    const firstStart = Math.min(...pieces.map((r) => r.x));
+    const sameRail = (f: Flight) => from.body.onRail && f.body.onRail && f.body.railTop === from.body.railTop && f.body.railEnd === from.body.railEnd;
+    const nodes: Node[] = [];
+    for (let node: Node | null = from; node && !this.passed(node) && this.x(node.tick) <= lastTakeoff; node = this.wait(node)) nodes.push(node);
+    return { nodes, useful: (f) => !sameRail(f) && (f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart) };
+  }
+
+  /** Riding on without jumping (ducking where needed, rolling off rails) passes the course. */
+  private ridesThrough(from: Node): boolean {
+    let node: Node | null = from;
     while (node && !this.passed(node)) node = this.wait(node);
     return !!node && this.x(node.tick) <= this.course.limit;
+  }
+
+  /** Rides a rail to its end and falls off: the next support that is not this rail, or null on a crash. */
+  private rollOff(node: Node): Node | null {
+    const { railTop, railEnd } = node.body;
+    let next: Node | null = node;
+    while (next && next.body.onRail && next.body.railTop === railTop && next.body.railEnd === railEnd) next = this.wait(next);
+    return next;
+  }
+
+  private keyOf(node: Node): string {
+    return `${node.tick}|${node.body.onRail ? `${node.body.railTop}:${node.body.railEnd}` : 'g'}|${node.stomped}`;
   }
 
   private solve(node: Node): boolean {
     if (this.x(node.tick) > this.course.limit) return false;
     if (this.passed(node)) return true;
-    const key = `${node.tick}|${node.body.onRail ? `${node.body.railTop}:${node.body.railEnd}` : 'g'}|${node.stomped}`;
+    const key = this.keyOf(node);
     const known = this.memo.get(key);
     if (known !== undefined) return known;
     this.memo.set(key, false);
     let ok = false;
     for (const hold of HOLDS) {
-      const flight = this.fly(node, hold);
+      const flight = this.jump(node, hold);
       if (flight && this.solve(flight)) {
         ok = true;
         break;
@@ -232,19 +332,31 @@ export class Solver {
     return this.pace.x(tick);
   }
 
-  /** Rides without input for `ticks` ticks; null on a crash or if the support is lost. */
+  /** Rides without input for `ticks` ticks; null on a crash, or when not supported at that tick (falling off a rail end). */
   private rideTo(start: Body, ticks: number): Node | null {
     let node: Node | null = { tick: 0, body: start, stomped: 0 };
-    for (let i = 0; i < ticks && node; i++) node = this.wait(node);
-    return node;
+    // A wait that rolls off a rail end returns after the fall, several ticks on.
+    while (node && node.tick < ticks) node = this.wait(node);
+    return node && node.tick === ticks ? node : null;
   }
 
   /** One tick without input from a supported node; rolling off a rail end falls to the next support. */
   private wait(node: Node): Node | null {
-    const next = this.advance(node, false, false);
-    if (!next) return null;
-    if (next.body.grounded || next.body.onRail) return next;
-    return this.fly(next, 0, false);
+    const key = this.keyOf(node);
+    if (this.waits.has(key)) return this.waits.get(key)!;
+    let next = this.advance(node, false, false);
+    if (next && !next.body.grounded && !next.body.onRail) next = this.fly(next, 0, false);
+    this.waits.set(key, next);
+    return next;
+  }
+
+  /** Presses now from a supported node and holds `hold` ticks, until supported again; null on a crash. */
+  private jump(node: Node, hold: number): Flight | null {
+    const key = `${this.keyOf(node)}|${hold}`;
+    if (this.jumps.has(key)) return this.jumps.get(key)!;
+    const flight = this.fly(node, hold);
+    this.jumps.set(key, flight);
+    return flight;
   }
 
   /** Jumps (press now, hold `hold` ticks) or keeps falling, until supported again; null on a crash. */

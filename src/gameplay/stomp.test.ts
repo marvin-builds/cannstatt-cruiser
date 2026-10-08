@@ -43,6 +43,18 @@ describe('stomp: landing on a person while falling', () => {
     expect(person.done).toBe(true);
   });
 
+  it('scores the stomp at impact like a clean clear: points and obstacleCleared (popup + sound) in the same tick', () => {
+    const { game, person } = dropOnto('vfbFan');
+    const stomps = record(game, 'stomp');
+    const cleared = record(game, 'obstacleCleared');
+    for (let i = 0; i < 30 && stomps.length === 0; i++) game.tick();
+    expect(stomps).toHaveLength(1);
+    expect(cleared).toEqual([{ entityId: person.id, kind: 'vfbFan', points: OBSTACLES.vfbFan.points }]);
+    expect(game.state.score).toBe(OBSTACLES.vfbFan.points);
+    tick(game, 30);
+    expect(cleared).toHaveLength(1);
+  });
+
   it('the skater bounces up on the next tick (player contract)', () => {
     const { game } = dropOnto('vfbFan');
     const stomps = record(game, 'stomp');

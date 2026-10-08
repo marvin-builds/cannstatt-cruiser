@@ -6,7 +6,7 @@
  * (427 px). On phone-portrait it taps the rotate hint away first.
  *   npm run playtest -- --scenario scripts/scenarios/gameplay.ts --viewports desktop,phone-landscape --name gameplay
  */
-import { MAX_SPEED } from '../../src/core/config';
+import { MAX_SPEED, PLAYER_X } from '../../src/core/config';
 import { SolverBot } from '../../src/gameplay/testing';
 import type { GameState } from '../../src/types';
 import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
@@ -28,10 +28,10 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
   /** Kinds already photographed on their first full appearance. */
   const shotKinds = new Set<string>();
   const stats: RideStats = { crashes: 0, popIns: [], grindShot: false, state: await game.state() };
-  const startFrame = stats.state.frame;
   for (const e of stats.state.entities) seen.add(e.id);
   let ducked = false;
-  for (let i = 0; i < ticks && stats.state.mode === 'playing'; i++) {
+  /** One tick with the bot's input (every tick goes through here, so the bot never loses count). */
+  const drive = async () => {
     const move = bot.next(stats.state);
     if (move === 'press') await game.press();
     if (move === 'release') await game.release();
@@ -40,7 +40,16 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
       await t.page.evaluate((d) => (d ? window.__game!.input.duck.press() : window.__game!.input.duck.release()), wantDuck);
       ducked = wantDuck;
     }
+    const health = stats.state.health;
     stats.state = await game.step(1);
+    if (stats.state.health < health) {
+      stats.crashes++;
+      const near = stats.state.entities.filter((e) => e.kind !== 'star' && Math.abs(e.x - PLAYER_X) < 120).map((e) => `${e.kind}@${Math.round(e.x - PLAYER_X)}`);
+      await t.log(`${label} crash`, { time: stats.state.time, near, player: stats.state.player });
+    }
+  };
+  for (let i = 0; i < ticks && stats.state.mode === 'playing'; i++) {
+    await drive();
     const { viewWidth } = await game.display();
     for (const e of stats.state.entities) {
       if (seen.has(e.id)) continue;
@@ -58,15 +67,13 @@ async function botRide(t: PlaytestContext, label: string, ticks: number, shotsAt
     if (shotsAt.includes(second)) await t.canvasShot(`${label} ${second}s zone ${stats.state.zoneIndex}`);
     if (!stats.grindShot && stats.state.player.state === 'grind') {
       const before = stats.state.score;
-      await game.step(6);
-      stats.state = await game.step(6);
+      for (let k = 0; k < 12; k++) await drive();
       await t.canvasShot(`${label} grind`);
       t.check(`${label}: grind ticks points`, stats.state.score > before, { before, after: stats.state.score });
       stats.grindShot = true;
     }
   }
   if (ducked) await t.page.evaluate(() => window.__game!.input.duck.release());
-  stats.crashes = (await game.eventsSince(startFrame, 'crash')).length;
   return stats;
 }
 

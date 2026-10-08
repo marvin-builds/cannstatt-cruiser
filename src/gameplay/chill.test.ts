@@ -126,7 +126,7 @@ describe('joint spawning', () => {
       expect(jointTimes[0]).toBeGreaterThan(30);
       for (let i = 1; i < jointTimes.length; i++) expect(jointTimes[i]! - jointTimes[i - 1]!).toBeGreaterThanOrEqual(45);
     }
-  });
+  }, 60_000);
 
   it('everything that can come up while chilled is clearable with the chill jump, at chill speed and through the speed ramp back', () => {
     for (const seed of [1, 2, 3]) {

@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, MAX_SPEED, TICK_DT, VIEW_MAX_W } from '../core/config';
+import { BASE_SPEED, MAX_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Entity } from '../types';
 import { isObstacle, isPerson, isRail, obstacleRect } from './catalogue';
 import { CHILL_SPEED_SCALE } from './chill';
 import { speedAt } from './difficulty';
-import { HUMAN_HOLDS, MIN_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS } from './fairness';
+import { HUMAN_HOLDS, humanFairAtAll, MIN_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS } from './fairness';
 import { ZoneRoute } from '../world/zones';
 import { anchorOf, motionOf, moveTo } from './motion';
 import { courseOf, type Pattern, type Piece, planPattern } from './patterns';
-import { constantPace, Solver } from './solver';
+import { buildCourse } from './course';
+import { constantPace, type Pace, Solver } from './solver';
 import { Spawner } from './spawner';
 
 const CHILL_LOW = BASE_SPEED * CHILL_SPEED_SCALE;
@@ -67,6 +68,42 @@ describe('fair people: patterns', () => {
         expect(new Solver(course, v).solvable(), `${v} ${JSON.stringify(pattern.pieces)}`).toBe(true);
       }
     }
+  }, 30_000);
+});
+
+describe('fair for humans: every pattern, not only people', () => {
+  it('rejects a pair whose only way through needs an in-between hold (planter + barrier 28 px apart, 98 px/s)', () => {
+    const pieces: Piece[] = [
+      { kind: 'planter', ...obstacleRect('planter', 110) },
+      { kind: 'barrier', ...obstacleRect('barrier', 156) },
+    ];
+    const course = courseOf({ name: 'tight', pieces, length: 240 });
+    expect(new Solver(course, 98).solvable()).toBe(true);
+    expect(new Solver(course, 98).takeoffWindow(HUMAN_HOLDS)).toBeLessThan(MIN_TAKEOFF_WINDOW);
+    expect(humanFairAtAll(course, [98])).toBe(false);
+  });
+
+  it('a lone bin is fair at every speed: one window, nothing after it', () => {
+    const course = courseOf({ name: 'bin', pieces: [{ kind: 'bin', ...obstacleRect('bin', 60) }], length: 140 });
+    expect(humanFairAtAll(course, [BASE_SPEED, MAX_SPEED, constantPace(MAX_SPEED, CHILL_JUMP_SCALE)])).toBe(true);
+  });
+
+  it(`every take-off a pattern asks for, also after landing, has a human window of >= ${MIN_TAKEOFF_WINDOW} ticks (all tiers, 96-165 px/s)`, () => {
+    const tight: string[] = [];
+    for (let seed = 1; seed <= 12; seed++) {
+      const rng = new Rng(seed);
+      for (const v of [96, 110, 135, MAX_SPEED]) {
+        for (let i = 0; i < 10; i++) {
+          const p = planPattern(rng, 1 + (i % 3), [v], { zone: i % 3 });
+          const course = courseOf(p);
+          const window = new Solver(course, v).takeoffWindow(HUMAN_HOLDS);
+          const jumps = course.obstacles.length + course.rails.length + course.ledges!.length + course.movers!.length > 0;
+          const first = jumps && window < MIN_TAKEOFF_WINDOW;
+          if (first || !humanFairAtAll(course, [v])) tight.push(`${v} ${p.name} ${window}: ${JSON.stringify(p.pieces.map((x) => [x.kind, x.x]))}`);
+        }
+      }
+    }
+    expect(tight).toEqual([]);
   }, 30_000);
 });
 
@@ -129,5 +166,30 @@ describe('fair people: the street around them (spawner rides, 20 seeds x 3 min)'
       }
     }
     expect(people).toBeGreaterThan(100);
+  }, 60_000);
+});
+
+/** The street ridden from distance 0 at the difficulty speed: course x (= distance) after `tick` ticks. */
+function rampPace(): Pace {
+  const xs = [0];
+  return {
+    x(tick) {
+      for (let t = xs.length; t <= tick; t++) xs.push(xs[t - 1]! + speedAt(xs[t - 1]!) * TICK_DT);
+      return xs[tick]!;
+    },
+    jumpScale: () => 1,
+  };
+}
+
+describe('fair for humans: the whole street of a run (spawner rides, real speed ramp)', () => {
+  it(`every take-off of a 3 min run, across all pattern boundaries, has a human window of >= ${MIN_TAKEOFF_WINDOW} ticks`, () => {
+    for (const seed of [1, 2, 3]) {
+      // Street x of every piece, so x = 0 is the player at the run start.
+      const pieces: Piece[] = ride(seed, 180, () => {})
+        .filter((s) => blocking(s.e))
+        .map((s) => ({ ...s.e, x: s.street - PLAYER_X, data: s.e.data && { ...s.e.data, ax: s.street - PLAYER_X } }));
+      const course = buildCourse(pieces, 0, (goal) => goal + 400);
+      expect(new Solver(course, rampPace()).fair(HUMAN_HOLDS, MIN_TAKEOFF_WINDOW), `seed ${seed}`).toBe(true);
+    }
   }, 60_000);
 });

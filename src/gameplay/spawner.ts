@@ -25,7 +25,7 @@ const SPAWN_MARGIN = 16;
 const SPEED_SPAN = 500;
 
 /** Street distance before the first joint can come: over 30 s even at the start speed ramp. */
-export const JOINT_FIRST_DISTANCE = 3000;
+export const JOINT_FIRST_DISTANCE = 3300;
 /** Street distance between joints: at least 45 s even at MAX_SPEED (more while chilled)... */
 export const JOINT_SPACING = 7500;
 /** ...plus up to this much at random (also for the first one). */

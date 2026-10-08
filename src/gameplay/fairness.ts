@@ -1,12 +1,17 @@
 /**
- * Human-sized margins around people. The solver proves a pattern clearable
- * with frame-perfect input; a person (moving, as tall as the skater's tuck)
- * additionally gets room a real player can hit:
- * - a person always comes alone in its pattern (lead before, runout after), so
- *   with the gap between patterns there are >= PERSON_ROOM_SECONDS of free
- *   street on both sides and nobody walks into other obstacles;
- * - its pattern needs a take-off window of >= MIN_TAKEOFF_WINDOW consecutive
- *   ticks with one of HUMAN_HOLDS, at every speed (and chill jump) checked.
+ * Human-sized margins. The solver proves a pattern clearable with
+ * frame-perfect input; every pattern additionally leaves room a real player
+ * can hit:
+ * - every take-off on the way (the first one and each after a landing, also
+ *   across the boundary to the previous pattern) has a window of >=
+ *   MIN_TAKEOFF_WINDOW consecutive ticks with one of HUMAN_HOLDS, at every
+ *   speed (and chill jump) checked (Solver.fair);
+ * - a person (moving, as tall as the skater's tuck) always comes alone in its
+ *   pattern (lead before, runout after), so with the gap between patterns
+ *   there are >= PERSON_ROOM_SECONDS of free street on both sides and nobody
+ *   walks into other obstacles.
+ * The touch decision delay (core/input.ts, up to 5 ticks) is a constant lag a
+ * player learns, not jitter, so it does not narrow the window.
  * src/gameplay/fairness.test.ts and the human bot (human-bot-*.test.ts) hold
  * the spawner to it.
  */
@@ -22,7 +27,13 @@ export const MIN_TAKEOFF_WINDOW = 9;
 /** Free street before and after every person, in seconds of riding at the current speed. */
 export const PERSON_ROOM_SECONDS = 1;
 
-/** The course leaves a human take-off window at every pace. */
-export function humanWindowAtAll(course: Course, paces: (number | Pace)[]): boolean {
-  return paces.every((pace) => new Solver(course, pace).takeoffWindow(HUMAN_HOLDS) >= MIN_TAKEOFF_WINDOW);
+/** Every take-off on the course (also after landing) leaves a human take-off window, at every pace. */
+export function humanFairAtAll(course: Course, paces: (number | Pace)[]): boolean {
+  return humanFair(paces.map((pace) => new Solver(course, pace)));
+}
+
+/** Like humanFairAtAll, with one solver per pace (the caller can reuse their caches afterwards). */
+export function humanFair(solvers: Solver[]): boolean {
+  // Fair implies solvable: the cheap frame-perfect check rejects most bad courses first and warms the solvers' caches.
+  return solvers.every((s) => s.solvable()) && solvers.every((s) => s.fair(HUMAN_HOLDS, MIN_TAKEOFF_WINDOW));
 }

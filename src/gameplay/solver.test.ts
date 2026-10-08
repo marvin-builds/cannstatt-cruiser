@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, GROUND_Y, MAX_SPEED } from '../core/config';
+import { BASE_SPEED, GROUND_Y, MAX_SPEED, TICK_DT } from '../core/config';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import { railRect } from './catalogue';
 import type { Motion } from './motion';
+import { railBody } from './jumpsim';
 import { constantPace, type Course, Solver } from './solver';
 
 function block(x: number, w: number, h: number) {
@@ -97,6 +98,33 @@ describe('solver with ledges (grindable obstacles such as the bench)', () => {
   });
 });
 
+describe('planning from a rail', () => {
+  it('never plans a hop back onto the rail being ridden: rolling off the end is the plan', () => {
+    const rail = railRect(-20, 14, 140);
+    const s = new Solver(course([], [rail]), BASE_SPEED);
+    expect(s.bestJump(railBody(rail.y, rail.x + rail.w))).toBeNull();
+  });
+
+  it('times a jump after rolling off a rail end by the real tick count (the fall takes ticks too)', () => {
+    const rail = railRect(-20, 14, 60);
+    const s = new Solver(course([block(140, 10, 18)], [rail]), BASE_SPEED);
+    const start = railBody(rail.y, rail.x + rail.w);
+    const jump = s.bestJump(start)!;
+    expect(jump).not.toBeNull();
+    // The flight starts where the player is after jump.tick real ticks.
+    expect(jump.path[0]!.x).toBeCloseTo(BASE_SPEED * TICK_DT * (jump.tick + 1), 0);
+    expect(s.jumpWorks(jump.tick, jump.hold, start)).toBe(true);
+  });
+
+  it('plans a jump off the rail over an obstacle after it', () => {
+    const rail = railRect(-20, 14, 100);
+    const s = new Solver(course([block(110, 10, 18)], [rail]), BASE_SPEED);
+    const jump = s.bestJump(railBody(rail.y, rail.x + rail.w))!;
+    expect(jump.grinds).toBe(false);
+    expect(jump.path.at(-1)!.x).toBeGreaterThan(110);
+  });
+});
+
 describe('solver with moving obstacles', () => {
   const walker: Motion = { walk: 0.3, sway: 0, phase: 0 };
 
@@ -114,6 +142,17 @@ describe('solver with moving obstacles', () => {
 });
 
 describe('take-off window (human margin)', () => {
+  it('plans like a human with a `humanWindow`: a rail landing only when its window is that wide', () => {
+    // A barrier, then a low handrail 50 px on: grinding it needs a 2-tick take-off, jumping past it gets ~19.
+    const c = course([block(61, 7, 21)], [railRect(118, 10, 60)]);
+    const s = new Solver(c, 122);
+    expect(s.bestJump(undefined, [3, 10, 20])!.grinds).toBe(true);
+    const human = s.bestJump(undefined, [3, 10, 20], 9)!;
+    expect(human.grinds).toBe(false);
+    for (let t = human.tick - 4; t <= human.tick + 4; t++) expect(s.jumpWorks(t, human.hold), `tick ${t}`).toBe(true);
+  });
+
+
   it('counts the consecutive take-off ticks of the best hold that pass the course', () => {
     const c = course([block(80, 10, 18)]);
     const s = new Solver(c, BASE_SPEED);

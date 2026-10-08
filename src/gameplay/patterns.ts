@@ -4,8 +4,9 @@
  * pattern starts. Every pattern is verified with the clearability solver at
  * the given speeds (and with the chill jump at the chill speeds, where the
  * chill effect may be active), together with the end of the previous pattern
- * (`before`), and rerolled (finally replaced by a safe fallback) if it cannot
- * be passed. People come alone and need a human take-off window (fairness.ts).
+ * (`before`), and rerolled (finally replaced by empty street) if it cannot
+ * be passed, or if any take-off on the way (also across the boundary) leaves
+ * a human less than the take-off window of fairness.ts. People come alone.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
@@ -13,7 +14,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
 import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
-import { humanWindowAtAll } from './fairness';
+import { HUMAN_HOLDS, humanFair, humanFairAtAll } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
@@ -56,6 +57,13 @@ const MAX_STARS = 5;
 /** Minimum horizontal distance between stars of an arc. */
 const STAR_SPACING = 13;
 const ATTEMPTS = 10;
+/** Chance that two ground obstacles stand close (one jump for both) rather than open (a landing in between). */
+const CLOSE_CHANCE = 0.3;
+const CLOSE_GAP: [number, number] = [10, 25];
+/** An open gap is at least this many seconds of riding (it scales with the speed)... */
+const OPEN_GAP_SECONDS = 0.55;
+/** ...plus up to this much street. */
+const OPEN_GAP_SPREAD = 50;
 
 /** Free run-up before the first piece, growing with speed. */
 function leadFor(speed: number): number {
@@ -70,11 +78,27 @@ function runoutFor(speed: number): number {
 class Builder {
   readonly pieces: Piece[] = [];
 
+  readonly lead: number;
+
   constructor(
     readonly rng: Rng,
-    readonly lead: number,
+    private readonly speed: number,
     private readonly zone: number,
-  ) {}
+  ) {
+    this.lead = leadFor(speed);
+  }
+
+  /**
+   * Street between two ground obstacles a human can time at this speed:
+   * either close enough to clear both in one jump, or open enough to land in
+   * between and take off again. Gaps in between need an in-between hold or
+   * frame-perfect timing (fairness.ts would reject them).
+   */
+  spacing(): number {
+    if (this.rng.chance(CLOSE_CHANCE)) return this.rng.int(...CLOSE_GAP);
+    const open = Math.round(OPEN_GAP_SECONDS * this.speed);
+    return this.rng.int(open, open + OPEN_GAP_SPREAD);
+  }
 
   /** Right edge of everything placed so far (or the lead). */
   get end(): number {
@@ -131,7 +155,7 @@ const TEMPLATES: Template[] = [
     weight: 3,
     build: (b) => {
       b.obstacle(b.pick(), b.lead);
-      b.obstacle(b.pick(), b.end + b.rng.int(16, 80));
+      b.obstacle(b.pick(), b.end + b.spacing());
     },
   },
   { name: 'rail', tier: 1, weight: 2, build: (b) => void b.rail(b.railKind(), b.lead) },
@@ -184,7 +208,7 @@ const TEMPLATES: Template[] = [
     tier: 3,
     weight: 1,
     build: (b) => {
-      for (let i = 0; i < 3; i++) b.obstacle(b.pick(), i === 0 ? b.lead : b.end + b.rng.int(20, 70));
+      for (let i = 0; i < 3; i++) b.obstacle(b.pick(), i === 0 ? b.lead : b.end + b.spacing());
     },
   },
 ];
@@ -206,6 +230,17 @@ export function courseOf(pattern: Pattern, originX = 0): Course {
   return buildCourse(pattern.pieces, originX, () => pattern.length - originX);
 }
 
+/**
+ * The pieces a jump over the previous pattern's end deals with: its last
+ * piece and whatever lies under or over it. Earlier pieces were checked with
+ * that pattern, and leaving them out keeps the boundary check cheap.
+ */
+function lastPieces(before: Piece[]): Piece[] {
+  if (before.length === 0) return before;
+  const last = before.reduce((a, b) => (b.x + b.w > a.x + a.w ? b : a));
+  return before.filter((p) => p.x + p.w > last.x);
+}
+
 /** Free street the player starts from when a pattern is checked together with the previous one's pieces. */
 function runupBefore(before: Piece[], lead: number): number {
   return Math.min(0, ...before.map((p) => p.x)) - lead;
@@ -219,31 +254,30 @@ function runupBefore(before: Piece[], lead: number): number {
 export function planPattern(rng: Rng, tier: number, speeds: number[], options: PlanOptions = {}): Pattern {
   const slow = Math.min(...speeds);
   const fast = Math.max(...speeds, ...(options.chillSpeeds ?? []));
-  const paces = [...speeds, ...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE))];
+  // Chill paces first: the low chill jump rejects the most patterns, so checks fail fast.
+  const paces = [...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE)), ...speeds];
   const zone = options.zone ?? 0;
-  const before = (options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind));
+  const before = lastPieces((options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind)));
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone);
-    const builder = new Builder(rng, leadFor(fast), zone);
+    const builder = new Builder(rng, fast, zone);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
-    const course = courseOf(pattern);
-    if (!paces.every((pace) => new Solver(course, pace).solvable())) continue;
-    if (template.people && !humanWindowAtAll(course, paces)) continue;
+    const solvers = paces.map((pace) => new Solver(courseOf(pattern), pace));
+    if (!humanFair(solvers)) continue;
     if (before.length > 0 && !clearableAfter(pattern, before, leadFor(fast), paces)) continue;
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
-    else if (rng.chance(STAR_CHANCE)) addStars(pattern, new Solver(course, slow).bestJump()?.path ?? []);
+    // Stars mark a jump a human can repeat (one of the human holds).
+    else if (rng.chance(STAR_CHANCE)) addStars(pattern, solvers[paces.indexOf(slow)]!.bestJump(groundBody(), HUMAN_HOLDS)?.path ?? []);
     return pattern;
   }
-  const builder = new Builder(rng, leadFor(fast), 0);
-  builder.obstacle('bench', builder.lead);
-  return finish('fallback', builder.pieces, fast);
+  // Nothing fair found: a stretch of empty street (always fair, also after any previous pattern).
+  return finish('fallback', [], fast);
 }
 
-/** The previous pattern's pieces followed by `pattern` are clearable at every pace. */
+/** The previous pattern's pieces followed by `pattern` are fair for a human at every pace. */
 function clearableAfter(pattern: Pattern, before: Piece[], lead: number, paces: (number | Pace)[]): boolean {
-  const course = courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead));
-  return paces.every((pace) => new Solver(course, pace).solvable());
+  return humanFairAtAll(courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead)), paces);
 }
 
 /** A lone joint floating at riding height: collected by riding (or ducking) through it. */

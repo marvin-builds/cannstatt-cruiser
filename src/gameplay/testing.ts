@@ -72,9 +72,9 @@ export function paceOf(state: GameState, speedPinned = false): Pace {
   };
 }
 
-/** The solver's most forgiving next jump from the current support (trying `holds`), or null. */
-export function planJump(state: GameState, speedPinned = false, holds: readonly number[] = HOLDS): Jump | null {
-  return new Solver(courseAhead(state), paceOf(state, speedPinned)).bestJump(startBody(state), holds);
+/** The solver's most forgiving next jump from the current support (trying `holds`; see Solver.bestJump for `humanWindow`), or null. */
+export function planJump(state: GameState, speedPinned = false, holds: readonly number[] = HOLDS, humanWindow = 0): Jump | null {
+  return new Solver(courseAhead(state), paceOf(state, speedPinned)).bestJump(startBody(state), holds, humanWindow);
 }
 
 /** How far ahead (ticks) planStomp looks for a take-off. */
@@ -99,6 +99,17 @@ export function planStomp(state: GameState, speedPinned = false): { tick: number
   return null;
 }
 
+/**
+ * What a plan depends on besides the clock: the live entities, the support
+ * and whether the chill effect is on. A bot that found nothing to jump does
+ * not plan again until it changes (new entities only appear far ahead).
+ */
+function planKey(state: GameState): string {
+  const ahead = state.entities.filter((e) => live(e) && !e.done);
+  const newest = Math.max(0, ...ahead.map((e) => e.id));
+  return `${newest}|${ahead.length}|${state.player.grinding}|${state.chillTimer > 0}`;
+}
+
 /** Ticks of look-ahead for ducking: down a little early, like a careful human (ducked is never less safe on the ground). */
 const DUCK_LOOKAHEAD = 8;
 
@@ -110,6 +121,8 @@ const DUCK_LOOKAHEAD = 8;
  */
 export class SolverBot {
   private wait = -1;
+  /** planKey of the last plan that found nothing to jump. */
+  private idle: string | null = null;
   private hold = 0;
   private holding = 0;
 
@@ -123,8 +136,9 @@ export class SolverBot {
     }
     const p = state.player;
     if (this.wait < 0) {
-      if (!(p.grounded || p.grinding) || p.state === 'crash') return null;
+      if (!(p.grounded || p.grinding) || p.state === 'crash' || planKey(state) === this.idle) return null;
       const jump = planJump(state, this.speedPinned);
+      this.idle = jump ? null : planKey(state);
       if (!jump) return null;
       this.wait = jump.tick;
       this.hold = jump.hold;
@@ -170,6 +184,8 @@ export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, d
  */
 export class HumanBot {
   private wait = -1;
+  /** planKey of the last plan that found nothing to jump. */
+  private idle: string | null = null;
   private hold = 0;
   private holding = 0;
   /** Per overhead obstacle id: ticks of look-ahead before ducking. */
@@ -188,8 +204,10 @@ export class HumanBot {
     }
     const p = state.player;
     if (this.wait < 0) {
-      if (!(p.grounded || p.grinding) || p.state === 'crash') return null;
-      const jump = planJump(state, this.speedPinned, this.style.holds);
+      if (!(p.grounded || p.grinding) || p.state === 'crash' || planKey(state) === this.idle) return null;
+      // Aims where its jitter still lands somewhere fair, and grinds only when that window absorbs the jitter.
+      const jump = planJump(state, this.speedPinned, this.style.holds, 2 * this.style.takeoffJitter + 1);
+      this.idle = jump ? null : planKey(state);
       if (!jump) return null;
       const j = this.style.takeoffJitter;
       this.wait = Math.max(0, jump.tick + this.rng.int(-j, j));
