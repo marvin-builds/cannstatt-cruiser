@@ -85,7 +85,24 @@ export const GRAB_HEIGHT = 40;
 export const GRAB_RELEASE_HEIGHT = 12;
 /**
  * Landing impact (downward px/s) from which the landing squash is the hard
- * one (deeper, with dust): a drop from ~35 px, e.g. off the upper level or a
- * kicker launch. Looks only; the land event and the physics are unchanged.
+ * one (deeper, with dust): a drop of more than ~30 px (sqrt(2 * GRAVITY * 30)
+ * is ~279), e.g. off the upper level or a kicker launch. Looks only; the land
+ * event and the physics are unchanged.
  */
-export const HARD_LANDING_IMPACT = 300;
+export const HARD_LANDING_IMPACT = 280;
+
+/**
+ * Kicker look: the board rides up the ramp on its front wheel, this many px
+ * ahead of the contact point (the rear wheel is still on the street). The
+ * drawn skater is lifted to the ramp surface under it, minus the 1 px the
+ * nose-up board tilt already raises that wheel. Looks only.
+ */
+export const KICKER_WHEEL_REACH = 8;
+
+/** Air trick (kickflip, down pressed in the air): ticks it runs (0.35 s at 60 Hz). */
+export const AIR_TRICK_TICKS = 21;
+/**
+ * Height above the street from which down starts the air trick (always after
+ * a launch). A tap hop never has the air time left for it anyway.
+ */
+export const AIR_TRICK_HEIGHT = 20;

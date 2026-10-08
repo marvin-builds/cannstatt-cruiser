@@ -228,14 +228,17 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   drawTossedMug(g, skater.toss);
   if (!view.visible) return;
   const timeline = timelineFor(view, p.vy);
+  // The kickflip runs on the trick's own clock (it can start mid-air, in any animation state).
+  const animTime = timeline === 'kickflip' ? (view.airTrick ?? 0) : view.time;
   const style = chillStyle(state);
   // The bubble loop starts at the pickup, so it opens with a readable bubble.
   const time = style?.mouth === 'bubble' ? bubbleTime(state.chillTimer) : state.time;
-  const chill = style ? { style, timeline, time, animTime: view.time } : null;
+  const chill = style ? { style, timeline, time, animTime } : null;
   const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
   const frame = view.use && itemUseFrame(view.use.action, view.use.time);
   const use = view.use && frame ? { item: view.use.item, frame, timeline } : null;
   const drunk = drunkLook(state.drunkTimer, state.time);
-  drawPose(g, poseAt(timeline, view.time), p.x, p.y, { chill, carry, use, drunk, binLid: skater.bin.lid });
+  // On a kicker the wheels ride up the ramp surface (look only, y stays GROUND_Y).
+  drawPose(g, poseAt(timeline, animTime), p.x, p.y - view.kickerLift, { chill, carry, use, drunk, binLid: skater.bin.lid });
   if (timeline === 'hardLand') drawLandingDust(g, p.x, p.y, view.time);
 }

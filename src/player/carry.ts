@@ -95,6 +95,7 @@ HOLD_AT[B.crouch] = hold(16, 19, 'side');
 HOLD_AT[B.airRise] = hold(20, 15, 'hang');
 HOLD_AT[B.airFall] = hold(19, 9, 'raise');
 HOLD_AT[B.landSquash] = hold(20, 17, 'hang');
+HOLD_AT[B.landDeep] = hold(20, 19, 'hang');
 HOLD_AT[B.grindA] = hold(20, 13, 'hang');
 HOLD_AT[B.grindB] = hold(20, 14, 'hang');
 HOLD_AT[B.duck] = hold(12, 21, 'side');

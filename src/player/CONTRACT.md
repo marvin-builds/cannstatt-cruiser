@@ -135,16 +135,21 @@ in any slice's Vitest tests.
   arrive in the same tick the faster take-off wins.
 - Look: while the wheel contact point is over a `kicker` entity
   (`e.x <= player.x <= e.x + e.w`) on the ground, the skater crouches and the
-  board tilts nose up (timeline `kicker`); y stays `GROUND_Y`, so keep
-  the kicker art low or emit `launch` early on the ramp.
+  board tilts nose up (timeline `kicker`). `player.y` stays `GROUND_Y`; only
+  the drawing is lifted (`AnimView.kickerLift`) to the ramp surface under the
+  front wheel (`KICKER_WHEEL_REACH` = 8 px ahead of `x`, from the moment that
+  wheel reaches the ramp): the entity rect is read as a straight ramp rising
+  from the street at `e.x` to `e.h` at `e.x + e.w`, minus 1 px for the board
+  tilt. Hitbox and physics are unchanged.
 - Covered in `launch.test.ts`.
 
 ## Big air, upper level and hard landings (looks only)
 
 - **Grab pose** (`AnimView.grab`, timeline `grab`): after a launch, or once
   a jump rises `GRAB_HEIGHT` (40 px) above its take-off (a full-hold jump),
-  the skater pulls his knees up, grabs the board by the toes and throws the
-  back arm up. He lets go when falling below `GRAB_RELEASE_HEIGHT` (12 px)
+  the skater pulls his knees up, reaches down with the front arm (2 px
+  sleeve) to grip the deck edge just ahead of his toes and throws the back
+  arm (2 px sleeve, open hand) up behind his head. He lets go when falling below `GRAB_RELEASE_HEIGHT` (12 px)
   above the street, on a rail and on a crash. Hitbox: the normal air tuck.
   A carried item is held up in the back hand; the item use, joint, bubble
   gum and drunk look work as in every pose.
@@ -153,9 +158,50 @@ in any slice's Vitest tests.
   to the street and lands normally (`land { impact }`, impact = downward
   speed, ~360 px/s from 50 px), never a crash.
 - **Hard landing** (`AnimView.hardLanding`, timeline `hardLand`): a landing
-  with impact >= `HARD_LANDING_IMPACT` (300, a drop from ~35 px) squashes
-  deeper and kicks up dust at the wheels. `LAND_TIME`, hitbox and events are
+  with impact >= `HARD_LANDING_IMPACT` (280, a drop of more than ~30 px, e.g.
+  off the upper level or after a launch) goes down into a deep squat (body
+  frame `landDeep`, ~3 px lower than the normal squash), then the normal
+  squash, and kicks up dust at the wheels. `LAND_TIME`, hitbox and events are
   unchanged.
+
+## Air trick (player.airTrick)
+
+- **Start:** a duck **press** (`input.duck.pressed`: ArrowDown / S, a swipe
+  down) while airborne (not grounded, not on a rail, not crashing) starts a
+  kickflip if `canStartAirTrick(y, vy, bigAir)` (`air-trick.ts`) holds for
+  the y / vy **after this tick's physics**:
+  - high enough: big air (every kicker launch from its take-off tick on, or a
+    jump `GRAB_HEIGHT` above its take-off) or at least `AIR_TRICK_HEIGHT`
+    (20 px) above the street, and
+  - **remaining air time**: `airTicksLeft(y, vy) >= AIR_TRICK_TICKS`, where
+    `airTicksLeft` integrates the fall exactly like the physics (normal
+    `GRAVITY`, `MAX_FALL_SPEED`) until `y >= GROUND_Y` and returns the number
+    of further ticks until the landing tick. The hold boost only lowers
+    gravity, so the real flight is never shorter than predicted. Gameplay
+    can import both functions to mirror the rule.
+  Otherwise the press is ignored (not remembered). A tap hop never qualifies
+  (too little air time); a full-hold jump qualifies in the upper part of its
+  rise; every launch qualifies right after the take-off.
+- **Duration:** `player.airTrick` is true on the start tick and the next
+  `AIR_TRICK_TICKS - 1` ticks (`AIR_TRICK_TICKS` = 21, 0.35 s), then false,
+  so it is always false again by the street landing tick. A press while it
+  runs is ignored; after it ended, another press starts a new one if the rule
+  above allows it.
+- **Cut short:** a `grindStart` (rail or ledge catch) ends it at once, in the
+  same call (the board snaps back flat on the rail); a crash ends it. A run
+  start clears it. `player.airTrick` is never true while grounded or
+  grinding. To score it, gameplay can watch it go from true to false: it ended
+  completed unless a crash caused it (the skater then lands on the street or
+  is on the ledge it caught).
+- **Never harder:** physics, hitbox (the normal air tuck) and the landing are
+  identical with and without the trick (covered in `air-trick.test.ts`);
+  down in the air never ducks.
+- **Look** (`AnimView.airTrick` = seconds since the start, timeline
+  `kickflip`, wins over the grab): the skater tucks high with the arms out
+  while the board turns once around its long axis under his feet (board
+  frames `edgeGrip`, `upsideDown`, `edgeBottom`), then he catches it flat for
+  the rest of the 0.35 s. Every overlay (carried item, joint / red eyes,
+  bubble gum, item use, drunk look) works as in the air pose.
 
 ## Carried item (state.carriedItem)
 
@@ -205,7 +251,8 @@ in any slice's Vitest tests.
   from the same tick on. Overhead obstacles end at least 22 px above the
   ground, so a ducked rider passes under them and a standing (30) or tucked
   (26) one does not.
-- On a rail and in the air ducking does nothing (no fast fall). Holding duck
+- On a rail and in the air ducking does nothing (no fast fall); a duck press
+  in the air may start the air trick instead (see above). Holding duck
   while landing ducks on the landing tick.
 - Pressing jump while ducked stands up and jumps in the same tick, exactly
   like a jump from riding. Releasing duck stands up at once (hitbox back to
