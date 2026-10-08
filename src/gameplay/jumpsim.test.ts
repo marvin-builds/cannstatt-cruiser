@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import { addRail, createPlayerTestGame, startGrind, tick } from '../player/testing';
-import { CHILL_JUMP_SCALE, HITBOX_H, HOLD_GRAVITY, JUMP_VELOCITY } from '../player/tuning';
-import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
+import { CHILL_JUMP_SCALE, GRAVITY, HITBOX_H, HOLD_GRAVITY, JUMP_VELOCITY, STOMP_BOUNCE_VELOCITY } from '../player/tuning';
+import { groundBody, hitboxOf, railBody, stepBody, stompBody } from './jumpsim';
 
 /** y per tick of the real player when pressing for `hold` ticks from the ground (`chillTimer` > 0: chilled). */
 function realGroundJump(hold: number, ticks: number, chillTimer = 0): number[] {
@@ -115,5 +115,37 @@ describe('jump simulator mirrors the player controller', () => {
     const chilled = apex(simGroundJump(30, 90, CHILL_JUMP_SCALE));
     expect(chilled).toBeLessThan(normal * 0.8);
     expect(chilled).toBeGreaterThan(30);
+  });
+});
+
+describe('stomp bounce', () => {
+  it('bounces like a take-off with STOMP_BOUNCE_VELOCITY and no hold boost on the tick after the stomp', () => {
+    let b = groundBody();
+    for (let i = 0; i < 20; i++) b = stepBody(b, 0, i === 0, i < 6);
+    expect(b.vy).toBeGreaterThan(0);
+    const bounced = stepBody(stompBody(b), 0, false, true);
+    expect(bounced.grounded).toBe(false);
+    expect(bounced.vy).toBeCloseTo(-STOMP_BOUNCE_VELOCITY + GRAVITY * TICK_DT, 9);
+    expect(bounced.y).toBeCloseTo(b.y + bounced.vy * TICK_DT, 9);
+  });
+
+  it('matches the real player after a stomp tick by tick (held action gives no boost)', () => {
+    const game = createPlayerTestGame();
+    tick(game, 3);
+    let b = groundBody();
+    game.buttons.action.press('test');
+    for (let i = 0; i < 70; i++) {
+      // Falling at tick 30: gameplay reports a stomp after the player moved; the action stays held.
+      if (i === 30) {
+        expect(game.state.player.vy).toBeGreaterThan(0);
+        game.bus.emit('stomp', { entityId: 1, kind: 'vfbFan', item: 'football' });
+        b = stompBody(b);
+      }
+      game.tick();
+      b = stepBody(b, 0, i === 0, true);
+      expect(b.y).toBeCloseTo(game.state.player.y, 6);
+      expect(b.grounded).toBe(game.state.player.grounded);
+    }
+    game.buttons.action.release('test');
   });
 });

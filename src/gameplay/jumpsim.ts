@@ -2,7 +2,7 @@
  * A branchable copy of the skater's movement (src/player/controller.ts, numbers
  * from src/player/tuning.ts) for the clearability solver: ground, variable
  * jump (take-off scaled by CHILL_JUMP_SCALE while chilled), ducking (on the
- * ground only), riding a rail and rolling off its end. Jump buffer, coyote
+ * ground only), riding a rail and rolling off its end, and the stomp bounce. Jump buffer, coyote
  * time and crashes are left out, which only makes the solver more conservative.
  * jumpsim.test.ts checks it against the real player tick by tick.
  */
@@ -23,10 +23,12 @@ export interface Body {
   readonly boostTime: number;
   /** Ducked on the ground (low hitbox). */
   readonly ducking: boolean;
+  /** A stomp was reported: the next step bounces (see stompBody). */
+  readonly bouncing: boolean;
 }
 
 export function groundBody(): Body {
-  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false };
+  return { y: GROUND_Y, vy: 0, grounded: true, onRail: false, railTop: 0, railEnd: 0, boosting: false, boostTime: 0, ducking: false, bouncing: false };
 }
 
 export function railBody(railTop: number, railEnd: number): Body {
@@ -42,6 +44,12 @@ export function railBody(railTop: number, railEnd: number): Body {
 export function stepBody(b: Body, px: number, press: boolean, held: boolean, duck = false, jumpScale = 1): Body {
   let { y, vy, grounded, onRail, boosting, boostTime } = b;
   if (!held) boosting = false;
+  if (b.bouncing && !onRail) {
+    // Like a take-off with the action already released: normal gravity, no hold boost.
+    grounded = false;
+    boosting = false;
+    vy = -T.STOMP_BOUNCE_VELOCITY;
+  }
   if (press && (grounded || onRail)) {
     onRail = false;
     grounded = false;
@@ -64,7 +72,7 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
       grounded = true;
     }
   }
-  return { ...b, y, vy, grounded, onRail, boosting, boostTime, ducking: duck && grounded };
+  return { ...b, y, vy, grounded, onRail, boosting, boostTime, ducking: duck && grounded, bouncing: false };
 }
 
 /** The player's hitbox for this body at pattern x `px` (same shape as the player's own). */
@@ -77,4 +85,9 @@ export function hitboxOf(b: Body, px: number): Rect {
 /** Puts the body onto a rail (what grindStart does to the player). */
 export function snapToRail(b: Body, railTop: number, railEnd: number): Body {
   return { ...b, y: railTop, vy: 0, grounded: false, onRail: true, railTop, railEnd, boosting: false };
+}
+
+/** What the stomp event does to the player: it bounces up with STOMP_BOUNCE_VELOCITY on the next step. */
+export function stompBody(b: Body): Body {
+  return { ...b, bouncing: true };
 }

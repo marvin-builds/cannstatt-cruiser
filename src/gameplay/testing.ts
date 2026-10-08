@@ -1,16 +1,19 @@
 /**
- * Test tooling for gameplay (Vitest and the playtest bot): turn the live
- * entities into a solver course and play it with the solver's best jumps.
- * DOM-free; not used by the game itself.
+ * Test tooling for gameplay (Vitest and the playtest bots): turn the live
+ * entities into a solver course and play it with the solver's best jumps,
+ * like a careful player (SolverBot) or a sloppy human (HumanBot), and plan a
+ * stomp (planStomp). DOM-free; not used by the game itself.
  */
 import { PLAYER_X, TICK_DT } from '../core/config';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
+import type { Rng } from '../core/rng';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { chillSpeedFactor } from './chill';
 import { hitBox, isGrindable, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
+import { HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
-import { type Course, type Jump, type Pace, Solver } from './solver';
+import { type Course, HOLDS, type Jump, type Pace, Solver } from './solver';
 
 /** Room after the last entity the plan may use for landing. */
 const OPEN_END = 400;
@@ -69,9 +72,31 @@ export function paceOf(state: GameState, speedPinned = false): Pace {
   };
 }
 
-/** The solver's most forgiving next jump from the current support, or null. */
-export function planJump(state: GameState, speedPinned = false): Jump | null {
-  return new Solver(courseAhead(state), paceOf(state, speedPinned)).bestJump(startBody(state));
+/** The solver's most forgiving next jump from the current support (trying `holds`), or null. */
+export function planJump(state: GameState, speedPinned = false, holds: readonly number[] = HOLDS): Jump | null {
+  return new Solver(courseAhead(state), paceOf(state, speedPinned)).bestJump(startBody(state), holds);
+}
+
+/** How far ahead (ticks) planStomp looks for a take-off. */
+const STOMP_SEARCH_TICKS = 180;
+
+/**
+ * A jump (take-off tick, hold) from the current support that lands on a
+ * person's head: it passes with stomps on but would crash without. For
+ * playtests and tests of the stomp; null when none exists.
+ */
+export function planStomp(state: GameState, speedPinned = false): { tick: number; hold: number } | null {
+  const course = courseAhead(state);
+  const pace = paceOf(state, speedPinned);
+  const start = startBody(state);
+  const plain = new Solver(course, pace);
+  const stomping = new Solver(course, pace, { stomps: true });
+  for (const hold of HOLDS) {
+    for (let tick = 0; tick < STOMP_SEARCH_TICKS; tick++) {
+      if (stomping.jumpWorks(tick, hold, start) && !plain.jumpWorks(tick, hold, start)) return { tick, hold };
+    }
+  }
+  return null;
 }
 
 /** Ticks of look-ahead for ducking: down a little early, like a careful human (ducked is never less safe on the ground). */
@@ -121,6 +146,77 @@ export class SolverBot {
       if (!isOverhead(e.kind)) return false;
       const box = boxOf(e);
       return box.x <= body.x + body.w + reach && box.x + box.w >= body.x - 1;
+    });
+  }
+}
+
+/** How sloppy the human bot plays (ticks). */
+export interface HumanStyle {
+  /** The take-off lands up to this many ticks early or late. */
+  takeoffJitter: number;
+  /** The only hold lengths a human tells apart (tap, half, full). */
+  holds: readonly number[];
+  /** Ducking starts up to this many ticks earlier or later than the careful bot's. */
+  duckJitter: number;
+}
+
+export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, duckJitter: 4 };
+
+/**
+ * Plays like a real, imperfect human: plans like SolverBot but only with a
+ * few hold lengths, and takes off up to `takeoffJitter` ticks early or late;
+ * ducks with jittered timing. The jitter comes from its own `rng`, so runs
+ * replay per seed. Same driving protocol as SolverBot.
+ */
+export class HumanBot {
+  private wait = -1;
+  private hold = 0;
+  private holding = 0;
+  /** Per overhead obstacle id: ticks of look-ahead before ducking. */
+  private readonly duckLead = new Map<number, number>();
+
+  constructor(
+    private readonly rng: Rng,
+    private readonly speedPinned = false,
+    private readonly style: HumanStyle = HUMAN_STYLE,
+  ) {}
+
+  next(state: GameState): 'press' | 'release' | null {
+    if (this.holding > 0) {
+      this.holding--;
+      return this.holding === 0 ? 'release' : null;
+    }
+    const p = state.player;
+    if (this.wait < 0) {
+      if (!(p.grounded || p.grinding) || p.state === 'crash') return null;
+      const jump = planJump(state, this.speedPinned, this.style.holds);
+      if (!jump) return null;
+      const j = this.style.takeoffJitter;
+      this.wait = Math.max(0, jump.tick + this.rng.int(-j, j));
+      this.hold = jump.hold;
+    }
+    if (this.wait > 0) {
+      this.wait--;
+      return null;
+    }
+    this.wait = -1;
+    this.holding = this.hold;
+    return 'press';
+  }
+
+  duck(state: GameState): boolean {
+    const step = state.speed * TICK_DT;
+    const body = state.player.hitbox;
+    const j = this.style.duckJitter;
+    return obstaclesAhead(state).some((e) => {
+      if (!isOverhead(e.kind)) return false;
+      let lead = this.duckLead.get(e.id);
+      if (lead === undefined) {
+        lead = DUCK_LOOKAHEAD + this.rng.int(-j, j);
+        this.duckLead.set(e.id, lead);
+      }
+      const box = boxOf(e);
+      return box.x <= body.x + body.w + step * lead + 1 && box.x + box.w >= body.x - 1;
     });
   }
 }

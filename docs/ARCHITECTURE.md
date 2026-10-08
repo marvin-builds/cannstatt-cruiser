@@ -49,7 +49,7 @@ foundation owner can extend it.
 | `src/core/`, `src/types.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people, rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump), difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, score/combo/multiplier, health, gameplay events |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps and the tossed item (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
 | `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill timer), chill tint, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
@@ -108,7 +108,7 @@ interface System {
 | Field | Written by |
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
-| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` at every run start) |
+| `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` at every run start) |
 | `player.*` (position, velocity, grounded, grinding, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`) |
 
@@ -126,7 +126,9 @@ rect from `state.entities`). The bench is grindable the same way: its entity
 grinds and only riding into its front or side crashes. People (`vfbFan`,
 `wasenGuest`) walk or sway: their entity `x` follows `data.ax` (the street
 anchor) plus a motion that depends only on the distance to the player
-(`gameplay/motion.ts`), and the collision box moves with them.
+(`gameplay/motion.ts`), and the collision box moves with them. Landing on a
+person's head while falling is a stomp, not a crash (see
+[Stomp and carried items](#stomp-and-carried-items)).
 
 ### InputHotspot (core/game.ts)
 
@@ -161,6 +163,8 @@ behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 | `crash` | `{entityId, kind, health}` | gameplay |
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
+| `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
+| `itemCaught` | `{item}` | gameplay (the tossed item reached the hands; `state.carriedItem = item`) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
@@ -337,6 +341,72 @@ The zones follow each other along the street; there is no time-based cycle.
 
 So every tap area on a phone is >= ~44 CSS px; the HUD tap areas stay right
 of x = 120 (clear of the stats plate) at every width from 320 to 427.
+
+## Stomp and carried items
+
+Contract between gameplay, player, ui and audio (types in `src/types.ts`,
+`STOMP_BOUNCE_VELOCITY` in `player/tuning.ts`):
+
+- **Detection** (gameplay, `stomp.ts`, rule `landsOnHead` in `rules.ts`
+  shared with the solver): the player is not supported, falls (`vy > 0`), its
+  feet (`player.y`) crossed the top of the person's collision box this tick
+  (from `y - vy*dt` above it) and its hitbox overlaps the box horizontally.
+  Checked after rail landings and before the crash check, never while the
+  player is in the crash animation. Touching a person from the side or rising
+  into one is still a crash.
+- **Stomp** (gameplay): the person becomes `done` (harmless), stops moving
+  (`data.walk`/`sway` 0, anchored where it is) and gets `data.stompedAt =
+  state.time`; people-art draws it tumbling onto its back (0.35 s), sitting
+  up dazed with circling stars, then laughing. The stomp counts as a trick
+  (`addTrick` with the person's points) and gameplay emits `stomp {entityId,
+  kind, item}`. The item comes from `items.ts`: fans a football; Wasen
+  visitors by `data.prop` a Maßkrug (`beer`; in kid mode `gingerbread`) or a
+  Brezel (`pretzel`), so kid mode never yields beer. People carry their item
+  visibly before the stomp.
+- **Bounce** (player): on the next tick `vy = -STOMP_BOUNCE_VELOCITY`, like a
+  take-off with the action already released (no hold gravity); jumpsim
+  mirrors it (`stompBody`, checked against the real player in
+  `jumpsim.test.ts`).
+- **Toss** (gameplay, `toss.ts`): the item flies from the head in a ballistic
+  arc aimed at the hands' position at launch (`x + 3`, half the hitbox
+  height up) and, after 55 % of `TOSS_TIME` (0.45 s), eases onto the hands'
+  current position, so it is always caught, also when the skater jumps or
+  ducks. A Maßkrug spills foam drops. On arrival gameplay sets
+  `state.carriedItem`, adds `ITEM_POINTS` and emits `itemCaught {item}`.
+- **Losing it**: a crash clears `state.carriedItem` (`health.ts`) and cancels
+  an item in flight; `resetRun` clears it at every run start.
+- **UI**: popup per item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
+  "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
+  draws the carried item and the catch pose; audio plays its own sounds.
+- **Solver**: `new Solver(course, pace, {stomps: true})` treats a head
+  landing as a valid path with the bounce (bit mask of stomped movers per
+  node); the spawner verifies patterns without stomps, so no pattern ever
+  requires one. `planStomp(state)` (`testing.ts`) finds a real stomp jump for
+  tests and playtests.
+
+## Fair people (human margins)
+
+The solver proves a pattern clearable with frame-perfect input. Around
+people the spawner also guarantees what a human can hit (`fairness.ts`):
+
+- **People come alone**: the `person` template (zones 1 and 2 only) holds one
+  person and nothing else; no other template picks people. With the pattern
+  lead, runout and the gap between patterns there are >= `PERSON_ROOM_SECONDS`
+  (1 s) of free street before and after every person, and a person never
+  walks into another obstacle while visible (walking only carries them
+  towards their anchor, from further right).
+- **Take-off window**: a person pattern needs `Solver.takeoffWindow(HUMAN_HOLDS)
+  >= MIN_TAKEOFF_WINDOW` (9 ticks: +-4 ticks of human timing) at every pace it
+  is checked at, including the chill jump at chill speeds; the window only
+  counts jumps that land within the pattern's runout (landing room). Where
+  that is impossible (chilled at the slowest speeds) the planner rerolls and
+  no person comes.
+- **Across pattern boundaries**: the spawner passes the previous pattern's
+  pieces (`PlanOptions.before`, shifted by its length plus the gap) and the
+  combined course must be clearable at every pace, with real people motion.
+- **Acceptance**: `HumanBot` (`testing.ts`: take-off +-4 ticks, holds 3/10/20,
+  ducking +-4 ticks) rides 20 seeds x 3 min (`human-bot-*.test.ts`,
+  `human-run.ts`) without a crash into or within 1 s of a person.
 
 ## Chill effect (joint pickup)
 

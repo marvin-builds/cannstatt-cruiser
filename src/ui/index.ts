@@ -2,8 +2,9 @@
  * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
  * (pause, mute, fullscreen) and the hidden settings menu (kid mode, opened by
  * a 3 s long press on the title logo or holding K). Records live in
- * records.ts, popups in popups.ts, the zone ribbon in banner.ts, the settings
- * logic in settings.ts, layout math in layout.ts and all drawing in screens.ts.
+ * records.ts, popups in popups.ts (catch popups in item-look.ts), the zone
+ * ribbon in banner.ts, the settings logic in settings.ts, layout math in
+ * layout.ts and all drawing in screens.ts.
  */
 import { CHILL_DURATION } from '../core/chill';
 import { PLAYER_X } from '../core/config';
@@ -16,6 +17,7 @@ import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
+import { catchPopup } from './item-look';
 import { hudButtons, plusPoints, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { PopupPool } from './popups';
@@ -61,6 +63,10 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     bus.on('grindStart', () => popup('Grind!', UI.teal));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
     bus.on('crash', () => popup('Autsch!', UI.red));
+    bus.on('itemCaught', (e) => {
+      const look = catchPopup(e.item, state.kidMode);
+      popup(look.text, look.color);
+    });
     bus.on('chillStart', (e) => {
       view.chillDuration = e.duration;
       const look = chillLook(state.kidMode);

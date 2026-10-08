@@ -6,7 +6,7 @@
  */
 import { GROUND_Y } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
-import type { Entity, ObstacleKind } from '../types';
+import type { Entity, GameState, ObstacleKind } from '../types';
 import { drawOverhead, isOverheadArt, overheadSize } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
 
@@ -233,8 +233,12 @@ function drawRail(g: CanvasRenderingContext2D, e: Entity): void {
   for (let px = 0; px < e.w; px++) parts.bar.draw(g, 0, x + px, top - 1);
 }
 
-/** Draws one entity at integer coordinates; `frame` drives the star spin, `kidMode` the pickup's look. */
-export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number, kidMode = false): void {
+/** What the art reads from the game state: `frame` drives the star spin, `time` the stomp reaction, `kidMode` pickup and props. */
+export type ArtState = Pick<GameState, 'frame' | 'time' | 'kidMode'>;
+
+/** Draws one entity at integer coordinates. */
+export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtState): void {
+  const { frame, kidMode } = state;
   const x = Math.round(e.x);
   const y = Math.round(e.y);
   switch (e.kind) {
@@ -254,7 +258,7 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, frame: number
       return;
     case 'vfbFan':
     case 'wasenGuest':
-      drawPerson(g, e);
+      drawPerson(g, e, state.time, kidMode);
       return;
     case 'joint':
       // Bobs gently like the stars; the smoke curls (or the gum shines) every 16 ticks.

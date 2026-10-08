@@ -98,17 +98,35 @@ g.endRun();                                     // game-over screen now
   - `planJump(state)`, `courseAhead(state)` / `courseFrom(entities, originX)`
     (live entities as a solver `Course`, incl. ledges = benches and movers =
     people) and `paceOf(state)` (the scroll and jump scale ahead while chilled).
+  - `HumanBot(rng, speedPinned?, style?)`: plays like a real, sloppy human
+    (`HUMAN_STYLE`: take-off +-4 ticks, only the hold lengths `HUMAN_HOLDS`
+    3/10/20, ducking +-4 ticks), same protocol as `SolverBot`; the jitter comes
+    from its own `rng`, so runs replay.
+  - `planStomp(state)`: a jump `{tick, hold}` from the current support that
+    lands on a person's head (passes with stomps, crashes without), or null.
+- `src/gameplay/human-run.ts` (DOM-free): `rideHuman(seed, seconds)` lets the
+  `HumanBot` ride a real run (player + gameplay, spawner on, health never runs
+  out) and returns `{crashes, stomps, score}`; every crash has `personRelated`
+  (a person was hit, or one was within `PERSON_NEAR_SECONDS` = 1 s of street)
+  and the entities near it. `src/gameplay/human-bot-1/2.test.ts` require no
+  person-related crash over 20 seeds x 3 min (split in two files so Vitest runs
+  them in parallel; together ~40 s).
 - `src/gameplay/test-kit.ts` (Vitest only): `quietGame(speed)` (player +
   gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
   `place(game, kind, rect)`, `record(game, event)` and `playBot(game, ticks)`.
 - `Solver` (`solver.ts`) takes a speed or a `Pace`: `constantPace(speed,
-  CHILL_JUMP_SCALE)` checks a course with the chill jump.
+  CHILL_JUMP_SCALE)` checks a course with the chill jump. `{stomps: true}`
+  allows landing on heads (with the bounce); `takeoffWindow(holds)` is the
+  widest run of working take-off ticks for one hold (the human margin,
+  `fairness.ts`). `fairness.test.ts` holds the spawner to the people rules
+  (alone in their pattern, >= 1 s of free street, window >= 9 ticks at min,
+  max and chill speeds, the check across pattern boundaries).
 
 ### Debug hooks for playtests (same condition as `__game`)
 
 | Hook | Effect |
 |---|---|
-| `window.__gameplay.place(kind, x, variant?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
+| `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__ui.hud({combo, multiplier, stars})` | overwrites HUD values like gameplay would |
 | `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
@@ -183,6 +201,13 @@ npm run playtest -- --headed
   with the bubble gum, pink tint and gum HUD icon. On touch viewports it
   checks every menu and HUD tap area is >= 44 CSS px (rect x
   `cssPerViewPixel`).
+- `scripts/scenarios/people.ts`: human-bot stats (20 seeds x 3 min computed in
+  Node, logged as `human bot stats`, no person-related crash allowed), what
+  people carry (fan with football, visitors with Maßkrug and Brezel, kid-mode
+  visitors with Lebkuchenherz), three real stomps planned with `planStomp`
+  (fan, visitor, kid-mode visitor: tumble, item mid-air, item caught with
+  popup, dazed, laughing; kid mode never carries beer) and a 60 s human-bot
+  ride in the browser. Kid mode is switched with `window.__player.kidMode(on)`.
 - `scripts/scenarios/ui.ts` taps the HUD buttons at the centres
   `__ui.layout()` reports, so it follows the touch / desktop sizes.
 - `scripts/scenarios/chill.ts`: bench grind, VfB fans (zone 1) and Wasen

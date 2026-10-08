@@ -3,18 +3,21 @@
  * joint) in pattern space, where x = 0 is the player's position when the
  * pattern starts. Every pattern is verified with the clearability solver at
  * the given speeds (and with the chill jump at the chill speeds, where the
- * chill effect may be active) and rerolled (finally replaced by a safe
- * fallback) if it cannot be passed.
+ * chill effect may be active), together with the end of the previous pattern
+ * (`before`), and rerolled (finally replaced by a safe fallback) if it cannot
+ * be passed. People come alone and need a human take-off window (fairness.ts).
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
-import { jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
+import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
+import { humanWindowAtAll } from './fairness';
+import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
-import { constantPace, type Course, HOLDS, Solver } from './solver';
+import { constantPace, type Course, HOLDS, type Pace, Solver } from './solver';
 
 export type { Piece };
 
@@ -23,6 +26,8 @@ export interface PlanOptions {
   zone?: number;
   /** Speeds at which the pattern must also be clearable with the chill jump (the effect may be active there). */
   chillSpeeds?: number[];
+  /** The previous pattern's pieces in this pattern's space (x < 0): the course across the boundary must be clearable too. */
+  before?: Piece[];
 }
 
 export interface Pattern {
@@ -36,13 +41,15 @@ interface Template {
   name: string;
   tier: number;
   weight: number;
+  /** Only in zones with people (ZONE_PEOPLE). */
+  people?: boolean;
   build(b: Builder): void;
 }
 
-/** Ground obstacles a random pick chooses from. */
+/** Ground obstacles a random pick chooses from (people never: they come alone, see the person template). */
 const PICKABLE: ObstacleKind[] = ['bin', 'barrier', 'bench', 'planter', 'curbGap'];
-/** People added to the pick per zone (twice: about every fourth pick there is a person). */
-const ZONE_PEOPLE: Record<number, ObstacleKind[]> = { 1: ['vfbFan', 'vfbFan'], 2: ['wasenGuest', 'wasenGuest'] };
+/** The people of a zone: VfB fans at the Neckar, Wasen visitors in Bad Cannstatt. */
+const ZONE_PEOPLE: Record<number, ObstacleKind> = { 1: 'vfbFan', 2: 'wasenGuest' };
 /** Chance that a pattern with obstacles also gets a star arc over its best jump. */
 const STAR_CHANCE = 0.45;
 const MAX_STARS = 5;
@@ -62,15 +69,12 @@ function runoutFor(speed: number): number {
 
 class Builder {
   readonly pieces: Piece[] = [];
-  private readonly pickable: ObstacleKind[];
 
   constructor(
     readonly rng: Rng,
     readonly lead: number,
-    zone: number,
-  ) {
-    this.pickable = [...PICKABLE, ...(ZONE_PEOPLE[zone] ?? [])];
-  }
+    private readonly zone: number,
+  ) {}
 
   /** Right edge of everything placed so far (or the lead). */
   get end(): number {
@@ -83,7 +87,7 @@ class Builder {
     const motion = OBSTACLES[kind].motion;
     if (motion) {
       const m: Motion = { walk: this.rng.range(...motion.walk), sway: this.rng.range(...motion.sway), phase: this.rng.range(0, 2 * Math.PI) };
-      piece.data = { ...m, ax: piece.x, variant: this.rng.int(0, 1) };
+      piece.data = { ...m, ax: piece.x, variant: this.rng.int(0, 1), prop: this.rng.int(0, PROPS - 1) };
     }
     this.pieces.push(piece);
     return piece;
@@ -104,7 +108,12 @@ class Builder {
   }
 
   pick(maxHeight = Infinity): ObstacleKind {
-    return this.rng.pick(this.pickable.filter((k) => OBSTACLES[k].h - OBSTACLES[k].sink <= maxHeight));
+    return this.rng.pick(PICKABLE.filter((k) => OBSTACLES[k].h - OBSTACLES[k].sink <= maxHeight));
+  }
+
+  /** The zone's person (only called for templates marked `people`). */
+  person(x: number): Piece {
+    return this.obstacle(ZONE_PEOPLE[this.zone]!, x);
   }
 
   railKind(): RailKind {
@@ -114,6 +123,7 @@ class Builder {
 
 const TEMPLATES: Template[] = [
   { name: 'single', tier: 0, weight: 5, build: (b) => void b.obstacle(b.pick(), b.lead) },
+  { name: 'person', tier: 0, weight: 4, people: true, build: (b) => void b.person(b.lead) },
   { name: 'stars', tier: 0, weight: 1, build: () => {} },
   {
     name: 'pair',
@@ -181,8 +191,8 @@ const TEMPLATES: Template[] = [
 
 export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
 
-function pickTemplate(rng: Rng, tier: number): Template {
-  const open = TEMPLATES.filter((t) => t.tier <= tier);
+function pickTemplate(rng: Rng, tier: number, zone: number): Template {
+  const open = TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE));
   let roll = rng.next() * open.reduce((sum, t) => sum + t.weight, 0);
   for (const t of open) {
     roll -= t.weight;
@@ -191,9 +201,14 @@ function pickTemplate(rng: Rng, tier: number): Template {
   return open[open.length - 1]!;
 }
 
-/** What the solver sees of a pattern. */
-export function courseOf(pattern: Pattern): Course {
-  return buildCourse(pattern.pieces, 0, () => pattern.length);
+/** What the solver sees of a pattern, with the player starting at pattern x `originX`. */
+export function courseOf(pattern: Pattern, originX = 0): Course {
+  return buildCourse(pattern.pieces, originX, () => pattern.length - originX);
+}
+
+/** Free street the player starts from when a pattern is checked together with the previous one's pieces. */
+function runupBefore(before: Piece[], lead: number): number {
+  return Math.min(0, ...before.map((p) => p.x)) - lead;
 }
 
 /**
@@ -205,13 +220,17 @@ export function planPattern(rng: Rng, tier: number, speeds: number[], options: P
   const slow = Math.min(...speeds);
   const fast = Math.max(...speeds, ...(options.chillSpeeds ?? []));
   const paces = [...speeds, ...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE))];
+  const zone = options.zone ?? 0;
+  const before = (options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind));
   for (let i = 0; i < ATTEMPTS; i++) {
-    const template = pickTemplate(rng, tier);
-    const builder = new Builder(rng, leadFor(fast), options.zone ?? 0);
+    const template = pickTemplate(rng, tier, zone);
+    const builder = new Builder(rng, leadFor(fast), zone);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const course = courseOf(pattern);
     if (!paces.every((pace) => new Solver(course, pace).solvable())) continue;
+    if (template.people && !humanWindowAtAll(course, paces)) continue;
+    if (before.length > 0 && !clearableAfter(pattern, before, leadFor(fast), paces)) continue;
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
     else if (rng.chance(STAR_CHANCE)) addStars(pattern, new Solver(course, slow).bestJump()?.path ?? []);
     return pattern;
@@ -219,6 +238,12 @@ export function planPattern(rng: Rng, tier: number, speeds: number[], options: P
   const builder = new Builder(rng, leadFor(fast), 0);
   builder.obstacle('bench', builder.lead);
   return finish('fallback', builder.pieces, fast);
+}
+
+/** The previous pattern's pieces followed by `pattern` are clearable at every pace. */
+function clearableAfter(pattern: Pattern, before: Piece[], lead: number, paces: (number | Pace)[]): boolean {
+  const course = courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead));
+  return paces.every((pace) => new Solver(course, pace).solvable());
 }
 
 /** A lone joint floating at riding height: collected by riding (or ducking) through it. */

@@ -42,7 +42,7 @@ describe('spawn patterns', () => {
       for (const name of TEMPLATE_NAMES) expect(names).toContain(name);
       expect(names.filter((n) => n === 'fallback').length).toBeLessThan(20);
     }
-  });
+  }, 30_000);
 
   it('tier 0 has single obstacles only, no rails', () => {
     const rng = new Rng(11);

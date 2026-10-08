@@ -2,8 +2,11 @@
  * Clearability solver: decides whether a course of obstacles, rails, ledges
  * (grindable obstacles) and moving people can be passed without a crash using
  * the player's real jump arcs (jumpsim.ts) at a given pace (scroll speed and
- * jump scale per tick), and picks the most forgiving first jump (used to place
- * guiding stars and by the playtest bot).
+ * jump scale per tick), picks the most forgiving first jump (used to place
+ * guiding stars and by the playtest bots) and measures how wide its take-off
+ * window is (the human margin, see fairness.ts). With `stomps` on, landing on
+ * a person's head is a valid path that bounces (the spawner leaves it off, so
+ * no pattern ever requires a stomp).
  *
  * Course space: x = 0 is the player's x at tick 0, so the player moves right by
  * speed * dt per tick; y is screen space. The player starts supported (on the
@@ -11,10 +14,10 @@
  */
 import { TICK_DT } from '../core/config';
 import type { Rect } from '../types';
-import { type Body, groundBody, hitboxOf, snapToRail, stepBody } from './jumpsim';
+import { type Body, groundBody, hitboxOf, snapToRail, stepBody, stompBody } from './jumpsim';
 import { HITBOX_W } from '../player/tuning';
 import { type Motion, motionOffset } from './motion';
-import { landsOnRail, overlaps } from './rules';
+import { landsOnHead, landsOnRail, overlaps } from './rules';
 
 /** A grindable obstacle: landing on `top` from above grinds it, riding into `box` crashes. */
 export interface Ledge {
@@ -76,9 +79,23 @@ const MAX_FLIGHT = 240;
 /** Any rail landing window beats every ground landing window. */
 const GRIND_BONUS = 10_000;
 
+export interface SolverOptions {
+  /** Landing on a person's head bounces (stomp event) instead of crashing. Default off. */
+  stomps?: boolean;
+}
+
 interface Node {
   tick: number;
   body: Body;
+  /** Bit i set: mover i was stomped and is harmless. */
+  stomped: number;
+}
+
+/** Consecutive take-off ticks with one hold whose first jump passes the course. */
+interface Window {
+  hold: number;
+  ticks: number[];
+  grinds: boolean;
 }
 
 interface Flight extends Node {
@@ -89,24 +106,28 @@ export class Solver {
   private readonly pace: Pace;
   private readonly obstacles: Rect[];
   private readonly ledges: Ledge[];
-  private readonly movers: Mover[];
+  /** Movers with their crash box grown by SAFETY and the exact `rest` box for head landings. */
+  private readonly movers: (Mover & { rest: Rect })[];
   private readonly rails: Rect[];
+  private readonly stomps: boolean;
   private readonly memo = new Map<string, boolean>();
 
   constructor(
     private readonly course: Course,
     pace: number | Pace,
+    options: SolverOptions = {},
   ) {
     this.pace = typeof pace === 'number' ? constantPace(pace) : pace;
     this.obstacles = [...course.obstacles, ...course.overhead].map(grow);
     this.ledges = (course.ledges ?? []).map((l) => ({ top: l.top, box: grow(l.box) }));
-    this.movers = (course.movers ?? []).map((m) => ({ ...m, box: grow(m.box) }));
+    this.movers = (course.movers ?? []).map((m) => ({ ...m, box: grow(m.box), rest: m.box }));
     this.rails = [...course.rails, ...this.ledges.map((l) => l.top)];
+    this.stomps = options.stomps ?? false;
   }
 
   /** Whether the course can be passed from `start` (default: on the ground). */
   solvable(start: Body = groundBody()): boolean {
-    return this.solve({ tick: 0, body: start });
+    return this.solve({ tick: 0, body: start, stomped: 0 });
   }
 
   /** Pressing after `tick` ticks of riding, holding `hold` ticks, passes the course. */
@@ -122,35 +143,11 @@ export class Solver {
    * landings. Null when nothing works, or when riding on passes and no rail
    * can be reached.
    */
-  bestJump(start: Body = groundBody()): Jump | null {
+  bestJump(start: Body = groundBody(), holds: readonly number[] = HOLDS): Jump | null {
     let best: { score: number; tick: number; hold: number } | null = null;
-    // A first jump has to happen before the player is past the first piece,
-    // and must not land before reaching it (a useless hop, e.g. in front of an
-    // overhead obstacle, which is ducked under, not jumped).
-    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)];
-    const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
-    const firstStart = Math.min(...pieces.map((r) => r.x));
-    const useful = (f: Flight) => f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart;
-    for (const hold of HOLDS) {
-      let run: number[] = [];
-      let grinds = false;
-      const close = () => {
-        const score = run.length + (grinds ? GRIND_BONUS : 0);
-        if (run.length > 0 && (!best || score > best.score)) best = { score, tick: run[run.length >> 1]!, hold };
-        run = [];
-      };
-      let node: Node | null = { tick: 0, body: start };
-      while (node && !this.passed(node) && this.x(node.tick) <= lastTakeoff) {
-        const flight = this.fly(node, hold);
-        if (flight && useful(flight) && this.solve(flight)) {
-          const flightGrinds = flight.body.onRail;
-          if (run.length > 0 && flightGrinds !== grinds) close();
-          grinds = flightGrinds;
-          run.push(node.tick);
-        } else close();
-        node = this.wait(node);
-      }
-      close();
+    for (const w of this.windows(start, holds)) {
+      const score = w.ticks.length + (w.grinds ? GRIND_BONUS : 0);
+      if (!best || score > best.score) best = { score, tick: w.ticks[w.ticks.length >> 1]!, hold: w.hold };
     }
     if (!best) return null;
     const { tick, hold } = best;
@@ -159,8 +156,47 @@ export class Solver {
     return { tick, hold, grinds: flight.body.onRail, path: flight.path };
   }
 
+  /**
+   * The human margin: the most consecutive take-off ticks for one of `holds`
+   * whose first jump passes the course (0 when no jump does).
+   */
+  takeoffWindow(holds: readonly number[] = HOLDS, start: Body = groundBody()): number {
+    return Math.max(0, ...this.windows(start, holds).map((w) => w.ticks.length));
+  }
+
+  /** Every run of consecutive working take-off ticks, per hold (a run also ends where grinding starts or stops). */
+  private windows(start: Body, holds: readonly number[]): Window[] {
+    // A first jump has to happen before the player is past the first piece,
+    // and must not land before reaching it (a useless hop, e.g. in front of an
+    // overhead obstacle, which is ducked under, not jumped).
+    const pieces = [...this.course.obstacles, ...this.rails, ...this.movers.map((m) => m.box)];
+    const lastTakeoff = Math.min(this.course.goal, ...pieces.map((r) => r.x + r.w));
+    const firstStart = Math.min(...pieces.map((r) => r.x));
+    const useful = (f: Flight) => f.body.onRail || this.x(f.tick) + HITBOX_W / 2 > firstStart;
+    const found: Window[] = [];
+    for (const hold of holds) {
+      let run: Window = { hold, ticks: [], grinds: false };
+      const close = () => {
+        if (run.ticks.length > 0) found.push(run);
+        run = { hold, ticks: [], grinds: false };
+      };
+      let node: Node | null = { tick: 0, body: start, stomped: 0 };
+      while (node && !this.passed(node) && this.x(node.tick) <= lastTakeoff) {
+        const flight = this.fly(node, hold);
+        if (flight && useful(flight) && this.solve(flight)) {
+          if (run.ticks.length > 0 && flight.body.onRail !== run.grinds) close();
+          run.grinds = flight.body.onRail;
+          run.ticks.push(node.tick);
+        } else close();
+        node = this.wait(node);
+      }
+      close();
+    }
+    return found;
+  }
+
   private ridesThrough(start: Body): boolean {
-    let node: Node | null = { tick: 0, body: start };
+    let node: Node | null = { tick: 0, body: start, stomped: 0 };
     while (node && !this.passed(node)) node = this.wait(node);
     return !!node && this.x(node.tick) <= this.course.limit;
   }
@@ -168,7 +204,7 @@ export class Solver {
   private solve(node: Node): boolean {
     if (this.x(node.tick) > this.course.limit) return false;
     if (this.passed(node)) return true;
-    const key = `${node.tick}|${node.body.onRail ? `${node.body.railTop}:${node.body.railEnd}` : 'g'}`;
+    const key = `${node.tick}|${node.body.onRail ? `${node.body.railTop}:${node.body.railEnd}` : 'g'}|${node.stomped}`;
     const known = this.memo.get(key);
     if (known !== undefined) return known;
     this.memo.set(key, false);
@@ -198,7 +234,7 @@ export class Solver {
 
   /** Rides without input for `ticks` ticks; null on a crash or if the support is lost. */
   private rideTo(start: Body, ticks: number): Node | null {
-    let node: Node | null = { tick: 0, body: start };
+    let node: Node | null = { tick: 0, body: start, stomped: 0 };
     for (let i = 0; i < ticks && node; i++) node = this.wait(node);
     return node;
   }
@@ -227,9 +263,9 @@ export class Solver {
   }
 
   /**
-   * One tick in the live order: player movement, scroll, rail landing,
-   * obstacle check. Ducks when standing would crash (a ducked body on the
-   * ground is never hit where a standing one is not).
+   * One tick in the live order: player movement, scroll, rail landing, head
+   * landing (stomps on), obstacle check. Ducks when standing would crash (a
+   * ducked body on the ground is never hit where a standing one is not).
    */
   private advance(node: Node, press: boolean, held: boolean): Node | null {
     return this.advanceAs(node, press, held, false) ?? (press ? null : this.advanceAs(node, press, held, true));
@@ -241,16 +277,29 @@ export class Solver {
     const tick = node.tick + 1;
     const x = this.x(tick);
     const box = hitboxOf(body, x);
+    let stomped = node.stomped;
     if (!body.onRail) {
       const feet = { x, y: body.y, vy: body.vy, supported: body.grounded };
       const rail = this.rails.find((r) => landsOnRail(feet, r));
       if (rail) body = snapToRail(body, rail.y, rail.x + rail.w);
+      else if (this.stomps) {
+        const i = this.movers.findIndex((m, j) => !(stomped & (1 << j)) && landsOnHead(feet, box, at(m.rest, m, x)));
+        if (i >= 0) {
+          stomped |= 1 << i;
+          body = stompBody(body);
+        }
+      }
     }
     if (this.obstacles.some((o) => overlaps(box, o))) return null;
     if (this.ledges.some((l) => !ridesOn(body, l.top) && overlaps(box, l.box))) return null;
-    if (this.movers.some((m) => overlaps(box, { ...m.box, x: m.box.x + motionOffset(m.motion, m.anchor - x) }))) return null;
-    return { tick, body };
+    if (this.movers.some((m, j) => !(stomped & (1 << j)) && overlaps(box, at(m.box, m, x)))) return null;
+    return { tick, body, stomped };
   }
+}
+
+/** A mover's `box` where its motion has carried it when the player is at course x `x`. */
+function at(box: Rect, m: Mover, x: number): Rect {
+  return { ...box, x: box.x + motionOffset(m.motion, m.anchor - x) };
 }
 
 /** The box grown by SAFETY on every side. */

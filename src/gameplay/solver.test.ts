@@ -112,3 +112,56 @@ describe('solver with moving obstacles', () => {
     expect(differs).toBeGreaterThan(0);
   });
 });
+
+describe('take-off window (human margin)', () => {
+  it('counts the consecutive take-off ticks of the best hold that pass the course', () => {
+    const c = course([block(80, 10, 18)]);
+    const s = new Solver(c, BASE_SPEED);
+    const window = s.takeoffWindow([20]);
+    let best = 0;
+    let run = 0;
+    for (let t = 0; t < 120; t++) {
+      run = s.jumpWorks(t, 20) ? run + 1 : 0;
+      best = Math.max(best, run);
+    }
+    expect(window).toBe(best);
+    expect(window).toBeGreaterThan(5);
+  });
+
+  it('is 0 when nothing can be jumped and narrower when obstacles crowd the landing', () => {
+    expect(new Solver(course([block(80, 10, 60)]), BASE_SPEED).takeoffWindow([3, 10, 20])).toBe(0);
+    const lone = new Solver(course([block(80, 8, 22)]), MAX_SPEED).takeoffWindow([20]);
+    const crowded = new Solver(course([block(80, 8, 22), block(150, 10, 18)]), MAX_SPEED).takeoffWindow([20]);
+    expect(crowded).toBeLessThan(lone);
+  });
+});
+
+describe('stomps in the solver', () => {
+  const still: Motion = { walk: 0, sway: 0, phase: 0 };
+  const person = { box: { x: 83, y: GROUND_Y - 22, w: 6, h: 22 }, anchor: 80, motion: still };
+  const personCourse = (): Course => ({ obstacles: [], overhead: [], rails: [], movers: [person], goal: 89, limit: 89 + 400 });
+
+  /** Jumps (take-off tick, hold) that pass with stomps on but crash without: they land on the head. */
+  function onlyWithStomps(speed: number): { tick: number; hold: number }[] {
+    const plain = new Solver(personCourse(), speed);
+    const stomping = new Solver(personCourse(), speed, { stomps: true });
+    const found: { tick: number; hold: number }[] = [];
+    for (const hold of [1, 3, 6, 10]) {
+      for (let tick = 0; tick < 50; tick++) if (stomping.jumpWorks(tick, hold) && !plain.jumpWorks(tick, hold)) found.push({ tick, hold });
+    }
+    return found;
+  }
+
+  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+    it(`a fall onto the head is a valid path with stomps on and a crash without (${speed} px/s)`, () => {
+      expect(onlyWithStomps(speed).length).toBeGreaterThan(0);
+    });
+  }
+
+  it('stomps are off by default: patterns are checked without them, so they never require one', () => {
+    const s = new Solver(personCourse(), BASE_SPEED);
+    expect(s.solvable()).toBe(true);
+    const stomping = new Solver(personCourse(), BASE_SPEED, { stomps: true });
+    for (let tick = 0; tick < 50; tick++) if (s.jumpWorks(tick, 20)) expect(stomping.jumpWorks(tick, 20)).toBe(true);
+  });
+});

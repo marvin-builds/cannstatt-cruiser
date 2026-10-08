@@ -52,15 +52,33 @@ and on desktop (keyboard and mouse). The UI language is German.
   (too high to jump over) and unlock at a mid difficulty tier.
 - People, themed by zone, about the skater's size and low enough to jump:
   VfB fans in red and white (scarf, jersey with chest band, no club crest)
-  walking slowly at the Neckar near the Arena, and tipsy Wasen visitors in
-  Lederhosen or Dirndl with a Maßkrug, swaying, in Bad Cannstatt. Bumping into
-  one is friendly: fans cheer with their arms up, visitors spill some beer.
+  with a football under the arm, walking slowly at the Neckar near the Arena,
+  and tipsy Wasen visitors in Lederhosen or Dirndl holding a Maßkrug or a
+  Brezel, swaying, in Bad Cannstatt (kid mode: a Brezel or a Lebkuchenherz
+  around the neck, never beer). Bumping into one is friendly: fans cheer with
+  their arms up, visitors spill some beer. Landing on one is a stomp (see
+  below).
 - Grindable rails: handrails and pipes. The Parkbank can be ground too: landing
   on it from above grinds it like a rail; riding into its front or side crashes.
 - Clearing an obstacle by jumping or ducking under it scores points (a duck
   on the ground does not extend a combo). Landing on a rail starts a
   grind, which scores points per tick. A combo multiplier grows for chains that
   don't touch the ground or crash.
+
+## Stomp and carried items
+
+- Landing on top of a person while falling is not a crash but a stomp: the
+  skater bounces off (like a small jump without hold), the person tumbles onto
+  their back and sits up dazed with stars circling their head, then laughs.
+  Friendly, no violence. Afterwards the person is harmless.
+- The person's item pops up in a short arc and lands in the skater's hands
+  after ~0.45 s, also if the skater jumps or ducks meanwhile (it homes in on
+  the hands); a flying Maßkrug spills a few foam drops. Popup: "Ball
+  geschnappt!", "Brezel!", "Prost!" or "Lebkuchenherz!" (kid mode never shows
+  "Prost!"), plus bonus points.
+- The skater carries the item under the arm until the next crash (a crash
+  while it flies loses it too); a new run starts empty-handed.
+- A stomp counts as a trick in the combo. Patterns never require a stomp.
 
 ## Health
 
@@ -108,6 +126,15 @@ kid mode refers to drugs.
   guarantees that every pattern can be cleared with the available jump, also
   with moving people and with the lower chill jump where the chill effect can
   be active.
+- People are fair for humans, not just for frame-perfect input: a person
+  always comes alone in its pattern, with at least ~1 s of free street before
+  and after it (nobody walks into other obstacles), and its jump leaves a
+  take-off window of at least 9 ticks (~150 ms) with a tap, half or full
+  press at every speed, chilled too (where that is impossible, e.g. chilled
+  at the slowest speeds, no person comes). Every pattern is also checked
+  together with the end of the previous one. Acceptance: a bot with human
+  timing (take-off +-4 ticks, three press lengths, sloppy ducking) has no
+  crash into or within 1 s of a person in 20 runs of 3 minutes.
 
 ## Zones
 

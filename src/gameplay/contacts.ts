@@ -1,6 +1,7 @@
 /**
  * Per-tick contacts between the player's hitbox and the entities: rail and
- * bench landings (grindStart), crashes, clean clears, star and joint pickups.
+ * bench landings (grindStart), stomps on people's heads, crashes, clean
+ * clears, star and joint pickups.
  * Uses the same rules as the clearability solver (rules.ts).
  */
 import type { Entity, GameContext, ObstacleKind, PlayerState } from '../types';
@@ -9,6 +10,7 @@ import { GRIND_LANDING_POINTS, hitBox, isGrindable, isObstacle, isPerson, OBSTAC
 import { crashInto } from './health';
 import { landsOnRail, overlaps } from './rules';
 import { addPoints, addTrick } from './scoring';
+import { stompPeople } from './stomp';
 
 export function isLive(e: Entity): boolean {
   return !e.data?.debugRail;
@@ -16,6 +18,7 @@ export function isLive(e: Entity): boolean {
 
 export function resolveContacts(ctx: GameContext): void {
   landOnRails(ctx);
+  stompPeople(ctx);
   checkObstacles(ctx);
   collectStars(ctx);
   collectJoints(ctx);

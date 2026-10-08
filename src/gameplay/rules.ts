@@ -27,3 +27,14 @@ export function landsOnRail(feet: Feet, rail: Rect): boolean {
   const before = feet.y - feet.vy * TICK_DT;
   return before <= rail.y && feet.y >= rail.y && feet.x >= rail.x && feet.x <= rail.x + rail.w;
 }
+
+/**
+ * Stomp: the falling feet came down onto the top edge of `head` this tick
+ * (from above, crossing `head.y`) while the body is over it. Rising into a
+ * person, or touching it from the side, is not a stomp but a crash.
+ */
+export function landsOnHead(feet: Feet, body: Rect, head: Rect): boolean {
+  if (feet.supported || feet.vy <= 0) return false;
+  const before = feet.y - feet.vy * TICK_DT;
+  return before <= head.y && feet.y >= head.y && body.x < head.x + head.w && head.x < body.x + body.w;
+}

@@ -5,7 +5,8 @@
  * any view width while the layout itself stays the same for every width.
  * People are themed by the zone the pattern lies in (`zoneAt`), and every so
  * often a joint pattern comes; the patterns the chill effect can reach after
- * it are also verified with the chill jump at chill speed.
+ * it are also verified with the chill jump at chill speed. Each pattern is
+ * verified together with the previous one's pieces, across the gap.
  */
 import { MAX_SPEED, PLAYER_X } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
@@ -13,8 +14,8 @@ import type { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { CHILL_SPEED_SCALE } from './chill';
 import { gapAt, speedAt, tierAt } from './difficulty';
-import { motionOf, withMotion } from './motion';
-import { jointPattern, type Pattern, planPattern } from './patterns';
+import { anchorOf, motionOf, withMotion } from './motion';
+import { jointPattern, type Pattern, type Piece, planPattern } from './patterns';
 
 /** Street distance from the player to the first pattern (a few empty seconds). */
 const FIRST_START = 380;
@@ -41,6 +42,8 @@ export class Spawner {
   private nextJoint = 0;
   /** Patterns starting before this street distance may be ridden while chilled. */
   private chillUntil = -Infinity;
+  /** The last pattern's pieces in the next pattern's space (x < 0). */
+  private previous: Piece[] = [];
 
   /** `zoneAt(street)`: the background zone at a street distance (themes the people). */
   constructor(private readonly zoneAt: (street: number) => number = () => 0) {}
@@ -51,6 +54,7 @@ export class Spawner {
     this.nextId = 1;
     this.nextJoint = JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER);
     this.chillUntil = -Infinity;
+    this.previous = [];
   }
 
   /** The street moved left by dx (call together with moving the entities). */
@@ -75,7 +79,9 @@ export class Spawner {
         if (motion) withMotion(e, motion, e.x);
         entities.push(e);
       }
-      this.nextStart += pattern.length + gapAt(street);
+      const advance = pattern.length + gapAt(street);
+      this.previous = pattern.pieces.map((p) => shifted(p, -advance));
+      this.nextStart += advance;
     }
   }
 
@@ -86,7 +92,7 @@ export class Spawner {
       this.chillUntil = street + pattern.length + CHILL_REACH;
       return pattern;
     }
-    const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined };
+    const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.previous };
     if (street < this.chillUntil) {
       // A pinned speed stays pinned while chilled; otherwise from the slowest chill speed through the ramp back up.
       const low = Math.min(...speeds) * CHILL_SPEED_SCALE;
@@ -95,4 +101,11 @@ export class Spawner {
     }
     return planPattern(rng, tierAt(street), speeds, options);
   }
+}
+
+/** The piece moved by dx along the street (its motion anchor too). */
+function shifted(p: Piece, dx: number): Piece {
+  const moved: Piece = { ...p, x: p.x + dx };
+  if (p.data && typeof p.data.ax === 'number') moved.data = { ...p.data, ax: anchorOf(p) + dx };
+  return moved;
 }
