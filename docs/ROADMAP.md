@@ -129,3 +129,7 @@ Plan: Wave 5a (parallel): core (smoothness + use/drunk contract), world (Cannsta
 
 Hosting: DONE 2026-10-08. The repo is public, GitHub Pages deploys from main via .github/workflows/deploy.yml, live at https://marvinmai.github.io/cannstatt-cruiser/.
 Wave 5b additionally covers 9 (player) and 10 (player + gameplay + ui popup + audio).
+
+## Status checkpoint 2026-10-08 (evening)
+- DONE (local commits, not pushed — user asked to hold pushes until they are back): Wave 5a (smooth loop + CSS-scaled canvas, item/drunk contract, Cannstatt start, Mitte traffic, Mombachquelle, bench rear edge, wider gaps, bin crash), Wave 5b (item use: beer → drunk, Brezel/Lebkuchenherz → +1 health, football throw + ricochet; grind trick with front view and moustache; darker hair; item sounds and traffic noise; planning spread over ticks; smooth scrolling), Wave 5c (beer auto-drink after 6 s, stacked popups, football icon, soft drunk effect, delayed sound cues, docs + item scenarios).
+- Leftovers (Wave 5d): solver stack overflow when drunk planning runs at speed 0 (only reachable via test pinning; repro in scratchpad repro5c/d1.ts); gameplay render spike up to ~9 ms on a 4x-throttled phone; solver allocations (~20 KB/tick while planning, heap rise 18-20 KB/frame); ball hit plays 'cleared' and 'ballHit' sounds together; merged repeat popup keeps its old stack position; wide popups reach the left edge on phone portrait; phone-portrait item button plate touches the right edge; gulp timing duplicated in audio (GULP_AT) and player.
