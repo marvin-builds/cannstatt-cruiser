@@ -29,6 +29,15 @@ const MUTED_KEY = 'muted';
 const BOOST_TICKS = 6;
 /** Landing impact (vy in view px/s) that plays the thud at full volume. */
 const HARD_LANDING = 350;
+/**
+ * Landing impact (view px/s) from which a big drop adds the heavy boom: above
+ * a full-hold jump (~370), so only drops from a ledge or a kicker launch get it.
+ */
+const BIG_DROP = 380;
+/** Landing impact at which the boom is at full volume and the thud lowest. */
+const HUGE_DROP = 520;
+/** How far a huge drop lowers the landing thud (pitch factor 1 - this). */
+const BIG_DROP_PITCH_DROP = 0.2;
 /** Crash kinds that are people: they get a soft 'oof' on top of the crash. */
 const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGuest']);
 /** Grind trick points that play the trick sting at full volume. */
@@ -46,6 +55,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   let boostTicks: number | null = null;
   /** Run time of the last drink sound, so the woozy sting can wait for the gulps. */
   let glugAt = -Infinity;
+  /** Whether the air trick spin of the current trick has played. */
+  let spinning = false;
   const traffic = new TrafficNoise();
   const passBy = new PassBy();
   const clears = new ClearedSounds();
@@ -72,6 +83,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
     if (step.level !== null) safely(() => backend.setTraffic(step.level!));
     if (wasSounding !== traffic.sounding) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
     if (step.cue) play(step.cue);
+  };
+  /** The air trick spin, once as each trick starts (before the traffic tick, so it ducks the rumble at once). */
+  const updateSpin = (ctx: GameContext) => {
+    const airTrick = ctx.state.mode === 'playing' && ctx.state.player.airTrick;
+    if (airTrick && !spinning) play('airSpin');
+    spinning = airTrick;
   };
   const startGrind = () => {
     if (grinding) return;
@@ -105,7 +122,17 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('jump');
         boostTicks = 0;
       });
-      bus.on('land', ({ impact }) => play('land', 0.3 + 0.7 * Math.min(1, Math.max(0, impact) / HARD_LANDING)));
+      bus.on('land', ({ impact }) => {
+        const intensity = 0.3 + 0.7 * Math.min(1, Math.max(0, impact) / HARD_LANDING);
+        if (impact < BIG_DROP) {
+          play('land', intensity);
+          return;
+        }
+        // A big drop: the thud sinks lower and a deep boom grows under it.
+        const heavy = Math.min(1, (impact - BIG_DROP) / (HUGE_DROP - BIG_DROP));
+        play('land', intensity, 0, 1 - BIG_DROP_PITCH_DROP * heavy);
+        play('landHeavy', 0.4 + 0.6 * heavy);
+      });
       bus.on('starCollected', () => play('star'));
       // Kid mode: bubble gum instead of the joint, so a sweet bubbly cue instead of the mellow one.
       bus.on('chillStart', () => play(ctx.state.kidMode ? 'bubble' : 'chill'));
@@ -165,6 +192,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('launch', () => play('launch'));
       bus.on('stuntStep', ({ step }) => play('stuntStep', 1, 0, stuntStepPitch(step)));
       bus.on('stuntEnd', ({ completed }) => play(completed ? 'stuntFanfare' : 'stuntFizzle'));
+      // Air trick: the spin plays as the trick starts (update), a bright ping when it is made.
+      bus.on('airTrick', () => play('airTrick'));
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);
@@ -183,6 +212,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
     update(ctx: GameContext) {
       // Runs after gameplay, so every clear of this tick is known by now.
       for (let n = clears.flush(); n > 0; n--) play('cleared');
+      updateSpin(ctx);
       updateTraffic(ctx);
       if (ctx.state.mode !== 'playing') {
         stopGrind();

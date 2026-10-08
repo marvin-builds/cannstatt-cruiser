@@ -41,7 +41,10 @@ export type Cue =
   | 'launch'
   | 'stuntStep'
   | 'stuntFanfare'
-  | 'stuntFizzle';
+  | 'stuntFizzle'
+  | 'airSpin'
+  | 'airTrick'
+  | 'landHeavy';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';

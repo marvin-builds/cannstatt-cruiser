@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Cue } from './backend';
-import { GLUG_LENGTH, GULP_AT, SOUNDS, stuntStepPitch } from './sounds';
+import { GLUG_LENGTH, GRIND, GULP_AT, MASTER_GAIN, SOUNDS, TRAFFIC_RUMBLE, stuntStepPitch } from './sounds';
 import { PASS_CUES } from './passby';
-import { TRAFFIC_CUES } from './traffic';
+import { TRAFFIC, TRAFFIC_CUES } from './traffic';
 
 /** Merged [start, end] intervals in which any of the voices sounds. */
 function soundingSpans(voices: { at: number; dur: number }[]): [number, number][] {
@@ -144,5 +144,75 @@ describe('sounds: stunt lines', () => {
     const notes = tonal('stuntFizzle');
     expect(notes.at(-1)!.freq).toBeLessThan(notes[0].freq);
     expect(peak('stuntFizzle')).toBeLessThan(peak('stuntFanfare'));
+  });
+});
+
+describe('sounds: air trick and big drops', () => {
+  const tonal = (cue: Cue) => SOUNDS[cue].filter((v) => v.wave !== 'noise').sort((a, b) => a.at - b.at);
+  const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
+  const lowest = (cue: Cue) => Math.min(...tonal(cue).map((v) => Math.min(v.freq, v.to ?? v.freq)));
+
+  it('spins with a quick fwip-fwip: two separate sweeping swishes', () => {
+    const swishes = SOUNDS.airSpin.filter((v) => v.wave === 'noise');
+    expect(soundingSpans(swishes)).toHaveLength(2);
+    for (const v of swishes) expect(v.to).not.toBe(v.freq);
+    expect(end('airSpin')).toBeLessThanOrEqual(0.4);
+  });
+
+  it('pings brightly on a made air trick, ending on its highest note', () => {
+    const notes = tonal('airTrick');
+    const top = Math.max(...notes.map((v) => v.freq));
+    expect(top).toBeGreaterThanOrEqual(1000);
+    expect(notes.at(-1)!.freq).toBe(top);
+    expect(end('airTrick')).toBeLessThanOrEqual(0.6);
+  });
+
+  it('adds a deeper, longer boom under the landing thud for big drops', () => {
+    expect(lowest('landHeavy')).toBeLessThan(lowest('land'));
+    expect(end('landHeavy')).toBeGreaterThan(end('land'));
+  });
+});
+
+/**
+ * Worst-case level of cues started together: every voice counts at its peak
+ * gain (times the cue's intensity) for as long as it sounds, so the loudest
+ * moment is where most voices overlap. A waveform peaks at 1, so after the
+ * master gain this must stay below 1 or the output can clip.
+ */
+function summedPeak(cues: { cue: Cue; intensity?: number; delay?: number }[]): number {
+  const voices = cues.flatMap(({ cue, intensity = 1, delay = 0 }) =>
+    SOUNDS[cue].map((v) => ({ start: v.at + delay, end: v.at + delay + v.dur, gain: v.gain * intensity })),
+  );
+  return Math.max(...voices.map(({ start }) => voices.filter((v) => v.start <= start && start < v.end).reduce((sum, v) => sum + v.gain, 0)));
+}
+
+describe('sounds: stunt mix headroom', () => {
+  /** Output level (after the master gain) the loudest stunt moment may reach: about 1 dB below clipping. */
+  const HEADROOM = 0.9;
+  const grind = GRIND.noise.gain + GRIND.buzz.gain;
+  const { noise, hiss, drone } = TRAFFIC_RUMBLE;
+  /** Full Mitte rumble, ducked as it is under every gameplay sound. */
+  const duckedTraffic = (noise.gain + hiss.gain + drone.gain + drone.throbDepth) * TRAFFIC.duckTo;
+  const out = (oneShots: number, loops: number) => (oneShots + loops) * MASTER_GAIN;
+
+  it('keeps a kicker take-off with the spin starting at once under the clipping level', () => {
+    const level = summedPeak([{ cue: 'launch' }, { cue: 'stuntStep' }, { cue: 'airSpin' }]);
+    expect(out(level, duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
+  });
+
+  it('keeps an air trick caught on a ledge (grind loop on) under the clipping level', () => {
+    const level = summedPeak([{ cue: 'airTrick' }, { cue: 'stuntStep' }, { cue: 'land' }]);
+    expect(out(level, grind + duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
+  });
+
+  it('keeps a big-drop landing that finishes the line with a trick under the clipping level', () => {
+    const level = summedPeak([
+      { cue: 'land' },
+      { cue: 'landHeavy' },
+      { cue: 'airTrick' },
+      { cue: 'stuntStep' },
+      { cue: 'stuntFanfare' },
+    ]);
+    expect(out(level, grind + duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
   });
 });

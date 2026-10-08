@@ -311,6 +311,24 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'triangle', at: 0, dur: 0.1, freq: N.G5, to: N.E5, gain: 0.1 },
     { wave: 'triangle', at: 0.1, dur: 0.14, freq: N.E5, to: N.C5, gain: 0.08 },
   ],
+  // Air trick spin: a quick 'fwip-fwip', two band-passed swishes sweeping up, the
+  // second higher, with a soft whirling triangle under them.
+  airSpin: [
+    { wave: 'noise', at: 0, dur: 0.09, freq: 900, to: 2600, gain: 0.26, filter: 'bandpass' },
+    { wave: 'noise', at: 0.12, dur: 0.1, freq: 1200, to: 3600, gain: 0.24, filter: 'bandpass' },
+    { wave: 'triangle', at: 0, dur: 0.22, freq: 330, to: 660, gain: 0.07 },
+  ],
+  // Air trick made: a bright two-note ping with a soft bell ringing on the top note.
+  airTrick: [
+    { wave: 'square', at: 0, dur: 0.06, freq: N.G6, gain: 0.06 },
+    { wave: 'square', at: 0.06, dur: 0.16, freq: N.C7, gain: 0.06 },
+    { wave: 'sine', at: 0.06, dur: 0.38, freq: N.C7, gain: 0.14 },
+  ],
+  // Big drop: a deep, slightly longer boom under the landing thud (scaled by the drop).
+  landHeavy: [
+    { wave: 'triangle', at: 0, dur: 0.2, freq: 90, to: 38, gain: 0.3 },
+    { wave: 'noise', at: 0, dur: 0.1, freq: 260, gain: 0.1, filter: 'lowpass' },
+  ],
   // Vehicles driving past (vehiclePassed): a light, higher car hum ...
   passCar: passBy({ wave: 'triangle', hz: 150, engineGain: 0.12, air: 1600, airGain: 0.09, len: 0.75 }),
   // ... a slightly lower, buzzier van ...
