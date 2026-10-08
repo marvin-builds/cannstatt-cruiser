@@ -13,7 +13,7 @@ src/main.ts             composition root: lists the systems in update order (do 
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/changelog.ts        CHANGELOG (newest first), BUILD_VERSION, changesSince(), compareVersions() (see Changelog)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX, DRUNK_HOLD_WOBBLE, START_ZONE
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90; MAX_SPEED 165 is no longer read by gameplay, whose top speed is difficulty.ts TOP_SPEED), health, DRUNK_DELAY_MIN/MAX, DRUNK_HOLD_WOBBLE, START_ZONE
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
@@ -41,11 +41,14 @@ src/core/               engine pieces (foundation-owned, slices only import from
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
   world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
   world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
-  world/traffic.ts      Stuttgart-Mitte foreground traffic: LANES, VEHICLES, TRAFFIC_TOP / FRONT_TOP / EXHAUST_TOP, trafficDensity() (see Mitte traffic)
+  world/traffic.ts      foreground street traffic: dense in Stuttgart-Mitte, light elsewhere (LIGHT_TRAFFIC); LANES (kinds / lightKinds), VEHICLES, TRAFFIC_TOP / FRONT_TOP / EXHAUST_TOP, trafficDensity(), mitteShare() (see Mitte traffic)
   world/art/traffic.ts  vehicle and exhaust art: drawBackTraffic (world layer), drawFrontTraffic (fx layer), smog haze
-  world/art/mombach.ts  the Mombachquelle scene on the far Neckar bank (mid layer, see Zones)
+  world/scene.ts        DepthLayer (one parallax depth over all zones, knows the layer `behind` it for LayerSpec.props.uncover), SharedLayer (clouds)
+  world/stream.ts       PropStream: props of one zone leg in a seeded order, keepClear(from, to), introX(id)
+  world/art/mombach.ts  the Mombachquelle scene on the far Neckar bank (mid layer, see Zones); MOMBACH_FOCUS = the basin span the near layer keeps uncovered
   world/debug.ts        window.__world (test only): trafficDensity(), traffic() {vehicles, puffs, shake}
-  gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins
+  gameplay/difficulty.ts  speedAt(distance): BASE_SPEED 90 eases out to TOP_SPEED 190 over SPEED_RAMP_DISTANCE (46 000 px, ~5.3 min); gapAt, tierAt over RAMP_DISTANCE (24 000 px, ~3.5 min)
+  gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins, drunk margin (DRUNK_TEMPLATES, DRUNK_HOLD, drunkFairness)
   gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead, STOMP_DEPTH, stompReach)
   gameplay/stomp.ts     stompPeople(): stomp detection and knockOver (see Stomp and carried items)
   gameplay/testing.ts   test / playtest tooling: HumanBot, planJump, planStomp (DOM-free, not used by the game)
@@ -53,12 +56,19 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/use.ts       the use button: drink / eat / throw the carried item (DRUNK_DURATION, EAT_BONUS_POINTS)
   gameplay/auto-drink.ts  a carried Maßkrug is drunk by itself after BEER_AUTO_DRINK (6 s)
   gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
+  gameplay/drop.ts      DroppedItems: the item a ball hit knocks onto the street, lying there until picked up (see Dropped items)
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
   ui/item-button.ts     touch item button / desktop "E" chip, first-catch hint (storage key itemHintSeen)
-  ui/drunk-look.ts      drunk HUD row and woozy screen (sway, vignette); ui/item-look.ts catch popups
+  ui/drunk-look.ts      drunk HUD row and woozy screen (two swaying double images, pulsing wash, vignette); ui/item-look.ts catch popups
+  ui/notices.ts         rules for the menu notices: reloadOffered, installHintKind (INSTALL_HINT_MIN_VISITS), whatsNewLines (see Menu screens)
+  ui/menu-layout.ts     one pure layout per menu screen (title, pause, game over, what's new) incl. its buttons, shared by hotspots and drawing
+  ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), portrait hint, game-over input delay
+  ui/menu-screens.ts    drawing of the menu screens and their notice cards
+  ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
+  ui/draw-kit.ts        shared drawing primitives: shadowed text, opaque plates and ribbons, menu buttons (allocation-free)
   ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
   audio/traffic.ts      TrafficNoise: Mitte rumble level (ducked under gameplay sounds), rng-free horns and truck passes from state.trafficDensity
   player/bin.ts         bin crash: the bin the player draws around the skater
@@ -79,8 +89,8 @@ foundation owner can extend it.
 | `src/core/`, `src/types.ts`, `src/changelog.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps and the tossed item (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause, game over, highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events |
+| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence, parent check) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -105,8 +115,9 @@ creates them in `public/`):
   `handleServiceWorkerMessage` (`core/update.ts`), which sets
   `state.updateReady = true` for that message and ignores everything else.
 - `state.updateReady` is never cleared (only a reload resets the page) and
-  `resetRun` keeps it. The ui reads it to show the reload hint (title and
-  pause screens only) and calls `ctx.commands.reloadForUpdate()` from the
+  `resetRun` keeps it. The ui reads it to show the reload button (title,
+  pause and game-over screens, never mid-run; see
+  [Menu screens](#menu-screens-ui)) and calls `ctx.commands.reloadForUpdate()` from the
   hint's hotspot; core reloads the page (`location.reload()` through the
   `Platform`, a no-op in tests).
 - A message can be lost if the worker finishes before the loading page exists
@@ -230,7 +241,7 @@ interface System {
 | `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
 | `player.*` (position, velocity, grounded, grinding, grindTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer` and `grindTrick`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |
-| `trafficDensity` | world, every tick (0..1, see [Mitte traffic](#mitte-traffic)); audio reads it for the traffic noise |
+| `trafficDensity` | world, every tick except while paused (during a run `LIGHT_TRAFFIC` 0.05 outside Mitte up to 1 in Mitte, 0 on the title and game over; see [Mitte traffic](#mitte-traffic)); audio reads it for the traffic noise |
 
 Coordinates are screen space in view pixels, with y pointing down. The world
 scrolls, while the player stays near `PLAYER_X`. `player.x/y` is the board's
@@ -262,9 +273,11 @@ screens. Every hook is optional; build it as a typed `const` and pass it to
 | `onKeyDown(code)` | while `rect()` is non-null, every key press (`KeyboardEvent.code`) is offered to the hotspots, topmost first, before it reaches a button. Return true to take it: its button is not pressed, auto-repeats are ignored and the release goes to `onKeyUp`. |
 | `onKeyUp(code)` | a key this hotspot took went up (or focus was lost) |
 
-The ui slice uses it for the title logo (long press by pointer or K) and for
-the open settings menu, which takes every key but M so nothing starts a run
-behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
+The ui slice uses it for the title and pause logo (long press by pointer or
+K), for the open settings menu, which takes every key but M so nothing starts
+a run behind it, for the modal "Neu in dieser Version" screen, and for the
+menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
+[Menu screens](#menu-screens-ui)). (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 
 ### Events (`GameEvents`)
 
@@ -285,12 +298,12 @@ behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
-| `itemCaught` | `{item}` | gameplay (the tossed item reached the hands; `state.carriedItem = item`) |
+| `itemCaught` | `{item}` | gameplay (the tossed item reached the hands, or a [dropped item](#dropped-items) was picked up; `state.carriedItem = item`) |
 | `itemUsed` | `{item, action}` | gameplay (use button with an item in hand; `action` is `'drink' \| 'eat' \| 'throw'`; clears `state.carriedItem`) |
 | `drunkStart` | `{duration}` | gameplay (Maßkrug drunk; `state.drunkTimer = duration`) |
 | `healthGained` | `{health}` | gameplay (Brezel / Lebkuchenherz eaten; the new health) |
 | `ballThrown` | `{entityId}` | gameplay (the football left the hands as a `ball` entity) |
-| `ballHit` | `{entityId, kind}` | gameplay (the thrown ball hit a person: the person's id and kind) |
+| `ballHit` | `{entityId, kind}` | gameplay (the thrown ball hit a person: the person's id and kind; the person's item drops onto the street) |
 | `ballBack` | `{entityId}` | gameplay (a missed ball ricochets back towards the skater; the ball's id) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 
@@ -368,6 +381,26 @@ as before.
 drive directly: `keyDown/keyUp(game, code)` and `PointerControls`
 (`down/move/up/cancel(id, viewX, viewY)`). The player decides what duck does
 (on the ground only; jump wins over duck), see `src/player/CONTRACT.md`.
+
+### Drunk look
+
+Looks only (hitbox, jump and duck unchanged), never in kid mode (kid mode has
+no beer), pure functions of the run time so replays look the same:
+
+- **Player** (`player/wobble.ts` `drunkLook(drunkTimer, time)` →
+  `DrunkLook {lean, stagger, flail, flailHigh, hiccup}`): the body leans
+  `lean` = -2..2 px over the board, swaying slowly (one sway per 1.6 s);
+  every 2.9 s a `stagger` lurches for 0.35 s to the full lean against the
+  sway with a flailing arm; an arm flails up now and then and a hiccup
+  bubble rises from the mouth.
+- **UI** (`ui/drunk-look.ts`, drawn in `screens.ts`): strength eases in over
+  `DRUNK_EASE_IN` (0.5 s) and out over the last `DRUNK_EASE_OUT` (1 s). Two
+  faint double images of the frame sway against each other: one up to 6 px
+  sideways (plus a little vertically, `GHOST_ALPHA` 0.36), a fainter second
+  one (`SECOND_GHOST_ALPHA` 0.18) the other way; an amber wash pulses slowly
+  (alpha 0.08 +- 0.05) and a soft vignette fades in from the side edges. The
+  real image always shows through at more than half strength and the HUD is
+  drawn after it (sharp), with a draining Maßkrug timer row.
 
 ### Touch: tap vs swipe down
 
@@ -543,12 +576,27 @@ each other along the street; there is no time-based cycle.
   basin; a bin hanging on a tree upper right. Soft mid-palette people chill
   on both benches and one has the feet in the basin (six frames: splash,
   kicking foot, wave). Never an obstacle.
+- **Keeping a scene uncovered** (`world/scene.ts`, `world/stream.ts`): the
+  near layer's lamps and trees scroll twice as fast as the Mombachquelle on
+  the mid layer and would pass in front of the basin. A layer spec can name
+  a part of an intro prop on the layer behind it that its props never cover:
+  `LayerSpec.props.uncover = {id, from, to}` (prop-local x range; the Neckar
+  near layer uses `{id: 'mombachquelle', ...MOMBACH_FOCUS}`, the flat area
+  to the basin's right edge). Each `DepthLayer` gets the layer `behind` it
+  (constructor argument); for every leg it asks that layer for the prop's
+  layer x (`DepthLayer.introX(route, k, id)`, through `ZoneRoute.leg(depth,
+  k)` and the leg's `PropStream.introX(id)`), converts the span to its own
+  scroll factor (widened by up to `VIEW_MAX_W` so it holds for every view
+  width) and calls `PropStream.keepClear(from, to)`: a prop that would
+  overlap the span is placed right after it instead. So the basin is never
+  covered while it is on screen, at any width.
 
 ### Mitte traffic
 
 In Stuttgart-Mitte big, dense traffic drives on the foreground street, close
-to the camera (`world/traffic.ts`, art in `world/art/traffic.ts`). Two lanes
-(`LANES`), each a fixed pool, never allocating while driving:
+to the camera; everywhere else there is [light traffic](#light-traffic)
+(`world/traffic.ts`, art in `world/art/traffic.ts`). Two lanes (`LANES`),
+sharing one fixed vehicle pool, never allocating while driving:
 
 - **Back lane** (`front: false`): hatchbacks, sedans and vans driving with the
   skater (they always overtake him). Drawn in the **world** layer
@@ -567,26 +615,92 @@ to the camera (`world/traffic.ts`, art in `world/art/traffic.ts`). Two lanes
   1 px (`Traffic.shake`, 0 or 1, toggling every 4 ticks).
 - **Headlight flashes**: each vehicle flashes its headlights (a honk, two
   short blinks) every 2.5-7 s.
-- A smoggy haze goes over the far layers while there is traffic.
+- A smoggy haze goes over the far layers (the layers before the near one),
+  scaled by `mitteShare(density)`: 0 at light traffic, 1 in Mitte, so the
+  other zones stay clear.
 - `traffic.test.ts` holds the limits; the playtest
   `scripts/scenarios/world.ts` checks them per vehicle / puff in a real run.
 
-Traffic ramps in shortly before the Mitte gateway and out after it
-(`trafficDensity(route, distance)`, 0..1). The world writes it to
-`state.trafficDensity` every tick (0 outside a run); no other slice writes
-it. Test hook: `window.__world` (`world/debug.ts`, see docs/TESTING.md).
+`trafficDensity(route, distance)` is `LIGHT_TRAFFIC` (0.05) away from Mitte
+and 1 inside it, ramping in over `RAMP_LENGTH` (400 px) starting `RAMP_LEAD`
+(160 px) before the Mitte gateway and out the same way after the gateway
+that leaves it. The world draws traffic at that density on every screen
+(also on the title and the game-over screen) but writes
+`state.trafficDensity` only as the run sees it: the density while `playing`,
+0 on the title and game over (paused keeps the last value). No other slice
+writes it. `WorldSystem.trafficDensity()` and
+`window.__world.trafficDensity()` return the drawn density. Test hook:
+`window.__world` (`world/debug.ts`, see docs/TESTING.md).
+
+#### Light traffic
+
+Below density `DENSE_FROM` (0.2), i.e. in Neckar and Bad Cannstatt, the
+street has light traffic: one vehicle at a time. Once the street has been
+empty for 4-11 s (`LIGHT_GAP`, from the traffic rng) a single vehicle enters
+a random lane, drawn from that lane's `Lane.lightKinds` bag: hatchbacks,
+sedans and vans, no trucks, and a bus only now and then in the front lane.
+The next one waits until it has left the screen. Same drawing, limits and
+layers as in Mitte, so it never covers the skater or obstacles; at density
+`>= DENSE_FROM` every lane runs on its own timer (`Lane.kinds`,
+`Lane.interval`).
 
 **Traffic audio** (`audio/traffic.ts` `TrafficNoise`, `audio/sounds.ts`
 `TRAFFIC_RUMBLE`): a layered rumble on one gain bus that follows a smoothed
 `state.trafficDensity` (lowpassed road noise whose cutoff opens with the
-level, tyre hiss and a throbbing engine drone of two detuned low saws). It is
-silent unless playing and unmuted, and dips to `duckTo` (0.45) for ~8 ticks
+level, tyre hiss and a throbbing engine drone of two detuned low saws). With
+light traffic (0.05) outside Mitte it plays quietly, in Mitte at full level.
+It is silent unless playing and unmuted, and dips to `duckTo` (0.45) for ~8 ticks
 whenever a gameplay sound plays, then glides back (traffic sounds never duck
-it). One-shot cues are rng-free (a hash of the run-time slot): horns from
-density 0.5 (`honk` car, `honkShort` small-car double beep, `hornDeep`
+it). One-shot cues are rng-free (a hash of the run-time slot), so they only
+sound in and around Mitte: horns from density 0.5 (`honk` car, `honkShort` small-car double beep, `hornDeep`
 bus / truck; at most one per 1.5 s slot) and a passing truck (`truckPass`,
 from density 0.6, at most one per 6 s slot). `window.__audio.log` records
 `traffic:start` / `traffic:stop` and the cues.
+
+## Menu screens (ui)
+
+The ui draws four menu screens; `ui/menu-state.ts` `menuScreen(state, view)`
+picks one (null while riding or while the settings menu covers it):
+
+| Screen | When | Buttons (key) |
+|---|---|---|
+| "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
+| title | mode `title` | reload, install hint; the logo's long press opens the settings |
+| pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), reload |
+| game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Zum Startbildschirm" (T), reload, install hint |
+
+- **Reload** (`notices.ts` `reloadOffered`): a card "Neue Version da" with
+  the button "Neu laden" (desktop label "Neu laden (U)") while
+  `state.updateReady` and the mode is not `playing`; it calls
+  `commands.reloadForUpdate()`. A real button because the installed app
+  (standalone) has no browser reload.
+- **"Zum Startbildschirm"** (desktop label with "(T)"): ends the run and
+  shows the title (`commands.toTitle()`). From the pause screen the
+  unfinished run still counts: its score and stars go into the highscore and
+  star total first (`recordRun`, saved at once). On game over it was already
+  recorded. Escape on game over also goes to the title (core).
+- **Install hint** (`notices.ts` `installHintKind(install, touch)`): touch
+  devices only, not `standalone`, not `installed`, not `dismissed` and from
+  the second visit on (`INSTALL_HINT_MIN_VISITS` = 2); on title and game
+  over, never in pause or mid-run. Kind `'prompt'` when `canPrompt` (text
+  "Als App: Vollbild und offline", button "Installieren" calling
+  `commands.promptInstall()` inside the tap), otherwise `'ios'` on iOS
+  ("Teilen" with the share icon, arrow, "Zum Home-Bildschirm"); other
+  platforms without a captured prompt get none. "×" calls
+  `commands.dismissInstallHint()`. On a crowded game over the hint goes
+  before the stars and distance rows; the title keeps it.
+- **"Neu in dieser Version"**: a headline and one bullet line per item of
+  `state.whatsNew` (`whatsNewLines`, newest first; core caps them to
+  `WHATS_NEW_MAX_ITEMS`).
+- **Layout**: `ui/menu-layout.ts` has one pure function per screen
+  (`titleLayout`, `pauseLayout`, `gameOverLayout`, `whatsNewLayout`)
+  returning `MenuLayout {blocks, buttons, panel}`; `currentMenu(r, view)`
+  computes the one showing. The hotspots (`index.ts`) and the drawing
+  (`menu-screens.ts`) use the same rects, so what is drawn is what can be
+  tapped. `ui/column.ts` `fitColumn` stacks the blocks centred between a
+  top and a bottom and drops optional ones (highest `drop` level first, all blocks of that level at once) until the
+  rest fits, so every screen works at 320-427 px wide, in portrait and with
+  44 px touch buttons; nothing overlaps the HUD button row.
 
 ## Settings menu and kid mode
 
@@ -595,11 +709,18 @@ from density 0.6, at most one per 6 s slot). `window.__audio.log` records
   missing storage = false) and saves it on every change. Other slices only
   read it.
 - The menu "Einstellungen" has no visible button. It opens on the title
-  after holding the logo (`logoRect`, touch or mouse) or K for
+  and on the pause screen after holding the logo (`logoRect` on the title,
+  `MenuButtons.logo` on the pause screen; touch or mouse) or K for
   `LONG_PRESS_TIME` = 3 s; a thin progress bar under the logo shows only
   after `LONG_PRESS_HINT_DELAY` = 1 s. Letting go of the logo earlier is a
-  normal tap and starts the run; K alone never does. The menu is drawn in
-  mode `title` (core modes are unchanged) and swallows all taps and keys but M.
+  normal tap: it starts the run (title) or resumes (pause); K alone never
+  does either. The menu is drawn over the title or pause screen (core modes
+  are unchanged) and swallows all taps and keys but M.
+- Switching kid mode from the pause screen restarts the run (once switched,
+  the menu notes "Lauf wird neu gestartet"): kid mode changes the art of
+  things already on the street, so when the menu closes with kid mode
+  switched, the ui ends the paused run like "Zum Startbildschirm" (its score
+  and stars count for the highscore and star total) and starts a new run.
 - Kindermodus turns on at once. Turning it off asks a parent check
   ("Wie viel ist a × b?", factors 6-9, `parentQuestion(state.frame)`, no
   gameplay rng) with three answers: right turns it off and returns to the
@@ -608,7 +729,8 @@ from density 0.6, at most one per 6 s slot). `window.__audio.log` records
   1-3 answer.
 - Logic in `ui/settings.ts` (DOM-free: `LongPress`, `SettingsMenu`,
   `parentQuestion`, `loadKidMode` / `saveKidMode`), layout in
-  `ui/layout.ts` (`settingsLayout`), drawing in `ui/screens.ts`.
+  `ui/layout.ts` (`settingsLayout`), drawing in `ui/screens.ts`; the pause
+  logo's rect comes from `ui/menu-layout.ts` (`pauseLayout`).
 - What kid mode changes: gameplay draws the joint entity as a pink bubble
   gum (`chillPickupArt`), the ui shows the gum HUD icon, a sweet pink tint and
   the popup "Kaugummi!" (`ui/chill-look.ts`); player and audio pick their own
@@ -684,6 +806,8 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   `state.carriedItem`, adds `ITEM_POINTS` and emits `itemCaught {item}`.
 - **Losing it**: a crash clears `state.carriedItem` (`health.ts`) and cancels
   an item in flight; `resetRun` clears it at every run start.
+- **Dropping it** (someone else's item): a ball hit knocks the person's item
+  onto the street, see [Dropped items](#dropped-items).
 - **Using it** (gameplay, `use.ts`, on `input.use.pressed` with an item in
   hand, see [Input](#input-action-duck-and-use)): gameplay clears
   `state.carriedItem` and emits `itemUsed {item, action}`, then by item
@@ -731,6 +855,40 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   seconds, from)` lets a HumanBot that goes for every person ride a real run
   and reports stomps and crashes on the bounce.
 
+### Dropped items
+
+ROADMAP 19, gameplay `drop.ts` (`DroppedItems`, DOM-free) with the art in
+`item-art.ts` (`drawDrops`, entities layer, after obstacles and people,
+before stars):
+
+- **Drop**: on `ballHit` the hit person lets go of their item (`itemOf`, as
+  for a stomp: fan a football, Wasen visitor a Brezel or a Maßkrug; kid mode
+  a Lebkuchenherz instead of the Maßkrug, so kid mode never drops beer). It
+  falls from the hand in a short arc (up first, `DROP_TIME` 0.4 s) onto the
+  street and lies there (`ITEM_BOX` 7 px box resting on `GROUND_Y`, with a
+  small shadow and a glint), scrolling with the street. Items past the left
+  edge are gone; a new run clears them.
+- **Fair spot only**: the item comes to lie at the first of `DROP_SPOTS`
+  (+12, +24, +36, -12, -24 px from the person's middle; + = further along
+  the street) with `DROP_ROOM_SECONDS` (0.5 s of riding) of free street on
+  both sides: no live obstacle or rail and no pattern still to come
+  (`spawner.upcomingX()`). No free spot: nothing drops. Collecting it never
+  needs a move, and the spawner and solver never see it.
+- **Pickup**: every playing tick (not while the player is in the crash
+  animation) the first item that overlaps `player.hitbox` is taken: on the
+  ground by riding over it, in the air only while the feet are within the
+  box (a low jump through it; a high jump passes over it and misses it).
+  Gameplay then catches it exactly like a tossed item: `state.carriedItem`,
+  `ITEM_POINTS` (200) and `itemCaught {item}`, so the ui shows the catch
+  popup and the auto-drink clock of a picked-up Maßkrug starts at the pickup.
+- **Replace**: a pickup always replaces what the skater carries (the newest
+  item wins); the replaced item is gone.
+- **Drunk planning**: a Maßkrug that drops lies within a few px of its
+  visitor, so the patterns a quick drinker could reach after picking it up
+  are already planned drunk-safe (`BEER_REACH` after a visitor holding a
+  Maßkrug, see [Drunk planning](#drunk-planning)).
+- Tests: `gameplay/drop.test.ts`; playtest `scripts/scenarios/drop.ts`.
+
 ## Human margins (fairness.ts)
 
 The solver proves a pattern clearable with frame-perfect input. The spawner
@@ -761,12 +919,21 @@ pattern starts within `BEER_REACH` (`VIEW_MAX_W + SPAWN_MARGIN + 100` px of
 street) after a Wasen visitor holding a Maßkrug (a quick drinker could catch
 and drink it). Such patterns:
 
-- come only from `DRUNK_TEMPLATES` (`single`, `stars`, `pair`: no people,
-  nothing overhead, no rails; `fairness.ts`), with `DRUNK_GAP_SECONDS` (0.8 s)
-  of extra gap;
-- must stay human-fair for the worst-case drunk input: `drunkFairness(window)`
-  widens the take-off window by `drunkWindow`'s `pressMax - pressMin` and lets
-  every hold come out `holdMax - hold` ticks shorter or longer (`spread`);
+- come only from `DRUNK_TEMPLATES` (`single` and `pair`: lone or paired
+  ground obstacles; no people, nothing overhead, no rails and no empty star
+  patterns, so a drunk street still has something to jump; `fairness.ts`);
+- get a longer free run-up before the first piece: `DRUNK_LEAD_SECONDS`
+  (0.4 s of riding) on top of the normal lead (`patterns.ts` `leadFor`),
+  because late, full drunk jumps take off far before the piece;
+- must stay human-fair for the worst-case drunk input
+  (`drunkFairness(window)` → `Margin {window, holds, spread}`): the take-off
+  window grows by `drunkWindow`'s `pressMax - pressMin` (12 ticks: 24 instead
+  of 12, 26 instead of 14), the only hold is `DRUNK_HOLD` (42 ticks: so long
+  that even the shortest drunk outcome, `drunkWindow(DRUNK_HOLD).holdMin` =
+  20, is still a full press, `FULL_PRESS`), and every hold may come out
+  `spread` = `holdMax - DRUNK_HOLD` (22) ticks shorter or longer. A player
+  who knows hold lengths are a lottery holds on and always gets the full
+  jump; stars in drunk patterns mark that full jump;
 - replace sober plans: when the situation turns drunk, patterns planned ahead
   but not yet on the street are thrown away and planned again (the rng stays
   where it is, so runs still replay).

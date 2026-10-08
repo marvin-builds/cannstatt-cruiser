@@ -6,7 +6,8 @@
  * (427 px). On phone-portrait it taps the rotate hint away first.
  *   npm run playtest -- --scenario scripts/scenarios/gameplay.ts --viewports desktop,phone-landscape --name gameplay
  */
-import { MAX_SPEED, PLAYER_X } from '../../src/core/config';
+import { PLAYER_X } from '../../src/core/config';
+import { TOP_SPEED } from '../../src/gameplay/difficulty';
 import { SolverBot } from '../../src/gameplay/testing';
 import type { GameState } from '../../src/types';
 import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
@@ -96,7 +97,7 @@ export default async function gameplay(t: PlaytestContext): Promise<void> {
   t.check('bot grinds a rail (player.state grind)', ride.grindShot);
   t.check('nothing spawns inside the view', ride.popIns.length === 0, ride.popIns);
 
-  await game.setSpeed(MAX_SPEED);
+  await game.setSpeed(TOP_SPEED);
   await game.step(240);
   await t.canvasShot('max speed');
   await game.setSpeed(null);
