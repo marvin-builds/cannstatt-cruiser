@@ -113,6 +113,50 @@ in any slice's Vitest tests.
   pending one, and a run start clears it. One stomp, one bounce.
 - Covered in `stomp.test.ts`.
 
+## Kicker launch (stunt lines)
+
+- Gameplay emits `launch { entityId, velocity }` when the skater rides onto
+  a kicker. Like the stomp bounce, the player applies it at the start of its
+  **next** update, before the jump check and the physics: `grounded = false`,
+  `vy = -velocity`, hold boost off, coyote time and jump buffer cleared. That
+  tick integrates normal `GRAVITY`: `vy = -velocity + GRAVITY * dt`,
+  `y += vy * dt`, and every later tick too, **even with the action held**: the
+  variable-jump hold never adds height to a launch (it only boosts a jump
+  the player started himself). `gameplay/jumpsim.ts` must mirror this. The
+  apex is about `velocity² / (2 * GRAVITY)` above the take-off (360 px/s ->
+  ~49 px; the discrete ticks land up to ~2 px lower).
+- A press in the take-off tick does not jump on top of the launch; a launch
+  mid-jump replaces that jump (and ends its hold boost). The chill jump scale
+  does not apply (no stunt lines while chilled anyway).
+- No `jump` event (audio can listen to `launch`); afterwards the normal air,
+  rail and landing rules apply: gameplay can `grindStart` a ledge from the
+  air as usual. Ignored on a rail and while the crash animation plays; a
+  crash drops a pending one, a run start clears it. If a stomp and a launch
+  arrive in the same tick the faster take-off wins.
+- Look: while the wheel contact point is over a `kicker` entity
+  (`e.x <= player.x <= e.x + e.w`) on the ground, the skater crouches and the
+  board tilts nose up (timeline `kicker`); y stays `GROUND_Y`, so keep
+  the kicker art low or emit `launch` early on the ramp.
+- Covered in `launch.test.ts`.
+
+## Big air, upper level and hard landings (looks only)
+
+- **Grab pose** (`AnimView.grab`, timeline `grab`): after a launch, or once
+  a jump rises `GRAB_HEIGHT` (40 px) above its take-off (a full-hold jump),
+  the skater pulls his knees up, grabs the board by the toes and throws the
+  back arm up. He lets go when falling below `GRAB_RELEASE_HEIGHT` (12 px)
+  above the street, on a rail and on a crash. Hitbox: the normal air tuck.
+  A carried item is held up in the back hand; the item use, joint, bubble
+  gum and drunk look work as in every pose.
+- **Ledges** (`kind 'ledge'`) are grinded exactly like rails: `grindStart`
+  snaps to the entity's `y` however high it is; at its end the skater falls
+  to the street and lands normally (`land { impact }`, impact = downward
+  speed, ~360 px/s from 50 px), never a crash.
+- **Hard landing** (`AnimView.hardLanding`, timeline `hardLand`): a landing
+  with impact >= `HARD_LANDING_IMPACT` (300, a drop from ~35 px) squashes
+  deeper and kicks up dust at the wheels. `LAND_TIME`, hitbox and events are
+  unchanged.
+
 ## Carried item (state.carriedItem)
 
 - Gameplay sets `state.carriedItem` on `itemCaught` and clears it on a crash;
@@ -183,7 +227,8 @@ jumpApex(game, 2);        // tap from the current support, returns apex height
 ```
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
-length)`, `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the bin dive), `chill(seconds)` (sets
+length, kind)` (`kind` `'ledge'` for a high ledge), `kicker(length)` (a static
+kicker under the player), `launch(velocity)` (emits `launch`), `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the bin dive), `chill(seconds)` (sets
 `state.chillTimer`), `kidMode(on)` (sets `state.kidMode`), `carry(item)` (sets
 `state.carriedItem`, `null` drops it), `stomp(item)` (emits `stomp`),
 `catchItem(item)` (sets the item and emits `itemCaught`) and

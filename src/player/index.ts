@@ -34,6 +34,7 @@ export function createPlayerSystem(): PlayerSystem {
       ctx.bus.on('grindEnd', (e) => c.endGrindExternally(ctx.state, e.entityId));
       ctx.bus.on('crash', (e) => c.crash(ctx.state, e.kind, e.entityId));
       ctx.bus.on('stomp', () => c.stomp());
+      ctx.bus.on('launch', (e) => c.launch(e.velocity));
       ctx.bus.on('itemCaught', () => c.catchItem());
       ctx.bus.on('itemUsed', (e) => c.useItem(e.item, e.action));
       debug = typeof window !== 'undefined' && testHookEnabled();

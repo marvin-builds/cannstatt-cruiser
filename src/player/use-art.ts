@@ -28,6 +28,7 @@ SHOULDER_AT[B.grindB] = { x: 15, y: 14 };
 SHOULDER_AT[B.duck] = { x: 10, y: 19 };
 SHOULDER_AT[B.grindTurn] = { x: 15, y: 13 };
 SHOULDER_AT[B.grindFront] = { x: 15, y: 13 };
+SHOULDER_AT[B.grab] = { x: 15, y: 17 };
 
 /** Hand position per arm pose, relative to the mouth. Item poses put the item at the lips. */
 const HAND: Record<UseArm, Point> = {

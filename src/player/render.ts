@@ -57,6 +57,10 @@ const ARM = sprite(PALETTE, [CATCH_ARM]);
 /** One bin sprite per lid colour; frames are the quarter turns (BIN_FRAMES). */
 const BINS = BIN_PALETTES.map((palette) => sprite(palette, BIN_FRAMES));
 const tumble: BinTumble = { frame: 0, dx: 0, lift: 0 };
+/** Hard landing dust: light grey puffs kicked out at both wheels, spreading and sinking for DUST_TIME seconds. */
+const DUST_COLOR = '#f6f1e7';
+const DUST_TIME = 0.15;
+const DUST_SPREAD = 10;
 
 /** The carried item to add to a pose (state.carriedItem) and whether the catch reach is showing. */
 export interface CarryLook {
@@ -204,6 +208,20 @@ function drawJoint(g: CanvasRenderingContext2D, mouth: Point, time: number): voi
   }
 }
 
+/** Two puffs per side, moving out from the wheels (x is the contact point, y the street). */
+function drawLandingDust(g: CanvasRenderingContext2D, x: number, y: number, time: number): void {
+  if (time >= DUST_TIME) return;
+  const k = time / DUST_TIME;
+  const out = Math.round(k * DUST_SPREAD);
+  const size = k < 0.75 ? 2 : 1;
+  g.fillStyle = DUST_COLOR;
+  for (const side of [-1, 1]) {
+    const wheel = Math.round(x) + side * 9;
+    g.fillRect(wheel + side * out - (side < 0 ? size : 0), Math.round(y) - size, size, size);
+    g.fillRect(wheel + side * Math.round(out / 2) - (side < 0 ? 1 : 0), Math.round(y) - 3 - Math.round(k * 2), 1, 1);
+  }
+}
+
 export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: AnimView, skater: Pick<SkaterController, 'bin' | 'toss'>): void {
   const p = state.player;
   drawTumblingBin(g, skater.bin, p.x);
@@ -219,4 +237,5 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const use = view.use && frame ? { item: view.use.item, frame, timeline } : null;
   const drunk = drunkLook(state.drunkTimer, state.time);
   drawPose(g, poseAt(timeline, view.time), p.x, p.y, { chill, carry, use, drunk, binLid: skater.bin.lid });
+  if (timeline === 'hardLand') drawLandingDust(g, p.x, p.y, view.time);
 }

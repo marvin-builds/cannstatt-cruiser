@@ -16,8 +16,15 @@ import { drunkLook } from './wobble';
 export type LineupLook = 'normal' | 'chill' | 'kid';
 
 export interface PlayerDebugHook {
-  /** Adds a static rail under the player (top `height` px above the ground) and starts a grind on it. */
-  grind(height?: number, length?: number): number;
+  /**
+   * Adds a static rail under the player (top `height` px above the ground) and
+   * starts a grind on it; `kind` 'ledge' for an upper-level ledge (drawn as a slim slab).
+   */
+  grind(height?: number, length?: number, kind?: EntityKind): number;
+  /** Emits a kicker launch like gameplay would (the skater takes off on the next tick). */
+  launch(velocity?: number): void;
+  /** Adds a static kicker under the player (the board tilts up it); remove it with removeRail(id). */
+  kicker(length?: number): number;
   /** Removes a rail added by grind() (the player then falls off). */
   removeRail(id: number): void;
   /** Emits a crash into `kind` like gameplay would (`bin`: head first into the bin). */
@@ -60,11 +67,11 @@ let nextId = 900_000;
 
 export function installPlayerDebug(ctx: GameContext): void {
   window.__player = {
-    grind(height = 24, length = 400) {
+    grind(height = 24, length = 400, kind = 'handrail') {
       const p = ctx.state.player;
       const rail: Entity = {
         id: nextId++,
-        kind: 'handrail',
+        kind,
         x: p.x - 16,
         y: GROUND_Y - height,
         w: length,
@@ -79,6 +86,15 @@ export function installPlayerDebug(ctx: GameContext): void {
     removeRail(id) {
       const i = ctx.state.entities.findIndex((e) => e.id === id);
       if (i >= 0) ctx.state.entities.splice(i, 1);
+    },
+    kicker(length = 24) {
+      const p = ctx.state.player;
+      const kicker: Entity = { id: nextId++, kind: 'kicker', x: p.x - 8, y: GROUND_Y - 8, w: length, h: 8, done: false, data: { [DEBUG_RAIL]: true } };
+      ctx.state.entities.push(kicker);
+      return kicker.id;
+    },
+    launch(velocity = 360) {
+      ctx.bus.emit('launch', { entityId: -1, velocity });
     },
     crash(kind = 'barrier') {
       ctx.bus.emit('crash', { entityId: -1, kind, health: ctx.state.health });
@@ -117,6 +133,22 @@ export function drawDebugRails({ g, state }: RenderContext): void {
     if (!e.data?.[DEBUG_RAIL]) continue;
     const x = Math.round(e.x);
     const y = Math.round(e.y);
+    if (e.kind === 'kicker') {
+      // A wedge rising to the right.
+      g.fillStyle = '#9a6a3c';
+      for (let dx = 0; dx < e.w; dx++) {
+        const h = Math.round((e.h * (dx + 1)) / e.w);
+        g.fillRect(x + dx, GROUND_Y - h, 1, h);
+      }
+      continue;
+    }
+    if (e.kind === 'ledge') {
+      g.fillStyle = '#8f8a80';
+      g.fillRect(x, y, e.w, 3);
+      g.fillStyle = '#5d5953';
+      g.fillRect(x, y + 3, e.w, 1);
+      continue;
+    }
     g.fillStyle = '#3b3f48';
     for (let px = x + 6; px < x + e.w; px += 40) g.fillRect(px, y, 2, GROUND_Y - y);
     g.fillStyle = '#c9ced6';
