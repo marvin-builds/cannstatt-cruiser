@@ -25,7 +25,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     items: [
       'Fahnen hängen jetzt nach unten',
       'Jede Fahne nur noch einmal',
-      'Autos rauschen beim Vorbeifahren',
+      'Autos klingen beim Vorbeifahren',
     ],
   },
   {
