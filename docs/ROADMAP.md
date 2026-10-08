@@ -194,3 +194,9 @@ Wave 5b additionally covers 9 (player) and 10 (player + gameplay + ui popup + au
     - **Safe spot:** no traffic and no crash obstacles inside the park, the speed ramp pauses while passing. Ambient park sounds (chatter and laughter, wheels rolling on concrete, board clacks, the growing cheers). There is no background music in the game; approved by the user: a boombox at the spot (on the container or the pallet sofa) plays a short chill chiptune loop that fades in on approach and out behind the skater (music inside the scene only, the rest of the game stays without music). Kept small: one short loop, synthesized like the other sounds, respects mute and ducking.
     - **High five:** a skater at the edge raises a hand; pressing use (E / the item button) at the right moment (generous window) gives a high five, a small bonus and a popup. Must not conflict with using a carried item (inside the high five window the use press goes to the high five).
     - Order: after Stunt Wave B, before item 33 and the final playtest.
+    - **Sign (USER 2026-10-09, approved):** on the front of a container, facing the street at eye level: 2-3 weathered horizontal planks (~40x14 px) with grain, uneven edges and nail heads, one plank slightly crooked, "NorDIY" hand-painted as its own ~7 px pixel lettering (not the 5 px game font): "Nor" white, "DIY" yellow, a paint drip; the string lights hang over it. Same in kid mode.
+    - Contract (orchestrator): state.park is a ParkPlan {start, end, pieces}; each ParkPiece (bank / container / crane, from-to, height) is laid by gameplay as a kicker or ledge and drawn by the world as the structure under it.
+
+## Status checkpoint 2026-10-09
+- Stunt Wave B committed locally (4bbc825, 1031bb4, 70752ba, fbe4d4f), not pushed; live is 2026-10-08.8.
+- NorDIY wave running: world-nordiy, gameplay-nordiy, ui-nordiy, audio-nordiy, docs-nordiy. Next: item 33, final playtest + fix round, highscore (34), one push at the end.
