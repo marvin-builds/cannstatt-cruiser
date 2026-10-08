@@ -59,6 +59,10 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
   gameplay/drop.ts      DroppedItems: the item a ball hit knocks onto the street, lying there until picked up (see Dropped items)
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
+  gameplay/stunts.ts    StuntLines: kicker launches and the line tracker (stuntStep / stuntEnd, STUNT_POINTS, STUNT_LINE_BONUS, DEFAULT_LEDGE_HEIGHT)
+  gameplay/stunt-line.ts  designed stunt lines (kickers, ledges, gaps, star trail) checked with stunt-sim.ts
+  gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS), emits airTrick
+  player/air-trick.ts   canStartAirTrick(), airTicksLeft(): the air trick start rule (see src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
   gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK
   gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
@@ -92,10 +96,10 @@ foundation owner can extend it.
 |---|---|---|---|
 | `src/core/`, `src/types.ts`, `src/changelog.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
-| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, planned in Stunt Wave A, see [Stunt lines](#stunt-lines-planned-in-stunt-wave-a)) |
+| `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence) |
-| `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events, unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
+| `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
 creates them in `public/`):
@@ -255,8 +259,9 @@ interface System {
 | `whatsNew` | core: at startup and on `commands.markVersionSeen()` ([Changelog](#changelog-neu-in-dieser-version-roadmap-item-16)); kept across runs |
 | `install` | core: at startup, from the browser's install events and `commands.promptInstall` / `dismissInstallHint` ([Install hint](#install-hint-roadmap-item-18)); kept across runs |
 | `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
-| `player.*` (position, velocity, grounded, grinding, grindTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer` and `grindTrick`; see below and `src/player/CONTRACT.md`) |
+| `player.*` (position, velocity, grounded, grinding, grindTrick, airTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`, `grindTrick` and `airTrick`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |
+| `park` | gameplay: the planned NorDIY park (`ParkPlan`), set once per Bad Cannstatt visit well before its start comes on screen and cleared (null) after its end has passed; core sets null at startup and `resetRun` clears it. World, audio and ui only read it (see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `trafficDensity` | world, every tick except while paused (during a run `LIGHT_TRAFFIC` 0.05 outside Mitte up to 1 in Mitte, 0 on the title and game over; see [Mitte traffic](#mitte-traffic)); audio reads it for the traffic noise |
 
 Coordinates are screen space in view pixels, with y pointing down. The world
@@ -323,9 +328,13 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `ballBack` | `{entityId}` | gameplay (a missed ball ricochets back towards the skater; the ball's id) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 | `vehiclePassed` | `{kind, front, light}` | world, only while the mode is `playing` (a foreground vehicle's centre crossed `PLAYER_X`, once per vehicle, in every zone; `kind` car / van / bus / truck, `front` = front lane, `light` = set off as light traffic, density below 0.5). Audio plays the pass-by and, for light traffic, the swell (see [Light traffic](#light-traffic)) |
-| `launch` | `{entityId, velocity}` | gameplay, **planned in Stunt Wave A** (the skater rode onto a kicker; the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce; jumpsim mirrors it) |
-| `stuntStep` | `{step, steps, multiplier, points}` | gameplay, **planned in Stunt Wave A** (one piece of a stunt line was made: kicker air, ledge grind, a jump or stomp in the line; `step` 1..`steps`; the ui shows "Combo xN!", audio a rising sound) |
-| `stuntEnd` | `{steps, made, completed, points}` | gameplay, **planned in Stunt Wave A** (the line ended: `completed` when every piece was made, else the skater dropped out, never a crash or lost health; `points` = line bonus, 0 if none) |
+| `launch` | `{entityId, velocity}` | gameplay (the skater rode onto a kicker; the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce; jumpsim mirrors it) |
+| `stuntStep` | `{step, steps, multiplier, points}` | gameplay (a further piece of a running stunt line was made: kicker air or ledge grind; the first piece made starts the line quietly, so the first `stuntStep` is the second piece at x2; `step` = the piece's place 2..`steps`, `multiplier` = pieces made in the attempt; the ui shows "Combo xN!", audio a rising sound) |
+| `stuntEnd` | `{steps, made, completed, points}` | gameplay (a started attempt ended, exactly once: `completed` when the skater left the line's last piece with at least 2 pieces made, else he dropped out, never with a crash or lost health; `points` = line bonus, 0 if none; the ui shows "Stunt-Linie! +…" only when completed) |
+| `airTrick` | `{ticks, points}` | gameplay (an [air trick](#air-trick) ended and the skater touched down cleanly: street landing or a grind start; `ticks` it ran; the ui shows "Air-Trick! +…", audio a sound) |
+| `highFive` | `{entityId, points}` | gameplay (the use press inside a `highFiver`'s high five window; that press never uses the carried item; see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
+| `sessionCheer` | `{level}` | gameplay (a grind trick, air trick or combo step inside the park; `level` 0..1 is the session's cheering so far; world animates the crowd, audio scales the cheers) |
+| `sessionEnd` | `{level, points}` | gameplay (the skater left the park; `points` = the "Session!" bonus scaled by `level`, 0 if none; the ui shows the callout) |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
@@ -339,6 +348,10 @@ Emitting is synchronous.
 | `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
 | `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck`. Held while grinding it is the [grind trick](#grind-trick) |
 | `use` | E (held while the key is down); `commands.useItem()`; test hook `input.use()` |
+
+Inside a NorDIY high fiver's window the use press gives the high five
+instead of using the carried item (see
+[NorDIY skatepark](#nordiy-skatepark-roadmap-36), use routing priority).
 
 Key hints for players: Space / ↑ / W jump, ↓ / S duck, **E use item**, P / Esc
 pause, M mute.
@@ -1156,38 +1169,148 @@ Contract between gameplay, player and ui:
   and a draining timer bar with a joint icon in the HUD plate (kid mode: the
   bubble-gum look, see [Settings menu and kid mode](#settings-menu-and-kid-mode)).
 
-## Stunt lines (planned in Stunt Wave A)
+## Stunt lines
 
-ROADMAP 27: optional bonus lines that make runs more fun, **not harder**.
-The contract is in `src/types.ts` (added by the orchestrator); the slices
-implement it in Stunt Wave A, and this section is finalised once they land.
+ROADMAP 27 (Stunt Waves A and B): optional bonus lines that make runs more
+fun, **not harder**.
 
 - **Kinds** (`StuntKind`, part of `EntityKind`): `kicker`, a small ramp on
-  the street that launches the skater high; `ledge`, a slim grindable
-  structure of the upper level 40-60 px above the street (railing, ledge,
-  thin roof edge), drawn per zone. A ledge's entity `y` is its grind surface
-  (like the bench, see [Bench](#bench-ledge-contract)).
-- **Events**: `launch {entityId, velocity}` (riding onto a kicker; the
-  player takes off on the next tick with `velocity`, no hold, like the stomp
-  bounce, and jumpsim mirrors it), `stuntStep {step, steps, multiplier,
-  points}` per piece made (kicker air, ledge grind, a jump or stomp in the
-  line), `stuntEnd {steps, made, completed, points}` when the line ends. See
-  [Events](#events-gameevents).
-- **Design rules**: the camera never moves; the upper level is slim
-  structures in the space above the riding line and covers little
-  background; the street below always stays clearable, and falling off or
-  missing a stunt piece never crashes or costs health (the skater lands on
-  the street, the line ends); generous timing; roughly one line every
-  30-45 s of riding (a tunable constant); no lines while drunk or chilled;
-  kid mode works the same.
-- **Ownership** (planned): gameplay spawns the lines, detects kicker and
-  ledge contacts, scores them and emits the events (art for the new kinds in
-  `gameplay/art.ts`, debug hook `window.__gameplay.place('kicker' |
-  'ledge', x)`); the player takes off on `launch` and shows the grab pose and
-  hard landing (`GRAB_HEIGHT`, `HARD_LANDING_IMPACT` in `player/tuning.ts`);
-  the ui shows "Combo xN!" and the line result from `stuntStep` /
-  `stuntEnd`; audio plays a rising sound per step. Playtest:
-  `scripts/scenarios/stunts.ts`.
+  the street that launches the skater high (no button); `ledge`, a slim
+  grindable structure of the upper level 40-60 px above the street (railing,
+  ledge, thin roof edge), drawn per zone (`gameplay/stunt-art.ts`). A
+  ledge's entity `y` is its grind surface (like the bench, see
+  [Bench](#bench-ledge-contract)). Line pieces carry `data.line` (the line's
+  id), `data.step` (1..steps) and `data.steps`; a kicker carries its launch
+  speed in `data.velocity` (`launchVelocityFor(ledge height)`).
+- **Lines** (`gameplay/stunt-line.ts`): a designed line is one spawn pattern
+  of 3-6 pieces: a kicker launches onto a ledge, gap jumps go from ledge to
+  ledge, drops roll back onto the street onto the next kicker, with a star
+  trail. The street holds nothing but the kickers, so the path below is
+  always free. Each launch comes down onto its ledge at every speed and tick
+  phase; each gap has a human take-off window of at least
+  `STUNT_TAKEOFF_WINDOW` (16) ticks; jump arcs stay under `STUNT_APEX_MAX`
+  (all checked with `stunt-sim.ts`). The spawner brings one line every
+  `STUNT_LINE_INTERVAL` (30-45) s of riding, the first after
+  `STUNT_FIRST_SECONDS` (25), none while drunk or chilled.
+- **Runtime** (`gameplay/stunts.ts` `StuntLines`): a piece is *made* when a
+  kicker launches the skater or a ledge is ground. The first piece made
+  starts an attempt quietly (its points, no `stuntStep`, so there is never a
+  "Combo x1!"); every further piece in order emits `stuntStep` with the line
+  multiplier = pieces made (x2, x3 ..., up to `STUNT_MAX_MULTIPLIER` 6) and
+  scores `STUNT_POINTS` (kicker 50, ledge 100) times it. Every started
+  attempt ends exactly once with `stuntEnd`: completed (bonus
+  `STUNT_LINE_BONUS` 150 per made piece) when the skater leaves the last
+  piece with at least 2 made; else incomplete without bonus (street landing
+  before a ledge, a kicker jumped over, a piece out of order, a crash).
+  Stunt points are not multiplied by `state.multiplier`; the normal combo
+  goes on around the line.
+- **Events**: `launch {entityId, velocity}` (the player takes off on the
+  next tick with `velocity`, no hold, like the stomp bounce; jumpsim mirrors
+  it), `stuntStep {step, steps, multiplier, points}`, `stuntEnd {steps,
+  made, completed, points}`. See [Events](#events-gameevents).
+- **Design rules**: the camera never moves; the upper level is slim and
+  covers little background; falling off or missing a piece never crashes or
+  costs health (the skater lands on the street, the line ends); generous
+  timing; kid mode works the same.
+- **Ownership**: gameplay spawns the lines, detects kicker and ledge
+  contacts, scores them and emits the events (art in `gameplay/art.ts` /
+  `stunt-art.ts`); the player takes off on `launch` and shows the grab pose
+  and hard landing (`GRAB_HEIGHT`, `HARD_LANDING_IMPACT` in
+  `player/tuning.ts`); the ui shows "Combo xN!" and "Stunt-Linie! +…"
+  (`ui/stunt-callout.ts`, top strip between the HUD plate and the buttons)
+  and the first-time kicker hint "Ab über die Rampe!" (`ui/kicker-hint.ts`,
+  storage key `stuntLineSeen`); audio plays `launch`, a rising `stuntStep`
+  and `stuntFanfare` / `stuntFizzle`. Debug hook
+  `window.__gameplay.place('kicker' | 'ledge', x)`, `stuntLine(x)`,
+  `stunts()`; playtest `scripts/scenarios/stunts.ts`.
+
+### Air trick
+
+Stunt Wave B: a kickflip in the air, never harder.
+
+- **Player** (`player/air-trick.ts`, `src/player/CONTRACT.md` "Air trick"):
+  a duck **press** in the air (↓ / S, a swipe down) starts the trick when
+  the skater has big air (any kicker launch, or a jump `GRAB_HEIGHT` above
+  its take-off) or is `AIR_TRICK_HEIGHT` (20 px) up, and the remaining air
+  time (`airTicksLeft`) lets the `AIR_TRICK_TICKS` (21) ticks finish before
+  the landing tick. `player.airTrick` is true while it runs; a rail or ledge
+  catch or a crash cuts it short. Physics and hitbox are unchanged; down in
+  the air never ducks.
+- **Gameplay** (`gameplay/air-trick.ts` `AirTrickScore`) only reads
+  `player.airTrick`: an ended trick waits for the next clean touchdown
+  (`land` or `grindStart`) and then emits `airTrick {ticks, points}` once,
+  `AIR_TRICK_POINTS` (150) times the best multiplier seen (the combo, or a
+  running line's multiplier when higher). A crash drops it. It is no line
+  piece: no `stuntStep`, never ends a line.
+- **UI**: "Air-Trick! +…" popup (`ui/popup-feed.ts`) and the first-time hint
+  after a launch, "In der Luft [↓] = Trick!" / "In der Luft runterwischen =
+  Trick!" (`ui/air-trick-hint.ts`, `AIR_HINT_LAUNCHES` 3, storage key
+  `airTrickSeen`). **Audio**: `airSpin` while it runs, `airTrick` on the
+  score.
+
+## NorDIY skatepark (ROADMAP 36)
+
+Once per Bad Cannstatt visit the skater rides through NorDIY, a self-built
+DIY skatepark about one screen wide. It is a safe spot with a guaranteed,
+optional stunt line and a crowd that cheers. The contract is in
+`src/types.ts` (`ParkKind`, `ParkPiece`, `ParkPlan`, `GameState.park`, the
+events below).
+
+- **Plan** (`state.park: ParkPlan | null`): `{start, end, pieces}` in run
+  distances (`state.distance` values, view px): the park spans
+  `[start, end)`; a distance `d` is at screen x `PLAYER_X + d -
+  state.distance` (it reaches the skater when `state.distance` gets to it).
+  Each `ParkPiece {kind, from, to, height}` is one structure of the line, in
+  order:
+  - `bank`: a concrete bank or quarter; gameplay lays a `kicker` over
+    `[from, to)`, `height` its lip;
+  - `container`: a shipping container whose roof edge is a `ledge`
+    `height` px above the street;
+  - `crane`: the self-built crane whose boom is the highest `ledge` (with a
+    bonus star); its tower stands behind `from`.
+  Gameplay places the stunt entity exactly over the piece and draws it
+  plainly or not at all; the world draws the structure so its top edge is
+  that surface.
+- **Ownership of `state.park`**: **gameplay writes it** (set once per
+  Bad Cannstatt visit well before `start` comes on screen, cleared after
+  `end` has passed; core sets null, `resetRun` clears it). **World, audio
+  and ui only read it**:
+  - world draws the scenery on its street-speed layer over the span
+    (containers with the wooden "NorDIY" sign, the crane, banks, the ramp
+    under construction, the crowd, string lights) exactly under `pieces`,
+    keeps traffic off there, and animates the crowd by `sessionCheer`;
+  - audio places the boombox loop (fades in on approach, out behind the
+    skater, respects mute and ducking) and the park sounds by it, and scales
+    the cheers by `sessionCheer.level`;
+  - ui shows the high five popup and the "Session! +…" callout.
+- **Safe spot** (gameplay): no traffic and no crash obstacles inside the
+  park, the speed ramp pauses while passing; the line follows the
+  [stunt line](#stunt-lines) rules (optional, never crashes).
+- **High fiver** (`ParkKind` `'highFiver'`, an `EntityKind`): a skater at
+  the street edge raising a hand. Never an obstacle and never a crash.
+  Gameplay draws it (`gameplay/park-art.ts`, via `art.ts`), with a slap
+  pose after the high five (`data.slapped`).
+- **Use routing priority** (`gameplay/high-five.ts`, asked first by
+  `use.ts`): inside a `highFiver`'s high five window (its middle within
+  `HIGH_FIVE_REACH` 24 px of the skater, either side, on the ground or in
+  the air) the use press (E, `commands.useItem()` / the item button, test hook
+  `input.use()`) goes to the high five: gameplay emits `highFive {entityId,
+  points}` and the carried item is **not** used (no `itemUsed`). Outside the
+  window the press uses the item as before.
+- **Session**: every grind trick, air trick and combo step inside the park
+  emits `sessionCheer {level}` (`level` 0..1, the cheering so far); when the
+  skater leaves the park gameplay emits `sessionEnd {level, points}` with
+  the "Session!" bonus scaled by the cheering (0 if none).
+- **Kid mode**: the crowd drinks lemonade instead of beer; no alcohol or
+  drug references in art, texts or sounds. The sign is the same.
+- **Line** (`gameplay/park-line.ts`, spawn pattern `park`): high fiver ->
+  bank -> container -> (gap jump | drop + bank) -> container -> (gap jump up
+  | drop + bank) -> crane boom; `parkPiecesOf` turns the pattern into the
+  plan's pieces.
+- Playtest: `scripts/scenarios/nordiy.ts` (debug hook
+  `window.__gameplay.park(offset?, seed?)` plans a ridable park right ahead;
+  `window.__world.planPark(x?)` shows the scenery only; see
+  docs/TESTING.md).
 
 ## How state flows
 

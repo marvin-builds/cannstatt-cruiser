@@ -220,15 +220,19 @@ kid mode refers to drugs.
   lengths, sloppy ducking) has no crash into or within 1 s of a person in 20
   runs of 3 minutes.
 
-## Stunt lines (planned in Stunt Wave A)
+## Stunt lines
 
-ROADMAP 27, approved plan: epic stunt lines that make runs more fun, not
-harder.
+ROADMAP 27 (Stunt Waves A and B): epic stunt lines that make runs more fun,
+not harder.
 
 - Kicker ramps on the street launch the skater high (no button needed);
   slim ledges, railings and roof edges of an upper level 40-60 px above the
-  street can be ground; a line chains kicker air, ledge grinds, jumps and
-  stomps for a growing combo ("Combo xN!") and a line bonus.
+  street can be ground; a line chains kicker air, ledge grinds and gap jumps
+  for a growing combo ("Combo x2!", "Combo x3!" ...; the first piece starts
+  the line without a callout) and a line bonus ("Stunt-Linie! +…").
+- Air trick: down (↓ / S, a swipe down) in the air after a launch or a high
+  jump does a kickflip, scored on a clean landing ("Air-Trick! +…"). It
+  never changes the jump. First-time hints explain the ramp and the trick.
 - The camera never moves; the upper level is slim and covers little of the
   background.
 - Falling off or missing a stunt piece never costs health or crashes: the
@@ -236,6 +240,27 @@ harder.
   ends. Generous timing.
 - Roughly one line every 30-45 s of riding; none while drunk or chilled.
   Kid mode works the same.
+
+## NorDIY skatepark
+
+ROADMAP 36: once per Bad Cannstatt visit the skater rides through NorDIY, a
+self-built but well built DIY skatepark about one screen wide.
+
+- Scenery: two shipping containers, a self-built crane, concrete banks and a
+  ramp under construction, people chilling on the containers and a pallet
+  sofa, string lights, graffiti, some green. A wooden plank sign "NorDIY"
+  hangs on a container ("Nor" white, "DIY" yellow, hand-painted).
+- A guaranteed, optional stunt line: banks as kickers, container roofs as
+  ledges, the crane boom as the highest ledge with a bonus star.
+- The crowd cheers for grind tricks, air tricks and combo steps; leaving the
+  park gives a "Session! +…" bonus scaled by the cheering.
+- High five: a skater at the edge raises a hand; pressing use (E / the item
+  button) at the right moment gives a small bonus and a popup, and does not
+  use a carried item.
+- Safe spot: no traffic, no crash obstacles, the speed stays. Park sounds and
+  a boombox with a short chill chiptune loop that fades in and out (the only
+  music in the game; mute and ducking apply).
+- Kid mode: lemonade instead of beer; nothing about alcohol or drugs.
 
 ## Zones
 

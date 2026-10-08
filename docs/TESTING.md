@@ -174,10 +174,12 @@ g.endRun();                                     // game-over screen now
 | `window.__gameplay.place('kicker' \| 'ledge', x, variant?)` | stunt pieces with their left edge at screen x, forming one line: a kicker starts a new line (launching for a `DEFAULT_LEDGE_HEIGHT` ledge), a ledge (`DEFAULT_LEDGE_HEIGHT` up, 100 px long, the zone's look, `variant` 1 = its second look) joins the line placed last. A ledge's entity `y` is its grind surface. Place a line's pieces together: a line whose next piece is missing ends at once. Used by `scripts/scenarios/stunts.ts` |
 | `window.__gameplay.stuntLine(x, seed?)` | places a whole designed stunt line (`stunt-line.ts`) for the current speed and zone with its first kicker at screen x; returns the entity ids (stars included) |
 | `window.__gameplay.stunts()` | the running stunt line `{line, steps, made, multiplier, points}` (points so far, without the line bonus) or null (read-only) |
+| `window.__gameplay.park(offset?, seed?)` / `parkPlan()` | plans the NorDIY park for the current speed with its start `offset` run distance ahead of the skater (default: just beyond the widest view's right edge; `seed` default 1), puts it into `state.park` and lays its kickers, ledges and the `highFiver`, removing what stood there; returns the plan. The speed ramp does not pause for it (pin the speed with `setSpeed`). `parkPlan()` reads `state.park`. Used by `scripts/scenarios/nordiy.ts`, which falls back to riding Bad Cannstatt until the spawner plans a park if the hook is missing |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__gameplay.drops()` | snapshot of the [dropped items](ARCHITECTURE.md#dropped-items) (no entities, so `state()` misses them): `[{item, x, y, w, h, lying}]`, the pickup box in screen space and whether it already lies on the street |
 | `window.__world.trafficDensity()` | traffic density as drawn: `LIGHT_TRAFFIC` 0.05 outside Mitte (light traffic, one vehicle at a time), ramping to 1 in Mitte; also on the title and game over (where `state.trafficDensity` is 0) |
 | `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h, front}], puffs: [{x, y}], shake}` (Mitte and light traffic): view rects of the vehicles (`kind` hatch / sedan / van / bus / truck; `front` = front lane, drawn over gameplay) and the tops of the exhaust puffs on screen, plus the street rumble offset `shake` (0 or 1 px while a bus or truck is on screen). Limits from `world/traffic.ts`: back lane `y >= TRAFFIC_TOP`, front lane `y >= FRONT_TOP`, puffs `y >= EXHAUST_TOP` |
+| `window.__world.planPark(x?)` / `cheer(level)` | world-only NorDIY scenery: `planPark` sets `state.park` to a hand-made plan (bank, two containers, crane) starting at screen x `x` (default `PLAYER_X + 40`) and clears the traffic, returning the plan; gameplay lays no ledges for it, so it shows the scenery only. `cheer` lets the park crowd cheer at `level` 0..1 like a `sessionCheer`. For a ridable park use `__gameplay.park()` |
 | `window.__player.crash(kind = 'barrier')` | emits a crash into `kind` like gameplay would; `'bin'` plays the bin crash (head first into the bin) |
 | `window.__player.grind(height?, length?)` / `removeRail(id)` | a static rail under the player with a grind on it / removes it (the player falls off) |
 | `window.__player.chill(s)`, `kidMode(on)`, `carry(item)`, `stomp(item?)`, `catchItem(item)`, `lineup(scale?, look?, item?)` | player-side effects and the pose lineup PNG, see `src/player/debug.ts` |
@@ -188,6 +190,9 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.itemPopups(...kinds)` | feeds sample item events to the popup feed (shown on the next tick): `'drink'`, `'eat'` (+1 health), `'throw'`, `'hit'` (ball hit with points), `'back'` (ricochet), `'stomp'` (with points), `'trick'` |
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
+| `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
+| `window.__ui.airTrick(points)` / `airHintVisible()` | emits `airTrick` ("Air-Trick! +…" popup; the first-time air trick hint is never shown again) / whether the air trick hint wants to show now |
+| `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether "Ab über die Rampe!" shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
@@ -353,12 +358,38 @@ npm run playtest -- --headed
   `desktop,phone-landscape,phone-portrait`): first a kicker without a ledge
   (`launch`, the skater lands on the street, the line ends incomplete, no
   crash and no health lost); that ride also measures where the skater comes
-  down to ledge height. Then in each zone a kicker and a ledge there are
+  down to ledge height. An air trick (Stunt Wave B): a kicker alone, down
+  held for 2 ticks (`input.duck`) 4 ticks after `launch`, sets
+  `player.airTrick`, and the street landing scores one `airTrick` (ticks and
+  points > 0, "Air-Trick! +…" popup), no crash. Then in each zone a kicker and a ledge there are
   placed together as one line: `launch` from the kicker, `grindStart` on the
-  ledge, two `stuntStep`s (step 1 and 2, multiplier = step) and a completed
+  ledge, one `stuntStep` (step 2 of 2 at x2: the first piece made starts the
+  line quietly, there is no "Combo x1!") and a completed
   `stuntEnd` (made 2, line bonus > 0), with no crash and no health lost. On
   desktop a 100 s ride without input checks that the spawner brings >= 2
   lines and that no `kicker` / `ledge` crash happens.
+- `scripts/scenarios/nordiy.ts` (NorDIY skatepark, ROADMAP 36; run it on
+  `desktop,phone-landscape,phone-portrait`, `--name nordiy`): a frozen run
+  in Bad Cannstatt at a pinned 120 px/s, the street cleared, a park planned
+  with `window.__gameplay.park()` (without the hook it logs that and rides
+  until the spawner plans one, else fails "a NorDIY park is planned").
+  Shots: the approach (park start just inside the right edge), the "NorDIY"
+  sign container at the view centre, the first bank launch with an air
+  trick, a grind on each container and the crane, the crowd by the crane
+  in kid mode (`__player.kidMode`, lemonade instead of beer), the high five and
+  the "Session!" callout. The high five is a use press when the
+  `highFiver`'s centre reaches the skater: real key E on desktop,
+  `input.use()` on touch. On a container before a gap the skater jumps at
+  the middle of the take-off window onto the next container or the crane
+  (`jumpWindow` from `src/gameplay/stunt-sim.ts`, like the StuntBot);
+  otherwise he rolls off onto the next bank. Checks: the plan has banks,
+  containers and the crane; every container and the crane is grinded;
+  one `highFive` for that entity with points and no `itemUsed`;
+  `sessionCheer` levels in 0..1; one `sessionEnd` with points; no crash and
+  no health lost from the park's start on; no vehicle over the park's
+  screen span while in it (`__world.traffic()`; a vehicle leaving the
+  screen elsewhere is fine). The log `park ride` lists the events and the
+  audio cues heard (for the boombox and cheers).
 - `scripts/scenarios/update-hint.ts` (production build, run it with
   `--viewports desktop`; any viewport works): the service worker controls the
   page, a reload of an unchanged deploy leaves `state.updateReady` off, then a
