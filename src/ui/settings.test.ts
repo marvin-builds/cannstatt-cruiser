@@ -7,7 +7,6 @@ import {
   LONG_PRESS_TIME,
   loadKidMode,
   LongPress,
-  parentQuestion,
   saveKidMode,
   SettingsMenu,
 } from './settings';
@@ -69,28 +68,6 @@ describe('LongPress', () => {
   });
 });
 
-describe('parent check question', () => {
-  it('multiplies two factors from 6 to 9 and offers the product among three distinct answers', () => {
-    for (let seed = 0; seed < 200; seed++) {
-      const q = parentQuestion(seed);
-      expect(q.a).toBeGreaterThanOrEqual(6);
-      expect(q.a).toBeLessThanOrEqual(9);
-      expect(q.b).toBeGreaterThanOrEqual(6);
-      expect(q.b).toBeLessThanOrEqual(9);
-      expect(q.answers).toHaveLength(3);
-      expect(new Set(q.answers).size).toBe(3);
-      expect(q.answers[q.correct]).toBe(q.a * q.b);
-      for (const n of q.answers) expect(n).toBeGreaterThan(0);
-    }
-  });
-
-  it('is deterministic per seed and varies between seeds', () => {
-    expect(parentQuestion(7)).toEqual(parentQuestion(7));
-    const texts = new Set(Array.from({ length: 30 }, (_, s) => JSON.stringify(parentQuestion(s))));
-    expect(texts.size).toBeGreaterThan(5);
-  });
-});
-
 describe('kid mode persistence', () => {
   it('saves and loads the flag, defaulting to adult mode', () => {
     const store = memoryStore();
@@ -132,9 +109,9 @@ describe('SettingsMenu', () => {
 
   it('tells on close whether kid mode was switched since it opened (a run restarts then)', () => {
     const on = setup(false);
-    on.menu.toggle(on.state, 1);
+    on.menu.toggle(on.state);
     expect(on.menu.switched).toBe(true);
-    on.menu.back();
+    on.menu.close();
     expect(on.closed).toEqual([true]);
 
     const unchanged = setup(false);
@@ -142,64 +119,47 @@ describe('SettingsMenu', () => {
     expect(unchanged.closed).toEqual([false]);
   });
 
-  it('switching on and back off (parent check) counts as no switch', () => {
+  it('switching on and back off counts as no switch', () => {
     const { state, menu, closed } = setup(false);
-    menu.toggle(state, 1);
-    menu.toggle(state, 5);
-    menu.answer(state, menu.question!.correct);
+    menu.toggle(state);
+    menu.toggle(state);
     expect(state.kidMode).toBe(false);
     expect(menu.switched).toBe(false);
-    menu.back();
-    expect(closed).toEqual([false]);
-  });
-
-  it('a wrong answer closes without a switch', () => {
-    const { state, menu, closed } = setup(true);
-    menu.toggle(state, 3);
-    menu.answer(state, (menu.question!.correct + 1) % 3);
+    menu.close();
     expect(closed).toEqual([false]);
   });
 
   it('turns kid mode on at once and persists it', () => {
     const { store, state, menu } = setup(false);
-    menu.toggle(state, 1);
+    menu.toggle(state);
     expect(state.kidMode).toBe(true);
     expect(loadKidMode(store)).toBe(true);
     expect(menu.screen).toBe('menu');
   });
 
-  it('turning it off asks the parent check; the right answer turns it off', () => {
-    const { store, state, menu } = setup(true);
+  it('turns kid mode off at once too, without a question, and persists it', () => {
+    const { store, state, menu, closed } = setup(true);
     saveKidMode(store, true);
-    menu.toggle(state, 42);
-    expect(menu.screen).toBe('check');
-    expect(state.kidMode).toBe(true);
-    const q = menu.question!;
-    expect(q).toEqual(parentQuestion(42));
-    menu.answer(state, q.correct);
+    menu.toggle(state);
     expect(state.kidMode).toBe(false);
     expect(loadKidMode(store)).toBe(false);
     expect(menu.screen).toBe('menu');
+    expect(menu.switched).toBe(true);
+    menu.close();
+    expect(closed).toEqual([true]);
   });
 
-  it('a wrong answer closes the menu and keeps kid mode on', () => {
-    const { store, state, menu } = setup(true);
-    saveKidMode(store, true);
-    menu.toggle(state, 3);
-    const wrong = (menu.question!.correct + 1) % 3;
-    menu.answer(state, wrong);
-    expect(state.kidMode).toBe(true);
-    expect(loadKidMode(store)).toBe(true);
-    expect(menu.screen).toBe('closed');
-  });
-
-  it('Zurück goes from the check back to the menu and from the menu out', () => {
+  it('toggling does nothing while the menu is closed', () => {
     const { state, menu } = setup(true);
-    menu.toggle(state, 3);
-    menu.back();
-    expect(menu.screen).toBe('menu');
+    menu.close();
+    menu.toggle(state);
     expect(state.kidMode).toBe(true);
-    menu.back();
+  });
+
+  it('Zurück closes the menu', () => {
+    const { state, menu } = setup(true);
+    menu.close();
     expect(menu.screen).toBe('closed');
+    expect(state.kidMode).toBe(true);
   });
 });

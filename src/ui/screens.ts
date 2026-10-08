@@ -32,9 +32,8 @@ import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
-import { CHIP_H, type ItemHint, itemButtonRect, itemControl } from './item-button';
+import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
-  answerLabel,
   centreX,
   type HudButtons,
   hudButtons,
@@ -286,21 +285,16 @@ function drawItemControl(r: RenderContext, view: UiView): void {
   text(r, 'E', kx + 3, ky, KEYCAP);
 }
 
-/** "Tippe auf den Gegenstand" on a plate left of the item button, with a pointer towards it (never while the zone banner shows). */
+/** "Tippe auf den Gegenstand" on a plate beside the item button, with a pointer towards it (never while the zone banner shows). */
 function drawItemHint(r: RenderContext, view: UiView): void {
   const { g, state, display } = r;
   if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;
-  const button = itemButtonRect(display.viewWidth, display);
-  const scale = popupScale(r.display, false);
-  const label = 'Tippe auf den Gegenstand';
-  const w = measureText(label, scale) + 8;
-  const h = 8 * scale + 6;
-  const x = button.x - w - 6;
-  const y = button.y + Math.floor((button.h - h) / 2);
+  const scale = popupScale(display, false);
+  const { x, y, w, h, pointsRight } = itemHintRect(display.viewWidth, display, scale);
   ribbon(r, x, y, w, h);
   g.fillStyle = UI.yellow;
-  for (let i = 0; i < 4; i++) g.fillRect(x + w + i, y + Math.floor(h / 2) - 3 + i, 1, 7 - 2 * i);
-  text(r, label, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+  for (let i = 0; i < 4; i++) g.fillRect(pointsRight ? x + w + i : x - 1 - i, y + Math.floor(h / 2) - 3 + i, 1, 7 - 2 * i);
+  text(r, ITEM_HINT_LABEL, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
 }
 
 /**
@@ -367,7 +361,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
   const { settings } = view;
   const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
   fill(r, UI.ink);
-  if (settings.screen === 'menu') {
+  if (settings.open) {
     const on = r.state.kidMode;
     centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
     menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
@@ -376,13 +370,6 @@ function drawSettings(r: RenderContext, view: UiView): void {
     if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, note, { color: UI.yellow });
     else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', note, { color: UI.muted });
     if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
-    menuButton(r, l.back, 'Zurück');
-  } else if (settings.question) {
-    const q = settings.question;
-    centred(r, 'Elternfrage: Kindermodus ausschalten?', 12, { color: UI.muted });
-    centred(r, `Wie viel ist ${q.a} × ${q.b}?`, 28, { scale: 2, color: UI.yellow });
-    q.answers.forEach((n, i) => menuButton(r, l.answers[i]!, answerLabel(i, n)));
-    if (!r.display.touch) centred(r, 'Tasten 1, 2, 3 = antworten, Esc = schließen', l.back.y - 14, { color: UI.muted });
     menuButton(r, l.back, 'Zurück');
   }
 }

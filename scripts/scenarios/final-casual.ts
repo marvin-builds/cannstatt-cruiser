@@ -278,18 +278,11 @@ async function kidMode(t: PlaytestContext): Promise<void> {
   await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
   await game.step(1);
   await t.canvasShot('kid mode on');
-  await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
-  await game.step(1);
-  await t.screenshot('parent check page');
-  await t.canvasShot('parent check');
-  const q = (await settings(t)).question!;
-  const a = l.menu.answers[q.correct]!;
-  // wrong answer keeps kid mode on (that is what we want for the kid run)
-  const w = l.menu.answers[(q.correct + 1) % 3]!;
-  await t.realTapView(w.x + Math.floor(w.w / 2), w.y + Math.floor(w.h / 2));
+  // Close with Zurück: kid mode stays on for the kid run.
+  const back = l.menu.back;
+  await t.realTapView(back.x + Math.floor(back.w / 2), back.y + Math.floor(back.h / 2));
   await game.step(2);
   t.check('kid mode still on', (await game.state()).kidMode);
-  void a;
   await game.seed(7);
   await t.realPress(80);
   await game.step(2);

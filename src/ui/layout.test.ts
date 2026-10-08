@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rect } from '../types';
-import { answerLabel, blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
+import { blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -66,15 +66,12 @@ describe('layout helpers', () => {
       for (const width of WIDTHS) {
         const l = settingsLayout(width, m);
         const menu = [l.toggle, l.back];
-        const check = [...l.answers, l.back];
-        for (const r of [...menu, ...check]) {
+        for (const r of menu) {
           expect(inside(r, width), `${name} ${width}`).toBe(true);
           expect(whole(r)).toBe(true);
           expect(Math.min(r.w, r.h) * cssPerPx).toBeGreaterThanOrEqual(44);
         }
-        for (const group of [menu, check]) {
-          group.forEach((a, i) => group.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
-        }
+        expect(overlaps(l.toggle, l.back)).toBe(false);
       }
     });
   }
@@ -105,13 +102,14 @@ describe('layout helpers', () => {
     }
   });
 
-  it('settings: Zurück sits right under the content instead of at the bottom', () => {
+  it('settings: Zurück sits right under the toggle, leaving room for its note and the key hint', () => {
     for (const { display } of DEVICES) {
       const m = uiMetrics(display);
       const l = settingsLayout(390, m);
-      const content = Math.max(l.toggle.y + l.toggle.h, l.answers[0].y + l.answers[0].h);
-      expect(l.back.y - content).toBeGreaterThanOrEqual(16);
-      expect(l.back.y - content).toBeLessThanOrEqual(24);
+      expect(Object.keys(l).sort()).toEqual(['back', 'toggle']);
+      const toggleBottom = l.toggle.y + l.toggle.h;
+      expect(l.back.y - toggleBottom).toBeGreaterThanOrEqual(28);
+      expect(l.back.y - toggleBottom).toBeLessThanOrEqual(36);
     }
   });
 
@@ -119,11 +117,6 @@ describe('layout helpers', () => {
     expect(popupScale({ portrait: false }, false)).toBe(1);
     expect(popupScale({ portrait: false }, true)).toBe(2);
     expect(popupScale({ portrait: true }, false)).toBe(2);
-  });
-
-  it('labels parent-check answers with their key', () => {
-    expect(answerLabel(0, 48)).toBe('1: 48');
-    expect(answerLabel(2, 81)).toBe('3: 81');
   });
 
   it('fits centred text left of an obstacle on the right', () => {

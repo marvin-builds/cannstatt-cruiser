@@ -42,9 +42,17 @@ export interface MenuButtons {
   logo: Rect | null;
 }
 
+/**
+ * How the install hint card shows: the full 'prompt' or 'ios' card, or
+ * 'compact' (game over): just "App installieren" and "×".
+ */
+export type InstallCard = InstallHintKind | 'compact';
+
 export interface MenuLayout {
   /** Every visible block by id (text rows, cards, buttons), dropped optional rows are missing. */
   blocks: Map<string, Rect>;
+  /** The install card placed as block 'install', or null. */
+  install: InstallCard | null;
   buttons: MenuButtons;
   /** Opaque plate behind the screen's text, or null. */
   panel: Rect | null;
@@ -57,6 +65,7 @@ export const MENU_TEXT = {
   iosShare: 'Teilen',
   iosHome: 'Zum Home-Bildschirm',
   install: 'Installieren',
+  installApp: 'App installieren',
   whatsNew: 'Neu in dieser Version',
   next: 'Weiter',
   pause: 'Pause',
@@ -84,9 +93,13 @@ export const GAMEOVER_KEYS = 'Esc = zum Titelbild';
 /** Rows of the game-over results table (labels; values come from the run). */
 export const RESULT_ROWS = ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'Strecke'] as const;
 
-/** Results rows that give way to buttons: totals first, then (after the record line) stars and distance; the score stays. */
-const RESULT_ROW_DROP = [undefined, 2, 0.5, 2, 0.5];
-/** On a crowded game over the install hint goes before stars and distance (the title still shows it). */
+/**
+ * Results rows that give way to buttons: the stars total first, then (after
+ * the record line and the install hint) stars and distance, the highscore
+ * last; the score stays.
+ */
+const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5];
+/** On a crowded game over the (compact) install hint goes before stars and distance (the title still shows it). */
 const INSTALL_DROP_GAMEOVER = 0.75;
 
 /** Height of a text line; text sits at the top of its row. */
@@ -100,9 +113,9 @@ const TWO_LINES = 2 * LINE - 3;
 export const STEP_GAP = 3;
 
 /** The title's text panel: top just under the logo, at least this wide. */
-export const TITLE_PANEL_Y = 66;
+export const TITLE_PANEL_Y = 64;
 const TITLE_PANEL_W = 236;
-/** Space between the title panel's edges and its rows and buttons (sides and bottom). */
+/** Space between the title panel's edges and its rows and buttons, on all four sides. */
 export const PANEL_PAD = 4;
 /**
  * Where the skater rides (and its board meets the ground) in pause and game
@@ -130,8 +143,9 @@ function reloadCardSize(m: UiMetrics, touch: boolean): { w: number; h: number } 
   return { w: measureText(MENU_TEXT.reload) + CARD_GAP + buttonWidth(reloadLabel(touch), m), h: m.menuButtonH };
 }
 
-function installCardSize(kind: InstallHintKind, m: UiMetrics): { w: number; h: number } {
+function installCardSize(kind: InstallCard, m: UiMetrics): { w: number; h: number } {
   const dismiss = m.menuButtonH;
+  if (kind === 'compact') return { w: buttonWidth(MENU_TEXT.installApp, m) + CARD_GAP + dismiss, h: m.menuButtonH };
   if (kind === 'prompt') {
     return { w: measureText(MENU_TEXT.installReason) + CARD_GAP + buttonWidth(MENU_TEXT.install, m) + CARD_GAP + dismiss, h: m.menuButtonH };
   }
@@ -149,14 +163,19 @@ export function reloadParts(card: Rect, m: UiMetrics, touch: boolean): { textX: 
   };
 }
 
-/** The install card: reason (and iOS steps) at the left, "Installieren" (prompt only) and "×" at the right. */
+/**
+ * The install card: reason (and iOS steps) at the left, "Installieren"
+ * (prompt only) and "×" at the right; compact: "App installieren" fills the
+ * card left of the "×" and there is no text.
+ */
 export function installParts(
   card: Rect,
-  kind: InstallHintKind,
+  kind: InstallCard,
   m: UiMetrics,
 ): { textX: number; textY: number; button: Rect | null; dismiss: Rect } {
   const h = m.menuButtonH;
   const dismiss: Rect = { x: card.x + card.w - h, y: card.y + Math.floor((card.h - h) / 2), w: h, h };
+  if (kind === 'compact') return { textX: card.x, textY: card.y, button: { x: card.x, y: card.y, w: dismiss.x - CARD_GAP - card.x, h }, dismiss };
   const lines = kind === 'prompt' ? 1 : 2;
   const textY = card.y + Math.floor((card.h - (lines * LINE - 4)) / 2);
   if (kind === 'ios') return { textX: card.x, textY, button: null, dismiss };
@@ -168,25 +187,33 @@ function noButtons(): MenuButtons {
   return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null };
 }
 
-/** The notice cards a screen offers, as column blocks (droppable from `installDrop` on). */
-function noticeBlocks(input: MenuInput, m: UiMetrics, installDrop?: number): Block[] {
+/** The install card for the input: compacted where asked (only the prompt kind has a short form). */
+function installCard(input: MenuInput, compact: boolean): InstallCard | null {
+  return compact && input.install === 'prompt' ? 'compact' : input.install;
+}
+
+/** The notice cards a screen offers, as column blocks (the install card droppable from `installDrop` on). */
+function noticeBlocks(input: MenuInput, m: UiMetrics, install: InstallCard | null, installDrop?: number): Block[] {
   const blocks: Block[] = [];
   if (input.reload) blocks.push({ id: 'reload', ...reloadCardSize(m, input.touch), gap: 4 });
-  if (input.install) blocks.push({ id: 'install', ...installCardSize(input.install, m), gap: 3, drop: installDrop });
+  if (install) blocks.push({ id: 'install', ...installCardSize(install, m), gap: 3, drop: installDrop });
   return blocks;
 }
 
-/** Fills the buttons from the placed cards. */
-function cardButtons(input: MenuInput, m: UiMetrics, blocks: Map<string, Rect>, buttons: MenuButtons): void {
-  const reload = blocks.get('reload');
+/** The screen's layout from the placed blocks: buttons filled from the cards, `install` = the card kind if it was placed. */
+function withCards(input: MenuInput, m: UiMetrics, placed: Map<string, Rect>, install: InstallCard | null, panel: Rect | null = null): MenuLayout {
+  const buttons = noButtons();
+  const reload = placed.get('reload');
   if (reload) buttons.reload = reloadParts(reload, m, input.touch).button;
-  const install = blocks.get('install');
-  if (install && input.install) {
-    const parts = installParts(install, input.install, m);
+  const card = placed.get('install');
+  const shown = card && install ? install : null;
+  if (card && shown) {
+    const parts = installParts(card, shown, m);
     buttons.install = parts.button;
     buttons.dismiss = parts.dismiss;
   }
-  buttons.toTitle = blocks.get('toTitle') ?? null;
+  buttons.toTitle = placed.get('toTitle') ?? null;
+  return { blocks: placed, buttons, install: shown, panel };
 }
 
 /** Lowest y of the HUD button row and the x where it starts, for this screen. */
@@ -216,16 +243,16 @@ function skaterBounds(input: MenuInput, top: number): ColumnBounds {
 export function titleLayout(input: MenuInput): MenuLayout {
   const m = uiMetrics(input);
   const row = (id: string, gap: number, drop?: number, lines = 1): Block => ({ id, w: TITLE_PANEL_W - 8, h: lines * LINE, gap, drop });
-  const tagline = row('tagline', 3, 2);
+  // Every first row (the tagline, or the prompt once the tagline gave way) has a gap of 2.
+  const tagline = row('tagline', 2, 2);
   const prompt: Block = { id: 'prompt', w: measureText(startPrompt(input.touch)), h: LINE, gap: 2 };
-  const tail = [...noticeBlocks(input, m), row('records', 3, 3)];
-  const column = { ...bounds(input, TITLE_PANEL_Y), bottom: BOTTOM - PANEL_PAD, maxWidth: input.viewWidth - 2 * PANEL_PAD - 4 };
+  const install = installCard(input, false);
+  const tail = [...noticeBlocks(input, m, install), row('records', 3, 3)];
+  const column = { ...bounds(input, TITLE_PANEL_Y + PANEL_PAD - 2), bottom: VIEW_H - 2 - PANEL_PAD, maxWidth: input.viewWidth - 2 * PANEL_PAD - 4 };
   const help = [row('help', 3, 4, 5), ...(input.touch ? [] : [row('keys', 1, 5)])];
   let placed = fitColumn([tagline, prompt, ...help, ...tail], column);
   if (!placed.has('help')) placed = condensedTitle([tagline, prompt], tail, input, column);
-  const buttons = noButtons();
-  cardButtons(input, m, placed, buttons);
-  return { blocks: placed, buttons, panel: titlePanel(input.viewWidth, [...placed.values()]) };
+  return withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
 }
 
 /**
@@ -240,7 +267,7 @@ function condensedTitle(head: Block[], tail: Block[], input: MenuInput, column: 
   return fits && [...beside.keys()].every((id) => below.has(id)) ? below : beside;
 }
 
-/** The opaque plate behind the title's rows: centred, PANEL_PAD around them (none above, it meets the logo). */
+/** The opaque plate behind the title's rows: centred, PANEL_PAD around them, its top at TITLE_PANEL_Y. */
 function titlePanel(viewWidth: number, rows: Rect[]): Rect {
   const cx = centreX(viewWidth);
   const half = Math.max(TITLE_PANEL_W / 2, ...rows.map((r) => Math.max(cx - r.x, r.x + r.w - cx) + PANEL_PAD));
@@ -269,10 +296,9 @@ export function pauseLayout(input: MenuInput): MenuLayout {
   if (!input.touch) blocks.push(text('keys', PAUSE_KEYS, 3, 2));
   blocks.push(text('trick', trickKeysHint(input.touch), input.touch ? 3 : 0, 2), ...navBlocks(input, m, 4));
   const placed = fitColumn(blocks, skaterBounds(input, Math.max(logo.y + logo.h, hud.bottom)));
-  const buttons = noButtons();
-  buttons.logo = logo;
-  cardButtons(input, m, placed, buttons);
-  return { blocks: placed, buttons, panel: null };
+  const layout = withCards(input, m, placed, null);
+  layout.buttons.logo = logo;
+  return layout;
 }
 
 /** Game over: headline, new record, results, prompt, install hint, "Zum Startbildschirm" and reload. */
@@ -287,12 +313,11 @@ export function gameOverLayout(input: MenuInput & { newRecord: boolean }): MenuL
   });
   blocks.push({ id: 'prompt', w: measureText(gameOverPrompt(input.touch)), h: LINE, gap: 6 });
   if (!input.touch) blocks.push({ id: 'keys', w: measureText(GAMEOVER_KEYS), h: LINE, gap: 2, drop: 3 });
-  blocks.push(...noticeBlocks({ ...input, reload: false }, m, INSTALL_DROP_GAMEOVER), ...navBlocks(input, m, 4));
+  const install = installCard(input, true);
+  blocks.push(...noticeBlocks({ ...input, reload: false }, m, install, INSTALL_DROP_GAMEOVER), ...navBlocks(input, m, 4));
   const placed = fitColumn(blocks, skaterBounds(input, Math.max(title.y + title.h, hud.bottom)));
   placed.set('title', title);
-  const buttons = noButtons();
-  cardButtons(input, m, placed, buttons);
-  return { blocks: placed, buttons, panel: null };
+  return withCards(input, m, placed, install);
 }
 
 /** "Neu in dieser Version": headline, one bullet line per item, "Weiter". */
@@ -311,7 +336,7 @@ export function whatsNewLayout(input: MenuInput, lines: readonly string[]): Menu
   const panel = items.length
     ? { x: centreX(input.viewWidth) - Math.floor(w / 2), y: items[0]!.y - 4, w, h: items.length * LINE + 4 }
     : null;
-  return { blocks: placed, buttons, panel };
+  return { blocks: placed, buttons, install: null, panel };
 }
 
 /** Bullet square and space before each "Neu in dieser Version" line. */

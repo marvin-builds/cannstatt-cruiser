@@ -19,6 +19,7 @@ import {
   installParts,
   LINE,
   MENU_TEXT,
+  type InstallCard,
   type MenuLayout,
   PAUSE_KEYS,
   pausePrompt,
@@ -31,7 +32,7 @@ import {
   trickKeysHint,
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
-import { installHintKind, whatsNewLines } from './notices';
+import { whatsNewLines } from './notices';
 import type { Records, RunResult } from './records';
 
 /** What the menu screens read from the ui view. */
@@ -77,11 +78,14 @@ function drawReloadCard(r: RenderContext, card: Rect): void {
   menuButton(r, parts.button, reloadLabel(r.display.touch), UI.yellow);
 }
 
-function drawInstallCard(r: RenderContext, card: Rect): void {
-  const kind = installHintKind(r.state.install, r.display.touch);
-  if (!kind) return;
+function drawInstallCard(r: RenderContext, card: Rect, kind: InstallCard): void {
   const parts = installParts(card, kind, uiMetrics(r.display));
   cardPlate(r, card);
+  if (kind === 'compact') {
+    menuButton(r, parts.button!, MENU_TEXT.installApp, UI.teal);
+    drawDismiss(r, parts.dismiss);
+    return;
+  }
   text(r, MENU_TEXT.installReason, parts.textX, parts.textY, { color: UI.white });
   if (parts.button) menuButton(r, parts.button, MENU_TEXT.install, UI.teal);
   drawDismiss(r, parts.dismiss);
@@ -111,7 +115,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
   const install = l.blocks.get('install');
-  if (install) drawInstallCard(r, install);
+  if (install && l.install) drawInstallCard(r, install, l.install);
   if (l.buttons.toTitle) menuButton(r, l.buttons.toTitle, toTitleLabel(r.display.touch));
 }
 

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
-import { buttonPlate, hudButtons, uiMetrics } from './layout';
-import { ITEM_HINT_TIME, ItemHint, itemButtonRect, itemControl, keycapChip } from './item-button';
+import { buttonPlate, hudButtons, popupScale, uiMetrics } from './layout';
+import { GROUND_Y, PLAYER_X } from '../core/config';
+import {
+  ITEM_HINT_TIME,
+  ItemHint,
+  itemButtonRect,
+  itemControl,
+  itemHintPlace,
+  itemHintRect,
+  keycapChip,
+  popupCeiling,
+} from './item-button';
+import { PopupPool } from './popups';
+import { SKATER_CLEAR } from './menu-layout';
+import { statsLayout } from './stats';
 
 const TOUCH_LANDSCAPE = { touch: true, portrait: false };
 const TOUCH_PORTRAIT = { touch: true, portrait: true };
@@ -45,13 +58,25 @@ describe('item control', () => {
         const b = hudButtons(w, true, m, true);
         for (const hud of [b.pause, b.mute, b.fullscreen!]) expect(overlaps(r, hud)).toBe(false);
         // Above the street: overhead obstacles hang lower than this.
-        expect(r.y + r.h).toBeLessThanOrEqual(100);
+        if (!display.portrait) expect(r.y + r.h).toBeLessThanOrEqual(100);
       }
     }
   });
 
-  it('the touch button plate keeps the edge margin of the HUD plates and never overlaps a HUD button', () => {
-    for (const display of [TOUCH_LANDSCAPE, TOUCH_PORTRAIT]) {
+  it('portrait: under the tallest stats plate on the left, so it never hides the stars coming in from the right', () => {
+    const tallest = statsLayout(200, true, true).plate;
+    for (const w of [320, 360, 384, 390, 427]) {
+      const r = itemButtonRect(w, TOUCH_PORTRAIT);
+      expect(r.x).toBe(tallest.x);
+      expect(r.y).toBeGreaterThan(tallest.y + tallest.h);
+      // Behind the skater: stars and obstacles ahead of it stay visible.
+      expect(r.x + r.w).toBeLessThanOrEqual(SKATER_CLEAR.x);
+      expect(r.y + r.h).toBeLessThanOrEqual(SKATER_CLEAR.y);
+    }
+  });
+
+  it('landscape: the button plate keeps the edge margin of the HUD plates and never overlaps a HUD button', () => {
+    for (const display of [TOUCH_LANDSCAPE]) {
       const m = uiMetrics(display);
       for (const w of [320, 384, 427]) {
         const r = itemButtonRect(w, display);
@@ -65,6 +90,23 @@ describe('item control', () => {
         expect(w - (r.x + r.w)).toBeGreaterThanOrEqual(4);
       }
     }
+  });
+
+  it('the first-time hint sits beside the button, pointing at it, inside the view', () => {
+    for (const display of [TOUCH_LANDSCAPE, TOUCH_PORTRAIT]) {
+      for (const w of [320, 384, 427]) {
+        const b = itemButtonRect(w, display);
+        const p = itemHintPlace(b, 180, 20, w);
+        expect(p.x).toBeGreaterThanOrEqual(0);
+        expect(p.x + 180).toBeLessThanOrEqual(w);
+        expect(overlaps({ x: p.x, y: p.y, w: 180, h: 20 }, b)).toBe(false);
+        if (p.pointsRight) expect(p.x + 180).toBeLessThanOrEqual(b.x);
+        else expect(p.x).toBeGreaterThanOrEqual(b.x + b.w);
+        expect(p.y + 10).toBe(b.y + b.h / 2);
+      }
+    }
+    expect(itemHintPlace(itemButtonRect(384, TOUCH_LANDSCAPE), 180, 20, 384).pointsRight).toBe(true);
+    expect(itemHintPlace(itemButtonRect(384, TOUCH_PORTRAIT), 180, 20, 384).pointsRight).toBe(false);
   });
 
   it('the desktop chip sits right of the stats plate', () => {
@@ -113,5 +155,23 @@ describe('first-time item hint (touch)', () => {
     expect(hint.visible).toBe(false);
     hint.update(0.2, false);
     expect(hint.visible).toBe(false);
+  });
+
+  it('keeps the popups over the skater below the hint while it shows, so neither hides the other', () => {
+    const base = 54;
+    expect(popupCeiling(base, null)).toBe(base);
+    for (const portrait of [true, false]) {
+      const display = { touch: true, portrait };
+      for (const viewWidth of [320, 384, 427]) {
+        const at = `${portrait ? 'portrait' : 'landscape'} ${viewWidth}`;
+        const hint = itemHintRect(viewWidth, display, popupScale(display, false));
+        expect(hint.x, at).toBeGreaterThanOrEqual(0);
+        expect(hint.x + hint.w, at).toBeLessThanOrEqual(viewWidth);
+        const pool = new PopupPool(4);
+        pool.ceiling = popupCeiling(base, hint);
+        for (const text of ['Autsch!', '+50']) pool.spawn(text, PLAYER_X, GROUND_Y - 28 - 44, '#fff', popupScale(display, false));
+        for (const p of pool.active()) expect(p.y, `${at}: ${p.text}`).toBeGreaterThanOrEqual(hint.y + hint.h);
+      }
+    }
   });
 });

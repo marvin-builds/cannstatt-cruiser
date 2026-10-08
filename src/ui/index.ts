@@ -24,7 +24,7 @@ import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
 import { HudModel } from './hud-model';
-import { itemButtonRect, itemControl, ItemHint } from './item-button';
+import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
@@ -248,19 +248,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       onPress: () => {},
       onKeyDown: (code) => {
         if (code === 'Escape') settings.close();
-        else if (code === 'Enter' || code === 'Space') settings.toggle(state, state.frame);
-        else if (/^(Digit|Numpad)[123]$/.test(code)) settings.answer(state, Number(code.slice(-1)) - 1);
+        else if (code === 'Enter' || code === 'Space') settings.toggle(state);
         return code !== 'KeyM';
       },
     };
     ctx.addHotspot(logo);
     ctx.addHotspot(modal);
-    const when = (screen: 'menu' | 'check', pick: () => Rect) => () => (settings.screen === screen ? pick() : null);
-    ctx.addHotspot({ rect: when('menu', () => menu().toggle), onPress: () => settings.toggle(state, state.frame) });
-    ctx.addHotspot({ rect: () => (settings.open ? menu().back : null), onPress: () => settings.back() });
-    for (const i of [0, 1, 2]) {
-      ctx.addHotspot({ rect: when('check', () => menu().answers[i]!), onPress: () => settings.answer(state, i) });
-    }
+    ctx.addHotspot({ rect: () => (settings.open ? menu().toggle : null), onPress: () => settings.toggle(state) });
+    ctx.addHotspot({ rect: () => (settings.open ? menu().back : null), onPress: () => settings.close() });
   }
 
   return {
@@ -285,6 +280,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
+      const hintShown = view.itemHint.visible && itemControl(display, state.mode, state.carriedItem) === 'button';
+      view.popups.ceiling = popupCeiling(POPUP_CEILING, hintShown ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null);
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
