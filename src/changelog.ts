@@ -20,6 +20,16 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.8',
+    date: '2026-10-08',
+    items: [
+      'Stunt-Linien mit Rampen und Combos',
+      'Obere Ebene zum Grinden in jeder Zone',
+      'Neue Sounds für Sprünge und Combos',
+      'Installieren-Hinweis schon beim Start',
+    ],
+  },
+  {
     version: '2026-10-08.7',
     date: '2026-10-08',
     items: ['Ton startet am Handy zuverlässiger'],
