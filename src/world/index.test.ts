@@ -205,3 +205,27 @@ describe('world system traffic', () => {
     expect(Object.keys(world.render ?? {}).sort()).toEqual(['background', 'fx', 'world']);
   });
 });
+
+describe('world system NorDIY park', () => {
+  const plan = { start: 3000, end: 3400, pieces: [{ kind: 'container' as const, from: 3100, to: 3180, height: 40 }] };
+
+  it('eases the traffic out over the park and back in after it', () => {
+    const world = createWorldSystem();
+    const game = new Game({ systems: [world] });
+    game.seed(1);
+    game.commands.startRun();
+    game.tick();
+    rideTo(game, 500);
+    game.state.park = plan;
+    rideTo(game, 520);
+    expect(world.trafficDensity()).toBe(LIGHT_TRAFFIC);
+    rideTo(game, 3200);
+    expect(world.trafficDensity()).toBe(0);
+    expect(game.state.trafficDensity).toBe(0);
+    game.state.park = null;
+    rideTo(game, 3210);
+    expect(world.trafficDensity()).toBe(0);
+    rideTo(game, 6000);
+    expect(world.trafficDensity()).toBe(LIGHT_TRAFFIC);
+  });
+});

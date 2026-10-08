@@ -417,3 +417,66 @@ describe('Traffic pass-by events (vehiclePassed)', () => {
     expect(passes(1, 30, 0)).toEqual([]);
   });
 });
+
+describe('Traffic around a keep-out span (the NorDIY park)', () => {
+  const VW = 427;
+  /** True if an active vehicle on screen overlaps the screen span. */
+  function overlaps(traffic: Traffic, from: number, to: number): boolean {
+    return active(traffic).some((v) => {
+      const { w } = VEHICLES[v.kind];
+      return v.x + w > 0 && v.x < VW && v.x + w > from && v.x < to;
+    });
+  }
+
+  /**
+   * Drives light traffic while a span `length` wide scrolls in from `ahead`
+   * px past the right edge at `speed`; returns whether any vehicle was ever
+   * seen over it and how many vehicles set off in the `after` seconds once it left.
+   */
+  function passPark(seed: number, speed: number, warm: (t: Traffic) => void, ahead = 300, length = 520, after = 40) {
+    const traffic = new Traffic(new Rng(seed));
+    warm(traffic);
+    let from = VW + ahead;
+    let seen = false;
+    while (from + length > -20) {
+      const scroll = speed * TICK_DT;
+      from -= scroll;
+      traffic.update(TICK_DT, scroll, LIGHT_TRAFFIC, VW, undefined, { from, to: from + length });
+      if (overlaps(traffic, from, from + length)) seen = true;
+    }
+    const before = traffic.vehicles.map((v) => v.active);
+    let launched = 0;
+    drive(traffic, after, speed, LIGHT_TRAFFIC, VW, () => {
+      traffic.vehicles.forEach((v, i) => {
+        if (v.active && !before[i]) launched++;
+        before[i] = v.active;
+      });
+    });
+    return { seen, launched };
+  }
+
+  it('never shows a vehicle over the span, and traffic resumes after it', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const speed of [90, 140, 190]) {
+        const { seen, launched } = passPark(seed, speed, (t) => drive(t, 7 * seed, speed, LIGHT_TRAFFIC, VW));
+        expect(seen, `seed ${seed} speed ${speed}`).toBe(false);
+        expect(launched).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('hurries a car already driving with the skater out of the view before the span arrives', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      for (const speed of [90, 190]) {
+        const warm = (t: Traffic) => {
+          for (let i = 0; i < 60 * 120; i++) {
+            t.update(TICK_DT, speed * TICK_DT, LIGHT_TRAFFIC, VW);
+            if (active(t).some((v) => LANES[v.lane]!.dir === 1 && v.x > -10 && v.x < 60)) return;
+          }
+          throw new Error('no back-lane car came');
+        };
+        expect(passPark(seed, speed, warm, 40).seen, `seed ${seed} speed ${speed}`).toBe(false);
+      }
+    }
+  });
+});

@@ -10,6 +10,10 @@
  * below everything gameplay draws) and adds a smoggy haze. Purely visual apart from
  * `state.zoneIndex`, `state.trafficDensity` and the `vehiclePassed` event
  * (see docs/ARCHITECTURE.md).
+ * Once per Bad Cannstatt visit gameplay plans the NorDIY skatepark
+ * (state.park): the world draws its containers, crane, banks and decor on
+ * the street layer exactly under the park line and keeps traffic out of it
+ * (park.ts, art/park.ts); its crowd cheers on sessionCheer / sessionEnd.
  * Everything that scrolls is drawn from RenderContext.scroll / scrollLead, so
  * it moves evenly on 120/144 Hz displays; render allocates nothing per frame.
  */
@@ -23,10 +27,13 @@ import { GROUND_TILES } from './art/ground';
 import { CLOUD_DRIFT, CLOUD_FACTOR, CLOUD_PROPS, FAR_DEPTH, MID_DEPTH, NEAR_DEPTH } from './art/layout';
 import { MITTE_TRAIN, mitteZone } from './art/mitte';
 import { neckarZone } from './art/neckar';
+import { drawPark, warmPark } from './art/park';
 import { drawBackTraffic, drawFrontTraffic, drawHaze, warmTraffic } from './art/traffic';
+import { CrowdCheer } from './crowd';
 import { installWorldDebug } from './debug';
 import { GroundStrip } from './ground';
 import { LETTERBOX } from './palette';
+import { ParkStage } from './park';
 import { DepthLayer, mixSeed, SharedLayer } from './scene';
 import { mitteShare, type PassListener, Traffic, trafficDensity } from './traffic';
 import { TrainRunner } from './train';
@@ -69,6 +76,9 @@ export function createWorldSystem(): WorldSystem {
   const ground = new GroundStrip(GROUND_TILES);
   const trafficRng = new Rng(0);
   const traffic = new Traffic(trafficRng);
+  /** The NorDIY park on the street (state.park) and its cheering crowd. */
+  const park = new ParkStage();
+  const crowd = new CrowdCheer();
   /** Animation clock (s): runs in every mode except pause. */
   let time = 0;
   let warmed = false;
@@ -89,12 +99,18 @@ export function createWorldSystem(): WorldSystem {
     traffic.reset();
   }
 
+  function resetPark(): void {
+    park.reset();
+    crowd.reset();
+  }
+
   function reset(seed: number): void {
     for (const layer of layers) layer.reseed(seed);
     clouds.reseed(seed, clouds.scroll(0, time));
     trainRng.seed(mixSeed(seed, 99));
     trafficRng.seed(mixSeed(seed, 77));
     lastDistance = 0;
+    resetPark();
     snap(START_ZONE, 0);
   }
 
@@ -138,6 +154,7 @@ export function createWorldSystem(): WorldSystem {
       layers.forEach((l) => l.warm());
       ground.warm();
       warmTraffic();
+      warmPark();
       warmed = true;
     }
     const { viewWidth } = display;
@@ -152,6 +169,7 @@ export function createWorldSystem(): WorldSystem {
 
   function drawStreet(r: RenderContext): void {
     ground.draw(r.g, route, r.scroll, r.display.viewWidth);
+    drawPark(r, park, crowd, time + ahead(r));
     drawBackTraffic(r.g, traffic, r.scrollLead, ahead(r));
   }
 
@@ -168,8 +186,10 @@ export function createWorldSystem(): WorldSystem {
       ctx.commands.setLetterboxColor(LETTERBOX);
       reset(ctx.state.seed);
       announcePass = (pass) => ctx.bus.emit('vehiclePassed', { ...pass });
-      if (typeof window !== 'undefined' && testHookEnabled()) installWorldDebug(traffic, () => density);
+      if (typeof window !== 'undefined' && testHookEnabled()) installWorldDebug(ctx, traffic, () => density, crowd);
       ctx.bus.on('runStarted', ({ seed }) => reset(seed));
+      ctx.bus.on('sessionCheer', ({ level }) => crowd.cheer(level));
+      ctx.bus.on('sessionEnd', ({ level }) => crowd.sessionEnd(level));
       ctx.bus.on('zoneChanged', ({ index }) => {
         if (!advancing) snap(index, ctx.state.distance);
       });
@@ -178,18 +198,24 @@ export function createWorldSystem(): WorldSystem {
     update(ctx, dt) {
       const { state, display } = ctx;
       // Back on the title the scenery starts over in Bad Cannstatt.
-      if (state.mode === 'title' && lastMode !== 'title' && lastMode !== null) snap(START_ZONE, state.distance);
+      if (state.mode === 'title' && lastMode !== 'title' && lastMode !== null) {
+        snap(START_ZONE, state.distance);
+        resetPark();
+      }
       lastMode = state.mode;
       if (state.mode === 'playing') syncZone(ctx);
       if (state.mode === 'paused') return;
       time += dt;
+      park.sync(state.park, state.distance);
+      crowd.update(dt);
       train.update(dt, state.distance * NEAR_DEPTH.factor, display.viewWidth, trainEnabled(state.distance, display.viewWidth));
       const scroll = Math.max(0, state.distance - lastDistance);
       lastDistance = state.distance;
-      density = trafficDensity(route, state.distance);
+      density = trafficDensity(route, state.distance) * park.quiet(state.distance);
       state.trafficDensity = state.mode === 'playing' ? density : 0;
       // Pass-bys are heard only while playing (state density is 0 on the title and game over).
-      traffic.update(dt, scroll, density, display.viewWidth, state.mode === 'playing' ? announcePass : undefined);
+      const onPass = state.mode === 'playing' ? announcePass : undefined;
+      traffic.update(dt, scroll, density, display.viewWidth, onPass, park.keepOut(state.distance));
     },
 
     render: {
