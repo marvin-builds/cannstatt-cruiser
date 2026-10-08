@@ -101,6 +101,8 @@ export interface Prop {
   draw(g: CanvasRenderingContext2D, x: number, time: number, seed: number): void;
   /** Paints any cached canvases ahead of time (avoids a hitch on first sight). */
   warm(): void;
+  /** Name of the flag hanging from it (see withFlag in flags.ts), if any. */
+  readonly flag?: string;
 }
 
 /** A static prop of size w x h whose bottom edge sits at view y `bottom`. */

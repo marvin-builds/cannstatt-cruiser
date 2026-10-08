@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TICK_DT } from '../core/config';
 import { Game } from '../core/game';
 import { createWorldSystem } from './index';
 import { LIGHT_TRAFFIC } from './traffic';
@@ -156,6 +157,47 @@ describe('world system traffic', () => {
     game.commands.toTitle();
     game.tick();
     expect(game.state.trafficDensity).toBe(0);
+  });
+
+  /** Rides `seconds` at 120 px/s from the current distance and collects the vehiclePassed events. */
+  function ridePasses(game: Game, seconds: number) {
+    const seen: Array<{ kind: string; front: boolean; light: boolean }> = [];
+    const off = game.bus.on('vehiclePassed', (e) => seen.push({ ...e }));
+    for (let t = 0; t < seconds / TICK_DT; t++) rideTo(game, game.state.distance + 120 * TICK_DT);
+    off();
+    return seen;
+  }
+
+  it('emits vehiclePassed for light traffic in Bad Cannstatt and at the Neckar', () => {
+    const game = playing();
+    const cannstatt = ridePasses(game, 15);
+    expect(game.state.zoneIndex).toBe(2);
+    expect(cannstatt.length).toBeGreaterThan(0);
+    expect(cannstatt.every((p) => p.light)).toBe(true);
+    game.state.distance = ZONE_LENGTH + 100;
+    const neckar = ridePasses(game, 15);
+    expect(game.state.zoneIndex).toBe(1);
+    expect(neckar.length).toBeGreaterThan(0);
+    expect(neckar.every((p) => p.light)).toBe(true);
+  });
+
+  it('emits vehiclePassed for the dense Mitte traffic (not light), front and back lane', () => {
+    const game = playing();
+    game.commands.setZone(0);
+    const mitte = ridePasses(game, 15);
+    expect(mitte.length).toBeGreaterThan(15);
+    expect(mitte.every((p) => !p.light)).toBe(true);
+    expect(new Set(mitte.map((p) => p.front))).toEqual(new Set([true, false]));
+  });
+
+  it('emits no vehiclePassed on the title or after game over (state density 0)', () => {
+    const game = playing();
+    game.commands.setZone(0);
+    ridePasses(game, 2);
+    game.commands.gameOver();
+    expect(ridePasses(game, 10)).toEqual([]);
+    game.commands.toTitle();
+    expect(ridePasses(game, 30)).toEqual([]);
   });
 
   it('draws the back lane and exhaust under every entity (world layer), the front lane in the fx layer', () => {
