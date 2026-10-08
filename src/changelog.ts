@@ -20,6 +20,16 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.4',
+    date: '2026-10-08',
+    items: [
+      'Höhere Höchstgeschwindigkeit',
+      'Leiser Verkehr auch außerhalb Mitte',
+      'Neue Fahnen an zwei Häusern',
+      'Aufgeräumte Menüs am Handy',
+    ],
+  },
+  {
     version: '2026-10-08.3',
     date: '2026-10-08',
     items: [
