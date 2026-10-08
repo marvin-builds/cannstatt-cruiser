@@ -25,10 +25,13 @@ export function countDownChill(ctx: GameContext, dt: number): void {
 export function collectJoints(ctx: GameContext): void {
   const { state } = ctx;
   const body = state.player.hitbox;
-  const picked = state.entities.filter((e) => e.kind === 'joint' && overlaps(body, e));
-  for (const joint of picked) {
+  const entities = state.entities;
+  for (let i = 0; i < entities.length; i++) {
+    const joint = entities[i]!;
+    if (joint.kind !== 'joint' || !overlaps(body, joint)) continue;
     state.chillTimer = CHILL_DURATION;
     ctx.bus.emit('chillStart', { entityId: joint.id, duration: CHILL_DURATION });
-    state.entities.splice(state.entities.indexOf(joint), 1);
+    entities.splice(i, 1);
+    i--;
   }
 }

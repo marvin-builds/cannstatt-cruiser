@@ -24,6 +24,13 @@ export function motionOffset(m: Motion, gap: number): number {
   return m.walk * gap + m.sway * Math.sin((2 * Math.PI * gap) / SWAY_WAVELENGTH + m.phase);
 }
 
+/** The sway part of an entity's motion offset at `gap` (0 without a motion); allocation-free for drawing. */
+export function swayOffset(e: Pick<Entity, 'data'>, gap: number): number {
+  const d = e.data;
+  if (typeof d?.sway !== 'number' || typeof d.phase !== 'number') return 0;
+  return d.sway * Math.sin((2 * Math.PI * gap) / SWAY_WAVELENGTH + d.phase);
+}
+
 export function motionOf(e: Pick<Entity, 'data'>): Motion | null {
   const d = e.data;
   if (typeof d?.walk !== 'number' || typeof d.sway !== 'number' || typeof d.phase !== 'number') return null;

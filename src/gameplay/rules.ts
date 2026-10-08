@@ -4,7 +4,7 @@
  */
 import { TICK_DT } from '../core/config';
 import { HITBOX_W } from '../player/tuning';
-import type { Rect } from '../types';
+import type { PlayerState, Rect } from '../types';
 
 export function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -17,6 +17,17 @@ export interface Feet {
   y: number;
   vy: number;
   supported: boolean;
+}
+
+const scratchFeet: Feet = { x: 0, y: 0, vy: 0, supported: false };
+
+/** The live player's feet this tick, in one shared scratch object (read it before the next call). */
+export function feetOf(p: PlayerState): Feet {
+  scratchFeet.x = p.x;
+  scratchFeet.y = p.y;
+  scratchFeet.vy = p.vy;
+  scratchFeet.supported = p.grounded || p.grinding;
+  return scratchFeet;
 }
 
 /**

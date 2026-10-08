@@ -217,35 +217,37 @@ export const SPARKLE_TICKS = SPARKLE_FRAMES * SPARKLE_FRAME_TICKS;
 /** Distance between rail posts. */
 const POST_SPACING = 28;
 
-function drawRail(g: CanvasRenderingContext2D, e: Entity): void {
+function drawRail(g: CanvasRenderingContext2D, e: Entity, x: number): void {
   const parts = e.kind === 'pipe' ? PIPE : HANDRAIL;
-  const x = Math.round(e.x);
   const top = Math.round(e.y);
-  const barH = parts.bar.height;
   const postW = parts.post.width;
-  const footW = parts.foot.width;
-  const postXs: number[] = [];
-  for (let px = 4; px < e.w - postW - 3; px += POST_SPACING) postXs.push(x + px);
-  postXs.push(x + e.w - postW - 4);
-  for (const px of postXs) {
-    for (let py = top + barH - 1; py < GROUND_Y - parts.foot.height; py++) parts.post.draw(g, 0, px, py);
-    parts.foot.draw(g, 0, px - Math.floor((footW - postW) / 2), GROUND_Y - parts.foot.height);
-  }
+  // Posts every POST_SPACING, plus one at the rear end.
+  for (let px = 4; px < e.w - postW - 3; px += POST_SPACING) drawPost(g, parts, x + px, top);
+  drawPost(g, parts, x + e.w - postW - 4, top);
   for (let px = 0; px < e.w; px++) parts.bar.draw(g, 0, x + px, top - 1);
+}
+
+function drawPost(g: CanvasRenderingContext2D, parts: typeof HANDRAIL | typeof PIPE, px: number, top: number): void {
+  const footTop = GROUND_Y - parts.foot.height;
+  for (let py = top + parts.bar.height - 1; py < footTop; py++) parts.post.draw(g, 0, px, py);
+  parts.foot.draw(g, 0, px - Math.floor((parts.foot.width - parts.post.width) / 2), footTop);
 }
 
 /** What the art reads from the game state: `frame` drives the star spin, `time` the stomp reaction, `kidMode` pickup and props. */
 export type ArtState = Pick<GameState, 'frame' | 'time' | 'kidMode'>;
 
-/** Draws one entity at integer coordinates. */
-export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtState): void {
+/**
+ * Draws one entity at integer coordinates, `lead` (RenderContext.scrollLead)
+ * left of its tick position, so it moves evenly with the street.
+ */
+export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtState, lead = 0): void {
   const { frame, kidMode } = state;
-  const x = Math.round(e.x);
+  const x = Math.round(e.x - lead);
   const y = Math.round(e.y);
   switch (e.kind) {
     case 'handrail':
     case 'pipe':
-      drawRail(g, e);
+      drawRail(g, e, x);
       return;
     case 'star':
       STAR.draw(g, Math.floor((frame + e.id * 7) / 12), x, y + (Math.floor((frame + e.id * 5) / 20) % 2));
@@ -255,11 +257,11 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
       return;
     case 'banner':
     case 'stopSign':
-      drawOverhead(g, { ...e, kind: e.kind });
+      drawOverhead(g, e, e.kind, lead);
       return;
     case 'vfbFan':
     case 'wasenGuest':
-      drawPerson(g, e, state.time, kidMode);
+      drawPerson(g, e, state.time, kidMode, lead);
       return;
     case 'ball':
       // The thrown football (types.ts): the same art as the carried and tossed one.
@@ -274,7 +276,7 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
   }
 }
 
-/** Pickup sparkle centred on (cx, cy), `age` ticks old. */
+/** Pickup sparkle centred on (cx, cy) (screen x minus the scroll lead), `age` ticks old. */
 export function drawSparkle(g: CanvasRenderingContext2D, cx: number, cy: number, age: number): void {
   SPARKLE.draw(g, Math.floor(age / SPARKLE_FRAME_TICKS), Math.round(cx) - 2, Math.round(cy) - 2);
 }

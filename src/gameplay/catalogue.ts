@@ -126,6 +126,15 @@ export function starRect(cx: number, cy: number): Rect {
 
 /** The part of an obstacle that crashes the player, in the same space as `e`. */
 export function hitBox(e: Pick<Entity, 'kind' | 'x' | 'y'> & { kind: ObstacleKind }): Rect {
+  return hitBoxInto(e, { x: 0, y: 0, w: 0, h: 0 });
+}
+
+/** hitBox written into `out` (no allocation in per-tick code); returns `out`. */
+export function hitBoxInto(e: Pick<Entity, 'kind' | 'x' | 'y'> & { kind: ObstacleKind }, out: Rect): Rect {
   const { box } = OBSTACLES[e.kind];
-  return { x: e.x + box.x, y: e.y + box.y, w: box.w, h: box.h };
+  out.x = e.x + box.x;
+  out.y = e.y + box.y;
+  out.w = box.w;
+  out.h = box.h;
+  return out;
 }

@@ -3,8 +3,8 @@ import { BASE_SPEED, GROUND_Y, MAX_SPEED, TICK_DT } from '../core/config';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import { railRect } from './catalogue';
 import type { Motion } from './motion';
-import { railBody } from './jumpsim';
-import { constantPace, type Course, Solver } from './solver';
+import { groundBody, railBody } from './jumpsim';
+import { constantPace, type Course, OUT_OF_WORK, Solver, type WorkBudget } from './solver';
 
 function block(x: number, w: number, h: number) {
   return { x, y: GROUND_Y - h, w, h };
@@ -202,5 +202,60 @@ describe('stomps in the solver', () => {
     expect(s.solvable()).toBe(true);
     const stomping = new Solver(personCourse(), BASE_SPEED, { stomps: true });
     for (let tick = 0; tick < 50; tick++) if (s.jumpWorks(tick, 20)) expect(stomping.jumpWorks(tick, 20)).toBe(true);
+  });
+});
+
+describe('work budget (planning spread over ticks)', () => {
+  const busy = () => course([block(60, 10, 17), block(150, 16, 12), block(230, 7, 21)]);
+
+  /** Runs `work` with a fresh budget of `units` per try until it finishes; returns the result and the tries. */
+  function sliced<T>(budget: WorkBudget, units: number, work: () => T): { result: T; tries: number } {
+    for (let tries = 1; ; tries++) {
+      budget.left = units;
+      try {
+        return { result: work(), tries };
+      } catch (e) {
+        if (e !== OUT_OF_WORK) throw e;
+      }
+    }
+  }
+
+  it('throws OUT_OF_WORK when the budget runs out, and resumed tries give the same answers as an unbudgeted solver', () => {
+    for (const speed of [BASE_SPEED, 130, MAX_SPEED]) {
+      const plain = new Solver(busy(), speed);
+      const budget: WorkBudget = { left: 0 };
+      const budgeted = new Solver(busy(), speed, { budget });
+      const solvable = sliced(budget, 200, () => budgeted.solvable());
+      expect(solvable.result).toBe(plain.solvable());
+      expect(solvable.tries).toBeGreaterThan(1);
+      expect(sliced(budget, 200, () => budgeted.fair([3, 10, 20], 12)).result).toBe(plain.fair([3, 10, 20], 12));
+      expect(sliced(budget, 200, () => budgeted.bestJump()).result).toEqual(plain.bestJump());
+    }
+  });
+
+  it('an unlimited budget never throws', () => {
+    const s = new Solver(busy(), BASE_SPEED, { budget: { left: Infinity } });
+    expect(() => s.fair([3, 10, 20], 12)).not.toThrow();
+  });
+});
+
+describe('hold spread (drunk input: the release comes early or late)', () => {
+  it('a pair fair for exact holds is unfair when every hold may come out up to 5 ticks shorter or longer', () => {
+    // A bin and a planter-high block 60 px later at 120 px/s: only an exact hold lands in between.
+    const s = new Solver(course([block(80, 10, 17), block(150, 12, 12)]), 120);
+    expect(s.fair([3, 10, 20], 9)).toBe(true);
+    expect(s.fair([3, 10, 20], 9, groundBody(), 5)).toBe(false);
+  });
+
+  it('a lone bin stays fair with the drunk hold spread and a wider window', () => {
+    const s = new Solver(course([block(80, 10, 17)]), BASE_SPEED);
+    expect(s.fair([3, 10, 20], 12, groundBody(), 5)).toBe(true);
+  });
+
+  it('a spread can only make a course less fair, never more', () => {
+    for (const gap of [20, 40, 60, 80, 100, 120]) {
+      const s = new Solver(course([block(80, 12, 17), block(92 + gap, 16, 12)]), 120);
+      if (s.fair([3, 10, 20], 9, groundBody(), 5)) expect(s.fair([3, 10, 20], 9)).toBe(true);
+    }
   });
 });

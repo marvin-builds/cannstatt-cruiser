@@ -77,9 +77,18 @@ export function stepBody(b: Body, px: number, press: boolean, held: boolean, duc
 
 /** The player's hitbox for this body at pattern x `px` (same shape as the player's own). */
 export function hitboxOf(b: Body, px: number): Rect {
+  return hitboxInto(b, px, { x: 0, y: 0, w: 0, h: 0 });
+}
+
+/** hitboxOf written into `out` (the solver's inner loop allocates nothing for it); returns `out`. */
+export function hitboxInto(b: Body, px: number, out: Rect): Rect {
   const H = T.HITBOX_H;
   const h = b.ducking ? H.ducking : b.grounded || b.onRail ? H.standing : H.tucked;
-  return { x: px - T.HITBOX_W / 2, y: b.y - h, w: T.HITBOX_W, h };
+  out.x = px - T.HITBOX_W / 2;
+  out.y = b.y - h;
+  out.w = T.HITBOX_W;
+  out.h = h;
+  return out;
 }
 
 /** Puts the body onto a rail (what grindStart does to the player). */

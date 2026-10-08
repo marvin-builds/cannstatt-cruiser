@@ -8,7 +8,14 @@
  * be passed, or if any take-off on the way (also across the boundary) leaves
  * a human less than the take-off window of fairness.ts (`options.window`).
  * Gaps and the runout after the last piece leave room for a human landing a
- * little early or late. People come alone.
+ * little early or late. People come alone. While the player may be drunk
+ * (`options.drunk`) only DRUNK_TEMPLATES come, checked with the drunk margin
+ * (fairness.ts drunkFairness).
+ *
+ * planSteps is the same planning as a resumable generator: with a work
+ * budget (`options.budget`) it yields whenever the solvers run out of it and
+ * goes on where it stopped on the next call, so the spawner can spread one
+ * pattern over several ticks. The result never depends on the budget.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
@@ -16,11 +23,11 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
 import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
-import { HUMAN_HOLDS, humanFair, humanFairAtAll, LATE_TAKEOFF_WINDOW } from './fairness';
+import { DRUNK_TEMPLATES, drunkFairness, HUMAN_HOLDS, humanFair, LATE_TAKEOFF_WINDOW, solversFor } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, stepBody } from './jumpsim';
 import type { Motion } from './motion';
-import { constantPace, type Course, HOLDS, type Pace, Solver } from './solver';
+import { constantPace, type Course, HOLDS, OUT_OF_WORK, type WorkBudget } from './solver';
 
 export type { Piece };
 
@@ -33,6 +40,10 @@ export interface PlanOptions {
   before?: Piece[];
   /** Human take-off window (ticks) every take-off must leave (fairness.ts takeoffWindowAt). Default LATE_TAKEOFF_WINDOW. */
   window?: number;
+  /** The player may ride it drunk: easy templates only, fair with the drunk margin. */
+  drunk?: boolean;
+  /** Work budget of the solvers (planSteps yields when it runs out). Default: unlimited. */
+  budget?: WorkBudget;
 }
 
 export interface Pattern {
@@ -225,8 +236,10 @@ const TEMPLATES: Template[] = [
 
 export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
 
-function pickTemplate(rng: Rng, tier: number, zone: number): Template {
-  const open = TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE));
+const isDrunkTemplate = (t: Template) => (DRUNK_TEMPLATES as readonly string[]).includes(t.name);
+
+function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean): Template {
+  const open = TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)));
   let roll = rng.next() * open.reduce((sum, t) => sum + t.weight, 0);
   for (const t of open) {
     roll -= t.weight;
@@ -262,33 +275,63 @@ function runupBefore(before: Piece[], lead: number): number {
  * jump at every speed in `options.chillSpeeds`.
  */
 export function planPattern(rng: Rng, tier: number, speeds: number[], options: PlanOptions = {}): Pattern {
+  const steps = planSteps(rng, tier, speeds, { ...options, budget: undefined });
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+/** planPattern as a resumable generator: yields whenever `options.budget` runs out (see the module comment). */
+export function* planSteps(rng: Rng, tier: number, speeds: number[], options: PlanOptions = {}): Generator<void, Pattern> {
   const slow = Math.min(...speeds);
   const fast = Math.max(...speeds, ...(options.chillSpeeds ?? []));
   // Chill paces first: the low chill jump rejects the most patterns, so checks fail fast.
   const paces = [...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE)), ...speeds];
   const zone = options.zone ?? 0;
   const before = lastPieces((options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind)));
-  const window = options.window ?? LATE_TAKEOFF_WINDOW;
+  const drunk = options.drunk ?? false;
+  const human = options.window ?? LATE_TAKEOFF_WINDOW;
+  const { window, spread } = drunk ? drunkFairness(human) : { window: human, spread: 0 };
+  const budget = options.budget;
   for (let i = 0; i < ATTEMPTS; i++) {
-    const template = pickTemplate(rng, tier, zone);
+    const template = pickTemplate(rng, tier, zone, drunk);
     const builder = new Builder(rng, fast, zone);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
-    const solvers = paces.map((pace) => new Solver(courseOf(pattern), pace));
-    if (!humanFair(solvers, window)) continue;
-    if (before.length > 0 && !clearableAfter(pattern, before, leadFor(fast), paces, window)) continue;
+    const solvers = solversFor(courseOf(pattern), paces, budget);
+    if (!(yield* resumable(() => humanFair(solvers, window, spread)))) continue;
+    if (before.length > 0) {
+      const across = solversFor(courseAfter(pattern, before, leadFor(fast)), paces, budget);
+      if (!(yield* resumable(() => humanFair(across, window, spread)))) continue;
+    }
     if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
     // Stars mark a jump a human can repeat (one of the human holds).
-    else if (rng.chance(STAR_CHANCE)) addStars(pattern, solvers[paces.indexOf(slow)]!.bestJump(groundBody(), HUMAN_HOLDS)?.path ?? []);
+    else if (rng.chance(STAR_CHANCE)) {
+      const guide = solvers[paces.indexOf(slow)]!;
+      addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), HUMAN_HOLDS)))?.path ?? []);
+    }
     return pattern;
   }
   // Nothing fair found: a stretch of empty street (always fair, also after any previous pattern).
   return finish('fallback', [], fast);
 }
 
-/** The previous pattern's pieces followed by `pattern` are fair for a human at every pace. */
-function clearableAfter(pattern: Pattern, before: Piece[], lead: number, paces: (number | Pace)[], window: number): boolean {
-  return humanFairAtAll(courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead)), paces, window);
+/** Runs solver `work` (it must not draw from the rng), yielding and retrying while its budget is out. */
+function* resumable<T>(work: () => T): Generator<void, T> {
+  for (;;) {
+    try {
+      return work();
+    } catch (e) {
+      if (e !== OUT_OF_WORK) throw e;
+    }
+    yield;
+  }
+}
+
+/** The previous pattern's pieces followed by `pattern`, as one course starting from free street before them. */
+function courseAfter(pattern: Pattern, before: Piece[], lead: number): Course {
+  return courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead));
 }
 
 /** A lone joint floating at riding height: collected by riding (or ducking) through it. */

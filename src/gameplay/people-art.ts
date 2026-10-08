@@ -13,7 +13,7 @@ import { GROUND_Y, PLAYER_X } from '../core/config';
 import { type Sprite, sprite } from '../core/sprite';
 import type { CarriedItem, Entity } from '../types';
 import { itemOf } from './items';
-import { anchorOf, motionOf, motionOffset } from './motion';
+import { anchorOf, swayOffset } from './motion';
 
 const K = '#1a1418';
 const SKIN = { s: '#f0c08a', S: '#c98d5c' };
@@ -250,11 +250,12 @@ function hit(e: Entity): boolean {
   return e.done && e.data?.hit === true;
 }
 
-export function drawPerson(g: CanvasRenderingContext2D, e: Entity, time: number, kidMode: boolean): void {
-  const x = Math.round(e.x);
+/** Draws a person at integer coordinates (`lead`: RenderContext.scrollLead). */
+export function drawPerson(g: CanvasRenderingContext2D, e: Entity, time: number, kidMode: boolean, lead = 0): void {
+  const x = Math.round(e.x - lead);
   const y = Math.round(e.y);
   if (typeof e.data?.stompedAt === 'number') {
-    drawStomped(g, e, time - e.data.stompedAt);
+    drawStomped(g, e, x, time - e.data.stompedAt);
     return;
   }
   if (e.kind === 'vfbFan') {
@@ -264,8 +265,7 @@ export function drawPerson(g: CanvasRenderingContext2D, e: Entity, time: number,
     return;
   }
   const look = GUESTS[outfitOf(e)]![itemOf(e, kidMode) as GuestItem];
-  const m = motionOf(e);
-  const leaning = !!m && motionOffset({ ...m, walk: 0 }, anchorOf(e) - PLAYER_X) > 0;
+  const leaning = swayOffset(e, anchorOf(e) - PLAYER_X) > 0;
   look.draw(g, hit(e) ? 2 : leaning ? 1 : 0, x, y);
 }
 
@@ -343,9 +343,8 @@ const FAN_LYING = sprite(FAN_PALETTE, [lyingDown([...FAN_HEAD, ...FAN_BODY, ...F
 const GUEST_LYING = [LEDERHOSEN, DIRNDL].map((art) => sprite(GUEST_PALETTE, [lyingDown(paint(art, 10, 0, NO_MUG))]));
 const DIZZY = '#ffd84a';
 
-function drawStomped(g: CanvasRenderingContext2D, e: Entity, since: number): void {
+function drawStomped(g: CanvasRenderingContext2D, e: Entity, x: number, since: number): void {
   const fan = e.kind === 'vfbFan';
-  const x = Math.round(e.x);
   if (since < TUMBLE_TIME) {
     const lying = fan ? FAN_LYING : GUEST_LYING[outfitOf(e)]!;
     lying.draw(g, 0, x - 4, GROUND_Y - lying.height);
@@ -365,8 +364,8 @@ function drawStomped(g: CanvasRenderingContext2D, e: Entity, since: number): voi
 /** Two tiny stars circling above the head (cx, cy). */
 function drawDizzyStars(g: CanvasRenderingContext2D, cx: number, cy: number, t: number): void {
   g.fillStyle = DIZZY;
-  for (const offset of [0, Math.PI]) {
-    const a = t * 9 + offset;
+  for (let i = 0; i < 2; i++) {
+    const a = t * 9 + i * Math.PI;
     const sx = Math.round(cx + Math.cos(a) * 5);
     const sy = Math.round(cy + Math.sin(a) * 2);
     g.fillRect(sx - 1, sy, 3, 1);

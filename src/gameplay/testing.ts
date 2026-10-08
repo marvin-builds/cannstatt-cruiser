@@ -4,7 +4,7 @@
  * like a careful player (SolverBot) or a sloppy human (HumanBot), and plan a
  * stomp (planStomp). DOM-free; not used by the game itself.
  */
-import { PLAYER_X, TICK_DT } from '../core/config';
+import { DRUNK_DELAY_MAX, DRUNK_DELAY_MIN, PLAYER_X, TICK_DT } from '../core/config';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Rng } from '../core/rng';
 import type { Entity, GameState, ObstacleKind } from '../types';
@@ -175,13 +175,18 @@ export interface HumanStyle {
   duckJitter: number;
 }
 
+/** Ticks a drunk human presses early: about the mean drunk input delay. */
+const DRUNK_LAG = Math.round((DRUNK_DELAY_MIN + DRUNK_DELAY_MAX) / 2);
+
 export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, duckJitter: 4 };
 
 /**
  * Plays like a real, imperfect human: plans like SolverBot but only with a
  * few hold lengths, and takes off up to `takeoffJitter` ticks early or late;
- * ducks with jittered timing. The jitter comes from its own `rng`, so runs
- * replay per seed. Same driving protocol as SolverBot.
+ * ducks with jittered timing. While drunk it presses DRUNK_LAG ticks early
+ * (it feels the mean input delay, core/drunk.ts) and aims where the window
+ * also absorbs the delay's spread. The jitter comes from its own `rng`, so
+ * runs replay per seed. Same driving protocol as SolverBot.
  */
 export class HumanBot {
   private wait = -1;
@@ -206,12 +211,14 @@ export class HumanBot {
     const p = state.player;
     if (this.wait < 0) {
       if (!(p.grounded || p.grinding) || p.state === 'crash' || planKey(state) === this.idle) return null;
-      // Aims where its jitter still lands somewhere fair, and grinds only when that window absorbs the jitter.
-      const jump = planJump(state, this.speedPinned, this.style.holds, 2 * this.style.takeoffJitter + 1);
+      // Aims where its jitter (and the drunk delay's spread) still lands somewhere fair, and grinds only when that window absorbs it.
+      const drunk = state.drunkTimer > 0;
+      const window = 2 * this.style.takeoffJitter + 1 + (drunk ? DRUNK_DELAY_MAX - DRUNK_DELAY_MIN : 0);
+      const jump = planJump(state, this.speedPinned, this.style.holds, window);
       this.idle = jump ? null : planKey(state);
       if (!jump) return null;
       const j = this.style.takeoffJitter;
-      this.wait = Math.max(0, jump.tick + this.rng.int(-j, j));
+      this.wait = Math.max(0, jump.tick + this.rng.int(-j, j) - (drunk ? DRUNK_LAG : 0));
       this.hold = jump.hold;
     }
     if (this.wait > 0) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLAYER_X } from '../core/config';
 import type { Entity } from '../types';
-import { anchorOf, type Motion, motionOf, motionOffset, moveTo, SWAY_WAVELENGTH, withMotion } from './motion';
+import { anchorOf, type Motion, motionOf, motionOffset, moveTo, SWAY_WAVELENGTH, swayOffset, withMotion } from './motion';
 
 const walker: Motion = { walk: 0.1, sway: 0, phase: 0 };
 const swayer: Motion = { walk: 0, sway: 3, phase: 1 };
@@ -38,5 +38,14 @@ describe('people motion (a pure function of the distance to the player)', () => 
     expect(motionOf(e)).toBeNull();
     moveTo(e, 40);
     expect(e.x).toBe(40);
+  });
+});
+
+describe('swayOffset (drawing)', () => {
+  it('is the sway part of motionOffset, 0 without a motion', () => {
+    const m = { walk: 0.1, sway: 2.5, phase: 1.2 };
+    const e = { data: { ...m, ax: 100 } };
+    for (const gap of [0, 13, 40, 77]) expect(swayOffset(e, gap)).toBeCloseTo(motionOffset({ ...m, walk: 0 }, gap), 12);
+    expect(swayOffset({ data: { variant: 1 } }, 20)).toBe(0);
   });
 });

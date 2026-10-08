@@ -4,13 +4,14 @@
  * front corner to its rear end, grinds, and landing behind it never crashes),
  * stomps on people's heads, crashes (a bin that swallows the skater leaves the
  * street at once), clean clears, star and joint pickups.
- * Uses the same rules as the clearability solver (rules.ts).
+ * Uses the same rules as the clearability solver (rules.ts). Runs every
+ * tick, so it reuses scratch objects instead of allocating.
  */
-import type { Entity, GameContext, ObstacleKind, PlayerState } from '../types';
+import type { Entity, GameContext, ObstacleKind, PlayerState, Rect } from '../types';
 import { collectJoints } from './chill';
-import { GRIND_LANDING_POINTS, hitBox, isGrindable, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
+import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
 import { crashInto } from './health';
-import { LEDGE_FRONT_REACH, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
+import { feetOf, LEDGE_FRONT_REACH, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
 import { addPoints, addTrick } from './scoring';
 import { stompPeople } from './stomp';
 
@@ -26,23 +27,29 @@ export function resolveContacts(ctx: GameContext): void {
   collectJoints(ctx);
 }
 
+const box: Rect = { x: 0, y: 0, w: 0, h: 0 };
+const swallowed: Entity[] = [];
+
 function landOnRails(ctx: GameContext): void {
-  const p = ctx.state.player;
-  const feet = { x: p.x, y: p.y, vy: p.vy, supported: p.grounded || p.grinding };
-  const lands = (e: Entity) => (isRail(e.kind) ? landsOnRail(feet, e) : landsOnLedge(feet, e));
-  const rail = ctx.state.entities.find((e) => isLive(e) && isGrindable(e.kind) && !e.done && lands(e));
-  if (!rail) return;
-  ctx.bus.emit('grindStart', { entityId: rail.id });
-  if (ctx.state.player.grinding) addTrick(ctx.state, ctx.bus, GRIND_LANDING_POINTS);
+  const f = feetOf(ctx.state.player);
+  const entities = ctx.state.entities;
+  for (let i = 0; i < entities.length; i++) {
+    const e = entities[i]!;
+    if (!isLive(e) || !isGrindable(e.kind) || e.done) continue;
+    if (!(isRail(e.kind) ? landsOnRail(f, e) : landsOnLedge(f, e))) continue;
+    ctx.bus.emit('grindStart', { entityId: e.id });
+    if (ctx.state.player.grinding) addTrick(ctx.state, ctx.bus, GRIND_LANDING_POINTS);
+    return;
+  }
 }
 
 function checkObstacles(ctx: GameContext): void {
   const { state } = ctx;
   const body = state.player.hitbox;
-  const swallowed: Entity[] = [];
+  swallowed.length = 0;
   for (const e of state.entities) {
     if (e.done || !isLive(e) || !isObstacle(e.kind) || ridesOn(state.player, e)) continue;
-    const box = hitBox({ ...e, kind: e.kind });
+    hitBoxInto(e as Entity & { kind: ObstacleKind }, box);
     if (overlaps(body, box) && !(isGrindable(e.kind) && pastLedge(state.player.x, e))) {
       // Hit (or brushed while invulnerable): never counts as a clear.
       e.done = true;
@@ -59,6 +66,7 @@ function checkObstacles(ctx: GameContext): void {
   }
   // The skater now sticks in it (drawn by the player): it leaves the street.
   for (const e of swallowed) state.entities.splice(state.entities.indexOf(e), 1);
+  swallowed.length = 0;
 }
 
 /** The player grinds on top of this bench (it never crashes into the one it rides). */
@@ -69,10 +77,14 @@ function ridesOn(p: PlayerState, e: Entity): boolean {
 function collectStars(ctx: GameContext): void {
   const { state } = ctx;
   const body = state.player.hitbox;
-  const picked = state.entities.filter((e) => e.kind === 'star' && overlaps(body, e));
-  for (const star of picked) {
+  const entities = state.entities;
+  for (let i = 0; i < entities.length; i++) {
+    const star = entities[i]!;
+    if (star.kind !== 'star' || !overlaps(body, star)) continue;
     state.stars += 1;
+    // Emitted while the star is still there (the sparkle starts at it).
     ctx.bus.emit('starCollected', { entityId: star.id, stars: state.stars });
-    state.entities.splice(state.entities.indexOf(star), 1);
+    entities.splice(i, 1);
+    i--;
   }
 }

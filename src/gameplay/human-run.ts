@@ -3,7 +3,7 @@
  * real run (player + gameplay, spawner on) and reports every crash, flagging
  * the ones that involve people. DOM-free; not used by the game itself.
  */
-import { PLAYER_X, TICK_DT } from '../core/config';
+import { MAX_HEALTH, PLAYER_X, TICK_DT } from '../core/config';
 import { Game } from '../core/game';
 import { Rng } from '../core/rng';
 import { createPlayerSystem } from '../player';
@@ -83,5 +83,48 @@ export function rideHuman(seed: number, seconds: number, from = 0, health = Numb
   run.score = game.state.score;
   run.seconds = game.state.time;
   run.distance = game.state.distance - from;
+  return run;
+}
+
+export interface DrunkRun {
+  seed: number;
+  /** Seconds the bot rode drunk (the run lasts until the drunk timer is over). */
+  drunkSeconds: number;
+  /** Crashes while drunk (and the half second after). */
+  crashes: CrashReport[];
+}
+
+/** Seconds the bot rides with the Maßkrug before drinking it. */
+const DRINK_AFTER = 4;
+/** Crashes this long after the drunk phase still count (a late press is still on its way). */
+const SOBER_UP = 0.5;
+
+/**
+ * The human bot rides a seeded run from street distance `from` with a
+ * Maßkrug in hand, drinks it after DRINK_AFTER seconds (use button) and
+ * rides until the drunk effect is over. Reports the crashes while drunk.
+ */
+export function rideDrunk(seed: number, from: number): DrunkRun {
+  const game = new Game({ systems: [createPlayerSystem(), createGameplaySystem()] });
+  game.seed(seed);
+  game.commands.startRun();
+  game.state.health = MAX_HEALTH * 1000;
+  game.state.distance = from;
+  game.state.carriedItem = 'beer';
+  const bot = new HumanBot(new Rng(seed * 7919 + 1));
+  const run: DrunkRun = { seed, drunkSeconds: 0, crashes: [] };
+  let drankAt = -1;
+  game.bus.on('drunkStart', () => (drankAt = game.state.time));
+  game.bus.on('crash', (e) => {
+    if (drankAt < 0) return;
+    run.crashes.push({ seed, time: Math.round((game.state.time - drankAt) * 10) / 10, kind: e.kind, personRelated: false, near: nearby(game.state) });
+  });
+  let soberAt = -1;
+  while (game.state.mode === 'playing' && (soberAt < 0 || game.state.time < soberAt + SOBER_UP)) {
+    if (drankAt < 0 && game.state.time >= DRINK_AFTER) game.commands.useItem();
+    stepBot(game, bot);
+    if (drankAt >= 0 && soberAt < 0 && game.state.drunkTimer <= 0) soberAt = game.state.time;
+  }
+  run.drunkSeconds = soberAt - drankAt;
   return run;
 }

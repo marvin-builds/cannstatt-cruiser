@@ -18,6 +18,17 @@ describe('bin crash', () => {
     expect(game.state.player.invulnerableTimer).toBe(0);
   });
 
+  it('the hit bin is still in the street while crash is emitted, so the player can read its lid variant', () => {
+    const game = quietGame();
+    const bin = obstacle(game, 'bin', PLAYER_X + 20);
+    bin.data = { variant: 2 };
+    const seen: (number | string | boolean | undefined)[] = [];
+    game.bus.on('crash', (e) => seen.push(game.state.entities.find((x) => x.id === e.entityId)?.data?.variant));
+    tick(game, 30);
+    expect(seen).toEqual([2]);
+    expect(game.state.entities).not.toContain(bin);
+  });
+
   it('other crashes leave the obstacle in the street (done, harmless)', () => {
     const game = quietGame();
     const barrier = obstacle(game, 'barrier', PLAYER_X + 20);

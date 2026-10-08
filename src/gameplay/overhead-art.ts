@@ -156,10 +156,10 @@ export function overheadSize(kind: OverheadKind): { w: number; h: number } {
   return { w: s.width, h: s.height };
 }
 
-/** Supports first (behind), then the hanging sprite, at integer coordinates. */
-export function drawOverhead(g: CanvasRenderingContext2D, e: Entity & { kind: OverheadKind }): void {
-  const { sprite: art, support } = ART[e.kind];
-  const x = Math.round(e.x);
+/** Supports first (behind), then the hanging sprite, at integer coordinates (`lead`: RenderContext.scrollLead). */
+export function drawOverhead(g: CanvasRenderingContext2D, e: Entity, kind: OverheadKind, lead = 0): void {
+  const { sprite: art, support } = ART[kind];
+  const x = Math.round(e.x - lead);
   const y = Math.round(e.y);
   const { post, foot, band } = support;
   const footTop = GROUND_Y - foot.height;
