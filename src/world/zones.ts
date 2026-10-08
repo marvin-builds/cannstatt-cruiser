@@ -120,7 +120,7 @@ export class ZoneRoute {
   legs(depth: Depth, from: number, to: number, out = new LegList()): LegList {
     let k = this.legIndexAtLayer(depth, from);
     out.clear();
-    while (this.fill(depth, k++, out.next()).to < to);
+    while (this.leg(depth, k++, out.next()).to < to);
     return out;
   }
 
@@ -150,7 +150,8 @@ export class ZoneRoute {
     return k;
   }
 
-  private fill(depth: Depth, k: number, leg: Leg): Leg {
+  /** Leg `k` on `depth`, written into `leg`. */
+  leg(depth: Depth, k: number, leg: Leg = blankLeg()): Leg {
     leg.index = k;
     leg.zone = this.zoneOf(k);
     leg.previous = this.zoneOf(k - 1);

@@ -4,10 +4,10 @@
  * Cannstatt and rides back and forth (Cannstatt <-> Neckar <-> Mitte): every
  * layer streams the next zone in from the right at its own parallax speed
  * (near first, far last), gateway art hides each seam, and the sky palette
- * blends over several seconds. Stuttgart-Mitte adds dense, big traffic on the
- * foreground street (below the riding line: the back lane and the exhaust
+ * blends over several seconds. The foreground street has light traffic (a
+ * single car now and then); Stuttgart-Mitte makes it dense and big (below the riding line: the back lane and the exhaust
  * clouds under every entity, the front lane in the fx layer over them but
- * below everything gameplay draws) and a smoggy haze. Purely visual apart from
+ * below everything gameplay draws) and adds a smoggy haze. Purely visual apart from
  * `state.zoneIndex` and `state.trafficDensity` (see docs/ARCHITECTURE.md).
  * Everything that scrolls is drawn from RenderContext.scroll / scrollLead, so
  * it moves evenly on 120/144 Hz displays; render allocates nothing per frame.
@@ -27,7 +27,7 @@ import { installWorldDebug } from './debug';
 import { GroundStrip } from './ground';
 import { LETTERBOX } from './palette';
 import { DepthLayer, mixSeed, SharedLayer } from './scene';
-import { Traffic, trafficDensity } from './traffic';
+import { mitteShare, Traffic, trafficDensity } from './traffic';
 import { TrainRunner } from './train';
 import { type PaletteBlend, ZoneRoute } from './zones';
 
@@ -40,8 +40,8 @@ const HAZE_BEFORE_LAYER = 2;
 /** The world system plus read-only ambience for other systems (e.g. traffic noise). */
 export interface WorldSystem extends System {
   /**
-   * Stuttgart-Mitte traffic density 0..1 as drawn: 0 elsewhere, ramps in and
-   * out with Mitte (the traffic stays on screen on game over). Other systems
+   * Traffic density as drawn: 1 in Stuttgart-Mitte, LIGHT_TRAFFIC elsewhere,
+   * ramping in and out with Mitte (the traffic stays on screen on game over). Other systems
    * read `state.trafficDensity`, which is 0 on the title and game over.
    */
   trafficDensity(): number;
@@ -53,14 +53,17 @@ export function createWorldSystem(): WorldSystem {
   const train = new TrainRunner(trainRng, { width: MITTE_TRAIN.width, speed: 70, interval: [9, 20], firstDelay: 0.4 });
   const zones = [mitteZone(train), neckarZone(), cannstattZone()];
   const clouds = new SharedLayer(CLOUD_FACTOR, CLOUD_DRIFT, CLOUD_PROPS, 1);
-  const layers = DEPTHS.map(
-    (depth, d) =>
+  const layers: DepthLayer[] = [];
+  DEPTHS.forEach((depth, d) =>
+    layers.push(
       new DepthLayer(
         depth,
         zones.map((z) => z.layers[d]!),
         gatewayTable(d),
         d + 2,
+        layers[d - 1],
       ),
+    ),
   );
   const ground = new GroundStrip(GROUND_TILES);
   const trafficRng = new Rng(0);
@@ -139,7 +142,7 @@ export function createWorldSystem(): WorldSystem {
     drawSky(g, scroll);
     clouds.draw(g, scroll, time + lead, viewWidth);
     for (let d = 0; d < layers.length; d++) {
-      if (d === HAZE_BEFORE_LAYER) drawHaze(g, density);
+      if (d === HAZE_BEFORE_LAYER) drawHaze(g, mitteShare(density));
       layers[d]!.draw(g, route, scroll, time, lead, viewWidth);
     }
   }

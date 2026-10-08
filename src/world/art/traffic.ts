@@ -1,5 +1,5 @@
 /**
- * Art for the Stuttgart-Mitte traffic (logic in ../traffic.ts): cars, vans,
+ * Art for the street traffic (logic in ../traffic.ts): cars, vans,
  * city buses and trucks close to the camera, painted once per kind, colour
  * and facing; headlight beams for a honk flash; dithered, see-through exhaust
  * clouds pre-rendered per size; and a smoggy haze over the city behind the
