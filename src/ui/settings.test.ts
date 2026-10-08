@@ -124,10 +124,41 @@ describe('SettingsMenu', () => {
     const store = memoryStore();
     const state = createInitialState();
     state.kidMode = kidMode;
-    const menu = new SettingsMenu(store);
-    menu.show();
-    return { store, state, menu };
+    const closed: boolean[] = [];
+    const menu = new SettingsMenu(store, (switched) => closed.push(switched));
+    menu.openMenu(state.kidMode);
+    return { store, state, menu, closed };
   }
+
+  it('tells on close whether kid mode was switched since it opened (a run restarts then)', () => {
+    const on = setup(false);
+    on.menu.toggle(on.state, 1);
+    expect(on.menu.switched).toBe(true);
+    on.menu.back();
+    expect(on.closed).toEqual([true]);
+
+    const unchanged = setup(false);
+    unchanged.menu.close();
+    expect(unchanged.closed).toEqual([false]);
+  });
+
+  it('switching on and back off (parent check) counts as no switch', () => {
+    const { state, menu, closed } = setup(false);
+    menu.toggle(state, 1);
+    menu.toggle(state, 5);
+    menu.answer(state, menu.question!.correct);
+    expect(state.kidMode).toBe(false);
+    expect(menu.switched).toBe(false);
+    menu.back();
+    expect(closed).toEqual([false]);
+  });
+
+  it('a wrong answer closes without a switch', () => {
+    const { state, menu, closed } = setup(true);
+    menu.toggle(state, 3);
+    menu.answer(state, (menu.question!.correct + 1) % 3);
+    expect(closed).toEqual([false]);
+  });
 
   it('turns kid mode on at once and persists it', () => {
     const { store, state, menu } = setup(false);

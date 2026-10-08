@@ -92,25 +92,39 @@ export function saveKidMode(store: Store, on: boolean): void {
 
 export type SettingsScreen = 'closed' | 'menu' | 'check';
 
-/** Which screen of the hidden menu is showing, and the parent check's question. */
+/**
+ * Which screen of the hidden menu is showing, and the parent check's question.
+ * `onClose(switched)` runs whenever the menu closes: `switched` tells whether
+ * kid mode differs from when it opened (a run in progress restarts then).
+ */
 export class SettingsMenu {
   screen: SettingsScreen = 'closed';
   question: ParentQuestion | null = null;
+  private kidModeAtOpen = false;
+  /** Kid mode differs from when the menu opened. */
+  switched = false;
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly onClose: (switched: boolean) => void = () => {},
+  ) {}
 
   get open(): boolean {
     return this.screen !== 'closed';
   }
 
-  show(): void {
-    this.screen = 'menu';
-    this.question = null;
+  /** Opens the menu; `kidMode` is the setting now, to tell a switch on close. */
+  openMenu(kidMode: boolean): void {
+    this.kidModeAtOpen = kidMode;
+    this.switched = false;
+    this.showMenu();
   }
 
   close(): void {
+    if (!this.open) return;
     this.screen = 'closed';
     this.question = null;
+    this.onClose(this.switched);
   }
 
   /** The Kindermodus button: on at once; off only after the parent check (question from `seed`). */
@@ -129,7 +143,7 @@ export class SettingsMenu {
     if (this.screen !== 'check' || !this.question) return;
     if (index === this.question.correct) {
       this.setKidMode(state, false);
-      this.show();
+      this.showMenu();
     } else {
       this.close();
     }
@@ -137,12 +151,18 @@ export class SettingsMenu {
 
   /** "Zurück": from the check back to the menu, from the menu out. */
   back(): void {
-    if (this.screen === 'check') this.show();
+    if (this.screen === 'check') this.showMenu();
     else this.close();
+  }
+
+  private showMenu(): void {
+    this.screen = 'menu';
+    this.question = null;
   }
 
   private setKidMode(state: GameState, on: boolean): void {
     state.kidMode = on;
+    this.switched = on !== this.kidModeAtOpen;
     saveKidMode(this.store, on);
   }
 }

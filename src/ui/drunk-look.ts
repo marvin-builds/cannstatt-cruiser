@@ -6,7 +6,10 @@
 export const DRUNK_EASE_IN = 0.5;
 export const DRUNK_EASE_OUT = 1;
 /** Widest sideways sway of the double image, view pixels. */
-const SWAY_PX = 3;
+const SWAY_PX = 6;
+/** Opacity of the swaying double image at full strength, and of the fainter second one swaying against it. */
+export const GHOST_ALPHA = 0.36;
+export const SECOND_GHOST_ALPHA = 0.18;
 /** Sway frequency, radians per second (a slow, lazy wobble). */
 const SWAY_SPEED = 2.4;
 

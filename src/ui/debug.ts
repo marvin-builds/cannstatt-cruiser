@@ -1,13 +1,15 @@
 /**
  * Test-only tooling (enabled together with window.__game): puts the HUD into
  * states the gameplay slice would produce and reports the settings menu and
- * button layout, for scripts/scenarios/ui.ts and settings.ts.
+ * button layout (incl. the menu screens' buttons), for the playtest scenarios.
  */
 import { PLAYER_X } from '../core/config';
 import type { CarriedItem, GameContext, Rect } from '../types';
 import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
+import type { MenuButtons } from './menu-layout';
+import { currentMenu } from './menu-state';
 import type { PopupFeed } from './popup-feed';
 import type { UiView } from './screens';
 import type { ParentQuestion, SettingsScreen } from './settings';
@@ -31,8 +33,11 @@ export interface UiDebugHook {
   setRecords(highscore?: number, starsTotal?: number): void;
   /** The hidden settings menu: screen, parent check question and the logo hold progress (0..1). */
   settings(): { screen: SettingsScreen; question: ParentQuestion | null; holdProgress: number };
-  /** Current tap areas (view px) for this display: HUD buttons, settings buttons and the logo. */
-  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; logo: Rect };
+  /**
+   * Current tap areas (view px) for this display: HUD buttons, settings buttons, the logo (title, or
+   * the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter), null off menus.
+   */
+  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; logo: Rect; screen: MenuButtons | null };
 }
 
 declare global {
@@ -92,7 +97,8 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         metrics,
         hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics, riding(ctx.state.mode)),
         menu: settingsLayout(display.viewWidth, metrics),
-        logo: logoRect(display.viewWidth),
+        logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
+        screen: currentMenu(ctx, view)?.buttons ?? null,
       };
     },
   };

@@ -72,9 +72,8 @@ function render(): HTMLCanvasElement {
   return canvas;
 }
 
-/** Draws the logo at logoRect(viewWidth). */
-export function drawLogo(g: CanvasRenderingContext2D, viewWidth: number): void {
+/** Draws the logo with its top-left at `x`, `y` (the title uses logoRect, the pause screen its own place). */
+export function drawLogo(g: CanvasRenderingContext2D, x: number, y: number): void {
   cached ??= render();
-  const r = logoRect(viewWidth);
-  g.drawImage(cached, r.x, r.y);
+  g.drawImage(cached, x, y);
 }

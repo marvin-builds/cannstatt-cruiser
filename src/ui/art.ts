@@ -242,6 +242,36 @@ export const ARROW_DOWN = sprite({ k: UI.ink }, [`
   ..k..
 `]);
 
+/** The iOS share symbol (a box with an arrow out of the top) for the install hint "Teilen -> Zum Home-Bildschirm". */
+export const SHARE_ICON = sprite({ w: UI.white, b: UI.teal }, [`
+  ...b...
+  ..bbb..
+  .b.b.b.
+  ...b...
+  ww.b.ww
+  w.....w
+  w.....w
+  wwwwwww
+`]);
+
+/** The "×" that closes the install hint, drawn at the button's scale. */
+export const DISMISS_ICON = new PixelIcon({ w: UI.muted }, [`
+  w...w
+  .w.w.
+  ..w..
+  .w.w.
+  w...w
+`]);
+
+/** "then" arrow between the steps of the install hint. */
+export const ARROW_RIGHT = sprite({ y: UI.yellow }, [`
+  ...y..
+  ....y.
+  yyyyyy
+  ....y.
+  ...y..
+`]);
+
 /** Small joint for the chill timer row (CHILL_ICON_W wide). */
 export const JOINT_ICON = sprite({ k: UI.ink, c: '#d8a86a', w: '#f4f1ea', r: '#ff5a2a', o: '#ffb03a', g: UI.muted }, [`
   .........g.
