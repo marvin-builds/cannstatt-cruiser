@@ -157,8 +157,8 @@ describe('world system traffic', () => {
     expect(game.state.trafficDensity).toBe(0);
   });
 
-  it('draws the traffic in the world layer, under every entity (e.g. the thrown ball)', () => {
+  it('draws the back lane and exhaust under every entity (world layer), the front lane in the fx layer', () => {
     const world = createWorldSystem();
-    expect(Object.keys(world.render ?? {}).sort()).toEqual(['background', 'world']);
+    expect(Object.keys(world.render ?? {}).sort()).toEqual(['background', 'fx', 'world']);
   });
 });

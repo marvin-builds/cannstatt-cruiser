@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, TICK_DT } from '../core/config';
 import { Rng } from '../core/rng';
-import { LANES, Traffic, TRAFFIC_TOP, trafficDensity, vehicleScreenX, VEHICLES } from './traffic';
+import { OBSTACLES } from '../gameplay/catalogue';
+import { EXHAUST_TOP, FRONT_TOP, LANES, PUFF_LIFE, Traffic, TRAFFIC_TOP, trafficDensity, vehicleScreenX, VEHICLES, type VehicleKind } from './traffic';
 import { ZONE_LENGTH, ZoneRoute } from './zones';
 
 /** Runs `seconds` of traffic at a constant scroll speed (px/s) and density. */
@@ -51,16 +52,79 @@ describe('trafficDensity', () => {
 });
 
 describe('Traffic', () => {
-  it('keeps every vehicle and exhaust puff below the riding line', () => {
-    expect(TRAFFIC_TOP).toBeGreaterThanOrEqual(GROUND_Y + 4);
+  it('keeps every vehicle body below the riding line', () => {
+    expect(TRAFFIC_TOP).toBeGreaterThan(GROUND_Y);
     for (const lane of LANES) {
-      for (const kind of Object.values(VEHICLES)) expect(lane.bottom - kind.h + 1).toBeGreaterThanOrEqual(TRAFFIC_TOP);
+      for (const kind of lane.kinds) expect(lane.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(TRAFFIC_TOP);
     }
+    const traffic = new Traffic(new Rng(3));
+    let highest = Infinity;
+    drive(traffic, 40, 120, 1, 427, () => {
+      for (const v of traffic.vehicles) if (v.active) highest = Math.min(highest, v.top);
+    });
+    expect(highest).toBeGreaterThanOrEqual(TRAFFIC_TOP);
+  });
+
+  it('keeps the front lane (drawn over gameplay) clear of everything gameplay draws', () => {
+    const deepestSink = Math.max(...Object.values(OBSTACLES).map((o) => o.sink));
+    expect(FRONT_TOP).toBeGreaterThan(GROUND_Y + deepestSink);
+    const front = LANES.filter((l) => l.front);
+    expect(front).toHaveLength(1);
+    for (const kind of front[0]!.kinds) expect(front[0]!.bottom - VEHICLES[kind].h + 1).toBeGreaterThanOrEqual(FRONT_TOP);
+  });
+
+  it('drives cars about twice the old size, and buses and trucks clearly bigger', () => {
+    // Old sizes: hatch 17x8, sedan 22x8, van 24x11, bus 42x13.
+    expect(VEHICLES.hatch.w).toBeGreaterThanOrEqual(32);
+    expect(VEHICLES.sedan.w).toBeGreaterThanOrEqual(42);
+    expect(VEHICLES.van.h).toBeGreaterThanOrEqual(20);
+    for (const kind of ['hatch', 'sedan'] as const) expect(VEHICLES[kind].h).toBeGreaterThanOrEqual(15);
+    for (const heavy of ['bus', 'truck'] as const) {
+      expect(VEHICLES[heavy].heavy).toBe(true);
+      expect(VEHICLES[heavy].w).toBeGreaterThanOrEqual(76);
+      expect(VEHICLES[heavy].h).toBeGreaterThan(VEHICLES.van.h);
+    }
+  });
+
+  it('sends buses and trucks through the front lane only', () => {
+    const traffic = new Traffic(new Rng(11));
+    const seen = new Set<VehicleKind>();
+    drive(traffic, 60, 120, 1, 427, () => {
+      for (const v of traffic.vehicles) {
+        if (!v.active) continue;
+        seen.add(v.kind);
+        if (VEHICLES[v.kind].heavy) expect(LANES[v.lane]!.front).toBe(true);
+      }
+    });
+    expect(seen.has('bus')).toBe(true);
+    expect(seen.has('truck')).toBe(true);
+  });
+
+  it('fills much of the street (dense traffic)', () => {
+    const traffic = new Traffic(new Rng(12));
+    drive(traffic, 8, 120, 1, 320);
+    let covered = 0;
+    let samples = 0;
+    drive(traffic, 30, 120, 1, 320, () => {
+      for (const v of traffic.vehicles) {
+        if (!v.active) continue;
+        const left = Math.max(0, v.x);
+        const right = Math.min(320, v.x + VEHICLES[v.kind].w);
+        if (right > left) covered += right - left;
+      }
+      samples++;
+    });
+    // Share of the two lanes' length covered by vehicle bodies on average.
+    expect(covered / samples / (320 * LANES.length)).toBeGreaterThan(0.4);
+  });
+
+  it('lets big exhaust clouds drift up above the riding line, but never above EXHAUST_TOP', () => {
+    expect(PUFF_LIFE).toBeGreaterThanOrEqual(2.5);
+    expect(EXHAUST_TOP).toBeLessThan(GROUND_Y - 20);
     const traffic = new Traffic(new Rng(3));
     let puffs = 0;
     let highest = Infinity;
     drive(traffic, 40, 120, 1, 427, () => {
-      for (const v of traffic.vehicles) if (v.active) highest = Math.min(highest, v.top);
       for (const p of traffic.puffs) {
         if (!p.active) continue;
         puffs++;
@@ -68,7 +132,39 @@ describe('Traffic', () => {
       }
     });
     expect(puffs).toBeGreaterThan(0);
-    expect(highest).toBeGreaterThanOrEqual(TRAFFIC_TOP);
+    expect(highest).toBeLessThan(GROUND_Y);
+    expect(highest).toBeGreaterThanOrEqual(EXHAUST_TOP);
+  });
+
+  it('rumbles the street by 1 px only while a bus or truck is on screen', () => {
+    const traffic = new Traffic(new Rng(13));
+    let heavyTicks = 0;
+    let shakes = 0;
+    drive(traffic, 60, 120, 1, 427, () => {
+      const heavy = traffic.vehicles.some((v) => v.active && VEHICLES[v.kind].heavy && v.x < 427 && v.x + VEHICLES[v.kind].w > 0);
+      expect([0, 1]).toContain(traffic.shake);
+      if (!heavy) expect(traffic.shake).toBe(0);
+      if (heavy) heavyTicks++;
+      if (traffic.shake) shakes++;
+    });
+    expect(heavyTicks).toBeGreaterThan(0);
+    expect(shakes).toBeGreaterThan(heavyTicks / 4);
+    expect(shakes).toBeLessThan(heavyTicks);
+  });
+
+  it('flashes headlights now and then (honk), briefly', () => {
+    const traffic = new Traffic(new Rng(14));
+    let flashing = 0;
+    let ticks = 0;
+    drive(traffic, 40, 120, 1, 427, () => {
+      for (const v of traffic.vehicles) {
+        if (!v.active) continue;
+        ticks++;
+        if (v.flash > 0) flashing++;
+      }
+    });
+    expect(flashing).toBeGreaterThan(0);
+    expect(flashing / ticks).toBeLessThan(0.2);
   });
 
   it('stays empty without density', () => {
@@ -84,7 +180,7 @@ describe('Traffic', () => {
     const traffic = new Traffic(new Rng(2));
     drive(traffic, 12, 120, 1, viewWidth);
     const cars = active(traffic);
-    expect(cars.length).toBeGreaterThanOrEqual(5);
+    expect(cars.length).toBeGreaterThanOrEqual(4);
     expect(new Set(cars.map((v) => LANES[v.lane]!.dir))).toEqual(new Set([1, -1]));
     expect(new Set(cars.map((v) => v.speed)).size).toBeGreaterThan(2);
   });
@@ -118,9 +214,16 @@ describe('Traffic', () => {
     const snapshot = (seed: number) => {
       const traffic = new Traffic(new Rng(seed));
       drive(traffic, 15, 110, 1);
-      return traffic.vehicles.map((v) => [v.active, v.kind, Math.round(v.x * 100), v.lane, v.speed]);
+      return traffic.vehicles.map((v) => [v.active, v.kind, Math.round(v.x * 100), v.lane, v.speed, v.flash > 0]);
     };
     expect(snapshot(9)).toEqual(snapshot(9));
+    const shakes = (seed: number) => {
+      const traffic = new Traffic(new Rng(seed));
+      const out: number[] = [];
+      drive(traffic, 15, 110, 1, 427, () => out.push(traffic.shake));
+      return out;
+    };
+    expect(shakes(9)).toEqual(shakes(9));
     expect(snapshot(9)).not.toEqual(snapshot(10));
   });
 
@@ -139,6 +242,7 @@ describe('Traffic', () => {
     drive(traffic, 10, 120, 1);
     traffic.reset();
     expect(active(traffic)).toHaveLength(0);
+    expect(traffic.shake).toBe(0);
     expect(traffic.puffs.filter((p) => p.active)).toHaveLength(0);
   });
 

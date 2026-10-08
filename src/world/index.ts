@@ -4,9 +4,10 @@
  * Cannstatt and rides back and forth (Cannstatt <-> Neckar <-> Mitte): every
  * layer streams the next zone in from the right at its own parallax speed
  * (near first, far last), gateway art hides each seam, and the sky palette
- * blends over several seconds. Stuttgart-Mitte adds dense traffic on the
- * foreground street (below the riding line, in the world render layer, so
- * under every entity) and a smoggy haze. Purely visual apart from
+ * blends over several seconds. Stuttgart-Mitte adds dense, big traffic on the
+ * foreground street (below the riding line: the back lane and the exhaust
+ * clouds under every entity, the front lane in the fx layer over them but
+ * below everything gameplay draws) and a smoggy haze. Purely visual apart from
  * `state.zoneIndex` and `state.trafficDensity` (see docs/ARCHITECTURE.md).
  * Everything that scrolls is drawn from RenderContext.scroll / scrollLead, so
  * it moves evenly on 120/144 Hz displays; render allocates nothing per frame.
@@ -21,7 +22,7 @@ import { GROUND_TILES } from './art/ground';
 import { CLOUD_DRIFT, CLOUD_FACTOR, CLOUD_PROPS, FAR_DEPTH, MID_DEPTH, NEAR_DEPTH } from './art/layout';
 import { MITTE_TRAIN, mitteZone } from './art/mitte';
 import { neckarZone } from './art/neckar';
-import { drawHaze, drawTraffic, warmTraffic } from './art/traffic';
+import { drawBackTraffic, drawFrontTraffic, drawHaze, warmTraffic } from './art/traffic';
 import { installWorldDebug } from './debug';
 import { GroundStrip } from './ground';
 import { LETTERBOX } from './palette';
@@ -145,7 +146,11 @@ export function createWorldSystem(): WorldSystem {
 
   function drawStreet(r: RenderContext): void {
     ground.draw(r.g, route, r.scroll, r.display.viewWidth);
-    drawTraffic(r.g, traffic, r.scrollLead, ahead(r));
+    drawBackTraffic(r.g, traffic, r.scrollLead, ahead(r));
+  }
+
+  function drawNearTraffic(r: RenderContext): void {
+    drawFrontTraffic(r.g, traffic, r.scrollLead, ahead(r));
   }
 
   return {
@@ -182,6 +187,7 @@ export function createWorldSystem(): WorldSystem {
     render: {
       background: drawBackground,
       world: drawStreet,
+      fx: drawNearTraffic,
     },
   };
 }
