@@ -26,7 +26,8 @@
  * seconds of riding (never in the first STUNT_FIRST_SECONDS of a run) the
  * next pattern is a stunt line, but never while the player may be drunk or
  * in the street the chill effect reaches after a joint: then it waits for the
- * first pattern after it. A line's street holds only its kickers and its
+ * first pattern after it. Its shape comes from a shuffle bag (stairs, hops,
+ * mixed, stunt-line.ts drawShape), so a run sees them evenly. A line's street holds only its kickers and its
  * length covers every landing off it, so the next pattern needs no check
  * across the boundary (its pieces are no obstacles or rails).
  *
@@ -48,7 +49,7 @@ import { isObstacle, isRail } from './catalogue';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
-import { planStuntLine } from './stunt-line';
+import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
 import type { WorkBudget } from './solver';
 
 /** Street distance from the player to the first pattern (a few empty seconds). */
@@ -132,6 +133,9 @@ interface Cursor {
   drunkUntil: number;
   /** The next stunt line comes at the first pattern from this street distance (null: not drawn yet, set at the run's first plan). */
   nextStunt: number | null;
+  /** Line shapes still to come in this round of the shuffle bag (stunt-line.ts drawShape), and the last one laid. */
+  stuntBag: readonly StuntShape[];
+  lastShape: StuntShape | null;
 }
 
 interface Planned {
@@ -154,7 +158,7 @@ export class Spawner {
   /** Screen x of the next pattern not on the street yet. */
   private nextStart = 0;
   private nextId = 1;
-  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null };
+  private cursor: Cursor = { previous: [], nextJoint: 0, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null };
   /** Street distance at the run start (the first spawn call), for the first stunt line. */
   private runStart: number | null = null;
   /** Planned patterns, in street order, starting at nextStart. */
@@ -184,7 +188,7 @@ export class Spawner {
     this.rng = rng;
     this.nextStart = PLAYER_X + FIRST_START;
     this.nextId = 1;
-    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null };
+    this.cursor = { previous: [], nextJoint: JOINT_FIRST_DISTANCE + rng.int(0, JOINT_JITTER), chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null };
     this.runStart = null;
     this.queue = [];
     this.job = null;
@@ -305,7 +309,10 @@ export class Spawner {
       this.cursor.chillUntil = street + pattern.length + CHILL_REACH;
       this.cursor.chilledUntil = street + pattern.length + chillStreet(fast);
     } else if (street >= this.cursor.nextStunt && !drunk && street >= this.cursor.chillUntil) {
-      pattern = yield* planStuntLine(rng, speeds, this.zoneAt(street), Math.round(street), this.budget);
+      const { shape, bag } = drawShape(rng, this.cursor.stuntBag, this.cursor.lastShape);
+      pattern = yield* planStuntLine(rng, speeds, this.zoneAt(street), Math.round(street), this.budget, shape);
+      this.cursor.stuntBag = bag;
+      this.cursor.lastShape = shape;
       this.cursor.nextStunt = rideStreet(street, rng.range(...STUNT_LINE_INTERVAL), pace);
     } else {
       const chilled = street < this.cursor.chilledUntil;

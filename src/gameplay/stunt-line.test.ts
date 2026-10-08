@@ -8,7 +8,7 @@ import { HITBOX_H } from '../player/tuning';
 import { groundBody, stepBody } from './jumpsim';
 import type { Pattern, Piece } from './patterns';
 import { KICKER_LIP, launchVelocityFor } from './rules';
-import { gapHolds, planStuntLine, STUNT_APEX_MAX, STUNT_TAKEOFF_WINDOW, stuntWorstLanding } from './stunt-line';
+import { drawShape, gapHolds, planStuntLine, shapeOf, STUNT_APEX_MAX, STUNT_SHAPES, STUNT_TAKEOFF_WINDOW, stuntWorstLanding, type StuntShape } from './stunt-line';
 import { fly, jumpWindow, launched, onLedge, stepOf, windowTicks } from './stunt-sim';
 
 /** Speed ranges a line is planned for: early ramp, mid, top speed, and pinned speeds. */
@@ -17,11 +17,11 @@ const RANGES = [[90, 99], [140, 152], [181, 190], [190], [120], [90]];
 const plans = new Map<string, Pattern>();
 
 /** The line for this seed and speed range (cached: planning simulates many flights). */
-function plan(seed: number, speeds: number[], zone = seed % 3): Pattern {
-  const key = `${seed}|${speeds.join()}|${zone}`;
+function plan(seed: number, speeds: number[], zone = seed % 3, shape?: StuntShape): Pattern {
+  const key = `${seed}|${speeds.join()}|${zone}|${shape}`;
   let p = plans.get(key);
   if (!p) {
-    const steps = planStuntLine(new Rng(seed), speeds, zone, seed);
+    const steps = planStuntLine(new Rng(seed), speeds, zone, seed, undefined, shape);
     for (let s = steps.next(); ; s = steps.next()) {
       if (s.done) {
         p = s.value;
@@ -191,6 +191,57 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
         for (const star of p.pieces.filter((x) => x.kind === 'star')) expect(star.x + star.w).toBeLessThan(p.length);
       }
     }
+  });
+
+  it('puts a star trail along every ledge, where the grinding skater passes', () => {
+    for (const seed of SEEDS) {
+      for (const range of RANGES) {
+        const p = plan(seed, range);
+        const stars = p.pieces.filter((x) => x.kind === 'star');
+        for (const ledge of stuntPieces(p).filter((x) => x.kind === 'ledge')) {
+          const along = stars.filter((s) => {
+            const cx = s.x + s.w / 2;
+            return cx >= ledge.x && cx <= ledge.x + ledge.w && s.y + s.h > ledge.y - HITBOX_H.standing && s.y < ledge.y;
+          });
+          expect(along.length, `seed ${seed} ${range.join('-')} px/s ledge at ${ledge.x}`).toBeGreaterThanOrEqual(1);
+        }
+        // Never two stars on top of each other.
+        for (const a of stars) for (const b of stars) if (a !== b) expect(Math.abs(a.x - b.x) >= 10 || Math.abs(a.y - b.y) >= 10).toBe(true);
+      }
+    }
+  });
+
+  it('plans the shape asked for: stairs (gap jumps only), hops (a drop onto a kicker first) or mixed (gaps, then a drop)', () => {
+    expect(STUNT_SHAPES.length).toBeGreaterThanOrEqual(3);
+    let asked = 0;
+    let got = 0;
+    for (const shape of STUNT_SHAPES) {
+      for (const seed of SEEDS) {
+        for (const range of RANGES) {
+          asked++;
+          if (shapeOf(stuntPieces(plan(seed, range, seed % 3, shape))) === shape) got++;
+        }
+      }
+    }
+    expect(got / asked).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it('draws the shapes from a shuffle bag: every shape once per round, never the same twice in a row', () => {
+    const rng = new Rng(9);
+    let bag: readonly StuntShape[] = [];
+    let last: StuntShape | null = null;
+    const drawn: StuntShape[] = [];
+    for (let i = 0; i < 30 * STUNT_SHAPES.length; i++) {
+      const next = drawShape(rng, bag, last);
+      bag = next.bag;
+      last = next.shape;
+      drawn.push(next.shape);
+    }
+    for (let round = 0; round < 30; round++) {
+      const shapes = drawn.slice(round * STUNT_SHAPES.length, (round + 1) * STUNT_SHAPES.length);
+      expect([...shapes].sort()).toEqual([...STUNT_SHAPES].sort());
+    }
+    for (let i = 1; i < drawn.length; i++) expect(drawn[i]).not.toBe(drawn[i - 1]);
   });
 
   it('puts a star trail on the line (over a gap jump or the final drop)', () => {

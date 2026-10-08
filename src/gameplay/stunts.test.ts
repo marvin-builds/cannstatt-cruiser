@@ -131,17 +131,15 @@ describe('ledges', () => {
 });
 
 describe('stunt line scoring', () => {
-  it('every made piece emits stuntStep with a growing multiplier, the end a completed line with its bonus', () => {
+  it('the first made piece starts the line quietly (x1), every further one emits stuntStep from x2 up, the end a completed line with its bonus', () => {
     const game = quietGame(SPEED);
     const steps = record(game, 'stuntStep');
     const ends = record(game, 'stuntEnd');
     const score = record(game, 'scoreChanged');
     kickerLedge(game);
     until(game, () => ends.length > 0, 400);
-    expect(steps).toEqual([
-      { step: 1, steps: 2, multiplier: 1, points: STUNT_POINTS.kicker },
-      { step: 2, steps: 2, multiplier: 2, points: 2 * STUNT_POINTS.ledge },
-    ]);
+    // No "Combo x1!": the kicker that starts the line has the launch as its feedback.
+    expect(steps).toEqual([{ step: 2, steps: 2, multiplier: 2, points: 2 * STUNT_POINTS.ledge }]);
     expect(ends).toEqual([{ steps: 2, made: 2, completed: true, points: STUNT_LINE_BONUS * 2 }]);
     // The stunt points are added as they are (the line has its own multiplier).
     for (const p of [STUNT_POINTS.kicker, 2 * STUNT_POINTS.ledge, STUNT_LINE_BONUS * 2]) expect(score.map((s) => s.delta)).toContain(p);
@@ -153,8 +151,10 @@ describe('stunt line scoring', () => {
     const crashes = record(game, 'crash');
     const health = game.state.health;
     line(game, [['kicker', PLAYER_X + 30], ['ledge', PLAYER_X + 600, 48, 80]]);
+    const steps = record(game, 'stuntStep');
     until(game, () => ends.length > 0, 400);
     expect(ends).toEqual([{ steps: 2, made: 1, completed: false, points: 0 }]);
+    expect(steps).toEqual([]);
     expect(game.state.player.grounded).toBe(true);
     expect(crashes).toEqual([]);
     expect(game.state.health).toBe(health);
@@ -170,7 +170,6 @@ describe('stunt line scoring', () => {
     ]);
     until(game, () => ends.length > 0, 900);
     expect(steps.map((s) => [s.step, s.multiplier])).toEqual([
-      [1, 1],
       [2, 2],
       [3, 3],
       [4, 4],
@@ -195,13 +194,67 @@ describe('stunt line scoring', () => {
     expect(ends).toEqual([{ steps: 4, made: 2, completed: false, points: 0 }]);
   });
 
-  it('a later piece of a line that was never started scores nothing', () => {
+  it('jumping over the first kicker: the line starts at the next piece made and ends once, completed at its last piece', () => {
     const game = quietGame(SPEED);
     const steps = record(game, 'stuntStep');
     const ends = record(game, 'stuntEnd');
-    line(game, [['ledge', PLAYER_X + 900, 48, 80], ['kicker', PLAYER_X + 30]]);
-    until(game, () => game.state.player.grounded === false, 120);
-    until(game, () => game.state.player.grounded, 300);
+    const [k1] = kickerLedge(game, [
+      ['kicker', PLAYER_X + 260, 48],
+      ['ledge', PLAYER_X + 290, 48, 90],
+    ]);
+    until(game, () => k1!.x - PLAYER_X < 16, 120);
+    game.buttons.action.press('test');
+    tick(game, 6);
+    game.buttons.action.release('test');
+    until(game, () => ends.length > 0, 900);
+    expect(k1!.done).toBe(false);
+    expect(steps).toEqual([{ step: 4, steps: 4, multiplier: 2, points: 2 * STUNT_POINTS.ledge }]);
+    expect(ends).toEqual([{ steps: 4, made: 2, completed: true, points: STUNT_LINE_BONUS * 2 }]);
+  });
+
+  it('after dropping out, the next made piece of the same line starts it again', () => {
+    const game = quietGame(SPEED);
+    const steps = record(game, 'stuntStep');
+    const ends = record(game, 'stuntEnd');
+    // The second piece is far away: the launch misses it and the line ends on the street.
+    line(game, [
+      ['kicker', PLAYER_X + 30, 48],
+      ['ledge', PLAYER_X + 900, 48, 80],
+      ['kicker', PLAYER_X + 260, 48],
+      ['ledge', PLAYER_X + 290, 48, 90],
+    ]);
+    until(game, () => ends.length > 1, 900);
+    expect(ends).toEqual([
+      { steps: 4, made: 1, completed: false, points: 0 },
+      { steps: 4, made: 2, completed: true, points: STUNT_LINE_BONUS * 2 },
+    ]);
+    expect(steps.map((s) => [s.step, s.multiplier])).toEqual([[4, 2]]);
+  });
+
+  it('a single made piece is no line: making only the last one ends it incomplete, without a step', () => {
+    const game = quietGame(60);
+    const steps = record(game, 'stuntStep');
+    const ends = record(game, 'stuntEnd');
+    const ledge = place(game, 'ledge', ledgeRect(PLAYER_X - 10, 42, 120));
+    ledge.data = { line: nextLine++, step: 2, steps: 2, zone: 0 };
+    game.buttons.action.press('test');
+    tick(game, 25);
+    game.buttons.action.release('test');
+    until(game, () => ends.length > 0, 400);
+    expect(steps).toEqual([]);
+    expect(ends).toEqual([{ steps: 2, made: 1, completed: false, points: 0 }]);
+  });
+
+  it('a skipped line says nothing: no step, no end', () => {
+    const game = quietGame(SPEED);
+    const steps = record(game, 'stuntStep');
+    const ends = record(game, 'stuntEnd');
+    const [k1] = line(game, [['kicker', PLAYER_X + 40, 48], ['ledge', PLAYER_X + 900, 48, 80]]);
+    until(game, () => k1!.x - PLAYER_X < 16, 120);
+    game.buttons.action.press('test');
+    tick(game, 20);
+    game.buttons.action.release('test');
+    tick(game, 200);
     expect(steps).toEqual([]);
     expect(ends).toEqual([]);
   });
@@ -215,6 +268,17 @@ describe('stunt line scoring', () => {
     game.state.health -= 1;
     game.bus.emit('crash', { entityId: 1, kind: 'barrier', health: game.state.health });
     expect(ends).toEqual([{ steps: 2, made: 1, completed: false, points: 0 }]);
+  });
+
+  it('a crash on the last piece ends the line incomplete, without bonus', () => {
+    const game = quietGame(SPEED);
+    const ends = record(game, 'stuntEnd');
+    const grinds = record(game, 'grindStart');
+    kickerLedge(game);
+    until(game, () => grinds.length > 0, 200);
+    game.state.health -= 1;
+    game.bus.emit('crash', { entityId: 1, kind: 'barrier', health: game.state.health });
+    expect(ends).toEqual([{ steps: 2, made: 2, completed: false, points: 0 }]);
   });
 
   it('shows the running line read-only (view) and forgets it at a run start', () => {
