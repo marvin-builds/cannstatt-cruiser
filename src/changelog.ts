@@ -20,6 +20,11 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.7',
+    date: '2026-10-08',
+    items: ['Ton startet am Handy zuverlässiger'],
+  },
+  {
     version: '2026-10-08.6',
     date: '2026-10-08',
     items: [
