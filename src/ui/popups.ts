@@ -44,11 +44,14 @@ interface Slot extends Popup {
  * form one column above the skater: each rises on its own, but the newest
  * sits at the bottom and older ones are pushed up so no two ever overlap,
  * and the whole column is pushed down so none rises above `ceiling` (the
- * bottom of the HUD plate).
+ * bottom of the HUD plate). When that pushes the column below `floor`,
+ * the oldest popups are dropped (the newest always stays).
  */
 export class PopupPool {
   /** Smallest top edge a popup may reach (view pixels). */
   ceiling = 0;
+  /** Largest bottom edge (view pixels): when the ceiling pushes the column below it, the oldest popups go. */
+  floor = Infinity;
   private readonly slots: Slot[];
   private readonly visible: Popup[] = [];
   /** Live slots, newest first (reused by layout()). */
@@ -120,6 +123,11 @@ export class PopupPool {
       const s = col[i]!;
       const above = col[i + 1];
       s.y = Math.max(s.y, above ? above.y + popupHeight(above.scale) : this.ceiling);
+    }
+    const newest = col[0];
+    if (col.length > 1 && newest!.y + popupHeight(newest!.scale) > this.floor) {
+      col[col.length - 1]!.alive = false;
+      this.layout();
     }
   }
 

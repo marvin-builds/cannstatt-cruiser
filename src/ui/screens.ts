@@ -26,12 +26,13 @@ import {
   STAR,
   UI,
 } from './art';
-import type { Banner } from './banner';
+import { type Banner, BANNER_H, BANNER_Y } from './banner';
 import { chillLook } from './chill-look';
 import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
+import { KICKER_HINT_LABEL, type KickerHint, kickerHintRect } from './kicker-hint';
 import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
   centreX,
@@ -51,6 +52,7 @@ import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
+import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
 import { type TrickHint, trickHintLabel, trickHintRect } from './trick-hint';
 
 export interface UiView {
@@ -72,6 +74,12 @@ export interface UiView {
   itemHint: ItemHint;
   /** "↓ = Trick!" under the skater on the first grinds, until a grind trick was done once. */
   trickHint: TrickHint;
+  /** "Über die Rampe nach oben!" while a kicker approaches, until a stunt line was completed once. */
+  kickerHint: KickerHint;
+  /** "Combo xN!" and "Stunt-Linie! +…" in the upper middle. */
+  stunt: StuntCallout;
+  /** Where the stunt callout is drawn this tick (set in update), null while hidden. */
+  stuntRect: CalloutRect | null;
   /** The hidden settings menu and the long press on the title logo that opens it. */
   settings: SettingsMenu;
   logoHold: LongPress;
@@ -321,6 +329,30 @@ function drawTrickHint(r: RenderContext, view: UiView): void {
   text(r, label, p.x + 4 + cap, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
 }
 
+/** The kicker hint at the hint spot under the skater, with a caret up at the skater; the grind trick hint wins. */
+function drawKickerHint(r: RenderContext, view: UiView): void {
+  if (!view.kickerHint.visible || view.trickHint.visible) return;
+  const { g, display } = r;
+  const scale = popupScale(display, false);
+  const p = kickerHintRect(scale, display.viewWidth);
+  ribbon(r, p.x, p.y, p.w, p.h);
+  g.fillStyle = UI.yellow;
+  const tip = Math.min(Math.max(PLAYER_X, p.x + 4), p.x + p.w - 4);
+  for (let i = 0; i < 3; i++) g.fillRect(tip - i, p.y - 3 + i, 1 + 2 * i, 1);
+  text(r, KICKER_HINT_LABEL, p.x + 4, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+}
+
+/** "Combo xN!" / "Stunt-Linie! +…": big outlined lines centred in their box, fading out at the end. */
+function drawStunt(r: RenderContext, view: UiView): void {
+  const box = view.stuntRect;
+  if (!box) return;
+  const { stunt } = view;
+  r.g.globalAlpha = stunt.age > 0.75 ? (1 - stunt.age) / 0.25 : 1;
+  const cx = box.x + (box.w >> 1);
+  for (let i = 0; i < stunt.lines.length; i++) outlined(r, stunt.lines[i]!, cx, calloutLineY(box, i), stunt.color, box.scale);
+  r.g.globalAlpha = 1;
+}
+
 const HINT_TEXT: TextOptions = { color: UI.yellow };
 const HINT_TEXT_BIG: TextOptions = { color: UI.yellow, scale: 2 };
 
@@ -342,8 +374,8 @@ function drawLive(r: RenderContext, view: UiView): void {
   if (view.banner.visible) {
     const w = measureText(view.banner.text, 2) + 16;
     const x = centreX(r.display.viewWidth) - Math.floor(w / 2);
-    const y = 56 - Math.round(view.banner.slide() * 80);
-    ribbon(r, x, y, w, 22);
+    const y = BANNER_Y - Math.round(view.banner.slide() * 80);
+    ribbon(r, x, y, w, BANNER_H);
     text(r, view.banner.text, x + 8, y + 4, { scale: 2, color: UI.white });
   }
 }
@@ -388,8 +420,10 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawStats(r, view);
       drawItemControl(r, view);
       drawLive(r, view);
+      drawStunt(r, view);
       drawItemHint(r, view);
       drawTrickHint(r, view);
+      drawKickerHint(r, view);
       break;
     case 'paused':
       if (view.settings.open) {

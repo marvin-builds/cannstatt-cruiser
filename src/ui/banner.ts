@@ -1,6 +1,9 @@
 /** Seconds the zone name stays on screen, including the slide in and out. */
 export const BANNER_TIME = 2.4;
 const SLIDE_TIME = 0.25;
+/** Top edge and height of the zone ribbon in place. */
+export const BANNER_Y = 56;
+export const BANNER_H = 22;
 
 const ZONE_NAMES = ['Stuttgart-Mitte', 'Am Neckar', 'Bad Cannstatt'] as const;
 
