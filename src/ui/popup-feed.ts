@@ -22,7 +22,7 @@ type Entry =
   | { kind: 'used'; action: ItemAction }
   | { kind: 'score'; delta: number }
   | { kind: 'healthGained' | 'ballBack' | 'crash' }
-  | { kind: 'grindTrick'; points: number };
+  | { kind: 'grindTrick' | 'airTrick'; points: number };
 
 /** Events that take the points of a clear of the same entity into their own popup. */
 const MERGED = { stomp: ['Stomp!', UI.orange], ballHit: ['Treffer!', UI.yellow] } as const;
@@ -73,6 +73,10 @@ export class PopupFeed {
     this.entries.push({ kind: 'grindTrick', points });
   }
 
+  airTrick(points: number): void {
+    this.entries.push({ kind: 'airTrick', points });
+  }
+
   /** The popups for everything since the last flush, in event order; then starts over. */
   flush(kidMode: boolean): readonly PopupSpec[] {
     const entries = this.entries;
@@ -109,6 +113,9 @@ export class PopupFeed {
           break;
         case 'grindTrick':
           add(`Grind-Trick! ${plusPoints(e.points)}`, UI.teal);
+          break;
+        case 'airTrick':
+          add(`Air-Trick! ${plusPoints(e.points)}`, UI.pink);
           break;
       }
     });

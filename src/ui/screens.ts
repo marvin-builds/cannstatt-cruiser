@@ -32,7 +32,19 @@ import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
-import { KICKER_HINT_LABEL, type KickerHint, kickerHintRect } from './kicker-hint';
+import { type AirTrickHint, airTrickHintPlate } from './air-trick-hint';
+import {
+  HINT_PAD_X,
+  HINT_PAD_Y,
+  type HintRow,
+  hintRowHeight,
+  KEYCAP_H,
+  KEYCAP_W,
+  PIECE_GAP,
+  ROW_GAP,
+  shownHint,
+} from './hint-plate';
+import { KICKER_HINT_ROWS, type KickerHint, kickerHintRect } from './kicker-hint';
 import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
   centreX,
@@ -74,9 +86,11 @@ export interface UiView {
   itemHint: ItemHint;
   /** "↓ = Trick!" under the skater on the first grinds, until a grind trick was done once. */
   trickHint: TrickHint;
-  /** "Über die Rampe nach oben!" while a kicker approaches, until a stunt line was completed once. */
+  /** "Ab über die Rampe!" while a kicker approaches, until a stunt line was completed once. */
   kickerHint: KickerHint;
-  /** "Combo xN!" and "Stunt-Linie! +…" in the upper middle. */
+  /** "In der Luft ↓ = Trick!" in the air after a launch, until an air trick was done once. */
+  airHint: AirTrickHint;
+  /** "Combo xN!" and "Stunt-Linie! +…" in the top strip between the HUD plate and the buttons. */
   stunt: StuntCallout;
   /** Where the stunt callout is drawn this tick (set in update), null while hidden. */
   stuntRect: CalloutRect | null;
@@ -109,12 +123,10 @@ const OUTLINE = [-1, 0, 1, 0, 0, -1, 0, 1, -1, -1, 1, -1, -1, 1, 1, 1];
 function keyCap(r: RenderContext, x: number, y: number): void {
   const { g } = r;
   g.fillStyle = UI.muted;
-  g.fillRect(x, y, KEYCAP_W, 10);
+  g.fillRect(x, y, KEYCAP_W, KEYCAP_H);
   g.fillStyle = UI.white;
-  g.fillRect(x, y, KEYCAP_W, 8);
+  g.fillRect(x, y, KEYCAP_W, KEYCAP_H - 2);
 }
-
-const KEYCAP_W = 9;
 
 /** One HUD button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
 function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame: number): void {
@@ -329,20 +341,46 @@ function drawTrickHint(r: RenderContext, view: UiView): void {
   text(r, label, p.x + 4 + cap, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
 }
 
-/** The kicker hint at the hint spot under the skater, with a caret up at the skater; the grind trick hint wins. */
-function drawKickerHint(r: RenderContext, view: UiView): void {
-  if (!view.kickerHint.visible || view.trickHint.visible) return;
-  const { g, display } = r;
-  const scale = popupScale(display, false);
-  const p = kickerHintRect(scale, display.viewWidth);
+/** A hint plate at the hint spot: the plate, a caret up at the skater and its rows (texts and key caps). */
+function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number, p: Rect): void {
+  const { g } = r;
   ribbon(r, p.x, p.y, p.w, p.h);
   g.fillStyle = UI.yellow;
   const tip = Math.min(Math.max(PLAYER_X, p.x + 4), p.x + p.w - 4);
   for (let i = 0; i < 3; i++) g.fillRect(tip - i, p.y - 3 + i, 1 + 2 * i, 1);
-  text(r, KICKER_HINT_LABEL, p.x + 4, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+  const options = scale === 1 ? HINT_TEXT : HINT_TEXT_BIG;
+  let y = p.y + HINT_PAD_Y;
+  for (const row of rows) {
+    const h = hintRowHeight(row, scale);
+    let x = p.x + HINT_PAD_X;
+    for (const piece of row) {
+      if (typeof piece !== 'string') {
+        keyCap(r, x, y);
+        ARROW_DOWN.draw(g, 0, x + 2, y + 1);
+        x += KEYCAP_W + PIECE_GAP;
+        continue;
+      }
+      text(r, piece, x, y + ((h - 8 * scale) >> 1), options);
+      x += measureText(piece, scale) + PIECE_GAP;
+    }
+    y += h + ROW_GAP;
+  }
 }
 
-/** "Combo xN!" / "Stunt-Linie! +…": big outlined lines centred in their box, fading out at the end. */
+/** The kicker hint (before a launch) or the air trick hint (after it); the grind trick hint wins over both. */
+function drawStuntHints(r: RenderContext, view: UiView): void {
+  const { display } = r;
+  const shown = shownHint({ trick: view.trickHint.visible, air: view.airHint.visible, kicker: view.kickerHint.visible });
+  if (shown === 'kicker') {
+    const scale = popupScale(display, false);
+    drawHintPlate(r, KICKER_HINT_ROWS, scale, kickerHintRect(scale, display.viewWidth));
+  } else if (shown === 'air') {
+    const plate = airTrickHintPlate(display);
+    drawHintPlate(r, plate.rows, plate.scale, plate.rect);
+  }
+}
+
+/** "Combo xN!" / "Stunt-Linie! +…": outlined lines centred in their box, fading out at the end. */
 function drawStunt(r: RenderContext, view: UiView): void {
   const box = view.stuntRect;
   if (!box) return;
@@ -423,7 +461,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawStunt(r, view);
       drawItemHint(r, view);
       drawTrickHint(r, view);
-      drawKickerHint(r, view);
+      drawStuntHints(r, view);
       break;
     case 'paused':
       if (view.settings.open) {

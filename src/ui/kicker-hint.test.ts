@@ -84,8 +84,14 @@ describe('kicker hint', () => {
   });
 
   it('says the same on touch and keyboard: the ramp needs no button', () => {
-    expect(KICKER_HINT_LABEL).toBe('Über die Rampe nach oben!');
+    expect(KICKER_HINT_LABEL).toBe('Ab über die Rampe!');
   });
+
+  for (const viewWidth of [320, 384, 427]) {
+    it(`stays compact in portrait (big font), ${viewWidth} wide: at most 60 % of the view`, () => {
+      expect(kickerHintRect(2, viewWidth).w).toBeLessThanOrEqual(Math.round(viewWidth * 0.6));
+    });
+  }
 
   describe('placement', () => {
     const skater = (feetY: number): Rect => ({ x: PLAYER_X - 12, y: feetY - 32, w: 24, h: 32 });

@@ -1,17 +1,19 @@
 /**
- * The stunt line callout (ROADMAP 27): one big text in the upper middle,
- * just below the HUD stats plate, apart from the popup column above the
- * skater. "Combo xN!" on every `stuntStep` (punching in a size bigger for a
- * moment, growing a little with N), "Stunt-Linie!" and the points on a
- * completed line. A missed line says nothing: falling off stays quiet.
- * While it shows, the popup column keeps below it (see index.ts).
+ * The stunt line callout (ROADMAP 27): "Combo xN!" on every `stuntStep`
+ * (punching in a size bigger for a moment), "Stunt-Linie!" and the points on
+ * a completed line. A missed line says nothing: falling off stays quiet.
+ *
+ * It lives in the top strip of the view, between the HUD stats plate (and
+ * the desktop item chip) and the HUD buttons, right of the skater and above
+ * the upper level (ledges 40-60 px above the street, the skater and his star
+ * trail over them), so it never covers the action. It shrinks where the strip
+ * is narrow (portrait, big scores) and waits while the zone banner shows.
  */
 import { FONT_LINE_HEIGHT, measureText } from '../core/font';
-import { PLAYER_X } from '../core/config';
+import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Rect } from '../types';
 import { UI } from './art';
-import { BANNER_H, BANNER_Y } from './banner';
-import { centreX, plusPoints, POPUP_MARGIN, popupLeft } from './layout';
+import { centreX, type HudButtons, plusPoints, POPUP_MARGIN } from './layout';
 
 /** Seconds a "Combo xN!" stays (the next step replaces it). */
 export const COMBO_TIME = 1;
@@ -19,23 +21,28 @@ export const COMBO_TIME = 1;
 export const LINE_DONE_TIME = 1.6;
 /** Seconds a fresh combo is drawn one scale bigger. */
 export const PUNCH_TIME = 0.12;
-/** From this multiplier on the combo is drawn one scale bigger. */
-const COMBO_GROW = 4;
-/** Right edge of the skater (feet at PLAYER_X): the combo stays right of it. */
+/** Font scale of the settled callout (the punch draws one bigger where it fits; a narrow strip makes it smaller). */
+export const CALLOUT_SCALE = 2;
+/**
+ * Top of the upper level band the callout stays above: ledges up to 60 px
+ * above the street, the skater on them and the star trails of his jumps.
+ */
+export const STUNT_BAND_TOP = GROUND_Y - 96;
+/** Right edge of the skater (feet at PLAYER_X): the callout stays right of it. */
 const SKATER_RIGHT = PLAYER_X + 16;
-/** Gap between the zone banner and a callout below it. */
-const BELOW_BANNER = 2;
+/** Highest top edge of the callout. */
+const CALLOUT_TOP = 4;
+/** Least gap between the callout and anything it keeps clear of. */
+const GAP = 2;
 
 export class StuntCallout {
   lines: readonly string[] = [];
   color: string = UI.orange;
-  /** Multiplier of the last step: the size of the callout. */
-  multiplier = 1;
   /** A line has started (first step) and not ended yet. */
   lineActive = false;
   private time = 0;
   private life = 0;
-  /** Showing a combo (punches in, grows with N), not the completed line. */
+  /** Showing a combo (punches in), not the completed line. */
   combo = false;
 
   get visible(): boolean {
@@ -52,11 +59,6 @@ export class StuntCallout {
     return this.life > 0 ? Math.min(1, this.time / this.life) : 1;
   }
 
-  /** Font scale on `display`: a combo grows with its multiplier, the completed line keeps the base size. */
-  scale(display: { portrait: boolean }): number {
-    return calloutScale(display, this.combo ? this.multiplier : 1);
-  }
-
   runStarted(): void {
     this.lineActive = false;
     this.hide();
@@ -64,7 +66,6 @@ export class StuntCallout {
 
   step(multiplier: number): void {
     this.lineActive = true;
-    this.multiplier = multiplier;
     this.show([`Combo x${multiplier}!`], UI.orange, COMBO_TIME, true);
   }
 
@@ -77,8 +78,9 @@ export class StuntCallout {
     this.show(points > 0 ? ['Stunt-Linie!', plusPoints(points)] : ['Stunt-Linie!'], UI.yellow, LINE_DONE_TIME, false);
   }
 
-  update(dt: number): void {
-    if (this.visible) this.time += dt;
+  /** Advances its time while `shown`; while it cannot be shown (zone banner) it waits. */
+  update(dt: number, shown = true): void {
+    if (this.visible && shown) this.time += dt;
   }
 
   private show(lines: readonly string[], color: string, life: number, combo: boolean): void {
@@ -90,55 +92,84 @@ export class StuntCallout {
   }
 }
 
-/** Font scale: 2 (3 in portrait, where a view pixel is ~1 CSS px), one more from COMBO_GROW on. */
-export function calloutScale(display: { portrait: boolean }, multiplier: number): number {
-  return (display.portrait ? 3 : 2) + (multiplier >= COMBO_GROW ? 1 : 0);
-}
-
-/** Top of the callout: right below the HUD plate (`ceiling`), or below the zone banner while it shows. */
-export function calloutTop(ceiling: number, bannerVisible: boolean): number {
-  return bannerVisible ? Math.max(ceiling, BANNER_Y + BANNER_H + BELOW_BANNER) : ceiling;
-}
-
 /** Rows of one callout line at `scale`: the glyphs plus the 1 px outline above and below. */
 const lineHeight = (scale: number) => FONT_LINE_HEIGHT * scale + 2;
 
 export interface CalloutRect extends Rect {
-  /** Font scale to draw at (the punch adds one where it fits). */
+  /** Font scale to draw at. */
   scale: number;
 }
 
-/**
- * The box of the callout's `lines` (outline included), centred in the view
- * but kept right of the skater and off the view edges, from `top` down.
- */
-export function calloutRect(lines: readonly string[], scale: number, punch: boolean, viewWidth: number, top: number): CalloutRect {
-  const widthAt = (s: number) => Math.max(...lines.map((l) => measureText(l, s))) + 2;
-  const s = punch && widthAt(scale + 1) <= viewWidth - 2 * POPUP_MARGIN ? scale + 1 : scale;
-  const w = widthAt(s);
-  const h = lines.length * lineHeight(s) + (lines.length - 1) * s;
-  const cx = Math.max(centreX(viewWidth), SKATER_RIGHT + POPUP_MARGIN + Math.ceil(w / 2));
-  return { x: popupLeft(cx, w, viewWidth), y: top, w, h, scale: s };
+/** What the callout keeps clear of in the top strip (view px). */
+export interface CalloutScene {
+  viewWidth: number;
+  /** The HUD stats plate as drawn now. */
+  plate: Rect;
+  /** The desktop item chip next to the plate, or null. */
+  chip: Rect | null;
+  buttons: HudButtons;
+  /** The touch item button and its first-time hint while they show, else null. */
+  itemButton: Rect | null;
+  itemHint: Rect | null;
+  /** The zone banner shows: the callout waits until it is gone. */
+  banner: boolean;
+}
+
+/** The boxes the callout must not touch (the banner is handled by waiting, see placeCallout). */
+export function calloutBlockers(scene: CalloutScene): Rect[] {
+  const { plate, chip, buttons, itemButton, itemHint } = scene;
+  const blocked = [plate, buttons.pause, buttons.mute];
+  for (const r of [chip, buttons.fullscreen, itemButton, itemHint]) if (r) blocked.push(r);
+  return blocked;
 }
 
 /**
- * Where the callout shows now (null while hidden): below the HUD plate
- * (`ceiling`) or the zone banner. `reserved` is the box the popup column
- * keeps clear of: the punched size, so popups do not jump during the punch.
+ * The callout's box at font `scale` with its top at `y`: as close to the view
+ * centre as the boxes in `blocked` on those rows allow (boxes left of the
+ * centre push it right, the others left), right of the skater, above the
+ * upper level band. Null if it does not fit there.
  */
-export function placeCallout(
-  c: StuntCallout,
-  display: { portrait: boolean; viewWidth: number },
-  ceiling: number,
-  bannerVisible: boolean,
-): { drawn: CalloutRect; reserved: CalloutRect } | null {
-  if (!c.visible) return null;
-  const scale = c.scale(display);
-  const top = calloutTop(ceiling, bannerVisible);
-  return {
-    drawn: calloutRect(c.lines, scale, c.punch, display.viewWidth, top),
-    reserved: calloutRect(c.lines, scale, c.combo, display.viewWidth, top),
-  };
+function boxAt(lines: readonly string[], scale: number, y: number, viewWidth: number, blocked: readonly Rect[]): CalloutRect | null {
+  let w = 0;
+  for (const l of lines) w = Math.max(w, measureText(l, scale) + 2);
+  const h = lines.length * lineHeight(scale) + (lines.length - 1) * scale;
+  if (y + h > STUNT_BAND_TOP - GAP) return null;
+  const centre = centreX(viewWidth);
+  let left = SKATER_RIGHT + POPUP_MARGIN;
+  let right = viewWidth - POPUP_MARGIN;
+  for (const b of blocked) {
+    if (b.y >= y + h + GAP || y >= b.y + b.h + GAP) continue;
+    if (b.x + b.w / 2 < centre) left = Math.max(left, b.x + b.w + GAP);
+    else right = Math.min(right, b.x - GAP);
+  }
+  if (right - left < w) return null;
+  const x = Math.min(Math.max(centre - Math.floor(w / 2), left), right - w);
+  return { x, y, w, h, scale };
+}
+
+/**
+ * Where `lines` fit: the highest spot at CALLOUT_SCALE, else at a smaller
+ * scale; null if nowhere. A `punch` draws one scale bigger from the same top
+ * where that fits too.
+ */
+export function fitCallout(lines: readonly string[], punch: boolean, viewWidth: number, blocked: readonly Rect[]): CalloutRect | null {
+  for (let scale = CALLOUT_SCALE; scale >= 1; scale--) {
+    for (let y = CALLOUT_TOP; y < STUNT_BAND_TOP; y++) {
+      const settled = boxAt(lines, scale, y, viewWidth, blocked);
+      if (!settled) continue;
+      return (punch && boxAt(lines, scale + 1, y, viewWidth, blocked)) || settled;
+    }
+  }
+  return null;
+}
+
+/**
+ * Where the callout shows now: null while hidden, and while the zone banner
+ * shows (sliding in and out it crosses the whole strip), so it waits.
+ */
+export function placeCallout(c: StuntCallout, scene: CalloutScene): CalloutRect | null {
+  if (!c.visible || scene.banner) return null;
+  return fitCallout(c.lines, c.punch, scene.viewWidth, calloutBlockers(scene));
 }
 
 /** Top of line `i` inside a callout rect. */

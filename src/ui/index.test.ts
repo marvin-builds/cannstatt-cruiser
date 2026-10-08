@@ -300,6 +300,17 @@ describe('grind trick hint', () => {
 });
 
 describe('stunt lines', () => {
+  it('persists an air trick so the air trick hint never shows again', () => {
+    const { game, store } = setup();
+    game.commands.startRun();
+    game.tick();
+    game.bus.emit('launch', { entityId: 1, velocity: 300 });
+    game.tick();
+    expect(store.get('airTrickSeen', false)).toBe(false);
+    game.bus.emit('airTrick', { ticks: 20, points: 500 });
+    expect(store.get('airTrickSeen', false)).toBe(true);
+  });
+
   it('persists a completed stunt line so the kicker hint never shows again; a missed line does not', () => {
     const { game, store } = setup();
     game.commands.startRun();
