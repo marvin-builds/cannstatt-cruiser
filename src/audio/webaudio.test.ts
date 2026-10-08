@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { Cue } from './backend';
+import { SOUNDS } from './sounds';
 import { createWebAudioBackend } from './webaudio';
 
 /** Minimal stand-in for an AudioContext: records started/stopped sources, no sound. */
@@ -199,7 +201,7 @@ describe('WebAudio backend', () => {
   it('plays every cue without throwing', () => {
     const { backend } = setup();
     backend.unlock();
-    for (const cue of ['jump', 'boost', 'land', 'star', 'cleared', 'crash', 'gameOver', 'bubble', 'pop'] as const) {
+    for (const cue of Object.keys(SOUNDS) as Cue[]) {
       expect(() => backend.play(cue, 0.5)).not.toThrow();
     }
   });
@@ -218,9 +220,41 @@ describe('WebAudio backend', () => {
         backend.play('jump', 1);
         backend.startLoop('grind');
         backend.stopLoop('grind');
+        backend.setTraffic(1);
       }).not.toThrow();
       expect(backend.status?.()).toBe('unavailable');
     }
+  });
+
+  it('builds the traffic rumble once and reuses its nodes for every level change', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    const before = ctx.started.length;
+    backend.setTraffic(0.2);
+    const sources = ctx.started.length - before;
+    expect(sources).toBeGreaterThan(0);
+    for (let i = 0; i <= 100; i++) backend.setTraffic(i / 100);
+    backend.setTraffic(0);
+    backend.setTraffic(0.7);
+    expect(ctx.started.length - before).toBe(sources);
+    expect(ctx.stopped).toEqual([]);
+  });
+
+  it('builds no traffic nodes for silence or before unlock', () => {
+    const { backend, ctx } = setup();
+    backend.setTraffic(0.5);
+    backend.unlock();
+    const before = ctx.started.length;
+    backend.setTraffic(0);
+    expect(ctx.started.length).toBe(before);
+  });
+
+  it('schedules a delayed cue later without throwing', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    const before = ctx.started.length;
+    expect(() => backend.play('woozy', 1, 1.2)).not.toThrow();
+    expect(ctx.started.length).toBeGreaterThan(before);
   });
 
   it('reports the context state', () => {

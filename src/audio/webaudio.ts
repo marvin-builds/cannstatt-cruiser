@@ -7,7 +7,7 @@
  * leaves the backend silent; nothing here throws.
  */
 import type { AudioBackend, Cue, LoopName } from './backend';
-import { GRIND, MASTER_GAIN, SOUNDS, type Voice } from './sounds';
+import { GRIND, MASTER_GAIN, SOUNDS, TRAFFIC_RUMBLE, type Voice } from './sounds';
 
 type ContextFactory = () => AudioContext | null;
 
@@ -46,6 +46,10 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   let muted = false;
   const loops = new Map<LoopName, RunningLoop>();
   let pending: { cue: Cue; intensity: number; at: number } | null = null;
+  /** Traffic rumble bus, built on the first audible level and reused (never stopped). */
+  let traffic: GainNode | null = null;
+  /** Last requested traffic level, applied once the context runs. */
+  let trafficLevel = 0;
 
   const masterLevel = () => (muted ? 0 : MASTER_GAIN);
   const ready = () => (ac && master && ac.state === 'running' ? ac : null);
@@ -87,8 +91,8 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     return osc;
   }
 
-  function playVoice(ctx: AudioContext, voice: Voice, intensity: number): void {
-    const t0 = ctx.currentTime + voice.at;
+  function playVoice(ctx: AudioContext, voice: Voice, intensity: number, delay: number): void {
+    const t0 = ctx.currentTime + delay + voice.at;
     const end = t0 + voice.dur;
     let src: AudioScheduledSourceNode;
     if (voice.wave === 'noise') {
@@ -150,6 +154,32 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     return { bus, sources };
   }
 
+  /** Traffic: lowpassed noise rumble plus a low engine hum on one bus, silent until a level arrives. */
+  function buildTraffic(ctx: AudioContext): GainNode {
+    const bus = ctx.createGain();
+    bus.gain.value = 0;
+    bus.connect(master!);
+
+    const rumble = noiseSource(ctx);
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.value = TRAFFIC_RUMBLE.noise.freq;
+    low.Q.value = TRAFFIC_RUMBLE.noise.q;
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.value = TRAFFIC_RUMBLE.noise.gain;
+    rumble.connect(low).connect(rumbleGain).connect(bus);
+
+    const hum = oscillator(ctx, 'triangle', TRAFFIC_RUMBLE.hum.freq);
+    const humGain = ctx.createGain();
+    humGain.gain.value = TRAFFIC_RUMBLE.hum.gain;
+    hum.connect(humGain).connect(bus);
+
+    const now = ctx.currentTime;
+    rumble.start(now);
+    hum.start(now);
+    return bus;
+  }
+
   const guard = (fn: () => void) => {
     try {
       fn();
@@ -158,13 +188,24 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     }
   };
 
-  function playNow(ctx: AudioContext, cue: Cue, intensity: number): void {
+  function playNow(ctx: AudioContext, cue: Cue, intensity: number, delay = 0): void {
     guard(() => {
-      for (const voice of SOUNDS[cue]) playVoice(ctx, voice, intensity);
+      for (const voice of SOUNDS[cue]) playVoice(ctx, voice, intensity, delay);
+    });
+  }
+
+  /** Glides the rumble bus to `trafficLevel`; builds it on the first audible level once the context runs. */
+  function applyTraffic(): void {
+    const ctx = ready();
+    if (!ctx || (!traffic && trafficLevel === 0)) return;
+    guard(() => {
+      traffic ??= buildTraffic(ctx);
+      traffic.gain.setTargetAtTime(trafficLevel, ctx.currentTime, TRAFFIC_RUMBLE.glide);
     });
   }
 
   function playPending(): void {
+    applyTraffic();
     const cue = pending;
     pending = null;
     const ctx = ready();
@@ -184,10 +225,10 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
         );
       }
     },
-    play(cue: Cue, intensity: number) {
+    play(cue: Cue, intensity: number, delay = 0) {
       if (muted) return;
       const ctx = ready();
-      if (ctx) playNow(ctx, cue, intensity);
+      if (ctx) playNow(ctx, cue, intensity, delay);
       else if (ac && master) pending = { cue, intensity, at: performance.now() };
     },
     startLoop(loop: LoopName) {
@@ -209,6 +250,10 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
       muted = value;
       if (muted) pending = null;
       if (ac && master) guard(() => master!.gain.setTargetAtTime(masterLevel(), ac!.currentTime, 0.01));
+    },
+    setTraffic(level: number) {
+      trafficLevel = Math.max(0, level);
+      applyTraffic();
     },
     status() {
       if (unavailable) return 'unavailable';

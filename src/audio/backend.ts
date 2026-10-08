@@ -18,7 +18,19 @@ export type Cue =
   | 'oof'
   | 'boing'
   | 'hoppla'
-  | 'catch';
+  | 'catch'
+  | 'glug'
+  | 'munch'
+  | 'whoosh'
+  | 'bonk'
+  | 'cheer'
+  | 'whistle'
+  | 'thud'
+  | 'woozy'
+  | 'heart'
+  | 'trick'
+  | 'trickBig'
+  | 'honk';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';
@@ -26,11 +38,20 @@ export type LoopName = 'grind';
 export interface AudioBackend {
   /** Creates / resumes the audio context. Called inside every user gesture. */
   unlock(): void;
-  /** Plays a one-shot cue; `intensity` 0..1 scales its volume. Ignored before unlock. */
-  play(cue: Cue, intensity: number): void;
+  /**
+   * Plays a one-shot cue; `intensity` 0..1 scales its volume, `delay` (seconds,
+   * default 0) starts it later. Ignored before unlock.
+   */
+  play(cue: Cue, intensity: number, delay?: number): void;
   startLoop(loop: LoopName): void;
   stopLoop(loop: LoopName): void;
   setMuted(muted: boolean): void;
+  /**
+   * Level 0..1 of the continuous Mitte traffic rumble (0 = silent). The caller
+   * smooths it and calls only on noticeable changes; the backend glides between
+   * levels without clicks and reuses one set of nodes.
+   */
+  setTraffic(level: number): void;
   /** Short state for debugging, e.g. the AudioContext state ('running', 'unavailable'). */
   status?(): string;
 }

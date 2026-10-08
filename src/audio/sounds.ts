@@ -42,6 +42,27 @@ const N = {
   C7: 2093.0,
 } as const;
 
+/** Drinking the Maßkrug: three gulps (one per player gulp) and a friendly 'aah' end within this many seconds. */
+export const GLUG_LENGTH = 1.28;
+
+/** One low gulp: a falling triangle 'gloomp' with a wet lowpassed noise tap. */
+function gulp(at: number): Voice[] {
+  return [
+    { wave: 'triangle', at, dur: 0.16, freq: 210, to: 95, gain: 0.45 },
+    { wave: 'square', at: at + 0.02, dur: 0.08, freq: 120, to: 80, gain: 0.04 },
+    { wave: 'noise', at, dur: 0.06, freq: 700, gain: 0.12, filter: 'lowpass' },
+  ];
+}
+
+/** One crunchy bite: a bright band-passed noise crack over a short low chomp. */
+function bite(at: number, pitch: number): Voice[] {
+  return [
+    { wave: 'noise', at, dur: 0.07, freq: 2600 * pitch, gain: 0.35, filter: 'bandpass' },
+    { wave: 'noise', at: at + 0.03, dur: 0.05, freq: 1500 * pitch, gain: 0.2, filter: 'bandpass' },
+    { wave: 'square', at, dur: 0.05, freq: 190 * pitch, to: 110 * pitch, gain: 0.08 },
+  ];
+}
+
 /** Evenly spaced notes of one wave, e.g. an arpeggio. */
 function notes(wave: OscillatorType, freqs: number[], step: number, gain: number, last = step): Voice[] {
   return freqs.map((freq, i) => ({
@@ -124,7 +145,79 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     ...notes('square', [N.G5, N.C6, N.E6, N.G6], 0.055, 0.1, 0.16),
     { wave: 'triangle', at: 0.22, dur: 0.18, freq: N.C7, gain: 0.12 },
   ],
+  // Maßkrug: 'glug glug glug' then a small, friendly 'aah' (a soft falling vowel-ish triangle).
+  glug: [
+    ...gulp(0),
+    ...gulp(0.32),
+    ...gulp(0.64),
+    { wave: 'triangle', at: 0.98, dur: 0.3, freq: N.A4 * 1.2, to: N.E4, gain: 0.22 },
+    { wave: 'square', at: 0.98, dur: 0.18, freq: 264, to: 200, gain: 0.03 },
+  ],
+  // Brezel / Lebkuchenherz: two crunchy bites, the second a little lower.
+  munch: [...bite(0, 1), ...bite(0.17, 0.8)],
+  // Football throw: an airy band-passed swish with a faint rising tone.
+  whoosh: [
+    { wave: 'noise', at: 0, dur: 0.24, freq: 1400, gain: 0.32, filter: 'bandpass' },
+    { wave: 'noise', at: 0.06, dur: 0.16, freq: 2600, gain: 0.14, filter: 'bandpass' },
+    { wave: 'triangle', at: 0, dur: 0.2, freq: 300, to: 900, gain: 0.06 },
+  ],
+  // The ball hits a person: a hollow falling 'bonk'.
+  bonk: [
+    { wave: 'triangle', at: 0, dur: 0.13, freq: 520, to: 180, gain: 0.45 },
+    { wave: 'square', at: 0, dur: 0.05, freq: 900, to: 420, gain: 0.07 },
+  ],
+  // ...and a small cheer after it: a quick 'yay' arpeggio over a soft crowd hiss.
+  cheer: [
+    ...notes('square', [N.C5, N.E5, N.G5, N.C6], 0.05, 0.07, 0.16).map((v) => ({ ...v, at: v.at + 0.14 })),
+    { wave: 'noise', at: 0.14, dur: 0.32, freq: 3000, gain: 0.06, filter: 'highpass' },
+  ],
+  // A missed ball flies back: a two-pulse rising warning whistle.
+  whistle: [
+    { wave: 'triangle', at: 0, dur: 0.16, freq: 900, to: 1500, gain: 0.18 },
+    { wave: 'triangle', at: 0.2, dur: 0.24, freq: 1000, to: 2200, gain: 0.2 },
+    { wave: 'square', at: 0.2, dur: 0.24, freq: 2000, to: 4400, gain: 0.025 },
+  ],
+  // The ball hits the skater: a dull low thud on top of the crash.
+  thud: [
+    { wave: 'triangle', at: 0, dur: 0.16, freq: 130, to: 45, gain: 0.6 },
+    { wave: 'noise', at: 0, dur: 0.08, freq: 320, gain: 0.35, filter: 'lowpass' },
+  ],
+  // Drunk: a woozy sting, lazy up-and-down slides that sink like a wobbling horizon.
+  woozy: [
+    { wave: 'triangle', at: 0, dur: 0.2, freq: 420, to: 330, gain: 0.2 },
+    { wave: 'triangle', at: 0.18, dur: 0.2, freq: 330, to: 440, gain: 0.2 },
+    { wave: 'triangle', at: 0.36, dur: 0.2, freq: 440, to: 300, gain: 0.2 },
+    { wave: 'triangle', at: 0.54, dur: 0.36, freq: 300, to: 190, gain: 0.2 },
+    { wave: 'square', at: 0, dur: 0.9, freq: 105, to: 95, gain: 0.03 },
+  ],
+  // Health back: a warm rising heart chime with a soft high bell on top.
+  heart: [
+    ...notes('triangle', [N.E5, N.G5, N.C6], 0.07, 0.2, 0.3),
+    { wave: 'sine', at: 0.14, dur: 0.4, freq: N.E6, gain: 0.1 },
+  ],
+  // Grind trick: a snappy upward square run (scaled by points via intensity).
+  trick: notes('square', [N.G5, N.C6, N.E6], 0.04, 0.1, 0.1),
+  // Big grind trick: a sparkle after the run.
+  trickBig: [
+    { wave: 'triangle', at: 0.12, dur: 0.12, freq: N.G6, gain: 0.12 },
+    { wave: 'triangle', at: 0.18, dur: 0.22, freq: N.C7, gain: 0.12 },
+  ],
+  // A Mitte car honks: two muffled detuned squares together, a short 'mööp'.
+  honk: [
+    { wave: 'square', at: 0, dur: 0.24, freq: 349, gain: 0.1, filter: 'lowpass' },
+    { wave: 'square', at: 0, dur: 0.24, freq: 440, gain: 0.08, filter: 'lowpass' },
+  ],
 };
+
+/**
+ * Mitte traffic rumble: lowpassed noise plus a low engine hum on one bus whose
+ * gain follows the traffic level, gliding with `glide` (time constant, s).
+ */
+export const TRAFFIC_RUMBLE = {
+  noise: { freq: 240, q: 0.7, gain: 0.32 },
+  hum: { freq: 52, gain: 0.07 },
+  glide: 0.1,
+} as const;
 
 /** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */
 export const GRIND = {

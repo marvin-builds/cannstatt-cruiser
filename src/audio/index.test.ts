@@ -3,17 +3,22 @@ import { Game } from '../core/game';
 import { createStore } from '../core/storage';
 import type { AudioBackend, Cue, LoopName } from './backend';
 import { createAudioSystem } from './index';
+import { GLUG_LENGTH } from './sounds';
 
 class FakeBackend implements AudioBackend {
   calls: string[] = [];
-  played: { cue: Cue; intensity: number }[] = [];
+  played: { cue: Cue; intensity: number; delay: number }[] = [];
   loops = new Set<LoopName>();
+  traffic: number[] = [];
   muted = false;
   unlock(): void {
     this.calls.push('unlock');
   }
-  play(cue: Cue, intensity: number): void {
-    this.played.push({ cue, intensity });
+  play(cue: Cue, intensity: number, delay = 0): void {
+    this.played.push({ cue, intensity, delay });
+  }
+  setTraffic(level: number): void {
+    this.traffic.push(level);
   }
   startLoop(loop: LoopName): void {
     this.loops.add(loop);
@@ -267,6 +272,9 @@ describe('audio system: robustness', () => {
       setMuted: () => {
         throw new Error('no audio');
       },
+      setTraffic: () => {
+        throw new Error('no audio');
+      },
     };
     const game = new Game({
       systems: [createAudioSystem({ backend: broken, store: createStore(null) })],
@@ -276,6 +284,8 @@ describe('audio system: robustness', () => {
       game.commands.startRun();
       game.bus.emit('jump', { velocity: 250 });
       game.bus.emit('grindStart', { entityId: 1 });
+      game.state.trafficDensity = 1;
+      game.tick();
       game.commands.setMuted(true);
       game.commands.gameOver();
       game.tick();
@@ -357,5 +367,157 @@ describe('audio system: stomp and carried items', () => {
     game.bus.emit('stomp', { entityId: 3, kind: 'vfbFan', item: 'gingerbread' });
     game.bus.emit('itemCaught', { item: 'gingerbread' });
     expect(heard.map(([name]) => name)).toEqual(['boing', 'hoppla', 'catch']);
+  });
+});
+
+describe('audio system: using items', () => {
+  it.each([
+    ['beer', 'drink', 'glug'],
+    ['pretzel', 'eat', 'munch'],
+    ['gingerbread', 'eat', 'munch'],
+    ['football', 'throw', 'whoosh'],
+  ] as const)('itemUsed %s (%s) plays %s', (item, action, cue) => {
+    const { game, cues } = playing();
+    game.bus.emit('itemUsed', { item, action });
+    expect(cues()).toEqual([cue]);
+  });
+
+  it('adds no second whoosh when the ball entity appears', () => {
+    const { game, cues } = playing();
+    game.bus.emit('itemUsed', { item: 'football', action: 'throw' });
+    game.bus.emit('ballThrown', { entityId: 9 });
+    expect(cues()).toEqual(['whoosh']);
+  });
+
+  it('plays a bonk and a small cheer when the ball hits a person', () => {
+    const { game, cues } = playing();
+    game.bus.emit('ballHit', { entityId: 3, kind: 'vfbFan' });
+    expect(cues()).toEqual(['bonk', 'cheer']);
+  });
+
+  it('warns with a rising whistle when the ball comes back', () => {
+    const { game, cues } = playing();
+    game.bus.emit('ballBack', { entityId: 9 });
+    expect(cues()).toEqual(['whistle']);
+  });
+
+  it('adds a thud when the ball hits the skater', () => {
+    const { game, cues } = playing();
+    game.bus.emit('crash', { entityId: 9, kind: 'ball', health: 2 });
+    expect(cues()).toEqual(['crash', 'thud']);
+  });
+
+  it('plays a heart chime when health is gained', () => {
+    const { game, cues } = playing();
+    game.bus.emit('healthGained', { health: 3 });
+    expect(cues()).toEqual(['heart']);
+  });
+
+  it('plays the woozy sting right away when drunk without a drink sound', () => {
+    const { game, backend } = playing();
+    game.bus.emit('drunkStart', { duration: 6 });
+    expect(backend.played).toEqual([{ cue: 'woozy', intensity: 1, delay: 0 }]);
+  });
+
+  it('lets the woozy sting wait until the gulps are done', () => {
+    const { game, backend } = playing();
+    game.bus.emit('itemUsed', { item: 'beer', action: 'drink' });
+    game.bus.emit('drunkStart', { duration: 6 });
+    const woozy = backend.played.find((p) => p.cue === 'woozy')!;
+    expect(woozy.delay).toBeCloseTo(GLUG_LENGTH, 5);
+    for (let i = 0; i < 30; i++) game.tick();
+    game.bus.emit('drunkStart', { duration: 6 });
+    expect(backend.played.at(-1)!.delay).toBeCloseTo(GLUG_LENGTH - 0.5, 1);
+  });
+});
+
+describe('audio system: grind trick', () => {
+  it('plays a trick sting that gets louder with the points', () => {
+    const { game, backend } = playing();
+    game.bus.emit('grindTrick', { entityId: 1, ticks: 20, points: 10 });
+    game.bus.emit('grindTrick', { entityId: 1, ticks: 60, points: 80 });
+    const [small, big] = backend.played.filter((p) => p.cue === 'trick').map((p) => p.intensity);
+    expect(small).toBeGreaterThan(0);
+    expect(small).toBeLessThan(big!);
+    expect(big).toBeLessThanOrEqual(1);
+  });
+
+  it('adds a sparkle only for a big trick', () => {
+    const { game, cues } = playing();
+    game.bus.emit('grindTrick', { entityId: 1, ticks: 20, points: 10 });
+    expect(cues()).toEqual(['trick']);
+    game.bus.emit('grindTrick', { entityId: 1, ticks: 200, points: 500 });
+    expect(cues()).toEqual(['trick', 'trick', 'trickBig']);
+  });
+});
+
+describe('audio system: Mitte traffic', () => {
+  function inTraffic(seconds = 3, density = 1) {
+    const s = playing();
+    s.game.state.trafficDensity = density;
+    for (let i = 0; i < seconds * 60; i++) s.game.tick();
+    return s;
+  }
+
+  it('fades the rumble in with the density and stays smooth', () => {
+    const { backend } = inTraffic();
+    expect(backend.traffic[0]).toBeLessThan(0.2);
+    expect(backend.traffic.at(-1)).toBeGreaterThan(0.95);
+    expect(backend.traffic.length).toBeLessThan(3 * 60);
+  });
+
+  it('stays silent outside Mitte', () => {
+    const { backend, cues } = inTraffic(10, 0);
+    expect(backend.traffic).toEqual([]);
+    expect(cues()).not.toContain('honk');
+  });
+
+  it('fades out when leaving Mitte', () => {
+    const { game, backend } = inTraffic();
+    game.state.trafficDensity = 0;
+    for (let i = 0; i < 180; i++) game.tick();
+    expect(backend.traffic.at(-1)).toBe(0);
+  });
+
+  it('honks now and then at high density only', () => {
+    expect(inTraffic(30, 1).cues().filter((c) => c === 'honk').length).toBeGreaterThan(2);
+    expect(inTraffic(30, 0.5).cues()).not.toContain('honk');
+  });
+
+  it.each(['pause', 'mute', 'gameOver', 'title'] as const)('goes silent on %s', (what) => {
+    const { game, backend, cues } = inTraffic();
+    if (what === 'pause') game.commands.pause();
+    if (what === 'mute') game.commands.setMuted(true);
+    if (what === 'gameOver') game.commands.gameOver();
+    if (what === 'title') game.state.mode = 'title';
+    game.tick();
+    expect(backend.traffic.at(-1)).toBe(0);
+    const honks = cues().filter((c) => c === 'honk').length;
+    for (let i = 0; i < 20 * 60; i++) game.tick();
+    expect(backend.traffic.at(-1)).toBe(0);
+    expect(cues().filter((c) => c === 'honk').length).toBe(honks);
+  });
+
+  it('comes back after resuming', () => {
+    const { game, backend } = inTraffic();
+    game.commands.pause();
+    game.tick();
+    game.commands.resume();
+    for (let i = 0; i < 120; i++) game.tick();
+    expect(backend.traffic.at(-1)).toBeGreaterThan(0.9);
+  });
+
+  it('logs traffic start and stop for the debug listener', () => {
+    const backend = new FakeBackend();
+    const heard: string[] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name) => heard.push(name) })],
+    });
+    game.commands.startRun();
+    game.state.trafficDensity = 1;
+    for (let i = 0; i < 60; i++) game.tick();
+    game.commands.pause();
+    game.tick();
+    expect(heard.filter((name) => name.startsWith('traffic:'))).toEqual(['traffic:start', 'traffic:stop']);
   });
 });

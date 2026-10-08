@@ -1,12 +1,15 @@
 /**
  * Audio system: maps bus events to chiptune cues on an AudioBackend, keeps
- * the grind loop in sync with the game, unlocks audio on user gestures and
- * persists the mute flag. Sound design lives in sounds.ts, WebAudio in webaudio.ts.
+ * the grind loop and the Mitte traffic rumble in sync with the game, unlocks
+ * audio on user gestures and persists the mute flag. Sound design lives in
+ * sounds.ts, traffic logic in traffic.ts, WebAudio in webaudio.ts.
  */
 import { store as defaultStore, type Store } from '../core/storage';
 import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { exposeAudioDebug } from './debug';
+import { GLUG_LENGTH } from './sounds';
+import { TrafficNoise } from './traffic';
 import { createWebAudioBackend } from './webaudio';
 
 export interface AudioSystemOptions {
@@ -26,6 +29,10 @@ const BOOST_TICKS = 6;
 const HARD_LANDING = 350;
 /** Crash kinds that are people: they get a soft 'oof' on top of the crash. */
 const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGuest']);
+/** Grind trick points that play the trick sting at full volume. */
+const TRICK_FULL_POINTS = 100;
+/** Grind trick points from which a sparkle follows the sting. */
+const TRICK_BIG_POINTS = 100;
 
 export function createAudioSystem(options: AudioSystemOptions = {}): System {
   const backend = options.backend ?? createWebAudioBackend();
@@ -35,6 +42,9 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   let muted = false;
   /** Ticks the jump has been held so far, or null when no boost is pending. */
   let boostTicks: number | null = null;
+  /** Run time of the last drink sound, so the woozy sting can wait for the gulps. */
+  let glugAt = -Infinity;
+  const traffic = new TrafficNoise();
 
   /** Audio is decoration: a failing backend must never break the game loop. */
   const safely = (fn: () => void) => {
@@ -44,9 +54,18 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       // Ignore: the game keeps running silently.
     }
   };
-  const play = (cue: Cue, intensity = 1) => {
+  const play = (cue: Cue, intensity = 1, delay = 0) => {
     onSound?.(cue, muted);
-    safely(() => backend.play(cue, intensity));
+    safely(() => backend.play(cue, intensity, delay));
+  };
+  /** One tick of the traffic rumble: silent unless playing and unmuted. */
+  const updateTraffic = (ctx: GameContext) => {
+    const { state } = ctx;
+    const wasSounding = traffic.level > 0;
+    const step = traffic.update(state.trafficDensity, state.mode === 'playing' && !muted, state.time);
+    if (step.level !== null) safely(() => backend.setTraffic(step.level!));
+    if (wasSounding !== traffic.level > 0) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
+    if (step.honk) play('honk');
   };
   const startGrind = () => {
     if (grinding) return;
@@ -89,6 +108,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         stopGrind();
         play('crash');
         if (PEOPLE.has(kind)) play('oof');
+        if (kind === 'ball') play('thud');
         // The skater's bubble gum bubble pops (see player/bubble.ts).
         if (ctx.state.kidMode && ctx.state.chillTimer > 0) play('pop');
       });
@@ -98,6 +118,26 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('hoppla');
       });
       bus.on('itemCaught', () => play('catch'));
+      // Using the carried item (ballThrown adds nothing: the throw already whooshed).
+      bus.on('itemUsed', ({ action }) => {
+        if (action === 'drink') {
+          glugAt = ctx.state.time;
+          play('glug');
+        } else {
+          play(action === 'eat' ? 'munch' : 'whoosh');
+        }
+      });
+      bus.on('drunkStart', () => play('woozy', 1, Math.max(0, GLUG_LENGTH - (ctx.state.time - glugAt))));
+      bus.on('healthGained', () => play('heart'));
+      bus.on('ballHit', () => {
+        play('bonk');
+        play('cheer');
+      });
+      bus.on('ballBack', () => play('whistle'));
+      bus.on('grindTrick', ({ points }) => {
+        play('trick', 0.5 + 0.5 * Math.min(1, Math.max(0, points) / TRICK_FULL_POINTS));
+        if (points >= TRICK_BIG_POINTS) play('trickBig');
+      });
       bus.on('gameOver', () => {
         stopGrind();
         play('gameOver');
@@ -111,9 +151,11 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('runStarted', () => {
         stopGrind();
         boostTicks = null;
+        glugAt = -Infinity;
       });
     },
     update(ctx: GameContext) {
+      updateTraffic(ctx);
       if (ctx.state.mode !== 'playing') {
         stopGrind();
         boostTicks = null;
