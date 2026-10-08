@@ -110,12 +110,21 @@ describe('PopupFeed', () => {
     expect(texts(feed, true)).toEqual(['Air-Trick! +300']);
   });
 
+  it('a high five: "High Five! +N", the same in kid mode', () => {
+    const feed = new PopupFeed();
+    feed.highFive(250);
+    expect(texts(feed)).toEqual(['High Five! +250']);
+    feed.highFive(1000);
+    expect(texts(feed, true)).toEqual(['High Five! +1.000']);
+  });
+
   it('every popup has a colour', () => {
     const feed = new PopupFeed();
     feed.itemUsed('drink');
     feed.ballBack();
     feed.grindTrick(10);
     feed.airTrick(10);
+    feed.highFive(10);
     for (const p of feed.flush(false)) expect(p.color).toMatch(/^#/);
   });
 });

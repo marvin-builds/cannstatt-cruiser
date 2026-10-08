@@ -1,4 +1,6 @@
+import { measureText } from '../core/font';
 import { FONT_LINE_HEIGHT } from '../core/font-data';
+import type { Rect } from '../types';
 
 /** Seconds a floating popup ("+50", "Grind!") stays visible. */
 export const POPUP_LIFETIME = 0.9;
@@ -34,7 +36,14 @@ interface Slot extends Popup {
   alive: boolean;
   /** Spawn order: the stack keeps newer popups below older ones. */
   seq: number;
+  /** The spawn centre x. */
+  baseX: number;
+  /** Least left edge after moving beside an `avoid` box it would have covered (0: never moved); kept for its life. */
+  minLeft: number;
 }
+
+/** Gap between the avoided box and a popup moved beside it. */
+const ASIDE_GAP = 2;
 
 /**
  * Fixed-size pool of floating texts: spawning reuses slots (the oldest when
@@ -45,13 +54,17 @@ interface Slot extends Popup {
  * sits at the bottom and older ones are pushed up so no two ever overlap,
  * and the whole column is pushed down so none rises above `ceiling` (the
  * bottom of the HUD plate). When that pushes the column below `floor`,
- * the oldest popups are dropped (the newest always stays).
+ * the oldest popups are dropped (the newest always stays). A popup that
+ * would cover an `avoid` box (the skater, the portrait item button) moves
+ * to its right, and stays there.
  */
 export class PopupPool {
   /** Smallest top edge a popup may reach (view pixels). */
   ceiling = 0;
   /** Largest bottom edge (view pixels): when the ceiling pushes the column below it, the oldest popups go. */
   floor = Infinity;
+  /** Boxes no popup may cover, left to right (the skater and the item button, set every tick). */
+  avoid: readonly Rect[] = [];
   private readonly slots: Slot[];
   private readonly visible: Popup[] = [];
   /** Live slots, newest first (reused by layout()). */
@@ -60,7 +73,7 @@ export class PopupPool {
 
   constructor(capacity: number) {
     this.slots = Array.from({ length: capacity }, () => ({
-      text: '', base: '', count: 0, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false, icon: null, seq: 0,
+      text: '', base: '', count: 0, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false, icon: null, seq: 0, baseX: 0, minLeft: 0,
     }));
   }
 
@@ -71,12 +84,12 @@ export class PopupPool {
     const repeat = this.slots.find((s) => s.alive && s.base === text && s.color === color);
     if (repeat) {
       repeat.count++;
-      Object.assign(repeat, { text: `${text} x${repeat.count}`, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, seq });
+      Object.assign(repeat, { text: `${text} x${repeat.count}`, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, seq });
       this.layout();
       return;
     }
     const slot = this.slots.find((s) => !s.alive) ?? this.oldest();
-    Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), y: baseY, baseY, age: 0, time: 0, alive: true, icon, seq });
+    Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, alive: true, icon, seq });
     this.layout();
   }
 
@@ -128,6 +141,23 @@ export class PopupPool {
     if (col.length > 1 && newest!.y + popupHeight(newest!.scale) > this.floor) {
       col[col.length - 1]!.alive = false;
       this.layout();
+      return;
+    }
+    for (let i = 0; i < col.length; i++) this.keepClear(col[i]!);
+  }
+
+  /** Moves `s` right of every avoid box its text (outline included) would cover. */
+  private keepClear(s: Slot): void {
+    const half = Math.ceil((measureText(s.text, s.scale) + 2) / 2);
+    const top = s.y - 1;
+    const bottom = s.y + FONT_LINE_HEIGHT * s.scale + 1;
+    s.x = Math.max(s.baseX, s.minLeft + half);
+    for (let i = 0; i < this.avoid.length; i++) {
+      const box = this.avoid[i]!;
+      if (s.x - half < box.x + box.w && box.x < s.x + half && top < box.y + box.h && box.y < bottom) {
+        s.minLeft = Math.max(s.minLeft, box.x + box.w + ASIDE_GAP);
+        s.x = s.minLeft + half;
+      }
     }
   }
 

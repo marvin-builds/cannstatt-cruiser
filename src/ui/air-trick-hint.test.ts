@@ -3,7 +3,7 @@ import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
 import { AIR_HINT_LAUNCHES, AirTrickHint, airTrickHintPlate } from './air-trick-hint';
-import { KEY_DOWN } from './hint-plate';
+import { KEY_DOWN, SWIPE_DOWN } from './hint-plate';
 import { kickerHintRect } from './kicker-hint';
 import { POPUP_MARGIN, popupScale } from './layout';
 
@@ -104,9 +104,9 @@ describe('air trick hint', () => {
       expect(p.rows.map((r) => r.join(' '))).toEqual(['In der Luft', 'runterwischen = Trick!']);
     });
 
-    it('touch portrait (big font): the short swipe text in one row', () => {
+    it('touch portrait (big font): the compact swipe row "Wisch ↓ = Trick!" (as the grind trick hint)', () => {
       const p = airTrickHintPlate({ touch: true, portrait: true, viewWidth: 390 });
-      expect(p.rows).toEqual([['Wisch runter = Trick!']]);
+      expect(p.rows).toEqual([['Wisch', SWIPE_DOWN, '= Trick!']]);
       expect(p.scale).toBe(popupScale({ portrait: true }, false));
     });
 

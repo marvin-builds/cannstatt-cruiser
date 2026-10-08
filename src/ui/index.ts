@@ -10,7 +10,8 @@
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
  * trick-hint.ts, the stunt line callout ("Combo xN!") in stunt-callout.ts, the
  * first-time kicker and air trick hints in kicker-hint.ts and air-trick-hint.ts
- * (one hint plate at a time, hint-plate.ts), the drunk look in drunk-look.ts, the zone ribbon in
+ * (one hint plate at a time, hint-plate.ts), the NorDIY high five (window,
+ * hand button and its one-time hint) in high-five.ts, the drunk look in drunk-look.ts, the zone ribbon in
  * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
  * all drawing in screens.ts.
  */
@@ -26,16 +27,17 @@ import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
+import { highFiveHintPlate, HighFiveHint, highFiveOpen } from './high-five';
 import { HudModel } from './hud-model';
 import { KickerHint } from './kicker-hint';
-import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupCeiling } from './item-button';
+import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu, gameOverReady, menuScreen, portraitHintShown } from './menu-state';
 import { PopupFeed } from './popup-feed';
-import { type Popup, PopupPool } from './popups';
+import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
@@ -49,8 +51,12 @@ export interface UiSystemOptions {
   fullscreenAvailable?: () => boolean;
 }
 
-/** Popups appear this far above the skater's feet. */
-const POPUP_RISE = 44;
+/** Popups appear with their bottom this far above the skater's feet, clear of his head. */
+const HEAD_CLEARANCE = 33;
+/** The skater's box (feet at PLAYER_X, player.y): popups never cover it (PopupPool.avoid). */
+const SKATER_LEFT = PLAYER_X - 14;
+const SKATER_W = 30;
+const SKATER_H = 34;
 /** Catch popups appear above the item the skater raises, and bigger. */
 const CATCH_RISE = 60;
 /** Most popups on screen at once (a repeat merges into its popup instead). */
@@ -80,6 +86,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     trickHint: new TrickHint(store),
     kickerHint: new KickerHint(store),
     airHint: new AirTrickHint(store),
+    highFiveHint: new HighFiveHint(store),
     stunt: new StuntCallout(),
     stuntRect: null,
     settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
@@ -90,14 +97,24 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
   /** Gameplay events of the current tick, turned into popups once per tick (see popup-feed.ts). */
   const feed = new PopupFeed();
 
+  /** Top of a popup at font `scale` whose bottom is clear above the skater's head. */
+  const aboveHead = (ctx: GameContext, scale: number) => ctx.state.player.y - HEAD_CLEARANCE - popupHeight(scale);
+  /** The skater's box this tick, reused (popups keep clear of it). */
+  const skater: Rect = { x: SKATER_LEFT, y: 0, w: SKATER_W, h: SKATER_H };
+  /** What popups keep clear of (popupAvoid fills it every tick). */
+  const avoid: Rect[] = [];
+
   function spawnPopup(ctx: GameContext, text: string, color: string, icon: Popup['icon']): void {
-    view.popups.spawn(text, PLAYER_X, ctx.state.player.y - POPUP_RISE, color, popupScale(ctx.display, false), icon);
+    const scale = popupScale(ctx.display, false);
+    view.popups.spawn(text, PLAYER_X, aboveHead(ctx, scale), color, scale, icon);
   }
 
   function bindEvents(ctx: GameContext): void {
     const { bus, state, display } = ctx;
-    const popup = (text: string, color: string, big = false, rise = POPUP_RISE) =>
-      view.popups.spawn(text, PLAYER_X, state.player.y - rise, color, popupScale(display, big));
+    const popup = (text: string, color: string, big = false, rise?: number) => {
+      const scale = popupScale(display, big);
+      view.popups.spawn(text, PLAYER_X, rise === undefined ? aboveHead(ctx, scale) : state.player.y - rise, color, scale);
+    };
     bus.on('runStarted', () => {
       view.popups.clear();
       feed.clear();
@@ -105,6 +122,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.trickHint.runStarted();
       view.kickerHint.runStarted();
       view.airHint.runStarted();
+      view.highFiveHint.runStarted();
       view.stunt.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
@@ -141,6 +159,11 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.stunt.end(e.completed, e.points);
       if (e.completed) view.kickerHint.lineCompleted();
     });
+    bus.on('highFive', (e) => {
+      feed.highFive(e.points);
+      view.highFiveHint.highFived();
+    });
+    bus.on('sessionEnd', (e) => view.stunt.session(e.points));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
@@ -181,7 +204,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     ctx.addHotspot({
       rect: whenButtons(() => {
         if (state.mode !== 'playing') return null;
-        const control = itemControl(display, state.mode, state.carriedItem);
+        const control = itemControl(display, state.mode, state.carriedItem, highFiveOpen(state.entities));
         return control === 'button' ? itemButtonRect(display.viewWidth, display) : control ? view.hud.chip : null;
       }),
       onPress: () => commands.useItem(),
@@ -287,6 +310,14 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     ctx.addHotspot({ rect: () => (settings.open ? menu().back : null), onPress: () => settings.close() });
   }
 
+  /** The hint beside the touch item button while it shows (the high five hint wins over the first-catch hint), else null. */
+  function buttonHintRect(ctx: GameContext, button: boolean): Rect | null {
+    const { display } = ctx;
+    if (!button) return null;
+    if (view.highFiveHint.visible) return highFiveHintPlate(display).rect;
+    return view.itemHint.visible ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null;
+  }
+
   return {
     name: 'ui',
 
@@ -309,8 +340,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
-      const control = itemControl(display, state.mode, state.carriedItem);
-      const hintRect = view.itemHint.visible && control === 'button' ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null;
+      const control = itemControl(display, state.mode, state.carriedItem, highFiveOpen(state.entities));
+      const hintRect = buttonHintRect(ctx, control === 'button');
       if (riding(state.mode)) view.hud.update(state, control === 'keycap');
       // Laid out only while it shows (the scene allocates).
       view.stuntRect = view.stunt.visible
@@ -328,6 +359,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       // ledge), nor into the item hint or the stunt callout.
       const { plate } = view.hud.layout;
       view.popups.ceiling = popupCeiling(popupCeiling(plate.y + plate.h + BELOW_PLATE, hintRect), view.stuntRect);
+      skater.y = Math.round(state.player.y) - SKATER_H;
+      view.popups.avoid = popupAvoid(display.viewWidth, display, control, skater, avoid);
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
@@ -337,6 +370,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.banner.update(dt);
       view.stunt.update(dt, view.stuntRect !== null);
       view.kickerHint.update(state.entities);
+      view.highFiveHint.update(state.entities);
       view.airHint.update(!player.grounded && !player.grinding, player.airTrick);
       view.itemHint.update(dt, view.banner.visible);
       view.trickHint.update(player.grinding, player.grindTrick);

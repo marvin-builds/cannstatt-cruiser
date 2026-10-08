@@ -242,6 +242,16 @@ export const ARROW_DOWN = sprite({ k: UI.ink }, [`
   ..k..
 `]);
 
+/** Yellow down arrow in the touch hints ("Wisch ↓ = Trick!"), at the hint's font scale (hint-plate SWIPE_DOWN_W wide). */
+export const SWIPE_ARROW = new PixelIcon({ y: UI.yellow }, [`
+  ..y..
+  ..y..
+  ..y..
+  yyyyy
+  .yyy.
+  ..y..
+`]);
+
 /** The iOS share symbol (a box with an arrow out of the top) for the install hint "Teilen -> Zum Home-Bildschirm". */
 export const SHARE_ICON = sprite({ w: UI.white, b: UI.teal }, [`
   ...b...
@@ -309,6 +319,19 @@ const ITEM_PALETTE = {
   P: '#ff7aa8',
   x: '#2f6fd6', // ribbon
 };
+
+/** An open hand raised for a high five: the item button / desktop chip during a high five window (NorDIY). */
+export const HAND_ICON = new PixelIcon({ k: UI.ink, s: '#f2c9a0' }, [`
+  ..k.k.k...
+  .ksksksk..
+  .kskskskk.
+  .ksksksksk
+  .ksssssssk
+  .kssssssk.
+  ..ksssssk.
+  ..kssssk..
+  ...kkkk...
+`]);
 
 /** Item icons for the touch item button (3x) and the desktop chip (1x); the beer also marks the drunk timer row. */
 export const ITEM_ICONS: Record<CarriedItem, PixelIcon> = {
