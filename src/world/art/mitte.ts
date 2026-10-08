@@ -9,6 +9,7 @@ import { skyCanvas } from './sky';
 import { stadtbahn } from './stadtbahn';
 import { STREET } from './street';
 import { terrace, treeCluster } from './city';
+import { TRANS_FLAG, withFlag } from './flags';
 
 /** Fernsehturm on its wooded hill: tapering shaft, basket with window band, red-white antenna. */
 const fernsehturm = staticProp(100, 132, GROUND_Y, (p) => {
@@ -148,6 +149,16 @@ const trackBed = baseTile(32, GROUND_Y - 9, 9, (p) => {
 /** The near-layer Stadtbahn image (also sizes the TrainRunner). */
 export const MITTE_TRAIN = stadtbahn(56, 22, true);
 
+/**
+ * The tall Mitte terrace; its plaster house has a trans pride flag hanging from
+ * the middle top-floor window (window at x 8-9, rows 12-14, sill row 15 of the 48 px high
+ * terrace), high enough to show above the street lamps and trees.
+ */
+function flaggedHousesB(): Prop {
+  const houses = terrace([[20, 40, MID.plaster, 'mansard'], [16, 32, MID.sandLight, 'gable']]);
+  return withFlag(houses, 48, TRANS_FLAG, 5, 16);
+}
+
 export function mitteZone(train: TrainRunner): ZoneSpec {
   return {
     name: 'Stuttgart-Mitte',
@@ -178,7 +189,7 @@ export function mitteZone(train: TrainRunner): ZoneSpec {
             hbf: hauptbahnhof(),
             staeffele,
             housesA: terrace([[16, 30, MID.sand, 'gable'], [18, 36, MID.plaster, 'mansard'], [14, 26, MID.ochre, 'gable']]),
-            housesB: terrace([[20, 40, MID.plaster, 'mansard'], [16, 32, MID.sandLight, 'gable']]),
+            housesB: flaggedHousesB(),
             housesC: terrace([[14, 24, MID.ochre, 'gable'], [15, 28, MID.sand, 'gable'], [16, 34, MID.plaster, 'mansard']]),
             office: terrace([[24, 46, MID.modern, 'flat']]),
             trees: treeCluster(),

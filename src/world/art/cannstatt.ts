@@ -2,6 +2,7 @@ import { GROUND_Y } from '../../core/config';
 import { FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
 import { treeCluster } from './city';
+import { PALESTINE_FLAG, withFlag } from './flags';
 import { farHills, hillProp, housesHillProp, paintHill } from './hills';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { skyCanvas } from './sky';
@@ -266,7 +267,8 @@ export function cannstattZone(): ZoneSpec {
         props: {
           catalogue: {
             fachwerkRow: fachwerk([[24, 3, 14], [30, 3, 18], [26, 2, 16]]),
-            fachwerkA: fachwerk([[26, 2, 15]]),
+            // Palestine flag from the right upper window (x 14-16, rows 19-21, sill row 22 of the 44 px high house).
+            fachwerkA: withFlag(fachwerk([[26, 2, 15]]), 44, PALESTINE_FLAG, 12, 23),
             fachwerkB: fachwerk([[20, 3, 12], [26, 2, 16]]),
             kursaal,
             stadtkirche,
