@@ -29,7 +29,17 @@ interface Timeline {
   loop: boolean;
 }
 
-export type TimelineName = Exclude<PlayerAnim, 'air'> | 'airRise' | 'airFall' | 'standUp' | 'binCrash' | 'grindTurn' | 'grindTrick';
+export type TimelineName =
+  | Exclude<PlayerAnim, 'air'>
+  | 'airRise'
+  | 'airFall'
+  | 'standUp'
+  | 'binCrash'
+  | 'grindTurn'
+  | 'grindTrick'
+  | 'grab'
+  | 'hardLand'
+  | 'kicker';
 
 /** Board sits with its trucks on the rail top (wheels hang either side). */
 const GRIND_DY = 2;
@@ -60,6 +70,15 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
   },
   airRise: { loop: false, steps: [{ t: 1, body: B.airRise, board: BD.noseUp }] },
   airFall: { loop: false, steps: [{ t: 1, body: B.airFall, board: BD.flat }] },
+  // Big air (kicker launch, very high jump): popping off with the nose up, then knees pulled up,
+  // the front hand on the nose and the back arm thrown up, the board pulled up to the feet.
+  grab: {
+    loop: false,
+    steps: [
+      { t: 0.08, body: B.airRise, board: BD.noseUp, bodyDy: -1 },
+      { t: 1, body: B.grab, board: BD.flat, bodyDy: -2, boardDy: -2 },
+    ],
+  },
   land: {
     loop: false,
     steps: [
@@ -67,6 +86,16 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.crouch, board: BD.flat },
     ],
   },
+  // Touch-down after a big drop (upper level, launch): a deeper, longer squash (render.ts adds dust).
+  hardLand: {
+    loop: false,
+    steps: [
+      { t: 0.1, body: B.landSquash, board: BD.flat, bodyDy: 1 },
+      { t: 1, body: B.crouch, board: BD.flat },
+    ],
+  },
+  // Rolling up a kicker before the launch: crouched for the pop, the board tilted up the ramp.
+  kicker: { loop: false, steps: [{ t: 1, body: B.crouch, board: BD.noseUp }] },
   // Down through the ollie crouch into the low tuck (cap down, chest on the knees), and back up.
   duck: {
     loop: false,
@@ -134,12 +163,15 @@ export function isCrashTimeline(name: TimelineName): boolean {
 }
 
 export function timelineFor(
-  view: Pick<AnimView, 'anim' | 'standingUp'> & Partial<Pick<AnimView, 'binCrash' | 'trick'>>,
+  view: Pick<AnimView, 'anim' | 'standingUp'> & Partial<Pick<AnimView, 'binCrash' | 'trick' | 'grab' | 'hardLanding' | 'onKicker'>>,
   vy: number,
 ): TimelineName {
   if (view.anim === 'crash' && view.binCrash) return 'binCrash';
   if (view.anim === 'grind' && view.trick) return view.trick === 'turn' ? 'grindTurn' : 'grindTrick';
+  if ((view.anim === 'air' || view.anim === 'jump') && view.grab) return 'grab';
   if (view.anim === 'air') return vy < 0 ? 'airRise' : 'airFall';
+  if (view.anim === 'land' && view.hardLanding) return 'hardLand';
+  if (view.onKicker && (view.anim === 'ride' || view.anim === 'push' || view.anim === 'land')) return 'kicker';
   if (view.standingUp && (view.anim === 'ride' || view.anim === 'push')) return 'standUp';
   return view.anim;
 }

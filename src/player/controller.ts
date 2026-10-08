@@ -1,8 +1,9 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
  * rail riding, ducking (on the ground only), the grind trick (down on a
- * rail), the stomp bounce, crash/invulnerability and the animation state
- * (incl. the catch reach and the item use). One instance per player system;
+ * rail), the stomp bounce and the kicker launch, crash/invulnerability and
+ * the animation state (incl. the catch reach, the item use, the grab pose of
+ * big air, the hard landing and the board tilt on a kicker). One instance per player system;
  * `reset()` at every run start.
  */
 import { GROUND_Y } from '../core/config';
@@ -26,6 +27,12 @@ export interface AnimView {
   binCrash: boolean;
   /** Grind trick look: turning to the camera (in-between frame, also on the way back), facing it, or none. */
   trick: TrickPose | null;
+  /** Big air (a launch, or a jump GRAB_HEIGHT above its take-off): grabbing the board, until close to the street. */
+  grab: boolean;
+  /** Landing (anim `land`) with an impact of at least HARD_LANDING_IMPACT: the deeper squash with dust. */
+  hardLanding: boolean;
+  /** Rolling over a kicker on the street (before the launch): the board tilts up the ramp. */
+  onKicker: boolean;
   /** The item being used (itemUsed) and the seconds since, or null. */
   use: ItemUse | null;
 }
@@ -40,6 +47,13 @@ export interface ItemUse {
 
 /** Where the mug leaves the hand when tossed, relative to the wheel contact point (about the shoulder). */
 const TOSS_FROM = { dx: 2, dy: -26 } as const;
+
+/** A take-off gameplay asked for (stomp bounce or kicker launch), applied at the start of the next tick. */
+interface TakeOff {
+  velocity: number;
+  /** A launch: big air (grab pose) from the take-off on. */
+  launch: boolean;
+}
 
 export class SkaterController {
   private boosting = false;
@@ -58,8 +72,13 @@ export class SkaterController {
   private animTime = 0;
   /** state.chillTimer > 0 at the start of this tick (gameplay counts it down after the player). */
   private chill = false;
-  /** A stomp arrived after the player's update: bounce at the start of the next tick. */
-  private bouncePending = false;
+  /** A stomp or launch arrived after the player's update: take off at the start of the next tick. */
+  private takeOff: TakeOff | null = null;
+  /** y the skater last left the ground or a rail from (big air is measured from it). */
+  private takeOffY = GROUND_Y;
+  private bigAir = false;
+  private hardLanding = false;
+  private onKicker = false;
   private catchTimer = 0;
   /** Grind trick held (down on the rail) and seconds since it started. */
   private tricking = false;
@@ -90,7 +109,11 @@ export class SkaterController {
     this.anim = 'ride';
     this.animTime = 0;
     this.chill = false;
-    this.bouncePending = false;
+    this.takeOff = null;
+    this.takeOffY = GROUND_Y;
+    this.bigAir = false;
+    this.hardLanding = false;
+    this.onKicker = false;
     this.catchTimer = 0;
     this.tricking = false;
     this.trickTime = 0;
@@ -116,6 +139,9 @@ export class SkaterController {
       binCrash: this.bin.diving,
       trick: this.trickPose(p),
       use: this.use,
+      grab: this.bigAir && !(p.vy > 0 && GROUND_Y - p.y < T.GRAB_RELEASE_HEIGHT),
+      hardLanding: this.hardLanding && this.anim === 'land',
+      onKicker: this.onKicker,
     };
   }
 
@@ -131,7 +157,18 @@ export class SkaterController {
 
   /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
   stomp(): void {
-    if (!this.crashing) this.bouncePending = true;
+    this.queueTakeOff({ velocity: T.STOMP_BOUNCE_VELOCITY, launch: false });
+  }
+
+  /** Gameplay: the skater rode onto a kicker (launch). Takes off with `velocity` on the next tick, no hold boost. */
+  launch(velocity: number): void {
+    this.queueTakeOff({ velocity, launch: true });
+  }
+
+  /** Ignored while crashing; of two in one tick the faster one wins. */
+  private queueTakeOff(takeOff: TakeOff): void {
+    if (this.crashing) return;
+    if (!this.takeOff || takeOff.velocity > this.takeOff.velocity) this.takeOff = takeOff;
   }
 
   /** Gameplay: the tossed item reached the skater (itemCaught). Starts the catch reach. */
@@ -170,7 +207,8 @@ export class SkaterController {
     if (p.invulnerableTimer > 0 || this.crashing) return;
     if (p.grinding) this.leaveRail(p, true);
     this.crashTimer = T.CRASH_TIME;
-    this.bouncePending = false;
+    this.takeOff = null;
+    this.bigAir = false;
     this.catchTimer = 0;
     this.use = null;
     this.setTrick(p, false);
@@ -197,7 +235,8 @@ export class SkaterController {
     this.countDown(p, dt);
     if (action.pressed && !this.crashing) this.buffer = T.JUMP_BUFFER;
     if (!action.held) this.boosting = false;
-    this.bounce(p);
+    if (p.grounded || p.grinding) this.takeOffY = p.y;
+    this.applyTakeOff(p);
     this.tryJump(p);
 
     if (p.grinding) this.ride(state);
@@ -207,6 +246,8 @@ export class SkaterController {
     this.setDucking(input.duck.held && p.grounded && !this.crashing);
     // Down on a rail is the grind trick instead (no duck, the grind goes on).
     this.setTrick(p, input.duck.held && p.grinding && !this.crashing);
+    this.updateBigAir(p);
+    this.onKicker = p.grounded && !this.crashing && overKicker(state);
 
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
@@ -270,17 +311,27 @@ export class SkaterController {
   }
 
   /**
-   * The stomp bounce: a take-off like a jump with the action already released
-   * (normal gravity from this tick on, no hold boost) and no jump event.
+   * The stomp bounce or kicker launch: a take-off like a jump with the action
+   * already released (normal gravity from this tick on, no hold boost, a
+   * press in this tick does not jump on top) and no jump event. Ignored on a rail.
    */
-  private bounce(p: PlayerState): void {
-    if (!this.bouncePending) return;
-    this.bouncePending = false;
+  private applyTakeOff(p: PlayerState): void {
+    const takeOff = this.takeOff;
+    if (!takeOff) return;
+    this.takeOff = null;
     if (p.grinding || this.crashing) return;
     this.boosting = false;
     this.coyote = 0;
+    this.buffer = 0;
     p.grounded = false;
-    p.vy = -T.STOMP_BOUNCE_VELOCITY;
+    p.vy = -takeOff.velocity;
+    if (takeOff.launch) this.bigAir = true;
+  }
+
+  /** Big air starts with a launch or GRAB_HEIGHT above the take-off and ends on any support or crash. */
+  private updateBigAir(p: PlayerState): void {
+    if (p.grounded || p.grinding || this.crashing) this.bigAir = false;
+    else if (this.takeOffY - p.y >= T.GRAB_HEIGHT) this.bigAir = true;
   }
 
   private ride(state: GameState): void {
@@ -321,6 +372,7 @@ export class SkaterController {
     p.grounded = true;
     this.coyote = 0;
     this.landTimer = T.LAND_TIME;
+    this.hardLanding = impact >= T.HARD_LANDING_IMPACT;
     this.cruiseTime = 0;
     this.bus.emit('land', { impact });
     this.tryJump(p);
@@ -353,6 +405,12 @@ export class SkaterController {
 /** Take-off speed: JUMP_VELOCITY, scaled by CHILL_JUMP_SCALE while chilled (nothing else changes). */
 export function jumpVelocity(chill: boolean): number {
   return chill ? T.JUMP_VELOCITY * T.CHILL_JUMP_SCALE : T.JUMP_VELOCITY;
+}
+
+/** A kicker entity spans the wheel contact point (the skater rolls over it on the street). */
+function overKicker(state: GameState): boolean {
+  const { x } = state.player;
+  return state.entities.some((e) => e.kind === 'kicker' && e.x <= x && x <= e.x + e.w);
 }
 
 function findRail(state: GameState, id: number | null): Entity | undefined {

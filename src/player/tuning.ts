@@ -75,3 +75,17 @@ export const BIN_POP_AT = 0.76;
 
 /** Seconds of the in-between frame when the grind trick turns to the camera, and back. Looks only. */
 export const TRICK_TURN_TIME = 0.08;
+
+/**
+ * Big air (looks only): a jump that rises this many px above its take-off
+ * shows the grab pose, like every kicker launch.
+ */
+export const GRAB_HEIGHT = 40;
+/** Falling below this height above the street, the skater lets go of the grab and stretches the legs to land. */
+export const GRAB_RELEASE_HEIGHT = 12;
+/**
+ * Landing impact (downward px/s) from which the landing squash is the hard
+ * one (deeper, with dust): a drop from ~35 px, e.g. off the upper level or a
+ * kicker launch. Looks only; the land event and the physics are unchanged.
+ */
+export const HARD_LANDING_IMPACT = 300;

@@ -224,11 +224,50 @@ const TORSO_FRONT_ONE = `
   .....kjjjjjjjk.....
 `;
 
+/** Big air grab: the crouched torso with no arm at its side (the arms are GRAB_ARM and GRAB_BACK_ARM). */
+const TORSO_GRAB = `
+  .kRrrrrk..
+  kRrrrrrrk.
+  kRrrrrrrk.
+  kRrrrrrrk.
+  kRrrrrrrk.
+  kRRRRRRk..
+  kjjjjjjk..
+`;
+
+/** Grab: the front arm from the shoulder down across the knee, the hand on the deck edge by the toes. */
+const GRAB_ARM = `
+  ..kRk.....
+  ..kRk.....
+  ...kRk....
+  ...kRk....
+  ....kRk...
+  ....kRk...
+  .....kRk..
+  .....kRk..
+  ......kRk.
+  ......kRk.
+  .......kRk
+  .......ksk
+`;
+
+/** Grab: the back arm thrown up behind the head for balance. */
+const GRAB_BACK_ARM = `
+  ks.....
+  kRk....
+  .kRk...
+  ..kRk..
+  ...kRk.
+  ....kRk
+  .....kR
+`;
+
 /** Torso art -> the same torso with the front arm off (torsos not listed keep their arms close to the body). */
 const ONE_ARM: ReadonlyMap<string, string> = new Map([
   [TORSO_ARMS_OUT, TORSO_ARMS_OUT_ONE],
   [TORSO_ARMS_UP, TORSO_ARMS_UP_ONE],
   [TORSO_FRONT, TORSO_FRONT_ONE],
+  [GRAB_ARM, ''],
 ]);
 
 const TORSO_CROUCH = `
@@ -533,6 +572,7 @@ export const B = {
   binKickB: 17,
   grindTurn: 18,
   grindFront: 19,
+  grab: 20,
 } as const;
 
 const FRAME_SPECS: FrameSpec[] = [
@@ -556,6 +596,10 @@ const FRAME_SPECS: FrameSpec[] = [
   { parts: [at(BIN_LEGS_NARROW, 0, 0)] },
   { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_ARMS_OUT, 2, 10)], head: { x: 7, y: 2 }, view: 'turn' },
   { parts: [at(LEGS_FRONT, 0, 19), at(TORSO_FRONT, 2, 10)], head: { x: 6, y: 1 }, view: 'front' },
+  {
+    parts: [at(LEGS_TUCK, 0, 21), at(TORSO_GRAB, 7, 15), at(GRAB_BACK_ARM, 2, 10), at(GRAB_ARM, 13, 17)],
+    head: { x: 9, y: 7 },
+  },
 ];
 
 function body(spec: FrameSpec, look: 'normal' | 'chill', oneArm = false): string[] {

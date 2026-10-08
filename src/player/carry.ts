@@ -100,6 +100,8 @@ HOLD_AT[B.grindB] = hold(20, 14, 'hang');
 HOLD_AT[B.duck] = hold(12, 21, 'side');
 HOLD_AT[B.grindTurn] = hold(20, 13, 'hang');
 HOLD_AT[B.grindFront] = hold(20, 13, 'hang');
+// Big air grab: the front hand is on the board, so the item goes up in the back hand thrown up behind the head.
+HOLD_AT[B.grab] = hold(3, 10, 'raise');
 
 /**
  * Catch reach: the front arm goes up from the shoulder past the face to above
