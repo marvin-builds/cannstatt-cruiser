@@ -20,6 +20,15 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-08.6',
+    date: '2026-10-08',
+    items: [
+      'Fahnen hängen jetzt nach unten',
+      'Jede Fahne nur noch einmal',
+      'Autos rauschen beim Vorbeifahren',
+    ],
+  },
+  {
     version: '2026-10-08.5',
     date: '2026-10-08',
     items: [
