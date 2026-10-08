@@ -91,6 +91,31 @@ export const NEAR = {
   outline: '#2a2622',
 } as const;
 
+/**
+ * Street scenery at the back of the pavement (lamps, signs, Litfaßsäule,
+ * fences, fountain): lighter and softer than the obstacles on the riding
+ * line, with no near-black outlines, so only obstacles read as high-contrast.
+ */
+export const BACK = {
+  iron: '#76808a',
+  ironLight: '#959ea7',
+  outline: '#6f6a64',
+  glow: '#f3e6b8',
+  signYellow: '#ecc95c',
+  signGreen: '#5a8f62',
+  signWhite: '#f2eee2',
+  green: '#5b8470',
+  greenDark: '#4d7262',
+  red: '#d07a6e',
+  redShade: '#b8695f',
+  yellow: '#ecd88f',
+  yellowShade: '#cdbb78',
+  blue: '#86a7cc',
+  blueShade: '#7290b3',
+  white: '#f1ece0',
+  whiteShade: '#d2ccbf',
+} as const;
+
 /** Stuttgart Stadtbahn (SSB) livery. */
 export const TRAIN = {
   yellow: '#f2c230',

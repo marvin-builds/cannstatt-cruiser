@@ -1,6 +1,6 @@
 /**
  * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
- * dark-grey hair greying at the temple and nape, red hoodie, jeans, white sneakers) and his
+ * dark-grey hair with a clean grey band under the cap, red hoodie, jeans, white sneakers) and his
  * longboard. Body frames are composed from shared parts (see compose.ts).
  *
  * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
@@ -16,7 +16,7 @@ export const PALETTE = {
   s: '#e3a57c', // skin
   S: '#b97456', // skin shade, ear
   h: '#47444a', // hair, dark grey base
-  H: '#bcbcbc', // hair, light grey at the temple and nape
+  H: '#cacaca', // hair, light grey band under the cap and down the back
   e: '#ff2236', // red eye (chill)
   p: '#ff9aae', // bloodshot pink eye (chill)
   E: '#b0102a', // dark red lower lid line (chill)
@@ -56,17 +56,17 @@ export const BOARD_ANCHOR_X = 13;
 
 /**
  * Head facing right, 11 x 8, the same in every frame. Navy cap with a dark
- * brim over the eyes; under it dark-grey hair (h) at the back with two small
- * light-grey blocks (H): a sideburn at the temple in front of the ear and a
- * patch at the nape. Clean skin face: one eye pixel, the nose sticks out one
+ * brim over the eyes; under it one continuous light-grey band (H) along the
+ * cap edge at the side and down the back of the head, around a small block
+ * of the dark-grey base (h) behind the ear. Clean skin face: one eye pixel, the nose sticks out one
  * pixel, the mouth is the outline pixel just under it.
  */
 const HEAD = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  khhHssssk..
-  khhHSsksssk
+  kHHHssssk..
+  kHhhSsksssk
   kHHsssssk..
   .kHsssssk..
   ..kkssskk..
@@ -80,8 +80,8 @@ const HEAD_CHILL = `
   ..kkkkk....
   .kcccccck..
   kcccccccCCk
-  khhHskkkk..
-  khhHSpesssk
+  kHHHskkkk..
+  kHhhSpesssk
   kHHsEEEsk..
   .kHsssssk..
   ..kkssskk..

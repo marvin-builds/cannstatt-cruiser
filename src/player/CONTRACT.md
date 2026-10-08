@@ -82,7 +82,8 @@ in any slice's Vitest tests.
   and a face overlay chosen by `chillStyle(state)` (`chill.ts`): adult mode
   (`state.kidMode` false) shows red eyes and a joint at the mouth (just under
   the nose, `HEAD_MOUTH` in `art.ts`), with smoke (dropped on a crash); kid mode shows normal eyes and bubble gum instead, a pink bubble
-  that grows and pops on a `BUBBLE_PERIOD` loop of `state.time` and pops at
+  that grows and pops on a `BUBBLE_PERIOD` loop that starts at the pickup
+  (`bubbleTime(chillTimer)`, so it opens with a readable bubble) and pops at
   once on a crash (`bubble.ts`). No physics change.
 
 ## Stomp bounce (landing on a person)

@@ -1,10 +1,16 @@
 import { GROUND_Y } from '../../core/config';
 import { type Sprite, sprite } from '../../core/sprite';
-import { NEAR } from '../palette';
+import { BACK, NEAR } from '../palette';
 import { animatedProp, type Prop, staticProp } from './paint';
 
+/**
+ * Foot line of the street scenery: a few px above the riding line (GROUND_Y),
+ * at the back of the pavement, so props never stand where obstacles do.
+ */
+export const STREET_Y = GROUND_Y - 3;
+
 /** Classic street lantern on a slim pole. */
-const LAMP = sprite({ k: NEAR.iron, l: NEAR.ironLight, y: NEAR.glow }, [
+const LAMP = sprite({ k: BACK.iron, l: BACK.ironLight, y: BACK.glow }, [
   `
   ..kkk..
   .kkkkk.
@@ -43,7 +49,7 @@ const LAMP = sprite({ k: NEAR.iron, l: NEAR.ironLight, y: NEAR.glow }, [
 ]);
 
 /** Stadtbahn stop sign: green H on a yellow disc. */
-const HALTESTELLE = sprite({ k: NEAR.iron, y: '#f2c230', g: '#2f7a3d', w: '#f7f1dc' }, [
+const HALTESTELLE = sprite({ k: BACK.iron, y: BACK.signYellow, g: BACK.signGreen, w: BACK.signWhite }, [
   `
   ..kkkkk..
   .kyyyyyk.
@@ -76,7 +82,19 @@ const HALTESTELLE = sprite({ k: NEAR.iron, y: '#f2c230', g: '#2f7a3d', w: '#f7f1
 
 /** Litfaßsäule: round advertising column with posters. */
 const LITFASS = sprite(
-  { k: NEAR.outline, d: '#2f5a43', g: '#3f7357', r: '#d4584a', R: '#a8443a', y: '#f0d36b', Y: '#c9ad4f', b: '#5d8fc7', B: '#4870a0', w: '#f1ece0', W: '#c8c2b4' },
+  {
+    k: BACK.outline,
+    d: BACK.greenDark,
+    g: BACK.green,
+    r: BACK.red,
+    R: BACK.redShade,
+    y: BACK.yellow,
+    Y: BACK.yellowShade,
+    b: BACK.blue,
+    B: BACK.blueShade,
+    w: BACK.white,
+    W: BACK.whiteShade,
+  },
   [
     `
   ...kk...
@@ -105,7 +123,7 @@ const LITFASS = sprite(
   ],
 );
 
-function spriteProp(s: Sprite, bottom = GROUND_Y): Prop {
+function spriteProp(s: Sprite, bottom = STREET_Y): Prop {
   return {
     width: s.width,
     draw: (g, x) => s.draw(g, 0, x, bottom - s.height),
@@ -150,7 +168,7 @@ export function tree(crown: number, trunkH: number, bottom = GROUND_Y, colors: T
 export function willow(): Prop {
   const w = 34;
   const h = 40;
-  return staticProp(w, h, GROUND_Y, (p) => {
+  return staticProp(w, h, STREET_Y, (p) => {
     p.rect(NEAR.trunkDark, 16, 16, 3, h - 16);
     p.rect(NEAR.trunk, 16, 16, 2, h - 16);
     p.ellipse(NEAR.leafDark, 17, 12, 15, 10);
@@ -164,18 +182,17 @@ export function willow(): Prop {
   });
 }
 
-/** Wrought-iron fence segment. */
+/** Low wrought-iron fence segment: thin, light bars. */
 function fence(): Prop {
   const w = 33;
-  return staticProp(w, 13, GROUND_Y, (p) => {
-    p.rect(NEAR.iron, 0, 1, w, 1);
-    p.rect(NEAR.iron, 0, 10, w, 1);
-    for (let x = 0; x < w; x += 3) {
-      p.rect(NEAR.iron, x, 1, 1, 12);
-      p.px(NEAR.ironLight, x, 0);
+  const h = 10;
+  return staticProp(w, h, STREET_Y, (p) => {
+    p.rect(BACK.iron, 0, 1, w, 1);
+    p.rect(BACK.iron, 0, h - 3, w, 1);
+    for (let x = 0; x < w; x += 4) {
+      p.rect(BACK.iron, x, 1, 1, h - 1);
+      p.px(BACK.ironLight, x, 0);
     }
-    p.rect(NEAR.iron, 0, 0, 2, 13);
-    p.rect(NEAR.iron, w - 2, 0, 2, 13);
   });
 }
 
@@ -183,17 +200,17 @@ function fence(): Prop {
 function sprudler(): Prop {
   const w = 30;
   const h = 26;
-  return animatedProp(w, h, GROUND_Y, 3, 6, (p, frame) => {
-    p.ellipse(NEAR.outline, 15, 21, 14, 4);
+  return animatedProp(w, h, STREET_Y, 3, 6, (p, frame) => {
+    p.ellipse(BACK.outline, 15, 21, 14, 4);
     p.ellipse(NEAR.stoneShade, 15, 21, 13, 3);
     p.rect(NEAR.stone, 3, 18, 25, 2);
     p.rect(NEAR.water, 5, 19, 21, 1);
-    p.rect(NEAR.outline, 12, 6, 7, 13);
+    p.rect(BACK.outline, 12, 6, 7, 13);
     p.rect(NEAR.stone, 13, 7, 5, 12);
     p.rect(NEAR.stoneShade, 17, 7, 1, 12);
-    p.rect(NEAR.outline, 11, 4, 9, 3);
+    p.rect(BACK.outline, 11, 4, 9, 3);
     p.rect(NEAR.stone, 12, 5, 7, 1);
-    p.rect(NEAR.iron, 19, 9, 3, 1);
+    p.rect(BACK.iron, 19, 9, 3, 1);
     // Two water arcs out of the spouts into the basin.
     for (const dir of [1, -1]) {
       for (let i = 0; i < 9; i++) {
@@ -211,9 +228,9 @@ function sprudler(): Prop {
 export const STREET: Readonly<Record<string, Prop>> = {
   lamp: spriteProp(LAMP),
   haltestelle: spriteProp(HALTESTELLE),
-  litfass: spriteProp(LITFASS, GROUND_Y - 1),
-  tree: tree(13, 14),
-  treeSmall: tree(9, 10),
+  litfass: spriteProp(LITFASS, STREET_Y - 1),
+  tree: tree(13, 14, STREET_Y),
+  treeSmall: tree(9, 10, STREET_Y),
   willow: willow(),
   fence: fence(),
   sprudler: sprudler(),

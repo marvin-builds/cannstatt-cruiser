@@ -12,7 +12,7 @@ import {
   CHILL_BODY_FRAMES,
   PALETTE,
 } from './art';
-import { BUBBLE_ART, BUBBLE_PALETTE, chillBubble } from './bubble';
+import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
 import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView } from './controller';
@@ -42,7 +42,7 @@ export interface CarryLook {
 export interface ChillLook {
   style: ChillStyle;
   timeline: TimelineName;
-  /** Seconds, drives the smoke, the glow and the bubble loop. */
+  /** Seconds, drives the smoke, the glow and the bubble loop (bubble: seconds since the pickup). */
   time: number;
   /** Seconds into the current animation (the crash pops the bubble at its start). */
   animTime: number;
@@ -108,7 +108,9 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const p = state.player;
   const timeline = timelineFor(view, p.vy);
   const style = chillStyle(state);
-  const chill = style ? { style, timeline, time: state.time, animTime: view.time } : null;
+  // The bubble loop starts at the pickup, so it opens with a readable bubble.
+  const time = style?.mouth === 'bubble' ? bubbleTime(state.chillTimer) : state.time;
+  const chill = style ? { style, timeline, time, animTime: view.time } : null;
   const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
   drawPose(g, poseAt(timeline, view.time), p.x, p.y, chill, carry);
 }

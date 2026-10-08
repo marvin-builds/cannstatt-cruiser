@@ -1,9 +1,11 @@
 /**
  * Kid mode chill look: instead of the joint the skater chews bubble gum and
  * blows a pink bubble that slowly grows and pops, on a deterministic loop of
- * BUBBLE_PERIOD seconds; a crash pops it at once. Pure data and math;
- * render.ts draws it.
+ * BUBBLE_PERIOD seconds that starts at the pickup (see bubbleTime), so the
+ * first thing seen is a readable bubble; a crash pops it at once. Pure data
+ * and math; render.ts draws it.
  */
+import { CHILL_DURATION } from '../core/chill';
 import { rowsFromString } from '../core/sprite-data';
 import { HEAD_AT, HEAD_MOUTH } from './art';
 import type { Point } from './chill';
@@ -16,17 +18,13 @@ export const BUBBLE_PALETTE = {
 } as const;
 
 /** Bubble frame indices (see BUBBLE_ART). */
-export const F = { gum: 0, bubble1: 1, bubble2: 2, bubble3: 3, bubble4: 4, pop: 5 } as const;
+export const F = { gum: 0, bubble1: 1, bubble2: 2, bubble3: 3, pop: 4 } as const;
 
 /** Frames, drawn with the left edge just in front of the mouth and vertically centred on it. */
 export const BUBBLE_ART: string[] = [
   `
-  q
-  `,
-  `
-  .Q.
-  QqQ
-  .Q.
+  qq
+  qQ
   `,
   `
   .QQ.
@@ -50,31 +48,37 @@ export const BUBBLE_ART: string[] = [
   .QQQQ.
   `,
   `
-  q...q
-  ..q..
-  qq.Qq
-  ..q..
-  q...q
+  Q....Q
+  .q..q.
+  ..qq..
+  ..qq..
+  .q..q.
+  Q....Q
   `,
 ];
 
-/** Seconds of one chew-blow-pop cycle. */
+/** Seconds of one blow-pop-chew cycle. */
 export const BUBBLE_PERIOD = 3;
-/** Chewing at the start of the cycle: the gum shows at the lips every other CHEW_STEP. */
-const CHEW_TIME = 0.8;
-const CHEW_STEP = 0.2;
-/** Seconds the bubble grows through its four sizes. */
+/** Seconds the bubble grows through its three sizes, right from the start of the cycle. */
 const GROW_TIME = 1.8;
 /** Seconds the burst bubble is shown (also on a crash). */
 export const BUBBLE_POP_TIME = 0.2;
+/** Chewing for the rest of the cycle: the gum shows at the lips every other CHEW_STEP. */
+const CHEW_STEP = 0.2;
+const GROW_FRAMES = [F.bubble1, F.bubble2, F.bubble3] as const;
 
-/** Bubble frame (index into BUBBLE_ART) at `time` seconds, or null when nothing shows. */
+/** Seconds into the bubble loop for the remaining `chillTimer`: 0 at the pickup. */
+export function bubbleTime(chillTimer: number): number {
+  return CHILL_DURATION - chillTimer;
+}
+
+/** Bubble frame (index into BUBBLE_ART) at `time` seconds into the loop, or null when nothing shows. */
 export function bubbleFrame(time: number): number | null {
   const t = ((time % BUBBLE_PERIOD) + BUBBLE_PERIOD) % BUBBLE_PERIOD;
-  if (t < CHEW_TIME) return Math.floor(t / CHEW_STEP) % 2 === 0 ? F.gum : null;
-  const grow = t - CHEW_TIME;
-  if (grow < GROW_TIME) return F.bubble1 + Math.floor((grow / GROW_TIME) * 4);
-  return grow - GROW_TIME < BUBBLE_POP_TIME ? F.pop : null;
+  if (t < GROW_TIME) return GROW_FRAMES[Math.floor((t / GROW_TIME) * GROW_FRAMES.length)]!;
+  const after = t - GROW_TIME;
+  if (after < BUBBLE_POP_TIME) return F.pop;
+  return Math.floor((after - BUBBLE_POP_TIME) / CHEW_STEP) % 2 === 0 ? F.gum : null;
 }
 
 export interface BubbleDraw extends Point {
@@ -86,7 +90,7 @@ const heights = BUBBLE_ART.map((art) => rowsFromString(art).length);
 
 /**
  * Bubble frame and its top-left (body-frame pixels) for `timeline`'s frame
- * `body`: in front of the mouth, centred on it. `time` drives the loop;
+ * `body`: in front of the mouth, centred on it. `time` drives the loop (see bubbleTime);
  * `animTime` is the time in the current animation, so a crash pops the bubble
  * right away and then shows none. Null without a visible face.
  */

@@ -16,7 +16,8 @@ import type {} from '../../src/audio/debug'; // window.__audio
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import type {} from '../../src/player/debug'; // window.__player
 import type { CarriedItem, GameState } from '../../src/types';
-import { bubbleFrame, F } from '../../src/player/bubble';
+import { CHILL_DURATION } from '../../src/core/chill';
+import { bubbleFrame, bubbleTime, F } from '../../src/player/bubble';
 import type { PlaytestContext } from '../playtest-lib';
 
 /** Steps until `done(state)` holds (at most `max` ticks); returns the last state. */
@@ -273,19 +274,28 @@ async function chillShots(t: PlaytestContext): Promise<void> {
   await t.canvasShot('chill crash (joint dropped)');
 }
 
-/** Steps until the kid bubble is at least `frame` big (bubbleFrame of state.time). */
+/** The kid bubble frame shown in `s` (its loop starts at the pickup). */
+const kidBubble = (s: { chillTimer: number }) => bubbleFrame(bubbleTime(s.chillTimer));
+
+/** Steps until the kid bubble is at least `frame` big. */
 async function untilBubble(t: PlaytestContext, frame: number = F.bubble3): Promise<void> {
-  await stepUntil(t, (s) => (bubbleFrame(s.time) ?? -1) >= frame && bubbleFrame(s.time) !== F.pop, 240);
+  await stepUntil(t, (s) => (kidBubble(s) ?? -1) >= frame && kidBubble(s) !== F.pop, 240);
 }
 
 /** Kid mode chill look: bubble gum (no joint, no red eyes) riding, ducking, in the air, grinding; pops on a crash. */
 async function kidShots(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
   await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
-  await page.evaluate(() => {
+  // Right after a pickup the bubble is already readable.
+  await page.evaluate((seconds) => {
     window.__player!.kidMode(true);
-    window.__player!.chill(60);
-  });
+    window.__player!.chill(seconds);
+  }, CHILL_DURATION);
+  const picked = await game.step(3);
+  t.check('kid bubble starts readable right after the pickup', kidBubble(picked) === F.bubble1, kidBubble(picked));
+  await t.canvasShot('kid pickup bubble');
+  await skaterCrop(t, 'crop-kid-pickup');
+  await page.evaluate(() => window.__player!.chill(60));
   await game.step(10);
   const kid = await game.state();
   t.check('kid mode chill is on', kid.kidMode && kid.chillTimer > 0, { kidMode: kid.kidMode, chill: kid.chillTimer });

@@ -55,7 +55,7 @@ describe('skater art at game scale', () => {
     const light = parseInt(PALETTE.H.slice(1), 16);
     const [r, g, b] = [light >> 16, (light >> 8) & 255, light & 255];
     expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(8);
-    expect(luma(PALETTE.H)).toBeGreaterThan(165);
+    expect(luma(PALETTE.H)).toBeGreaterThan(195);
     expect(luma(PALETTE.H) - luma(PALETTE.h)).toBeGreaterThan(90);
   });
 
@@ -69,15 +69,19 @@ describe('skater art at game scale', () => {
     }
   });
 
-  it('greys the hair as two small clean blocks (temple and nape) over a dark base, identical in every face frame', () => {
+  it('greys the hair as one clean continuous band under the cap and down the back, identical in every face frame', () => {
     const first = faceFrames()[0]!.box;
     const grey = cells(first, 'H');
-    expect(grey.length).toBeGreaterThanOrEqual(3);
-    expect(grey.length).toBeLessThanOrEqual(6);
-    const blocks = clusters(first, 'H');
-    expect(blocks).toHaveLength(2);
-    for (const size of blocks) expect(size).toBeGreaterThanOrEqual(2);
-    expect(count(first, 'h')).toBeGreaterThanOrEqual(3);
+    expect(grey.length).toBeGreaterThanOrEqual(5);
+    // One 4-connected band, no scattered grey pixels.
+    expect(clusters(first, 'H')).toEqual([grey.length]);
+    // It runs along the whole cap edge at the side (the row right under the cap) ...
+    expect(first[3]!.slice(1, 4)).toBe('HHH');
+    // ... and down the back of the head.
+    for (const y of [4, 5]) expect(first[y]![1], `row ${y}`).toBe('H');
+    // A little dark base is left inside it, as one block.
+    expect(count(first, 'h')).toBeGreaterThanOrEqual(2);
+    expect(clusters(first, 'h')).toHaveLength(1);
     for (const { i, box } of faceFrames()) {
       expect(cells(box, 'H'), `frame ${i}`).toEqual(grey);
       expect(cells(box, 'h'), `frame ${i}`).toEqual(cells(first, 'h'));

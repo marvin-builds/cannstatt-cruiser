@@ -1,5 +1,5 @@
 import { GROUND_Y } from '../../core/config';
-import { FAR, MID, NEAR } from '../palette';
+import { BACK, FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
 import { MID_TREE, treeCluster } from './city';
 import { farHills, hillProp, housesHillProp } from './hills';
@@ -228,14 +228,14 @@ const boathouse = staticProp(30, 18, BANK_Y + 1, (p) => {
   p.rect(MID.windowDark, 13, 13, 4, 5);
 });
 
-/** Promenade railing over the water, with the quay edge at the bottom. */
+/** Promenade railing over the water (light back-scenery iron), with the quay edge at the bottom. */
 const railing = baseTile(16, GROUND_Y - 15, 15, (p) => {
-  p.rect(NEAR.iron, 0, 0, 16, 2);
-  p.rect(NEAR.ironLight, 0, 0, 16, 1);
-  p.rect(NEAR.iron, 0, 6, 16, 1);
-  p.rect(NEAR.iron, 0, 2, 2, 10);
-  p.rect(NEAR.ironLight, 0, 2, 1, 10);
-  for (let x = 5; x < 16; x += 4) p.rect(NEAR.iron, x, 2, 1, 10);
+  p.rect(BACK.iron, 0, 0, 16, 2);
+  p.rect(BACK.ironLight, 0, 0, 16, 1);
+  p.rect(BACK.iron, 0, 6, 16, 1);
+  p.rect(BACK.iron, 0, 2, 2, 10);
+  p.rect(BACK.ironLight, 0, 2, 1, 10);
+  for (let x = 5; x < 16; x += 4) p.rect(BACK.iron, x, 2, 1, 10);
   p.rect(NEAR.quay, 0, 12, 16, 3);
   p.rect(NEAR.quayShade, 0, 14, 16, 1);
   p.rect(NEAR.quayShade, 15, 12, 1, 3);

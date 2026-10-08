@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { rowsFromString } from '../core/sprite-data';
 import { B, HEAD_AT, HEAD_MOUTH } from './art';
-import { BUBBLE_ART, BUBBLE_PERIOD, BUBBLE_POP_TIME, bubbleFrame, chillBubble, F } from './bubble';
+import { CHILL_DURATION } from '../core/chill';
+import { BUBBLE_ART, BUBBLE_PERIOD, BUBBLE_POP_TIME, bubbleFrame, bubbleTime, chillBubble, F } from './bubble';
 import { TIMELINES, type TimelineName } from './poses';
 
 const sample = (period: number, n: number) => Array.from({ length: n }, (_, i) => (i / n) * period);
@@ -14,16 +15,34 @@ describe('bubble gum animation (kid mode chill look)', () => {
     }
   });
 
-  it('chews, then grows the bubble frame by frame, pops it and starts over', () => {
+  it('grows the bubble frame by frame, pops it, chews and starts over', () => {
     const frames = sample(BUBBLE_PERIOD, 240).map(bubbleFrame);
     const order = frames.filter((f, i) => f !== null && f !== frames[i - 1]);
-    const grown = order.indexOf(F.bubble4);
-    expect(order.slice(order.indexOf(F.bubble1), grown + 1)).toEqual([F.bubble1, F.bubble2, F.bubble3, F.bubble4]);
-    expect(order[grown + 1]).toBe(F.pop);
-    expect(frames).toContain(F.gum);
+    expect(order.slice(0, 4)).toEqual([F.bubble1, F.bubble2, F.bubble3, F.pop]);
+    expect(order.slice(4)).toContain(F.gum);
     // It grows slowly: the growth takes more than half of the cycle.
-    const growing = frames.filter((f) => f !== null && f >= F.bubble1 && f <= F.bubble4).length;
+    const growing = frames.filter((f) => f !== null && f >= F.bubble1 && f <= F.bubble3).length;
     expect(growing / frames.length).toBeGreaterThan(0.5);
+  });
+
+  it('starts with a readable bubble right at the pickup, not a pink fleck', () => {
+    expect(bubbleTime(CHILL_DURATION)).toBe(0);
+    expect(bubbleTime(CHILL_DURATION - 1.25)).toBeCloseTo(1.25);
+    expect(bubbleFrame(bubbleTime(CHILL_DURATION))).toBe(F.bubble1);
+    for (const f of [F.bubble1, F.bubble2, F.bubble3, F.pop]) {
+      const rows = rowsFromString(BUBBLE_ART[f]!);
+      expect(rows.length, `frame ${f}`).toBeGreaterThanOrEqual(4);
+      expect(rows[0]!.length, `frame ${f}`).toBeGreaterThanOrEqual(4);
+    }
+    // The bubbles grow by one pixel per frame.
+    const sizes = [F.bubble1, F.bubble2, F.bubble3].map((f) => rowsFromString(BUBBLE_ART[f]!).length);
+    expect(sizes).toEqual([sizes[0], sizes[0]! + 1, sizes[0]! + 2]);
+  });
+
+  it('chews a gum lump of at least 2 x 2 px between bubbles', () => {
+    const gum = rowsFromString(BUBBLE_ART[F.gum]!);
+    expect(gum.length).toBeGreaterThanOrEqual(2);
+    expect(gum.join('').replace(/\./g, '').length).toBeGreaterThanOrEqual(4);
   });
 
   it('stays a small pixel bubble', () => {
@@ -37,15 +56,15 @@ describe('bubble gum animation (kid mode chill look)', () => {
 
 describe('chillBubble placement', () => {
   const names = (Object.keys(TIMELINES) as TimelineName[]).filter((n) => n !== 'crash');
-  const grownAt = sample(BUBBLE_PERIOD, 240).find((t) => bubbleFrame(t) === F.bubble4)!;
+  const grownAt = sample(BUBBLE_PERIOD, 240).find((t) => bubbleFrame(t) === F.bubble3)!;
 
   it('blows the bubble in front of the mouth in every pose but the crash (incl. duck, grind, air)', () => {
     for (const name of names) {
       for (const step of TIMELINES[name].steps) {
         const bubble = chillBubble(name, step.body, grownAt, 0);
         const head = HEAD_AT[step.body]!;
-        expect(bubble, `${name} body ${step.body}`).toMatchObject({ frame: F.bubble4, x: head.x + HEAD_MOUTH.x + 1 });
-        const rows = rowsFromString(BUBBLE_ART[F.bubble4]!);
+        expect(bubble, `${name} body ${step.body}`).toMatchObject({ frame: F.bubble3, x: head.x + HEAD_MOUTH.x + 1 });
+        const rows = rowsFromString(BUBBLE_ART[F.bubble3]!);
         const mouthY = head.y + HEAD_MOUTH.y;
         expect(bubble!.y).toBeLessThanOrEqual(mouthY);
         expect(bubble!.y + rows.length).toBeGreaterThan(mouthY);
