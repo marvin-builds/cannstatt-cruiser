@@ -30,7 +30,10 @@ export type Cue =
   | 'heart'
   | 'trick'
   | 'trickBig'
-  | 'honk';
+  | 'honk'
+  | 'honkShort'
+  | 'hornDeep'
+  | 'truckPass';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';

@@ -10,7 +10,7 @@ import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
 import { GLUG_LENGTH } from './sounds';
-import { TrafficNoise } from './traffic';
+import { isTrafficCue, TrafficNoise } from './traffic';
 import { createWebAudioBackend } from './webaudio';
 
 export interface AudioSystemOptions {
@@ -58,16 +58,18 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   };
   const play = (cue: Cue, intensity = 1, delay = 0) => {
     onSound?.(cue, muted);
+    // Gameplay sounds stay clearly audible over the Mitte rumble.
+    if (!isTrafficCue(cue)) traffic.duck();
     safely(() => backend.play(cue, intensity, delay));
   };
-  /** One tick of the traffic rumble: silent unless playing and unmuted. */
+  /** One tick of the traffic rumble, horns and trucks: silent unless playing and unmuted. */
   const updateTraffic = (ctx: GameContext) => {
     const { state } = ctx;
     const wasSounding = traffic.level > 0;
     const step = traffic.update(state.trafficDensity, state.mode === 'playing' && !muted, state.time);
     if (step.level !== null) safely(() => backend.setTraffic(step.level!));
     if (wasSounding !== traffic.level > 0) onSound?.(wasSounding ? 'traffic:stop' : 'traffic:start', muted);
-    if (step.honk) play('honk');
+    if (step.cue) play(step.cue);
   };
   const startGrind = () => {
     if (grinding) return;

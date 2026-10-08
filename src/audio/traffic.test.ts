@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { TRAFFIC, TrafficNoise } from './traffic';
+import { HORN_CUES, TRAFFIC, TRAFFIC_CUES, TrafficNoise, type TrafficCue } from './traffic';
 
-/** Runs `ticks` updates at 60 Hz from `start` seconds; returns the levels sent and the honk count. */
+/** Runs `ticks` updates at 60 Hz from `start` seconds; returns the levels sent and the traffic cues. */
 function run(noise: TrafficNoise, ticks: number, density: number, active = true, start = 0) {
   const sent: number[] = [];
-  let honks = 0;
+  const cues: TrafficCue[] = [];
   for (let i = 0; i < ticks; i++) {
     const step = noise.update(density, active, start + i / 60);
     if (step.level !== null) sent.push(step.level);
-    if (step.honk) honks++;
+    if (step.cue) cues.push(step.cue);
   }
-  return { sent, honks };
+  const horns = cues.filter((c) => HORN_CUES.includes(c));
+  return { sent, cues, horns: horns.length };
 }
 
 describe('traffic noise: rumble level', () => {
@@ -56,7 +57,7 @@ describe('traffic noise: rumble level', () => {
     run(noise, 180, 1);
     const step = noise.update(1, false, 3);
     expect(step.level).toBe(0);
-    expect(step.honk).toBe(false);
+    expect(step.cue).toBeNull();
     expect(noise.level).toBe(0);
     expect(run(noise, 60, 1, false, 3).sent).toEqual([]);
   });
@@ -68,34 +69,104 @@ describe('traffic noise: rumble level', () => {
     run(noise, 600, -1, true, 10);
     expect(noise.level).toBe(0);
   });
+
+  it('reuses one step object (no allocation per tick)', () => {
+    const noise = new TrafficNoise();
+    const first = noise.update(1, true, 0);
+    expect(noise.update(1, true, 1 / 60)).toBe(first);
+    expect(noise.update(0, false, 2 / 60)).toBe(first);
+  });
 });
 
-describe('traffic noise: honks', () => {
-  it('honks now and then at high density', () => {
-    const { honks } = run(new TrafficNoise(), 60 * 60, 1);
-    expect(honks).toBeGreaterThanOrEqual(6);
-    expect(honks).toBeLessThanOrEqual(60 / TRAFFIC.honkSlot);
+describe('traffic noise: ducking under gameplay sounds', () => {
+  /** A noise at full Mitte traffic that has settled. */
+  function settled() {
+    const noise = new TrafficNoise();
+    run(noise, 300, 1);
+    return noise;
+  }
+
+  it('dips the rumble at once when a gameplay sound plays', () => {
+    const noise = settled();
+    noise.duck();
+    const step = noise.update(1, true, 5);
+    expect(step.level).not.toBeNull();
+    expect(step.level!).toBeLessThanOrEqual(TRAFFIC.duckTo + 0.001);
   });
 
-  it('never honks at low density, while inactive or outside Mitte', () => {
-    expect(run(new TrafficNoise(), 60 * 60, TRAFFIC.honkDensity - 0.05).honks).toBe(0);
-    expect(run(new TrafficNoise(), 60 * 60, 1, false).honks).toBe(0);
-    expect(run(new TrafficNoise(), 60 * 60, 0).honks).toBe(0);
+  it('holds the dip briefly, then glides back to full without jumps', () => {
+    const noise = settled();
+    noise.duck();
+    const { sent } = run(noise, 90, 1, true, 5);
+    expect(sent[0]).toBeLessThanOrEqual(TRAFFIC.duckTo + 0.001);
+    for (let i = 1; i < sent.length; i++) {
+      expect(sent[i]).toBeGreaterThanOrEqual(sent[i - 1]!);
+      expect(sent[i]! - sent[i - 1]!).toBeLessThan(0.1);
+    }
+    expect(sent.at(-1)).toBeGreaterThan(1 - TRAFFIC.minStep);
+  });
+
+  it('a second sound during the dip extends it instead of stacking', () => {
+    const noise = settled();
+    noise.duck();
+    run(noise, 5, 1, true, 5);
+    noise.duck();
+    const { sent } = run(noise, 5, 1, true, 5.1);
+    for (const level of sent) expect(level).toBeGreaterThanOrEqual(TRAFFIC.duckTo - 0.001);
+    expect(sent.length).toBeLessThanOrEqual(1);
+  });
+
+  it('sends nothing when silent (outside Mitte, paused)', () => {
+    const noise = new TrafficNoise();
+    noise.duck();
+    expect(run(noise, 60, 0).sent).toEqual([]);
+    noise.duck();
+    expect(run(noise, 60, 1, false).sent).toEqual([]);
+  });
+});
+
+describe('traffic noise: horns and passing trucks', () => {
+  it('honks often at full density', () => {
+    const { horns } = run(new TrafficNoise(), 60 * 60, 1);
+    expect(horns).toBeGreaterThanOrEqual(15);
+    expect(horns).toBeLessThanOrEqual(60 / TRAFFIC.hornSlot);
+  });
+
+  it('honks more the denser the traffic', () => {
+    const mid = run(new TrafficNoise(), 60 * 120, 0.6).horns;
+    const full = run(new TrafficNoise(), 60 * 120, 1).horns;
+    expect(mid).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(mid * 1.5);
+  });
+
+  it('mixes car horns, deep truck or bus horns and passing trucks', () => {
+    const { cues } = run(new TrafficNoise(), 60 * 120, 1);
+    for (const cue of TRAFFIC_CUES) expect(cues).toContain(cue);
+    const trucks = cues.filter((c) => c === 'truckPass').length;
+    expect(trucks).toBeGreaterThanOrEqual(5);
+    expect(trucks).toBeLessThanOrEqual(120 / TRAFFIC.truckSlot);
+  });
+
+  it('never makes a sound in thin traffic, while inactive or outside Mitte', () => {
+    expect(run(new TrafficNoise(), 60 * 60, TRAFFIC.hornDensity - 0.05).cues).toEqual([]);
+    expect(run(new TrafficNoise(), 60 * 60, 1, false).cues).toEqual([]);
+    expect(run(new TrafficNoise(), 60 * 60, 0).cues).toEqual([]);
   });
 
   it('is deterministic for the same run time', () => {
     const a = run(new TrafficNoise(), 60 * 30, 1);
     const b = run(new TrafficNoise(), 60 * 30, 1);
-    expect(a.honks).toBe(b.honks);
+    expect(a.cues).toEqual(b.cues);
   });
 
-  it('honks at most once per slot', () => {
+  it('honks at most once per horn slot', () => {
     const noise = new TrafficNoise();
     let last = -Infinity;
     for (let i = 0; i < 60 * 60; i++) {
       const t = i / 60;
-      if (noise.update(1, true, t).honk) {
-        expect(t - last).toBeGreaterThan(TRAFFIC.honkSlot * 0.99);
+      const cue = noise.update(1, true, t).cue;
+      if (cue && HORN_CUES.includes(cue)) {
+        expect(t - last).toBeGreaterThan(TRAFFIC.hornSlot * 0.99);
         last = t;
       }
     }
@@ -103,11 +174,11 @@ describe('traffic noise: honks', () => {
 });
 
 describe('traffic noise: a new run', () => {
-  it('honks in the first slot of a new run even if the last run ended in that slot', () => {
-    const fresh = run(new TrafficNoise(), 60, 1, true, 0).honks;
+  it('sounds the same in the first seconds of a new run even if the last run ended there', () => {
+    const fresh = run(new TrafficNoise(), 120, 1, true, 0).cues;
     const noise = new TrafficNoise();
-    run(noise, 60, 1, true, 0);
+    run(noise, 120, 1, true, 0);
     noise.reset();
-    expect(run(noise, 60, 1, true, 0).honks).toBe(fresh);
+    expect(run(noise, 120, 1, true, 0).cues).toEqual(fresh);
   });
 });

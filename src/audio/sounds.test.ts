@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { Cue } from './backend';
 import { GLUG_LENGTH, GULP_AT, SOUNDS } from './sounds';
+import { TRAFFIC_CUES } from './traffic';
 
 /** Merged [start, end] intervals in which any of the voices sounds. */
 function soundingSpans(voices: { at: number; dur: number }[]): [number, number][] {
@@ -50,5 +52,18 @@ describe('sounds: every cue', () => {
         expect(v.gain).toBeLessThanOrEqual(1);
       }
     }
+  });
+});
+
+describe('sounds: traffic stays under the gameplay sounds', () => {
+  const peak = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.gain));
+
+  it('keeps every horn and truck voice below the jump, crash and item sounds', () => {
+    const gameplay = Math.min(peak('jump'), peak('crash'), peak('catch') * 2, peak('star') * 2);
+    for (const cue of TRAFFIC_CUES) expect(peak(cue)).toBeLessThanOrEqual(gameplay);
+  });
+
+  it('fades the passing truck in and out slowly (a whoosh, not a click)', () => {
+    for (const v of SOUNDS.truckPass) expect(v.attack ?? 0).toBeGreaterThanOrEqual(0.05);
   });
 });

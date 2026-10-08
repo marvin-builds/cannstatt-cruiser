@@ -4,6 +4,7 @@ import { createStore } from '../core/storage';
 import type { AudioBackend, Cue, LoopName } from './backend';
 import { createAudioSystem } from './index';
 import { GLUG_LENGTH } from './sounds';
+import { TRAFFIC, isTrafficCue } from './traffic';
 
 class FakeBackend implements AudioBackend {
   calls: string[] = [];
@@ -527,7 +528,7 @@ describe('audio system: Mitte traffic', () => {
   it('stays silent outside Mitte', () => {
     const { backend, cues } = inTraffic(10, 0);
     expect(backend.traffic).toEqual([]);
-    expect(cues()).not.toContain('honk');
+    expect(trafficCues(cues())).toEqual([]);
   });
 
   it('fades out when leaving Mitte', () => {
@@ -537,9 +538,33 @@ describe('audio system: Mitte traffic', () => {
     expect(backend.traffic.at(-1)).toBe(0);
   });
 
-  it('honks now and then at high density only', () => {
-    expect(inTraffic(30, 1).cues().filter((c) => c === 'honk').length).toBeGreaterThan(2);
-    expect(inTraffic(30, 0.5).cues()).not.toContain('honk');
+  /** Traffic cues (horns, passing trucks) among the played cues. */
+  const trafficCues = (cues: Cue[]) => cues.filter(isTrafficCue);
+
+  it('honks often and varied at high density only', () => {
+    const busy = trafficCues(inTraffic(60, 1).cues());
+    expect(busy.length).toBeGreaterThan(15);
+    expect(new Set(busy).size).toBeGreaterThanOrEqual(3);
+    expect(trafficCues(inTraffic(30, 0.3).cues())).toEqual([]);
+  });
+
+  it('ducks the rumble under a gameplay sound and brings it back', () => {
+    const { game, backend } = inTraffic();
+    const full = backend.traffic.at(-1)!;
+    game.bus.emit('jump', { velocity: 250 });
+    game.tick();
+    expect(full).toBeGreaterThan(0.95);
+    expect(backend.traffic.at(-1)!).toBeLessThanOrEqual(TRAFFIC.duckTo + 0.001);
+    for (let i = 0; i < 60; i++) game.tick();
+    expect(backend.traffic.at(-1)!).toBeGreaterThan(0.95);
+  });
+
+  it('does not duck under its own horns and trucks', () => {
+    const { game, backend, cues } = inTraffic();
+    const sentBefore = backend.traffic.length;
+    for (let i = 0; i < 30 * 60; i++) game.tick();
+    expect(trafficCues(cues()).length).toBeGreaterThan(5);
+    expect(backend.traffic.length).toBe(sentBefore);
   });
 
   it.each(['pause', 'mute', 'gameOver', 'title'] as const)('goes silent on %s', (what) => {
@@ -550,22 +575,22 @@ describe('audio system: Mitte traffic', () => {
     if (what === 'title') game.state.mode = 'title';
     game.tick();
     expect(backend.traffic.at(-1)).toBe(0);
-    const honks = cues().filter((c) => c === 'honk').length;
+    const honks = trafficCues(cues()).length;
     for (let i = 0; i < 20 * 60; i++) game.tick();
     expect(backend.traffic.at(-1)).toBe(0);
-    expect(cues().filter((c) => c === 'honk').length).toBe(honks);
+    expect(trafficCues(cues()).length).toBe(honks);
   });
 
   it('starts each run with fresh honk slots', () => {
     const { game, cues } = inTraffic(1);
-    const firstRun = cues().filter((c) => c === 'honk').length;
+    const firstRun = trafficCues(cues()).length;
     expect(firstRun).toBeGreaterThan(0);
     game.commands.gameOver();
     game.tick();
     game.commands.startRun();
     game.state.trafficDensity = 1;
     for (let i = 0; i < 60; i++) game.tick();
-    expect(cues().filter((c) => c === 'honk').length).toBe(2 * firstRun);
+    expect(trafficCues(cues()).length).toBe(2 * firstRun);
   });
 
   it('comes back after resuming', () => {

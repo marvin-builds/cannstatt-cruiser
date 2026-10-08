@@ -10,6 +10,13 @@ import { GRIND, MASTER_GAIN, SOUNDS, TRAFFIC_RUMBLE, type Voice } from './sounds
 
 type ContextFactory = () => AudioContext | null;
 
+/** The traffic rumble's nodes that follow the level (built once, never stopped). */
+interface TrafficRumble {
+  bus: GainNode;
+  /** Road noise lowpass: opens up with the level. */
+  road: BiquadFilterNode;
+}
+
 interface RunningLoop {
   bus: GainNode;
   sources: AudioScheduledSourceNode[];
@@ -80,8 +87,8 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   let muted = false;
   const loops = new Map<LoopName, RunningLoop>();
   const pending = new PendingCues();
-  /** Traffic rumble bus, built on the first audible level and reused (never stopped). */
-  let traffic: GainNode | null = null;
+  /** Traffic rumble, built on the first audible level and reused (never stopped). */
+  let traffic: TrafficRumble | null = null;
   /** Last requested traffic level, applied once the context runs. */
   let trafficLevel = 0;
 
@@ -128,25 +135,29 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   function playVoice(ctx: AudioContext, voice: Voice, intensity: number, delay: number): void {
     const t0 = ctx.currentTime + delay + voice.at;
     const end = t0 + voice.dur;
+    /** Sweeps a frequency param from voice.freq to voice.to over the voice. */
+    const sweep = (param: AudioParam) => {
+      if (!voice.to) return;
+      param.setValueAtTime(voice.freq, t0);
+      param.exponentialRampToValueAtTime(voice.to, end);
+    };
     let src: AudioScheduledSourceNode;
     if (voice.wave === 'noise') {
       src = noiseSource(ctx);
     } else {
       const osc = oscillator(ctx, voice.wave, voice.freq);
-      if (voice.to) {
-        osc.frequency.setValueAtTime(voice.freq, t0);
-        osc.frequency.exponentialRampToValueAtTime(voice.to, end);
-      }
+      sweep(osc.frequency);
       src = osc;
     }
     const env = ctx.createGain();
     env.gain.setValueAtTime(SILENT, t0);
-    env.gain.linearRampToValueAtTime(voice.gain * intensity, t0 + 0.005);
+    env.gain.linearRampToValueAtTime(voice.gain * intensity, t0 + (voice.attack ?? 0.005));
     env.gain.exponentialRampToValueAtTime(SILENT, end);
     if (voice.filter) {
       const filter = ctx.createBiquadFilter();
       filter.type = voice.filter;
       filter.frequency.value = voice.freq;
+      sweep(filter.frequency);
       src.connect(filter).connect(env);
     } else {
       src.connect(env);
@@ -188,30 +199,46 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     return { bus, sources };
   }
 
-  /** Traffic: lowpassed noise rumble plus a low engine hum on one bus, silent until a level arrives. */
-  function buildTraffic(ctx: AudioContext): GainNode {
+  /** Traffic: the layered rumble of TRAFFIC_RUMBLE on one bus, silent until a level arrives. */
+  function buildTraffic(ctx: AudioContext): TrafficRumble {
+    const { noise: road, hiss, drone } = TRAFFIC_RUMBLE;
     const bus = ctx.createGain();
     bus.gain.value = 0;
     bus.connect(master!);
 
-    const rumble = noiseSource(ctx);
-    const low = ctx.createBiquadFilter();
-    low.type = 'lowpass';
-    low.frequency.value = TRAFFIC_RUMBLE.noise.freq;
-    low.Q.value = TRAFFIC_RUMBLE.noise.q;
-    const rumbleGain = ctx.createGain();
-    rumbleGain.gain.value = TRAFFIC_RUMBLE.noise.gain;
-    rumble.connect(low).connect(rumbleGain).connect(bus);
+    const filtered = (type: BiquadFilterType, freq: number, q: number, gain: number) => {
+      const src = noiseSource(ctx);
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.value = freq;
+      filter.Q.value = q;
+      const level = ctx.createGain();
+      level.gain.value = gain;
+      src.connect(filter).connect(level).connect(bus);
+      return { src, filter };
+    };
+    const roadNoise = filtered('lowpass', road.freq, road.q, road.gain);
+    const tyres = filtered('bandpass', hiss.freq, hiss.q, hiss.gain);
 
-    const hum = oscillator(ctx, 'triangle', TRAFFIC_RUMBLE.hum.freq);
-    const humGain = ctx.createGain();
-    humGain.gain.value = TRAFFIC_RUMBLE.hum.gain;
-    hum.connect(humGain).connect(bus);
+    const droneFilter = ctx.createBiquadFilter();
+    droneFilter.type = 'lowpass';
+    droneFilter.frequency.value = drone.cutoff;
+    const droneGain = ctx.createGain();
+    droneGain.gain.value = drone.gain;
+    droneFilter.connect(droneGain).connect(bus);
+    const engines = drone.freqs.map((freq) => {
+      const osc = oscillator(ctx, 'sawtooth', freq);
+      osc.connect(droneFilter);
+      return osc;
+    });
+    const throb = oscillator(ctx, 'sine', drone.throbHz);
+    const depth = ctx.createGain();
+    depth.gain.value = drone.throbDepth;
+    throb.connect(depth).connect(droneGain.gain);
 
     const now = ctx.currentTime;
-    rumble.start(now);
-    hum.start(now);
-    return bus;
+    for (const s of [roadNoise.src, tyres.src, ...engines, throb]) s.start(now);
+    return { bus, road: roadNoise.filter };
   }
 
   const guard = (fn: () => void) => {
@@ -234,7 +261,11 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     if (!ctx || (!traffic && trafficLevel === 0)) return;
     guard(() => {
       traffic ??= buildTraffic(ctx);
-      traffic.gain.setTargetAtTime(trafficLevel, ctx.currentTime, TRAFFIC_RUMBLE.glide);
+      const { glide, noise: road } = TRAFFIC_RUMBLE;
+      const now = ctx.currentTime;
+      traffic.bus.gain.setTargetAtTime(trafficLevel, now, glide);
+      const cutoff = road.freq + (road.freqFull - road.freq) * Math.min(1, trafficLevel);
+      traffic.road.frequency.setTargetAtTime(cutoff, now, glide);
     });
   }
 

@@ -1,7 +1,7 @@
 /**
  * Sound design as data: every cue is a list of short chiptune voices
- * (square / triangle / saw oscillators or filtered noise) with a pitch sweep
- * and a fast attack, exponential decay envelope. webaudio.ts plays them.
+ * (square / triangle / saw oscillators or filtered noise) with a pitch (or
+ * cutoff) sweep and a fast attack, exponential decay envelope. webaudio.ts plays them.
  */
 import type { Cue } from './backend';
 
@@ -17,8 +17,10 @@ export interface Voice {
   to?: number;
   /** Peak gain before the master gain. */
   gain: number;
-  /** Optional filter, e.g. to darken noise. */
+  /** Optional filter, e.g. to darken noise; for noise `freq` / `to` sweep its cutoff. */
   filter?: BiquadFilterType;
+  /** Attack in seconds (default 5 ms); long for swells like a passing truck. */
+  attack?: number;
 }
 
 /** Note frequencies (equal temperament, A4 = 440 Hz). */
@@ -210,19 +212,42 @@ export const SOUNDS: Record<Cue, Voice[]> = {
   ],
   // A Mitte car honks: two muffled detuned squares together, a short 'mööp'.
   honk: [
-    { wave: 'square', at: 0, dur: 0.24, freq: 349, gain: 0.1, filter: 'lowpass' },
-    { wave: 'square', at: 0, dur: 0.24, freq: 440, gain: 0.08, filter: 'lowpass' },
+    { wave: 'square', at: 0, dur: 0.3, freq: 349, gain: 0.14, filter: 'lowpass' },
+    { wave: 'square', at: 0, dur: 0.3, freq: 440, gain: 0.11, filter: 'lowpass' },
+  ],
+  // A small car: an impatient, higher double beep 'tüt-tüt'.
+  honkShort: [
+    { wave: 'square', at: 0, dur: 0.1, freq: 523, gain: 0.11, filter: 'lowpass' },
+    { wave: 'square', at: 0, dur: 0.1, freq: 622, gain: 0.08, filter: 'lowpass' },
+    { wave: 'square', at: 0.15, dur: 0.14, freq: 523, gain: 0.11, filter: 'lowpass' },
+    { wave: 'square', at: 0.15, dur: 0.14, freq: 622, gain: 0.08, filter: 'lowpass' },
+  ],
+  // A truck or bus: a long, deep, brassy 'BÖÖÖP' of two low saws.
+  hornDeep: [
+    { wave: 'sawtooth', at: 0, dur: 0.6, freq: 147, gain: 0.16, filter: 'lowpass', attack: 0.02 },
+    { wave: 'sawtooth', at: 0, dur: 0.6, freq: 185, gain: 0.12, filter: 'lowpass', attack: 0.02 },
+    { wave: 'square', at: 0, dur: 0.5, freq: 74, gain: 0.05, attack: 0.02 },
+  ],
+  // A truck passes close by: a swelling engine roar and air whoosh, then a brake hiss.
+  truckPass: [
+    { wave: 'noise', at: 0, dur: 1.1, freq: 250, to: 900, gain: 0.2, filter: 'lowpass', attack: 0.45 },
+    { wave: 'sawtooth', at: 0, dur: 1.1, freq: 62, to: 48, gain: 0.08, attack: 0.45 },
+    { wave: 'noise', at: 0.75, dur: 0.45, freq: 4200, to: 3000, gain: 0.07, filter: 'highpass', attack: 0.06 },
   ],
 };
 
 /**
- * Mitte traffic rumble: lowpassed noise plus a low engine hum on one bus whose
- * gain follows the traffic level, gliding with `glide` (time constant, s).
+ * Mitte traffic rumble, layered on one bus whose gain follows the traffic
+ * level, gliding with `glide` (time constant, s): lowpassed road noise whose
+ * cutoff opens with the level (fuller in dense traffic), a band of tyre hiss,
+ * and an engine drone of two detuned low saws through a lowpass that slowly
+ * throbs (an LFO on the drone gain) like idling and pulling-away engines.
  */
 export const TRAFFIC_RUMBLE = {
-  noise: { freq: 240, q: 0.7, gain: 0.32 },
-  hum: { freq: 52, gain: 0.07 },
-  glide: 0.1,
+  noise: { freq: 200, freqFull: 420, q: 0.7, gain: 0.5 },
+  hiss: { freq: 700, q: 0.9, gain: 0.07 },
+  drone: { freqs: [46, 61.5], cutoff: 170, gain: 0.09, throbHz: 0.7, throbDepth: 0.04 },
+  glide: 0.06,
 } as const;
 
 /** Grind loop: band-passed noise scrape plus a low buzzing square, fades in and out. */
