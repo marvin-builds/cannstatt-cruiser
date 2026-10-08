@@ -695,14 +695,37 @@ describe('audio system: vehicles passing by', () => {
     expect(heard.filter((h) => h.name === 'passBus')).toEqual([{ name: 'passBus', muted: true }]);
   });
 
-  it('makes the light-traffic hum audible but quieter than Mitte', () => {
-    const light = playing();
-    light.game.state.trafficDensity = 0.05;
-    wait(light, 5);
-    const mitte = playing();
-    mitte.game.state.trafficDensity = 1;
-    wait(mitte, 5);
-    expect(light.backend.traffic.at(-1)!).toBeGreaterThanOrEqual(0.15);
-    expect(light.backend.traffic.at(-1)!).toBeLessThanOrEqual(mitte.backend.traffic.at(-1)! * 0.35);
+  it('is silent on an empty street outside Mitte', () => {
+    const s = playing();
+    s.game.state.trafficDensity = 0.05;
+    wait(s, 5);
+    expect(s.backend.traffic).toEqual([]);
+  });
+
+  it('swells the hum around each passing vehicle of light traffic, quieter for the back lane', () => {
+    const lane = (front: boolean) => {
+      const s = playing();
+      s.game.state.trafficDensity = 0.05;
+      wait(s, 1);
+      pass(s, { front });
+      wait(s, 2);
+      return s.backend.traffic;
+    };
+    const front = lane(true);
+    const back = lane(false);
+    expect(Math.max(...front)).toBeGreaterThan(0.15);
+    expect(Math.max(...back)).toBeLessThan(Math.max(...front));
+    expect(front.at(-1)).toBe(0);
+    expect(back.at(-1)).toBe(0);
+  });
+
+  it('adds no swell to the dense Mitte rumble', () => {
+    const s = playing();
+    s.game.state.trafficDensity = 1;
+    wait(s, 5);
+    const sent = s.backend.traffic.length;
+    pass(s, { light: false });
+    wait(s, 1);
+    expect(s.backend.traffic.length).toBe(sent);
   });
 });

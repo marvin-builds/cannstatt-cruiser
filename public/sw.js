@@ -10,6 +10,10 @@
  *   complete build; assets only the old page referenced are then dropped.
  *   All other same-origin GETs are cache-first and cached on first use.
  * - activate: deletes caches of older versions.
+ * - message {type: 'checkForUpdate'} (src/core/update.ts, posted on resume and
+ *   every few minutes while the app stays open): re-fetches the page and stores
+ *   it exactly like the background refresh on navigation. Offline or failed
+ *   checks are ignored.
  * - update signal: once a changed page is completely cached (a new deploy, or
  *   a new worker version that cached a different page than its predecessor),
  *   every open window gets the message {type: 'updateReady'} (handled in
@@ -29,6 +33,7 @@ const STATIC_FILES = ['./manifest.webmanifest', './icons/icon-192.png', './icons
 const MATCH = { ignoreSearch: true, ignoreVary: true };
 
 const UPDATE_READY = { type: 'updateReady' };
+const CHECK_FOR_UPDATE = 'checkForUpdate';
 
 /** Tells every open window that a reload would start a newer, fully cached build. */
 async function notifyUpdateReady() {
@@ -94,6 +99,15 @@ async function cacheShell() {
   if (!page.ok) throw new Error(`App shell fetch failed: ${page.status}`);
   await storePage(await caches.open(CACHE), page);
 }
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== CHECK_FOR_UPDATE) return;
+  event.waitUntil(
+    cacheShell().catch(() => {
+      // Offline, a server error or a partial deploy: keep the cached build.
+    }),
+  );
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(cacheShell().then(() => self.skipWaiting()));
