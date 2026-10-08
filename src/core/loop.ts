@@ -8,15 +8,18 @@ const FRAME_SNAP = 0.25;
 /**
  * Estimates the display's frame interval from recent rAF elapsed times: the
  * median of the last CADENCE_FRAMES, snapped to 60 / 120 / 30 Hz when close.
- * Allocation-free (ring buffer plus a fixed scratch array).
+ * Allocation-free per frame (ring buffer, fixed scratch array, snap targets built once).
  */
 class FrameCadence {
   private readonly recent: Float64Array;
   private readonly sorted = new Float64Array(CADENCE_FRAMES);
+  /** Display intervals the estimate snaps to: the step (60 Hz), half of it (120 Hz) and twice it (30 Hz). */
+  private readonly targets: Float64Array;
   private next = 0;
 
-  constructor(private readonly step: number) {
+  constructor(step: number) {
     this.recent = new Float64Array(CADENCE_FRAMES).fill(step);
+    this.targets = Float64Array.of(step, step / 2, step * 2);
   }
 
   /** Records one frame's elapsed seconds and returns the current cadence estimate. */
@@ -44,7 +47,8 @@ class FrameCadence {
   }
 
   private snap(interval: number): number {
-    for (const target of [this.step, this.step / 2, this.step * 2]) {
+    for (let i = 0; i < this.targets.length; i++) {
+      const target = this.targets[i]!;
       if (Math.abs(interval - target) <= target * CADENCE_SNAP) return target;
     }
     return interval;

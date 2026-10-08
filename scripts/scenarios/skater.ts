@@ -6,7 +6,9 @@
  * same for the kid mode bubble gum, and 1x / 2x crops of the skater to judge
  * the hair, the red eyes and the bubble at game scale. Finally the carried
  * items: lineups with each item (incl. catch reaches), the
- * stomp bounce, the catch reach and 1x / 2x crops with every item.
+ * stomp bounce, the catch reach and 1x / 2x crops with every item. Last the
+ * bin crash: head first into the bin, legs kicking, popping out, the bin
+ * tumbling away, and a normal crash after it.
  *   npm run playtest -- --scenario scripts/scenarios/skater.ts --viewports desktop,phone-landscape,phone-portrait --name skater
  */
 import { writeFile } from 'node:fs/promises';
@@ -157,6 +159,40 @@ export default async function skater(t: PlaytestContext): Promise<void> {
   await chillShots(t);
   await kidShots(t);
   await carryShots(t);
+  await binCrashShots(t);
+}
+
+/** Bin crash (`crash('bin')`) step by step with crops, then a normal crash that still throws the skater off. */
+async function binCrashShots(t: PlaytestContext): Promise<void> {
+  const { game, page } = t;
+  await stepUntil(t, (s) => s.player.invulnerableTimer === 0 && s.player.grounded, 180);
+  await page.evaluate(() => window.__player!.crash('bin'));
+  const steps: [number, string][] = [
+    [2, 'dive'],
+    [8, 'kick 1'],
+    [5, 'kick 2'],
+    [20, 'kick 3'],
+    [12, 'pop'],
+    [5, 'pop 2'],
+    [6, 'land'],
+    [8, 'bin tumbles'],
+    [10, 'ride blinking'],
+  ];
+  let inBin = true;
+  for (const [ticks, label] of steps) {
+    const s = await game.step(ticks);
+    if (label.startsWith('kick')) inBin &&= s.player.state === 'crash' && s.player.grounded;
+    await t.log(`bin crash ${label}`, { anim: s.player.state, invulnerable: s.player.invulnerableTimer, grounded: s.player.grounded });
+    await t.canvasShot(`bin crash ${label}`);
+    await skaterCrop(t, `crop-bin-crash-${label.replace(/ /g, '-')}`);
+  }
+  t.check('bin crash keeps the skater rolling on the ground while stuck', inBin);
+  const back = await stepUntil(t, (s) => s.player.state !== 'crash', 120);
+  t.check('bin crash ends back on the board', back.player.state !== 'crash' && back.player.grounded, back.player);
+  await stepUntil(t, (s) => s.player.invulnerableTimer === 0, 120);
+  await page.evaluate(() => window.__player!.crash());
+  await game.step(18);
+  await t.canvasShot('normal crash after bin crash still thrown');
 }
 
 const ITEMS: CarriedItem[] = ['football', 'pretzel', 'beer', 'gingerbread'];

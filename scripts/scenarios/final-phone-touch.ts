@@ -5,14 +5,15 @@
  *   npm run playtest -- --scenario scripts/scenarios/final-phone-touch.ts --viewports phone-landscape --name final-phone-touch
  */
 import type { CDPSession } from 'playwright';
-import { PLAYER_X } from '../../src/core/config';
+import { PLAYER_X, TICK_DT } from '../../src/core/config';
+import { SWIPE_WINDOW } from '../../src/core/input';
 import { Rng } from '../../src/core/rng';
 import type { PlaceableKind } from '../../src/gameplay/debug';
 import { HumanBot, planStomp } from '../../src/gameplay/testing';
 import type {} from '../../src/player/debug';
 import type { GameState, Rect } from '../../src/types';
 import type { UiDebugHook } from '../../src/ui/debug';
-import { cssPerViewPixel, holdViewWhile, type PlaytestContext, stepWhile, viewToClient } from '../playtest-lib';
+import { cssPerViewPixel, dismissRotateHint, holdViewWhile, type PlaytestContext, stepWhile, viewToClient } from '../playtest-lib';
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());
@@ -71,6 +72,17 @@ class Fingers {
 }
 
 const PLAY = { x: 150, y: 120 };
+
+/**
+ * The street as it will be SWIPE_WINDOW ticks from now (entities scrolled
+ * left). A held touch only becomes a jump once the swipe window ran out, so a
+ * bot that plans on this state lands its finger early by that lag, like a
+ * player who has learnt it.
+ */
+function ahead(s: GameState): GameState {
+  const dx = s.speed * TICK_DT * SWIPE_WINDOW;
+  return { ...s, frame: s.frame + SWIPE_WINDOW, entities: s.entities.map((e) => ({ ...e, x: e.x - dx })) };
+}
 
 /** HumanBot plays with real touches: finger lands when the bot "presses", lifts on release; swipes to duck. */
 async function touchRide(
@@ -209,7 +221,8 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   const disp = await game.display();
   await t.log('display', { css, disp });
 
-  // --- Title, real tap start
+  // --- Title, real tap start (in portrait the first tap only dismisses the rotate hint)
+  await dismissRotateHint(t);
   await t.screenshot('title page');
   await t.canvasShot('title');
   const L = await layout(t);
@@ -401,7 +414,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   let fd = false;
   for (let i = 0; i < 200; i++) {
     s = await game.state();
-    const mv = bot.next(s);
+    const mv = bot.next(ahead(s));
     if (mv === 'press') {
       await f.down(1, PLAY.x, PLAY.y);
       fd = true;
@@ -460,6 +473,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await page.waitForFunction(() => Boolean(window.__game));
   await game.pause();
   await game.step(2);
+  await dismissRotateHint(t);
   const logo = centre((await layout(t)).logo);
   await holdViewWhile(t, logo.x, logo.y, async () => {
     await game.step(90);
@@ -496,6 +510,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await page.waitForFunction(() => Boolean(window.__game));
   await game.pause();
   await game.step(2);
+  await dismissRotateHint(t);
   const logo2 = centre((await layout(t)).logo);
   await holdViewWhile(t, logo2.x, logo2.y, async () => {
     await game.step(185);

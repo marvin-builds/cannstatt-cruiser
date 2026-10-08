@@ -6,10 +6,10 @@
  * Prints a summary and writes the raw data to
  * playtest-output/frametimes/<name>.json.
  *
- *   npx tsx scripts/frametimes.ts
- *   npx tsx scripts/frametimes.ts --headed --seconds 30 --name before
- *   npx tsx scripts/frametimes.ts --viewport phone-landscape --cpu 4   (4x CPU throttling)
- *   npx tsx scripts/frametimes.ts --url http://localhost:5173/        (running dev server)
+ *   npm run frametimes
+ *   npm run frametimes -- --headed --seconds 30 --name before
+ *   npm run frametimes -- --viewport phone-landscape --cpu 4   (4x CPU throttling)
+ *   npm run frametimes -- --url http://localhost:5173/        (running dev server)
  *
  * See "Frame times" in docs/TESTING.md.
  */
@@ -34,7 +34,7 @@ const { values } = parseArgs({
 });
 
 if (values.help) {
-  console.log(`Usage: npx tsx scripts/frametimes.ts [--name run] [--viewport ${Object.keys(VIEWPORTS).join('|')}]
+  console.log(`Usage: npm run frametimes -- [--name run] [--viewport ${Object.keys(VIEWPORTS).join('|')}]
   [--seconds 20] [--cpu 1 (CPU throttling factor)] [--seed 1] [--url http://...] [--headed]`);
   process.exit(0);
 }

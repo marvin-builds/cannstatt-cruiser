@@ -121,9 +121,11 @@ g.endRun();                                     // game-over screen now
   CHILL_JUMP_SCALE)` checks a course with the chill jump. `{stomps: true}`
   allows landing on heads (with the bounce); `takeoffWindow(holds)` is the
   widest run of working take-off ticks for one hold (the human margin,
-  `fairness.ts`). `fairness.test.ts` holds the spawner to the people rules
-  (alone in their pattern, >= 1 s of free street, window >= 9 ticks at min,
-  max and chill speeds, the check across pattern boundaries).
+  `fairness.ts`). `fairness.test.ts` holds the spawner to the human margins
+  (every pattern's take-off window >= `takeoffWindowAt(street)`: 14 ticks in
+  the first ~90 s, then 12, at min, max and chill speeds; people alone in
+  their pattern with >= 1 s of free street; the check across pattern
+  boundaries).
 
 ### Debug hooks for playtests (same condition as `__game`)
 
@@ -131,6 +133,11 @@ g.endRun();                                     // game-over screen now
 |---|---|
 | `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
+| `window.__world.trafficDensity()` | current Stuttgart-Mitte traffic density 0..1 (1 = full traffic; 0 outside Mitte) |
+| `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h}], puffs: [{x, y}]}`: view rects of the vehicles and exhaust puffs on screen (check `y >= TRAFFIC_TOP`, `world/traffic.ts`) |
+| `window.__player.crash(kind = 'barrier')` | emits a crash into `kind` like gameplay would; `'bin'` plays the bin crash (head first into the bin) |
+| `window.__player.grind(height?, length?)` / `removeRail(id)` | a static rail under the player with a grind on it / removes it (the player falls off) |
+| `window.__player.chill(s)`, `kidMode(on)`, `carry(item)`, `stomp(item?)`, `catchItem(item)`, `lineup(scale?, look?, item?)` | player-side effects and the pose lineup PNG, see `src/player/debug.ts` |
 | `window.__ui.hud({combo, multiplier, stars})` | overwrites HUD values like gameplay would |
 | `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
@@ -138,7 +145,15 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, answers}, logo}` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
-`window.__gameplay`) and `UiDebugHook` from `src/ui/debug.ts`.
+`window.__gameplay`; likewise `src/world/debug` for `window.__world` and
+`src/player/debug` for `window.__player`) and `UiDebugHook` from
+`src/ui/debug.ts`.
+
+**Zones in playtests:** runs and the title start in Bad Cannstatt
+(`START_ZONE` = 2) and the route goes back and forth (`ROUTE_CYCLE` 2, 1, 0,
+1). Read the order from `new ZoneRoute().zoneOf(k)` (zone after gateway k,
+which reaches the player at `k * ZONE_LENGTH`) instead of assuming a zone-0
+start; `setZone(i)` snaps for zone-specific shots.
 
 **Auto-pause:** losing window focus (`blur`) or hiding the tab
 (`visibilitychange`) releases the action and switches a running game to
@@ -181,7 +196,7 @@ npm run playtest -- --headed
     landscape screens (phone-landscape: scale 6, width 422);
   - running screenshots;
   - a real tap on the right-anchored pause button (screen -> view mapping);
-  - the pause screen and zone 2;
+  - the pause screen and a switch to zone 0 (runs start in zone 2);
   - a live rotation (viewport width and height swapped) and back, re-checking
     the scale and view width without a reload.
 - Uncaught page errors and console errors fail the run (exit code 1). Missing
@@ -217,9 +232,23 @@ npm run playtest -- --headed
   visitors (zone 2) incl. their crash reactions, the bot jumping people, the
   joint pickup with the chill effect (speed, lower jump, tint, HUD timer) and
   the game over with German numbers.
-- `gameplay.ts`, `world.ts`, `ducking.ts` and `chill.ts` call
-  `dismissRotateHint(t)` (`playtest-lib.ts`) first, so they also run on
-  phone-portrait, where the rotate hint would otherwise keep the run paused.
+- `scripts/scenarios/world.ts`: title and run start in Bad Cannstatt, four
+  gateways (one full back-and-forth route, both directions of each crossing)
+  as frame sequences with exactly one `zoneChanged` each, the Mombachquelle at
+  the Neckar, the Mitte traffic (dense, never above `TRAFFIC_TOP`, with
+  obstacles in front; wider views on desktop), `setZone` snaps, the Neckar
+  bridge and the Grabkapelle.
+- `scripts/scenarios/skater.ts` ends with the bin crash (`__player.crash('bin')`):
+  canvas shots and skater crops of the dive, kicking legs, pop out and the
+  tumbling bin, then a normal crash that still throws the skater off.
+- `scripts/scenarios/final-phone-touch.ts`: a held touch only jumps after the
+  swipe window, so its bench-grind bot plans `SWIPE_WINDOW` ticks ahead
+  (`ahead(state)`), like a player who learnt the lag.
+- `default.ts`, `gameplay.ts`, `world.ts`, `ducking.ts`, `chill.ts` and
+  `final-phone-touch.ts` call `dismissRotateHint(t)`
+  (`playtest-lib.ts`) first (and after a reload), so they also run on
+  phone-portrait, where the rotate hint takes the first tap and would
+  otherwise keep the run paused.
   Loops that wait for game progress use `stepWhile(t, more, {max})` or check
   the mode, so a stopped run fails with a message instead of hanging.
 
@@ -265,10 +294,10 @@ buffer from any Playwright script.
 ## Frame times (`scripts/frametimes.ts`)
 
 ```
-npx tsx scripts/frametimes.ts                         # build, preview, desktop, 20 s, headless
-npx tsx scripts/frametimes.ts --headed --seconds 30 --name before
-npx tsx scripts/frametimes.ts --viewport phone-landscape --cpu 4   # phone size, 4x CPU throttling
-npx tsx scripts/frametimes.ts --url http://localhost:5173/        # running dev server
+npm run frametimes                                    # build, preview, desktop, 20 s, headless
+npm run frametimes -- --headed --seconds 30 --name before
+npm run frametimes -- --viewport phone-landscape --cpu 4   # phone size, 4x CPU throttling
+npm run frametimes -- --url http://localhost:5173/        # running dev server
 ```
 
 It rides a seeded run (health refilled, auto-pause undone every 0.5 s),

@@ -4,6 +4,7 @@
  */
 import { PLAYER_X } from '../../src/core/config';
 import { Rng } from '../../src/core/rng';
+import { ZoneRoute } from '../../src/world/zones';
 import type { PlaceableKind } from '../../src/gameplay/debug';
 import { HumanBot, HUMAN_STYLE, planStomp, SolverBot } from '../../src/gameplay/testing';
 import type {} from '../../src/player/debug';
@@ -152,7 +153,7 @@ async function pauseAndMute(t: PlaytestContext): Promise<void> {
   }
 }
 
-/** Long natural ride to see the zones change by themselves (Mitte -> Neckar -> Cannstatt). */
+/** Long natural ride to see the zones change by themselves (Cannstatt -> Neckar -> Mitte, see ZoneRoute). */
 async function longRide(t: PlaytestContext): Promise<void> {
   const { game } = t;
   if ((await game.state()).mode === 'playing') await game.endRun();
@@ -175,7 +176,14 @@ async function longRide(t: PlaytestContext): Promise<void> {
     chill: count('chillStart'),
     kinds: [...new Set(ev.filter((e) => e.name === 'crash').map((e) => (e.payload as { kind: string }).kind))],
   });
-  t.check('long ride reaches Bad Cannstatt naturally', ev.some((e) => e.name === 'zoneChanged'), count('zoneChanged'));
+  const route = new ZoneRoute();
+  const zones = ev.filter((e) => e.name === 'zoneChanged').map((e) => (e.payload as { index: number }).index);
+  const expected = zones.map((_, k) => route.zoneOf(k + 1));
+  t.check(
+    'long ride leaves Bad Cannstatt and follows the route',
+    zones.length > 0 && zones.every((z, k) => z === expected[k]),
+    { zones, expected },
+  );
 }
 
 async function freshRun(t: PlaytestContext, zone: number, speed: number | null = 110): Promise<void> {

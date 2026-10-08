@@ -12,7 +12,7 @@ index.html              canvas#game, viewport/touch CSS, PWA <link>s
 src/main.ts             composition root: lists the systems in update order (do not edit from slices)
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX, START_ZONE
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
@@ -34,7 +34,14 @@ src/core/               engine pieces (foundation-owned, slices only import from
   fullscreen.ts         toggleFullscreen() with webkit + iOS fallback, landscape lock
   testhook.ts           window.__game (see docs/TESTING.md)
   app.ts                startApp(systems): wires everything in the browser, registers ./sw.js
-src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts)
+src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
+  world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
+  world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
+  world/traffic.ts      Stuttgart-Mitte foreground traffic (TRAFFIC_TOP, trafficDensity())
+  world/debug.ts        window.__world (test only): trafficDensity(), traffic()
+  gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins
+  gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead)
+  player/bin.ts         bin crash: the bin the player draws around the skater
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
 ```
@@ -115,8 +122,9 @@ interface System {
 |---|---|
 | `mode`, `modeTime`, `frame`, `time`, `distance`, `seed`, `muted` | core (via commands) |
 | `speed`, `score`, `combo`, `multiplier`, `stars`, `health`, `entities`, `chillTimer`, `carriedItem`, `drunkTimer` | gameplay (`speed` is pinned by core while `ctx.speedOverride` is set; core zeroes `chillTimer` and `drunkTimer` at every run start; core reads `drunkTimer` for [drunk input](#drunk-input)) |
-| `player.*` (position, velocity, grounded, grinding, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`; see below and `src/player/CONTRACT.md`) |
-| `zoneIndex` | world (and `commands.setZone`) |
+| `player.*` (position, velocity, grounded, grinding, grindTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer` and `grindTrick`; see below and `src/player/CONTRACT.md`) |
+| `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |
+| `trafficDensity` | world, every tick (0..1, see [Mitte traffic](#mitte-traffic)); audio reads it for the traffic noise |
 
 Coordinates are screen space in view pixels, with y pointing down. The world
 scrolls, while the player stays near `PLAYER_X`. `player.x/y` is the board's
@@ -128,8 +136,8 @@ using `player.hitbox` and emits `crash` / `grindStart` / `grindEnd`. The player
 system listens to these events to play the crash animation, or to snap onto
 and ride the rail (gameplay passes the rail's entity id; the player reads its
 rect from `state.entities`). The bench is grindable the same way: its entity
-`y` (the backrest's top edge) is the rail top, so landing on it from above
-grinds and only riding into its front or side crashes. People (`vfbFan`,
+`y` (the backrest's top edge) is the rail top, see [Bench](#bench-ledge-contract).
+A crash into a bin swallows the skater, see [Bin crash](#bin-crash). People (`vfbFan`,
 `wasenGuest`) walk or sway: their entity `x` follows `data.ax` (the street
 anchor) plus a motion that depends only on the distance to the player
 (`gameplay/motion.ts`), and the collision box moves with them. Landing on a
@@ -165,8 +173,9 @@ behind it. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 | `land` | `{impact}` | player |
 | `grindStart` | `{entityId}` | gameplay |
 | `grindEnd` | `{entityId, ticks}` | gameplay |
+| `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
-| `crash` | `{entityId, kind, health}` | gameplay |
+| `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash)) |
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
@@ -189,7 +198,7 @@ Emitting is synchronous.
 | Button | Sources |
 |---|---|
 | `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
-| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck` |
+| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck`. Held while grinding it is the [grind trick](#grind-trick) |
 | `use` | E (held while the key is down); `commands.useItem()`; test hook `input.use()` |
 
 Key hints for players: Space / ↑ / W jump, ↓ / S duck, **E use item**, P / Esc
@@ -368,25 +377,58 @@ capitals 1-5, descenders 6-7. Measure with `measureText`.
 
 ## Zones: the distance-driven route
 
-The zones follow each other along the street; there is no time-based cycle.
+Zone indices: 0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt. The zones follow
+each other along the street; there is no time-based cycle.
 `src/world/zones.ts` holds the schedule (`ZoneRoute`):
 
+- **Start:** every run (and the title screen) starts in `START_ZONE` = 2, Bad
+  Cannstatt (`core/config.ts`; `resetRun` sets `state.zoneIndex` to it, the
+  world snaps its route to it on `runStarted` and when returning to the title).
+- **Route:** the route rides back and forth along the river, always to a
+  neighbouring zone: `ROUTE_CYCLE` = `[2, 1, 0, 1]`, i.e. Cannstatt -> Neckar
+  -> Mitte -> Neckar -> Cannstatt -> ... `ZoneRoute.zoneOf(k)` is the zone of
+  leg k (leg 0 = the start zone, leg k begins at gateway k). A snap to the
+  Neckar continues towards Mitte. Playtests use `new ZoneRoute().zoneOf(k)`
+  instead of hard-coding the order.
 - Every zone lasts `ZONE_LENGTH` (3584 px) of ground distance. The point where
-  one zone hands over to the next is a **gateway** (a landmark, see
-  `world/art/gateways.ts`), aligned to the paving grid (`SEAM_GRID`).
+  one zone hands over to the next is a **gateway** (a landmark), aligned to
+  the paving grid (`SEAM_GRID`).
+- **Gateways** are looked up by the zones they connect:
+  `world/art/gateways.ts` `gatewayTable(depth)[from][to]` (depth 0 far, 1
+  mid, 2 near). The reverse direction of a crossing uses the same art
+  mirrored (`reversed()`), so the zone left behind stays on the left. Neckar
+  -> Mitte has its own near gateway: the tunnel portal into the city.
 - The next zone streams in through the gateway: near layers first, far
   layers last, each parallax layer at its own scroll factor, and the sky
   palette blends over `PALETTE_BLEND` px around the gateway.
 - When the gateway reaches the player (`distance` passes the boundary), the
   world calls `commands.setZone(next)`, which sets `state.zoneIndex` and emits
-  `zoneChanged`. So `zoneIndex` changes exactly at the gateway.
-- A run starts in zone 0 with the first gateway `ZONE_LENGTH` away. Any other
-  `setZone` (test hook, playtests) **snaps**: the world shows that zone at once
-  and the next gateway is a full zone length further.
+  `zoneChanged`. So `zoneIndex` changes exactly at the gateway; a run start
+  emits no `zoneChanged`.
+- The first gateway is `ZONE_LENGTH` away from the start. Any other `setZone`
+  (test hook, playtests) **snaps**: the world shows that zone at once and the
+  next gateway is a full zone length further.
 - Gameplay mirrors the route (a `ZoneRoute` it snaps on the same events) so it
   knows the zone at any street distance: people are themed by the zone their
   pattern lies in (VfB fans at the Neckar, zone 1; Wasen visitors in Bad
   Cannstatt, zone 2). Playtests import `ZONE_LENGTH` instead of hard-coding it.
+- **Mombachquelle** (`world/art/mombach.ts`): background scenery on the far
+  Neckar bank (mid layer) with people chilling at its pool; never an obstacle.
+
+### Mitte traffic
+
+In Stuttgart-Mitte cars, vans and buses drive in two lanes on the foreground
+street (`world/traffic.ts`, art in `world/art/traffic.ts`), with exhaust puffs:
+
+- They stay **below the riding line**: no vehicle roof or puff ever reaches
+  above `TRAFFIC_TOP` (`GROUND_Y + 6`), so they never cover obstacles, people
+  or the skater (`traffic.test.ts`).
+- Traffic ramps in shortly before the Mitte gateway and out after it
+  (`trafficDensity(route, distance)`, 0..1). The world writes it to
+  `state.trafficDensity` every tick (0 outside a run); audio reads it for the rumble and the odd
+  honk (only in Mitte). No other slice writes it.
+- Fixed pools, no allocation while driving. Test hook: `window.__world`
+  (`world/debug.ts`, see docs/TESTING.md).
 
 ## Settings menu and kid mode
 
@@ -470,6 +512,18 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   `state.carriedItem`, adds `ITEM_POINTS` and emits `itemCaught {item}`.
 - **Losing it**: a crash clears `state.carriedItem` (`health.ts`) and cancels
   an item in flight; `resetRun` clears it at every run start.
+- **Using it** (gameplay, on `input.use.pressed` with an item in hand, see
+  [Input](#input-action-duck-and-use)): gameplay clears `state.carriedItem` and
+  emits `itemUsed {item, action}`, then by item:
+  - `beer` (Maßkrug, `drink`, never in kid mode): `state.drunkTimer` = ~6 s and
+    `drunkStart {duration}`; core delays the input ([Drunk input](#drunk-input)),
+    the player and ui sway, the spawner places only easy patterns meanwhile;
+  - `pretzel` / `gingerbread` (`eat`): +1 health and `healthGained {health}`
+    (bonus points instead when health is full);
+  - `football` (`throw`): a `ball` entity flies forward (`ballThrown`); hitting a
+    person makes them tumble (`ballHit`, points, "Treffer!"); a miss may
+    ricochet back (deterministic chance, `ballBack`) and crashes the skater
+    unless he jumps or ducks it.
 - **UI**: "Stomp!" on the stomp, then a big popup per item above the raised
   item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
   "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
@@ -480,10 +534,30 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   requires one. `planStomp(state)` (`testing.ts`) finds a real stomp jump for
   tests and playtests.
 
-## Fair people (human margins)
+## Human margins (fairness.ts)
 
-The solver proves a pattern clearable with frame-perfect input. Around
-people the spawner also guarantees what a human can hit (`fairness.ts`):
+The solver proves a pattern clearable with frame-perfect input. The spawner
+also guarantees what a human can hit (`gameplay/fairness.ts`), for **every**
+pattern:
+
+- **Take-off window**: every take-off on the way (the first one and each one
+  after a landing, also across the boundary to the previous pattern) has a
+  window of at least `takeoffWindowAt(street)` consecutive working ticks with
+  one of `HUMAN_HOLDS` (3/10/20), at every pace checked, including the chill
+  jump at chill speeds (`Solver.takeoffWindow`, `humanFair`). The window is
+  `EARLY_TAKEOFF_WINDOW` = 14 ticks (+-6 ticks of human timing) while the
+  street distance is below `EARLY_WINDOW_DISTANCE` = 9500 (~90 s, while the
+  player is still learning), then `LATE_TAKEOFF_WINDOW` = 12 (+-5 ticks). The
+  window only counts jumps that land on free street (or a rail), so it also
+  keeps landing room. Where that is impossible (chilled at the slowest
+  speeds) the planner rerolls.
+- **Across pattern boundaries**: the spawner passes the previous pattern's
+  pieces (`PlanOptions.before`, shifted by its length plus the gap) and the
+  combined course must be clearable at every pace, with real people motion.
+- **Drunk**: while drunk the spawner only places easy patterns, validated with
+  the input delay (`drunkWindow`, see [Drunk input](#drunk-input)).
+
+### Fair people
 
 - **People come alone**: the `person` template (zones 1 and 2 only) holds one
   person and nothing else; no other template picks people. With the pattern
@@ -491,18 +565,52 @@ people the spawner also guarantees what a human can hit (`fairness.ts`):
   (1 s) of free street before and after every person, and a person never
   walks into another obstacle while visible (walking only carries them
   towards their anchor, from further right).
-- **Take-off window**: a person pattern needs `Solver.takeoffWindow(HUMAN_HOLDS)
-  >= MIN_TAKEOFF_WINDOW` (9 ticks: +-4 ticks of human timing) at every pace it
-  is checked at, including the chill jump at chill speeds; the window only
-  counts jumps that land within the pattern's runout (landing room). Where
-  that is impossible (chilled at the slowest speeds) the planner rerolls and
-  no person comes.
-- **Across pattern boundaries**: the spawner passes the previous pattern's
-  pieces (`PlanOptions.before`, shifted by its length plus the gap) and the
-  combined course must be clearable at every pace, with real people motion.
+- Their take-off window is the same `takeoffWindowAt(street)` as above.
 - **Acceptance**: `HumanBot` (`testing.ts`: take-off +-4 ticks, holds 3/10/20,
   ducking +-4 ticks) rides 20 seeds x 3 min (`human-bot-*.test.ts`,
   `human-run.ts`) without a crash into or within 1 s of a person.
+
+## Bench (ledge contract)
+
+The bench is a ledge: its entity `y` (the backrest's top edge) is the grind
+top. Rules in `gameplay/rules.ts`, shared by contacts and the solver:
+
+- `landsOnLedge(feet, top)`: the feet come down onto the top edge anywhere
+  from half a hitbox before its front corner (`LEDGE_FRONT_REACH` =
+  `HITBOX_W / 2`, the body already reaches over it) to its **rear end**: that
+  grinds (`grindStart`), the rear end included.
+- `pastLedge(feetX, top)`: once the board (wheel contact x) is past the rear
+  end, the skater got there over the top, so a remaining overlap of the body's
+  rear with the bench box is never a crash (landing behind it, or rolling off
+  its end).
+- Only riding into its front or side while low crashes.
+
+## Bin crash
+
+- The bin's catalogue entry has `swallows: true` (`gameplay/catalogue.ts`).
+  On a crash into it gameplay emits `crash {kind: 'bin'}` and then **removes
+  the bin entity** at once (`contacts.ts`).
+- The player (`player/bin.ts`, `bin-art.ts`, the `binCrash` timeline in
+  `poses.ts`) dives head first into the bin and draws it around the skater
+  from the crash on: legs and board sticking out, legs kicking, still rolling
+  on the ground; after `BIN_POP_AT` (0.76 s) he pops out and lands back on the
+  board within `CRASH_TIME`, while the bin tumbles away to the left and leaves
+  with the street. The lid colour comes from the hit entity's `data.variant`
+  if it is still in `state.entities` when `crash` is emitted.
+- `player.state` stays `crash` and invulnerability is the same as for every
+  crash. Details in `src/player/CONTRACT.md`.
+
+## Grind trick
+
+- While grinding a rail or the bench, holding down (duck: ↓ / S, a swipe down
+  on touch) performs a trick: the **player** sets `player.grindTrick = true`
+  for as long as down is held and the grind lasts, and draws the skater facing
+  the player (front view, the only view with the moustache).
+- The trick ends when down is released or the grind ends (jump off, rail end,
+  crash). **Gameplay** reads `player.grindTrick`, scores the trick and emits
+  `grindTrick {entityId, ticks, points}` when it ends while the skater is
+  still on the rail or bench; the ui shows a popup and audio plays a sound.
+- Ducking on the ground is unchanged; a grind trick never ducks.
 
 ## Chill effect (joint pickup)
 

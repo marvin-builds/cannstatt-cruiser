@@ -99,6 +99,18 @@ describe('FixedTimestep on real display cadences', () => {
     expect(longestRun(counts, 0)).toBeLessThanOrEqual(2);
   });
 
+  it('runs exactly two updates per frame on a 30 Hz display with +-2 ms jitter', () => {
+    const counts = updatesPerFrame(timestamps(1000 / 30, 2, 3000));
+    expect(counts.every((n) => n === 2)).toBe(true);
+  });
+
+  it('keeps a cadence between the snap targets unsnapped (50 Hz alternates 1 and 2 updates)', () => {
+    const counts = updatesPerFrame(timestamps(1000 / 50, 0.3, 3000));
+    const total = counts.reduce((a, b) => a + b, 0);
+    expect(total / counts.length).toBeCloseTo(60 / 50, 2);
+    expect(Math.max(...counts)).toBe(2);
+  });
+
   it('catches up after a missed vsync with the right number of updates', () => {
     const stamps = timestamps(1000 / 60, 0.5, 100);
     for (let i = 60; i < stamps.length; i++) stamps[i]! += 1000 / 60; // frame 60 arrives one vsync late

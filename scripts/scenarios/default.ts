@@ -4,7 +4,7 @@
  * hotspot at the right edge, page layout checks and screenshots over time.
  */
 import { VIEW_H, VIEW_MAX_W } from '../../src/core/config';
-import type { PlaytestContext } from '../playtest-lib';
+import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 async function pageLayout(t: PlaytestContext) {
   return t.page.evaluate(() => {
@@ -50,8 +50,9 @@ export default async function defaultScenario(t: PlaytestContext): Promise<void>
   t.check('no scrollbars', !layout.scrollbars, layout);
   await checkAdaptiveView(t, 'initial');
 
-  // Deterministic part: frozen clock, fixed seed.
+  // Deterministic part: frozen clock, fixed seed. In portrait the rotate hint keeps a run paused until tapped away.
   await game.pause();
+  await dismissRotateHint(t);
   await game.seed(1);
   await game.startRun();
   await game.step(30);
@@ -100,9 +101,9 @@ export default async function defaultScenario(t: PlaytestContext): Promise<void>
   await game.step(1);
   await t.screenshot('paused');
   await game.resumeGame();
-  await game.setZone(2);
+  await game.setZone(0); // runs start in Bad Cannstatt (START_ZONE), so switch to Stuttgart-Mitte
   await game.step(1);
-  await t.canvasShot('zone 2');
+  await t.canvasShot('zone 0');
 
   // Rotate (swap width and height) live and back, without reload.
   const size = t.page.viewportSize()!;

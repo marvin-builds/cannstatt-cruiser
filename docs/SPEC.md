@@ -30,6 +30,10 @@ and on desktop (keyboard and mouse). The UI language is German.
   tell it from a tap, a touch during a run waits up to ~83 ms (or until the
   finger lifts) before it jumps. Ducking works on the ground only (not on
   rails, no fast fall in the air); jumping while ducked stands up and jumps.
+- Use the carried item: E on the keyboard; on touch (and mouse) a big item
+  button that shows only while the skater carries an item (see Using items).
+- Grind trick: down (↓ / S, swipe down) while grinding (see Obstacles and
+  scoring).
 - Coyote time (~80 ms) and jump buffering (~120 ms).
 - P / Escape = pause; P / Escape, Space (the jump key) or a tap resumes.
 
@@ -60,10 +64,19 @@ and on desktop (keyboard and mouse). The UI language is German.
   below).
 - Grindable rails: handrails and pipes. The Parkbank can be ground too: landing
   on it from above grinds it like a rail; riding into its front or side crashes.
+- Landing anywhere on the bench seat, from just before its front corner to its
+  rear end, grinds; landing behind it or rolling off its end never crashes.
+- Crashing into a Mülltonne sticks the skater head first in the bin for a
+  moment (legs and board sticking out, legs kicking), then he pops out, lands
+  back on his board and the bin tumbles away. It costs health like any crash.
 - Clearing an obstacle by jumping or ducking under it scores points (a duck
   on the ground does not extend a combo). Landing on a rail starts a
   grind, which scores points per tick. A combo multiplier grows for chains that
   don't touch the ground or crash.
+- Grind trick: holding down while grinding turns the skater to face the player
+  (front view, the only view that shows his moustache) for as long as down is
+  held. It ends when down is released or the grind ends and scores trick points
+  with a popup.
 
 ## Stomp and carried items
 
@@ -79,6 +92,21 @@ and on desktop (keyboard and mouse). The UI language is German.
 - The skater carries the item under the arm until the next crash (a crash
   while it flies loses it too); a new run starts empty-handed.
 - A stomp counts as a trick in the combo. Patterns never require a stomp.
+
+## Using items
+
+The carried item can be used (E, or the item button on touch); using it
+empties the hands:
+
+- **Maßkrug** (never in kid mode): the skater drinks it ("gluck gluck gluck")
+  and is drunk for ~6 s: jump and duck react a few ticks late (a
+  deterministic random delay), the skater and the screen sway. Meanwhile the
+  spawner places only easy patterns that are clearable with that delay.
+- **Brezel / Lebkuchenherz**: eating it gives +1 health (bonus points instead
+  when health is full).
+- **Football**: thrown forward. Hitting a person makes them tumble (points,
+  "Treffer!"). A miss can ricochet back (deterministic chance) and knock the
+  skater off the board (crash, -1 health) unless he jumps or ducks it.
 
 ## Health
 
@@ -126,25 +154,34 @@ kid mode refers to drugs.
   guarantees that every pattern can be cleared with the available jump, also
   with moving people and with the lower chill jump where the chill effect can
   be active.
-- People are fair for humans, not just for frame-perfect input: a person
-  always comes alone in its pattern, with at least ~1 s of free street before
-  and after it (nobody walks into other obstacles), and its jump leaves a
-  take-off window of at least 9 ticks (~150 ms) with a tap, half or full
-  press at every speed, chilled too (where that is impossible, e.g. chilled
-  at the slowest speeds, no person comes). Every pattern is also checked
-  together with the end of the previous one. Acceptance: a bot with human
-  timing (take-off +-4 ticks, three press lengths, sloppy ducking) has no
-  crash into or within 1 s of a person in 20 runs of 3 minutes.
+- Every pattern is fair for humans, not just for frame-perfect input: each
+  take-off leaves a window of at least 14 ticks (~230 ms) in the first ~90 s,
+  while the player is still learning, then at least 12 ticks (~200 ms), with
+  a tap, half or full press at every speed, chilled too, and room to land.
+  Every pattern is also checked together with the end of the previous one.
+- People come alone in their pattern, with at least ~1 s of free street
+  before and after them (nobody walks into other obstacles); where their
+  window is impossible (e.g. chilled at the slowest speeds) no person comes.
+  Acceptance: a bot with human timing (take-off +-4 ticks, three press
+  lengths, sloppy ducking) has no crash into or within 1 s of a person in 20
+  runs of 3 minutes.
 
 ## Zones
 
-The parallax background has 3-4 layers and cycles endlessly through the zones
-with smooth transitions:
+The parallax background has 3-4 layers. A run (and the title) starts in Bad
+Cannstatt; the route then rides back and forth along the river, always to a
+neighbouring zone, with smooth transitions through a landmark gateway:
+Cannstatt -> Neckar -> Stuttgart-Mitte -> Neckar -> Cannstatt -> ...
 
 1. **Stuttgart-Mitte:** Fernsehturm, Hauptbahnhof tower with the rotating
    Mercedes star, Stäffele (stair lanes), vineyards on the hills around the
    basin, a yellow Stadtbahn (U-Bahn) train.
-2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette.
+   Suddenly lots of cars, vans and buses on the foreground street (in front of
+   the riding line, never covering obstacles or the skater), with exhaust
+   puffs and traffic noise (rumble and the odd honk, only here).
+2. **Neckar:** river, bridge, Stadtbahn, Mercedes-Benz Arena silhouette, the
+   Mombachquelle's outlet into the river with people chilling at its bathing
+   pool (scenery, not obstacles).
 3. **Bad Cannstatt:** Altstadt half-timbered houses, Kursaal, Mineralbad /
    mineral water fountain, Cannstatter Wasen with Fruchtsäule, Riesenrad (Ferris
    wheel) and beer tents (Volksfest), the Grabkapelle on the vineyard-covered Württemberg in the distance.
