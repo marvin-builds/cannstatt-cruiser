@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, GROUND_Y, MAX_SPEED, PLAYER_X } from '../core/config';
+import { BASE_SPEED, GROUND_Y, PLAYER_X } from '../core/config';
+import { TOP_SPEED } from './difficulty';
 import type { Game } from '../core/game';
 import { Rng } from '../core/rng';
 import { createPlayerTestGame, tick } from '../player/testing';
@@ -67,7 +68,7 @@ describe('overhead obstacles in the catalogue', () => {
 });
 
 describe('solver with ducking', () => {
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`passes a hanging banner by ducking, without a jump, at ${speed} px/s`, () => {
       const s = new Solver(course([], [overheadBox('banner', 80)]), speed);
       expect(s.solvable()).toBe(true);

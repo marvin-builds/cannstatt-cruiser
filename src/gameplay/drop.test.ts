@@ -5,6 +5,7 @@ import { tick } from '../player/testing';
 import type { CarriedItem, Entity, Rect } from '../types';
 import { BEER_AUTO_DRINK } from './auto-drink';
 import { BALL_HIT_POINTS } from './ball';
+import { TOP_SPEED } from './difficulty';
 import { DROP_ROOM_SECONDS, DROP_SPOTS, DROP_TIME, DroppedItems, ITEM_BOX } from './drop';
 import { ITEM_POINTS } from './items';
 import type { Motion } from './motion';
@@ -88,11 +89,11 @@ describe('DroppedItems (an item knocked out of a person hand)', () => {
   });
 });
 
-/** Quiet game with a still person ahead and the football in hand. */
-function ballAt(kind: 'vfbFan' | 'wasenGuest', prop = 0, kidMode = false): { game: Game; person: Entity } {
-  const game = quietGame();
+/** Quiet game (speed 120 unless given) with a still person `ahead` px in front of the skater and the football in hand. */
+function ballAt(kind: 'vfbFan' | 'wasenGuest', prop = 0, kidMode = false, speed = 120, ahead = 90): { game: Game; person: Entity } {
+  const game = quietGame(speed);
   game.state.kidMode = kidMode;
-  const person = obstacle(game, kind, PLAYER_X + 90, still);
+  const person = obstacle(game, kind, PLAYER_X + ahead, still);
   person.data = { ...person.data, prop };
   game.state.carriedItem = 'football';
   return { game, person };
@@ -124,6 +125,15 @@ describe('a ball hit drops the person item onto the street', () => {
       expect(game.state.score - score).toBe(BALL_HIT_POINTS + ITEM_POINTS);
     });
   }
+
+  it('at the top speed riding on still collects it, wherever the ball hits the person', () => {
+    for (const ahead of [70, 90, 130, 170]) {
+      const { game } = ballAt('wasenGuest', 1, false, TOP_SPEED, ahead);
+      const hits = record(game, 'ballHit');
+      expect(throwAndRide(game), `person ${ahead} px ahead`).toEqual(['pretzel']);
+      expect(hits).toHaveLength(1);
+    }
+  });
 
   it('kid mode never drops beer, whatever the visitor holds', () => {
     for (let prop = 0; prop < 4; prop++) {

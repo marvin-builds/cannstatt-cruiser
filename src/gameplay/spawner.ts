@@ -23,12 +23,12 @@
  * that it finishes at once). The units are deterministic, so runs replay
  * exactly. Without `workPerTick` every pattern is planned when it is due.
  */
-import { MAX_SPEED, PLAYER_X, VIEW_MAX_W } from '../core/config';
+import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
 import type { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { CHILL_SPEED_SCALE } from './chill';
-import { gapAt, speedAt, tierAt } from './difficulty';
+import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { takeoffWindowAt } from './fairness';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
@@ -56,12 +56,12 @@ const PLAN_AHEAD = 3;
 
 /** Street distance before the first joint can come: over 30 s even at the start speed ramp. */
 export const JOINT_FIRST_DISTANCE = 3300;
-/** Street distance between joints: at least 45 s even at MAX_SPEED (more while chilled)... */
-export const JOINT_SPACING = 7500;
+/** Street distance between joints: at least 45 s even at TOP_SPEED (more while chilled)... */
+export const JOINT_SPACING = 8600;
 /** ...plus up to this much at random (also for the first one). */
 const JOINT_JITTER = 2400;
-/** Street the chill effect can last after the pickup (it runs CHILL_DURATION, never faster than MAX_SPEED). */
-export const CHILL_REACH = Math.ceil(CHILL_DURATION * MAX_SPEED);
+/** Street the chill effect can last after the pickup (it runs CHILL_DURATION, never faster than TOP_SPEED). */
+export const CHILL_REACH = Math.ceil(CHILL_DURATION * TOP_SPEED);
 /**
  * Street after a Wasen visitor with a Maßkrug that is already on the street
  * when the skater could catch it and drink at once: the widest view, the

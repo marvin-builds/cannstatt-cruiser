@@ -96,7 +96,7 @@ function leadFor(speed: number, drunk = false): number {
 
 /** Room after the last piece in which the player must be back on the ground (a late landing still lands here). */
 function runoutFor(speed: number): number {
-  return Math.round(32 + 0.45 * speed);
+  return Math.round(32 + 0.55 * speed);
 }
 
 class Builder {

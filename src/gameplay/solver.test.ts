@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, GROUND_Y, MAX_SPEED, TICK_DT } from '../core/config';
+import { BASE_SPEED, GROUND_Y, TICK_DT } from '../core/config';
+import { TOP_SPEED } from './difficulty';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import { railRect } from './catalogue';
 import type { Motion } from './motion';
@@ -22,7 +23,7 @@ describe('clearability solver', () => {
     expect(s.bestJump()).toBeNull();
   });
 
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`clears a single 18 px bin at ${speed} px/s and plans a jump over it`, () => {
       const s = new Solver(course([block(80, 10, 18)]), speed);
       expect(s.solvable()).toBe(true);
@@ -40,7 +41,7 @@ describe('clearability solver', () => {
   it('a long block is too wide to jump at base speed but not at max speed', () => {
     const c = course([block(100, 60, 24)]);
     expect(new Solver(c, BASE_SPEED).solvable()).toBe(false);
-    expect(new Solver(c, MAX_SPEED).solvable()).toBe(true);
+    expect(new Solver(c, TOP_SPEED).solvable()).toBe(true);
   });
 
   it('a long low wall is only passable by grinding the rail above it', () => {
@@ -54,7 +55,7 @@ describe('clearability solver', () => {
 
   it('demands the landing before the limit', () => {
     const c = course([block(40, 10, 18)]);
-    expect(new Solver({ ...c, limit: c.goal + 6 }, MAX_SPEED).solvable()).toBe(false);
+    expect(new Solver({ ...c, limit: c.goal + 6 }, TOP_SPEED).solvable()).toBe(false);
   });
 
   it('plans from the middle of the widest take-off window', () => {
@@ -78,7 +79,7 @@ describe('solver with ledges (grindable obstacles such as the bench)', () => {
     return { top, box: { x: x + 1, y: top.y + 2, w: w - 2, h: h - 2 } };
   }
 
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`lands on the top of a bench and grinds it at ${speed} px/s`, () => {
       const c: Course = { ...course([]), ledges: [ledge(90, 24, 12)], goal: 114, limit: 514 };
       const s = new Solver(c, speed);
@@ -169,8 +170,8 @@ describe('take-off window (human margin)', () => {
 
   it('is 0 when nothing can be jumped and narrower when obstacles crowd the landing', () => {
     expect(new Solver(course([block(80, 10, 60)]), BASE_SPEED).takeoffWindow([3, 10, 20])).toBe(0);
-    const lone = new Solver(course([block(80, 8, 22)]), MAX_SPEED).takeoffWindow([20]);
-    const crowded = new Solver(course([block(80, 8, 22), block(150, 10, 18)]), MAX_SPEED).takeoffWindow([20]);
+    const lone = new Solver(course([block(80, 8, 22)]), TOP_SPEED).takeoffWindow([20]);
+    const crowded = new Solver(course([block(80, 8, 22), block(150, 10, 18)]), TOP_SPEED).takeoffWindow([20]);
     expect(crowded).toBeLessThan(lone);
   });
 });
@@ -191,7 +192,7 @@ describe('stomps in the solver', () => {
     return found;
   }
 
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`a fall onto the head is a valid path with stomps on and a crash without (${speed} px/s)`, () => {
       expect(onlyWithStomps(speed).length).toBeGreaterThan(0);
     });
@@ -221,7 +222,7 @@ describe('work budget (planning spread over ticks)', () => {
   }
 
   it('throws OUT_OF_WORK when the budget runs out, and resumed tries give the same answers as an unbudgeted solver', () => {
-    for (const speed of [BASE_SPEED, 130, MAX_SPEED]) {
+    for (const speed of [BASE_SPEED, 130, TOP_SPEED]) {
       const plain = new Solver(busy(), speed);
       const budget: WorkBudget = { left: 0 };
       const budgeted = new Solver(busy(), speed, { budget });

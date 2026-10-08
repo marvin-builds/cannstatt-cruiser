@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, MAX_SPEED, PLAYER_X, TICK_DT } from '../core/config';
+import { BASE_SPEED, PLAYER_X, TICK_DT } from '../core/config';
+import { TOP_SPEED } from './difficulty';
 import { Rng } from '../core/rng';
 import { tick } from '../player/testing';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
@@ -42,7 +43,7 @@ describe('people obstacles', () => {
     expect(guest.data?.hit).toBe(true);
   });
 
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`the bot jumps a walking fan and a swaying Wasen visitor at ${speed} px/s`, () => {
       const game = quietGame(speed);
       const crashes = record(game, 'crash');
@@ -61,7 +62,7 @@ describe('people obstacles', () => {
         const pattern = { name: 't', pieces: [{ kind, x: 80, y: 150 - OBSTACLES[kind].h, w: OBSTACLES[kind].w, h: OBSTACLES[kind].h, data: { ...motion, ax: 80 } }], length: 200 };
         const course = courseOf(pattern);
         expect(course.movers).toHaveLength(1);
-        for (const v of [BASE_SPEED * CHILL_SPEED_SCALE, MAX_SPEED]) {
+        for (const v of [BASE_SPEED * CHILL_SPEED_SCALE, TOP_SPEED]) {
           expect(new Solver(course, constantPace(v, CHILL_JUMP_SCALE)).solvable(), `${kind} ${v}`).toBe(true);
         }
       }

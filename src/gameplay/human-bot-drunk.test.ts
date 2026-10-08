@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RAMP_DISTANCE, SPEED_RAMP_DISTANCE } from './difficulty';
 import { rideDrunk } from './human-run';
 
 // Acceptance for the drunk phase: the human bot (take-off +-4 ticks, three
@@ -13,7 +14,7 @@ const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1);
 describe('drunk human bot', () => {
   for (const [name, from] of [
     ['early in the run', 2000],
-    ['at full difficulty', 34000],
+    ['at full difficulty (top speed)', Math.max(RAMP_DISTANCE, SPEED_RAMP_DISTANCE) + 1000],
   ] as const) {
     it(`survives the drunk phase without a crash in >= 18 of 20 seeds (${name})`, () => {
       const runs = SEEDS.map((seed) => rideDrunk(seed, from));
