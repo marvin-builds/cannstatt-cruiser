@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GROUND_Y, TICK_DT } from '../core/config';
+import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import { Rng } from '../core/rng';
 import { OBSTACLES } from '../gameplay/catalogue';
 import {
@@ -9,8 +9,10 @@ import {
   LIGHT_TRAFFIC,
   mitteShare,
   PUFF_LIFE,
+  passedKind,
   Traffic,
   TRAFFIC_TOP,
+  type VehiclePass,
   trafficDensity,
   vehicleScreenX,
   VEHICLES,
@@ -341,5 +343,77 @@ describe('Traffic', () => {
     const oncoming = active(traffic).find((v) => LANES[v.lane]!.dir === -1)!;
     expect(vehicleScreenX(withSkater, 1.2, 0.01)).toBeCloseTo(withSkater.x + withSkater.pace * 0.01);
     expect(vehicleScreenX(oncoming, 1.2, 0.01)).toBeCloseTo(oncoming.x - 1.2 - oncoming.pace * 0.01);
+  });
+});
+
+describe('Traffic pass-by events (vehiclePassed)', () => {
+  /** True right after a launch: the vehicle sits exactly on its lane's entry edge. */
+  function atEntry(x: number, lane: number, kind: VehicleKind, viewWidth: number): boolean {
+    return LANES[lane]!.dir === 1 ? x === -VEHICLES[kind].w - 1 : x === viewWidth + 1;
+  }
+
+  /**
+   * Drives `seconds` and compares, tick by tick, the passes the traffic reports
+   * with the vehicles whose centre crossed PLAYER_X for the first time.
+   */
+  function passes(seed: number, seconds: number, density: number, viewWidth = 427) {
+    const traffic = new Traffic(new Rng(seed));
+    const reported: VehiclePass[] = [];
+    const centre = traffic.vehicles.map(() => NaN);
+    const crossed = traffic.vehicles.map(() => true);
+    for (let t = 0; t < seconds / TICK_DT; t++) {
+      const tick: VehiclePass[] = [];
+      traffic.update(TICK_DT, 120 * TICK_DT, density, viewWidth, (p) => tick.push({ ...p }));
+      const want: VehiclePass[] = [];
+      traffic.vehicles.forEach((v, i) => {
+        if (!v.active) {
+          centre[i] = NaN;
+          return;
+        }
+        const c = v.x + VEHICLES[v.kind].w / 2;
+        const dir = LANES[v.lane]!.dir;
+        if (Number.isNaN(centre[i]!) || atEntry(v.x, v.lane, v.kind, viewWidth)) crossed[i] = false;
+        else if (!crossed[i] && (c - PLAYER_X) * dir >= 0) {
+          crossed[i] = true;
+          want.push({ kind: passedKind(v.kind), front: LANES[v.lane]!.front, light: density < 0.5 });
+        }
+        centre[i] = c;
+      });
+      const order = (a: VehiclePass, b: VehiclePass) => JSON.stringify(a).localeCompare(JSON.stringify(b));
+      expect(tick.sort(order)).toEqual(want.sort(order));
+      reported.push(...tick);
+    }
+    return reported;
+  }
+
+  it('maps hatchbacks and sedans to cars, the rest to themselves', () => {
+    expect(passedKind('hatch')).toBe('car');
+    expect(passedKind('sedan')).toBe('car');
+    expect(passedKind('van')).toBe('van');
+    expect(passedKind('bus')).toBe('bus');
+    expect(passedKind('truck')).toBe('truck');
+  });
+
+  it('reports every Mitte vehicle exactly once as it passes the skater, in both lanes, not light', () => {
+    const seen = passes(3, 40, 1);
+    expect(seen.length).toBeGreaterThan(40);
+    expect(new Set(seen.map((p) => p.front))).toEqual(new Set([true, false]));
+    expect(seen.every((p) => !p.light)).toBe(true);
+    expect(new Set(seen.map((p) => p.kind))).toEqual(new Set(['car', 'van', 'bus', 'truck']));
+  });
+
+  it('reports light traffic away from Mitte as light, in both lanes', () => {
+    const seen = [1, 2, 3].flatMap((seed) => passes(seed, 200, LIGHT_TRAFFIC));
+    expect(seen.length).toBeGreaterThan(20);
+    expect(seen.every((p) => p.light)).toBe(true);
+    expect(new Set(seen.map((p) => p.front))).toEqual(new Set([true, false]));
+  });
+
+  it('works on the narrowest view too', () => {
+    expect(passes(5, 30, 1, 320).length).toBeGreaterThan(20);
+  });
+
+  it('reports nothing on an empty street (density 0)', () => {
+    expect(passes(1, 30, 0)).toEqual([]);
   });
 });

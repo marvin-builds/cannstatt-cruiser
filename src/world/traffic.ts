@@ -9,8 +9,9 @@
 (rarely a bus) with long empty stretches between. DOM-free and allocation-free while driving (fixed pools); the art
  * lives in art/traffic.ts.
  */
-import { GROUND_Y, VIEW_H } from '../core/config';
+import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import type { Rng } from '../core/rng';
+import type { GameEvents } from '../types';
 import type { ZoneRoute } from './zones';
 
 /** No vehicle body ever reaches above this view y (the riding line stays free). */
@@ -32,6 +33,8 @@ const TRAFFIC_ZONE = 0;
 export const LIGHT_TRAFFIC = 0.05;
 /** Below this density the street has light traffic: one vehicle at a time. */
 const DENSE_FROM = 0.2;
+/** Vehicles set off below this density count as light traffic in their pass-by (vehiclePassed). */
+const LIGHT_BELOW = 0.5;
 /** Seconds of empty street before the next vehicle of light traffic. */
 const LIGHT_GAP: readonly [number, number] = [4, 11];
 /** Ground distance before the Mitte gateway where traffic starts ramping in (and after it leaves, out). */
@@ -40,6 +43,16 @@ const RAMP_LEAD = 160;
 const RAMP_LENGTH = 400;
 
 export type VehicleKind = 'hatch' | 'sedan' | 'van' | 'bus' | 'truck';
+
+/** A vehicle passing the skater, as the vehiclePassed event reports it. */
+export type VehiclePass = GameEvents['vehiclePassed'];
+/** Called once per vehicle when its centre crosses PLAYER_X (the object is reused: copy what you keep). */
+export type PassListener = (pass: VehiclePass) => void;
+
+/** The vehiclePassed kind of a vehicle (hatchbacks and sedans are both cars). */
+export function passedKind(kind: VehicleKind): VehiclePass['kind'] {
+  return kind === 'hatch' || kind === 'sedan' ? 'car' : kind;
+}
 
 export interface VehicleSpec {
   readonly w: number;
@@ -143,6 +156,10 @@ export interface Vehicle {
   flash: number;
   /** Seconds until the next flash. */
   flashTimer: number;
+  /** Set off as light traffic (density below LIGHT_BELOW). */
+  light: boolean;
+  /** Its centre has crossed PLAYER_X (the pass-by was reported). */
+  passed: boolean;
 }
 
 export interface Puff {
@@ -207,6 +224,8 @@ export class Traffic {
   /** Light traffic: seconds of empty street left until the next vehicle. */
   private lightTimer = LIGHT_GAP[0];
   private ticks = 0;
+  /** Reused for every pass-by report. */
+  private readonly pass: { -readonly [K in keyof VehiclePass]: VehiclePass[K] } = { kind: 'car', front: false, light: false };
 
   constructor(private readonly rng: Rng) {
     this.vehicles = Array.from({ length: MAX_VEHICLES }, () => ({
@@ -221,6 +240,8 @@ export class Traffic {
       puffTimer: 0,
       flash: 0,
       flashTimer: 0,
+      light: false,
+      passed: false,
     }));
     this.puffs = Array.from({ length: MAX_PUFFS }, () => ({ active: false, x: 0, y: 0, age: 0, big: false }));
     this.timers = LANES.map(() => 0);
@@ -235,8 +256,11 @@ export class Traffic {
     this.ticks = 0;
   }
 
-  /** One step: `scroll` = view px the street moved left this step, `density` 0..1. */
-  update(dt: number, scroll: number, density: number, viewWidth: number): void {
+  /**
+   * One step: `scroll` = view px the street moved left this step, `density`
+   * 0..1; `onPass` hears each vehicle once as its centre crosses PLAYER_X.
+   */
+  update(dt: number, scroll: number, density: number, viewWidth: number, onPass?: PassListener): void {
     this.movePuffs(dt, scroll);
     this.follow();
     let heavy = false;
@@ -257,10 +281,25 @@ export class Traffic {
       this.blink(v, dt);
     }
     this.keepApart();
+    this.reportPasses(onPass);
     if (density >= DENSE_FROM) this.spawn(dt, density, viewWidth);
-    else if (density > 0) this.spawnLight(dt, onStreet === 0, viewWidth);
+    else if (density > 0) this.spawnLight(dt, onStreet === 0, density, viewWidth);
     this.ticks++;
     this.shake = heavy ? Math.floor(this.ticks / SHAKE_TICKS) % 2 : 0;
+  }
+
+  /** Reports each vehicle whose centre has just crossed PLAYER_X (once per vehicle). */
+  private reportPasses(onPass: PassListener | undefined): void {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]!;
+      if (!v.active || v.passed || (v.x + VEHICLES[v.kind].w / 2 - PLAYER_X) * LANES[v.lane]!.dir < 0) continue;
+      v.passed = true;
+      if (!onPass) continue;
+      this.pass.kind = passedKind(v.kind);
+      this.pass.front = LANES[v.lane]!.front;
+      this.pass.light = v.light;
+      onPass(this.pass);
+    }
   }
 
   /** Counts a vehicle's headlight flash down and starts the next one when due. */
@@ -324,23 +363,23 @@ export class Traffic {
       this.timers[lane]! -= dt * density;
       if (this.timers[lane]! > 0) continue;
       const spec = LANES[lane]!;
-      if (!this.launch(lane, this.rng.pick(spec.kinds), viewWidth)) continue;
+      if (!this.launch(lane, this.rng.pick(spec.kinds), density, viewWidth)) continue;
       this.timers[lane] = this.rng.range(spec.interval[0], spec.interval[1]);
     }
   }
 
   /** Light traffic: one vehicle in a random lane once the street has been empty for a while. */
-  private spawnLight(dt: number, empty: boolean, viewWidth: number): void {
+  private spawnLight(dt: number, empty: boolean, density: number, viewWidth: number): void {
     if (!empty) return;
     this.lightTimer -= dt;
     if (this.lightTimer > 0) return;
     const lane = this.rng.int(0, LANES.length - 1);
-    this.launch(lane, this.rng.pick(LANES[lane]!.lightKinds), viewWidth);
+    this.launch(lane, this.rng.pick(LANES[lane]!.lightKinds), density, viewWidth);
     this.lightTimer = this.rng.range(LIGHT_GAP[0], LIGHT_GAP[1]);
   }
 
-  /** Sends a `kind` into `lane` from its entry edge; false if there is no room (or no free slot). */
-  private launch(lane: number, kind: VehicleKind, viewWidth: number): boolean {
+  /** Sends a `kind` into `lane` from its entry edge at `density`; false if there is no room (or no free slot). */
+  private launch(lane: number, kind: VehicleKind, density: number, viewWidth: number): boolean {
     const slot = firstInactive(this.vehicles);
     if (!slot) return false;
     const spec = LANES[lane]!;
@@ -359,6 +398,8 @@ export class Traffic {
     slot.puffTimer = this.rng.range(0, puffEvery[1]);
     slot.flash = 0;
     slot.flashTimer = this.rng.range(0.5, FLASH_EVERY[1]);
+    slot.light = density < LIGHT_BELOW;
+    slot.passed = false;
     return true;
   }
 

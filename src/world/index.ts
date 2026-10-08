@@ -8,7 +8,8 @@
  * single car now and then); Stuttgart-Mitte makes it dense and big (below the riding line: the back lane and the exhaust
  * clouds under every entity, the front lane in the fx layer over them but
  * below everything gameplay draws) and adds a smoggy haze. Purely visual apart from
- * `state.zoneIndex` and `state.trafficDensity` (see docs/ARCHITECTURE.md).
+ * `state.zoneIndex`, `state.trafficDensity` and the `vehiclePassed` event
+ * (see docs/ARCHITECTURE.md).
  * Everything that scrolls is drawn from RenderContext.scroll / scrollLead, so
  * it moves evenly on 120/144 Hz displays; render allocates nothing per frame.
  */
@@ -27,7 +28,7 @@ import { installWorldDebug } from './debug';
 import { GroundStrip } from './ground';
 import { LETTERBOX } from './palette';
 import { DepthLayer, mixSeed, SharedLayer } from './scene';
-import { mitteShare, Traffic, trafficDensity } from './traffic';
+import { mitteShare, type PassListener, Traffic, trafficDensity } from './traffic';
 import { TrainRunner } from './train';
 import { type PaletteBlend, ZoneRoute } from './zones';
 
@@ -78,6 +79,8 @@ export function createWorldSystem(): WorldSystem {
   let lastDistance = 0;
   let lastMode: GameMode | null = null;
   const blend: PaletteBlend = { from: START_ZONE, to: START_ZONE, t: 1 };
+  /** Announces pass-bys while a run is playing (set in init, once the bus is known). */
+  let announcePass: PassListener | undefined;
 
   function snap(zone: number, distance: number): void {
     route.snap(zone, distance);
@@ -164,6 +167,7 @@ export function createWorldSystem(): WorldSystem {
     init(ctx: GameContext) {
       ctx.commands.setLetterboxColor(LETTERBOX);
       reset(ctx.state.seed);
+      announcePass = (pass) => ctx.bus.emit('vehiclePassed', { ...pass });
       if (typeof window !== 'undefined' && testHookEnabled()) installWorldDebug(traffic, () => density);
       ctx.bus.on('runStarted', ({ seed }) => reset(seed));
       ctx.bus.on('zoneChanged', ({ index }) => {
@@ -184,7 +188,8 @@ export function createWorldSystem(): WorldSystem {
       lastDistance = state.distance;
       density = trafficDensity(route, state.distance);
       state.trafficDensity = state.mode === 'playing' ? density : 0;
-      traffic.update(dt, scroll, density, display.viewWidth);
+      // Pass-bys are heard only while playing (state density is 0 on the title and game over).
+      traffic.update(dt, scroll, density, display.viewWidth, state.mode === 'playing' ? announcePass : undefined);
     },
 
     render: {

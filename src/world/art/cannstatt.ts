@@ -2,7 +2,7 @@ import { GROUND_Y } from '../../core/config';
 import { FAR, MID, NEAR } from '../palette';
 import type { ZoneSpec } from '../scene';
 import { treeCluster } from './city';
-import { PALESTINE_FLAG, withFlag } from './flags';
+import { PALESTINE_FLAG, flagSpan, withFlag } from './flags';
 import { farHills, hillProp, housesHillProp, paintHill } from './hills';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
 import { skyCanvas } from './sky';
@@ -244,6 +244,13 @@ const hedge = baseTile(32, GROUND_Y - 8, 8, (p) => {
   p.rect(NEAR.grassDark, 0, 7, 32, 1);
 });
 
+/**
+ * House-local x of the Palestine flag, hung once per visit (intro) from the
+ * right upper window of a Fachwerk house (window x 14-16, rows 19-21, sill
+ * row 22 of the 44 px high house).
+ */
+export const CANNSTATT_FLAG_X = 12;
+
 export function cannstattZone(): ZoneSpec {
   return {
     name: 'Bad Cannstatt',
@@ -267,8 +274,8 @@ export function cannstattZone(): ZoneSpec {
         props: {
           catalogue: {
             fachwerkRow: fachwerk([[24, 3, 14], [30, 3, 18], [26, 2, 16]]),
-            // Palestine flag from the right upper window (x 14-16, rows 19-21, sill row 22 of the 44 px high house).
-            fachwerkA: withFlag(fachwerk([[26, 2, 15]]), 44, PALESTINE_FLAG, 12, 23),
+            fachwerkA: fachwerk([[26, 2, 15]]),
+            fachwerkAFlag: withFlag(fachwerk([[26, 2, 15]]), 44, PALESTINE_FLAG, CANNSTATT_FLAG_X, 23),
             fachwerkB: fachwerk([[20, 3, 12], [26, 2, 16]]),
             kursaal,
             stadtkirche,
@@ -276,7 +283,7 @@ export function cannstattZone(): ZoneSpec {
             trees: treeCluster(),
           },
           stream: {
-            intro: ['fachwerkRow', 'wasen', 'kursaal'],
+            intro: ['fachwerkRow', 'wasen', 'kursaal', 'fachwerkAFlag'],
             landmarks: ['kursaal', 'fachwerkRow', 'stadtkirche', 'wasen'],
             fillers: ['fachwerkA', 'fachwerkB', 'trees'],
             gap: [2, 14],
@@ -297,6 +304,8 @@ export function cannstattZone(): ZoneSpec {
             fillersBetween: [2, 4],
           },
           startAt: 240,
+          // The Litfasssaeule, lamps and trees leave the flag on the house behind uncovered.
+          uncover: { id: 'fachwerkAFlag', ...flagSpan(PALESTINE_FLAG, CANNSTATT_FLAG_X) },
         },
       },
     ],
