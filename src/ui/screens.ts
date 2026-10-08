@@ -3,11 +3,12 @@
  * `UiView` (records, popups, banner) and the RenderContext.
  */
 import { chillStrength } from '../core/chill';
-import { GAMEOVER_INPUT_DELAY } from '../core/config';
+import { GAMEOVER_INPUT_DELAY, PLAYER_X } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
 import type { RenderContext } from '../types';
 import type { Rect } from '../types';
 import {
+  ARROW_DOWN,
   buttonPlateSprite,
   GUM_ICON,
   HEART,
@@ -51,6 +52,7 @@ import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
+import { type TrickHint, trickHintLabel, trickHintRect } from './trick-hint';
 
 export interface UiView {
   records: Records;
@@ -69,6 +71,8 @@ export interface UiView {
   hud: HudModel;
   /** First-time touch hint "Tippe auf den Gegenstand". */
   itemHint: ItemHint;
+  /** "↓ = Trick!" under the skater on the first grinds, until a grind trick was done once. */
+  trickHint: TrickHint;
   /** The hidden settings menu and the long press on the title logo that opens it. */
   settings: SettingsMenu;
   logoHold: LongPress;
@@ -140,6 +144,22 @@ function hint(r: RenderContext, touch: string, keys: string): string {
   return r.display.touch ? touch : keys;
 }
 
+/** The grind trick line of the title and pause key hints. */
+function trickKeysHint(r: RenderContext): string {
+  return hint(r, 'Beim Grinden runterwischen = Trick', 'Beim Grinden: Pfeil runter / S = Trick');
+}
+
+/** A light key cap (9 x 10: face and darker bottom edge) at `x`, `y`; the label goes on top. */
+function keyCap(r: RenderContext, x: number, y: number): void {
+  const { g } = r;
+  g.fillStyle = UI.muted;
+  g.fillRect(x, y, KEYCAP_W, 10);
+  g.fillStyle = UI.white;
+  g.fillRect(x, y, KEYCAP_W, 8);
+}
+
+const KEYCAP_W = 9;
+
 /** One HUD button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
 function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame: number): void {
   const plateInset = Math.floor((hit.w - m.plate) / 2);
@@ -198,7 +218,7 @@ function drawTitle(r: RenderContext, view: UiView): void {
 
   const y = TITLE_PANEL_Y + 3;
   const hints = y + 27;
-  const keys = hints + 4 * LINE + 1;
+  const keys = hints + 5 * LINE + 1;
   const rowY = touch ? keys + 2 : keys + LINE + 3;
   panel(r, 236, TITLE_PANEL_Y, rowY + LINE - TITLE_PANEL_Y);
   drawHoldProgress(r, view.logoHold.progress);
@@ -209,7 +229,8 @@ function drawTitle(r: RenderContext, view: UiView): void {
   centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Leertaste kurz = kleiner Sprung'), hints);
   centred(r, 'Halten = hoher Sprung', hints + LINE);
   centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), hints + 2 * LINE);
-  centred(r, hint(r, 'Gegenstand antippen = benutzen', 'E = Gegenstand benutzen'), hints + 3 * LINE);
+  centred(r, trickKeysHint(r), hints + 3 * LINE);
+  centred(r, hint(r, 'Gegenstand antippen = benutzen', 'E = Gegenstand benutzen'), hints + 4 * LINE);
   if (!touch) centred(r, 'P/Esc = Pause, M = Ton aus', keys, { color: UI.muted });
 
   const best = `Highscore ${formatNumber(view.records.highscore)}`;
@@ -358,13 +379,9 @@ function drawItemControl(r: RenderContext, view: UiView): void {
   g.fillStyle = UI.panel;
   g.fillRect(chip.x, chip.y, chip.w, chip.h);
   icon.draw(g, 0, chip.x + 3 + Math.floor((9 - icon.width) / 2), chip.y + Math.floor((CHIP_H - icon.height) / 2), 1);
-  // The key cap: light face, darker bottom edge, an ink "E".
   const kx = chip.x + chip.w - 12;
   const ky = chip.y + 2;
-  g.fillStyle = UI.muted;
-  g.fillRect(kx, ky, 9, 10);
-  g.fillStyle = UI.white;
-  g.fillRect(kx, ky, 9, 8);
+  keyCap(r, kx, ky);
   text(r, 'E', kx + 3, ky, KEYCAP);
 }
 
@@ -383,6 +400,30 @@ function drawItemHint(r: RenderContext, view: UiView): void {
   g.fillStyle = UI.yellow;
   for (let i = 0; i < 4; i++) g.fillRect(x + w + i, y + Math.floor(h / 2) - 3 + i, 1, 7 - 2 * i);
   text(r, label, x + 4, y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
+}
+
+/**
+ * The grind trick hint on a plate centred under the skater, below the riding
+ * line, with a caret pointing up at the skater: a "↓" key cap and "= Trick!"
+ * on desktop, "Wisch runter = Trick!" on touch.
+ */
+function drawTrickHint(r: RenderContext, view: UiView): void {
+  if (!view.trickHint.visible) return;
+  const { g, display } = r;
+  const scale = popupScale(display, false);
+  const label = trickHintLabel(display.touch);
+  const cap = display.touch ? 0 : KEYCAP_W + 3;
+  const h = display.touch ? 8 * scale + 6 : 14;
+  const p = trickHintRect(cap + measureText(label, scale) + 8, h, display.viewWidth);
+  ribbon(r, p.x, p.y, p.w, p.h);
+  g.fillStyle = UI.yellow;
+  const tip = Math.min(Math.max(PLAYER_X, p.x + 4), p.x + p.w - 4);
+  for (let i = 0; i < 3; i++) g.fillRect(tip - i, p.y - 3 + i, 1 + 2 * i, 1);
+  if (cap) {
+    keyCap(r, p.x + 4, p.y + 2);
+    ARROW_DOWN.draw(g, 0, p.x + 6, p.y + 3);
+  }
+  text(r, label, p.x + 4 + cap, p.y + 3, scale === 1 ? HINT_TEXT : HINT_TEXT_BIG);
 }
 
 const HINT_TEXT: TextOptions = { color: UI.yellow };
@@ -420,6 +461,7 @@ function drawPause(r: RenderContext): void {
   ribbon(r, centreX(r.display.viewWidth) - Math.floor(w / 2), 88, w, 15);
   if (blinkOn(r.state.modeTime)) centred(r, prompt, 92, { color: UI.yellow });
   if (!r.display.touch) centred(r, 'E = Gegenstand benutzen, M = Ton aus', 110, { color: UI.muted });
+  centred(r, trickKeysHint(r), r.display.touch ? 110 : 121, { color: UI.muted });
 }
 
 /** One "label  value" row of the game-over table, split at the centre line. */
@@ -527,6 +569,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawItemControl(r, view);
       drawLive(r, view);
       drawItemHint(r, view);
+      drawTrickHint(r, view);
       break;
     case 'paused':
       drawDrunk(r, view);

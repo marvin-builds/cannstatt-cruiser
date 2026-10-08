@@ -4,9 +4,10 @@
  * (kid mode, opened by a 3 s long press on the title logo or holding K).
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
- * plate in hud-model.ts, item use in item-button.ts, the drunk look in
- * drunk-look.ts, the zone ribbon in banner.ts, the settings logic in
- * settings.ts, layout math in layout.ts and all drawing in screens.ts.
+ * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
+ * trick-hint.ts, the drunk look in drunk-look.ts, the zone ribbon in
+ * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
+ * all drawing in screens.ts.
  */
 import { CHILL_DURATION } from '../core/chill';
 import { PLAYER_X } from '../core/config';
@@ -30,6 +31,7 @@ import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, portraitHintShown, type UiView } from './screens';
 import { statsLayout } from './stats';
+import { TrickHint } from './trick-hint';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -64,6 +66,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     drunkDuration: DEFAULT_DRUNK_DURATION,
     hud: new HudModel(),
     itemHint: new ItemHint(store),
+    trickHint: new TrickHint(store),
     settings: new SettingsMenu(store),
     logoHold: new LongPress(),
   };
@@ -82,6 +85,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.clear();
       feed.clear();
       view.itemHint.hide();
+      view.trickHint.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
@@ -95,7 +99,10 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     bus.on('healthGained', () => feed.healthGained());
     bus.on('ballHit', (e) => feed.ballHit(e.entityId));
     bus.on('ballBack', () => feed.ballBack());
-    bus.on('grindTrick', (e) => feed.grindTrick(e.points));
+    bus.on('grindTrick', (e) => {
+      feed.grindTrick(e.points);
+      view.trickHint.trickDone();
+    });
     bus.on('drunkStart', (e) => (view.drunkDuration = e.duration));
     bus.on('grindStart', () => popup('Grind!', UI.teal));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
@@ -214,6 +221,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.update(dt);
       view.banner.update(dt);
       view.itemHint.update(dt, view.banner.visible);
+      view.trickHint.update(state.player.grinding, state.player.grindTrick);
     },
 
     render: {

@@ -299,3 +299,14 @@ describe('hidden settings menu', () => {
     expect(t.game.state.mode).toBe('paused');
   });
 });
+
+describe('grind trick hint', () => {
+  it('persists a grind trick so the trick hint never shows again', () => {
+    const { game, store } = setup();
+    game.commands.startRun();
+    game.tick();
+    expect(store.get('grindTrickSeen', false)).toBe(false);
+    game.bus.emit('grindTrick', { entityId: 1, ticks: 30, points: 90 });
+    expect(store.get('grindTrickSeen', false)).toBe(true);
+  });
+});

@@ -25,6 +25,8 @@ export interface UiDebugHook {
   itemPopups(...kinds: ('drink' | 'eat' | 'throw' | 'hit' | 'back' | 'stomp' | 'trick')[]): void;
   /** Puts an item in the skater's hands (state.carriedItem) like a catch (incl. the first-time touch hint), without the toss or popup; null empties them. */
   carry(item: CarriedItem | null): void;
+  /** Whether the grind trick hint ("↓ = Trick!") shows now. */
+  trickHintVisible(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over). */
   setRecords(highscore?: number, starsTotal?: number): void;
   /** The hidden settings menu: screen, parent check question and the logo hold progress (0..1). */
@@ -73,6 +75,9 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     carry(item) {
       ctx.state.carriedItem = item;
       if (item) view.itemHint.caught(ctx.display.touch);
+    },
+    trickHintVisible() {
+      return view.trickHint.visible;
     },
     setRecords(highscore = 0, starsTotal = 0) {
       view.records = { highscore, starsTotal };
