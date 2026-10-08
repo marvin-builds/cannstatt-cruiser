@@ -117,7 +117,7 @@ Pages deploy only goes live when you say so.
 4. **Start in Bad Cannstatt:** the run (and title) starts in Cannstatt, then the route goes Cannstatt → Neckar → Mitte → Neckar → Cannstatt … (zone indices stay the same).
 5. **Bin crash:** crashing into a Mülltonne makes the skater stick head-first in the bin for a moment (legs and board sticking out, legs kicking), then he pops out.
 6. **Mitte traffic:** in Stuttgart-Mitte, suddenly many cars on the foreground street (in front of the riding line, never covering obstacles or the skater), exhaust puffs and traffic noise (rumble and the odd honk, only in Mitte).
-7. **POI Neckar: Mombachquelle:** the spring's outlet into the Neckar with people chilling at the bathing pool (background scenery, not obstacles).
+7. **POI Neckar: Mombachquelle:** while the Neckar is in the background, the Mombachquelle's outlet into the river appears there with people chilling at its bathing pool (background scenery, not obstacles).
 8. **Using caught items** (new "use" action: key E, on touch a big item button shown while carrying):
    - Maßkrug (never in kid mode): drink it with a "glug glug glug" sound → drunk for ~6 s, unreliable controls (deterministic random input delay, the skater and screen sway). While drunk the spawner only places easy patterns that the solver validates with the extra delay.
    - Brezel / Lebkuchenherz: eat it → +1 health (bonus points if health is full).
