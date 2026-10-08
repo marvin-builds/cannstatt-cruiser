@@ -18,6 +18,7 @@ import { courseAhead, HUMAN_STYLE, paceOf, planStomp } from './testing';
 // before (feet crossing the head top this tick, body over the head box): 10.5 ticks at
 // 90 px/s, 5.6 at 160 px/s; a human aiming at the head (+-4 ticks) stomped 100 % early, 65 % late.
 // After (head + shoulders, reach growing with speed): 15.7 at 90 px/s, 15.5 at 160 px/s; 100 % / 100 %.
+// At the 190 px/s top speed (ROADMAP 23): 15.2 ticks (min 14), human 100 %.
 
 const still: Motion = { walk: 0, sway: 0, phase: 0 };
 const head: Rect = { x: 100, y: GROUND_Y - 22, w: 6, h: 22 };

@@ -150,7 +150,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       game = ctx;
       // All art rasterised at startup: a first draw mid-run was a render spike on phones.
       warmArt();
-      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx);
+      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops);
       ctx.bus.on('runStarted', () => {
         route.snap(START_ZONE, 0);
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));

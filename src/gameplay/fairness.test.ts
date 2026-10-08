@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, MAX_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
+import { BASE_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Entity } from '../types';
 import { isObstacle, isPerson, isRail, obstacleRect } from './catalogue';
 import { CHILL_SPEED_SCALE } from './chill';
-import { speedAt } from './difficulty';
+import { speedAt, TOP_SPEED } from './difficulty';
 import { EARLY_TAKEOFF_WINDOW, EARLY_WINDOW_DISTANCE, HUMAN_HOLDS, humanFairAtAll, LATE_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS, takeoffWindowAt } from './fairness';
 import { ZoneRoute } from '../world/zones';
 import { anchorOf, motionOf, moveTo } from './motion';
@@ -17,9 +17,9 @@ import { Spawner } from './spawner';
 const CHILL_LOW = BASE_SPEED * CHILL_SPEED_SCALE;
 const PACES = [
   { name: 'min', pace: constantPace(BASE_SPEED) },
-  { name: 'max', pace: constantPace(MAX_SPEED) },
+  { name: 'max', pace: constantPace(TOP_SPEED) },
   { name: 'chill min', pace: constantPace(CHILL_LOW, CHILL_JUMP_SCALE) },
-  { name: 'chill max', pace: constantPace(MAX_SPEED, CHILL_JUMP_SCALE) },
+  { name: 'chill max', pace: constantPace(TOP_SPEED, CHILL_JUMP_SCALE) },
 ];
 
 const blocking = (p: Pick<Piece, 'kind'>) => isObstacle(p.kind) || isRail(p.kind);
@@ -52,7 +52,7 @@ describe('human take-off window', () => {
 
 describe('fair people: patterns', () => {
   it('a person always comes alone: no other obstacle or rail in its pattern', () => {
-    for (const p of personPatterns([BASE_SPEED, MAX_SPEED], undefined, 100)) {
+    for (const p of personPatterns([BASE_SPEED, TOP_SPEED], undefined, 100)) {
       expect(p.pieces.filter(blocking).map((x) => x.kind), p.name).toHaveLength(1);
     }
   }, 30_000);
@@ -85,7 +85,7 @@ describe('fair people: patterns', () => {
   it('a pattern is checked together with the end of the previous one (across the boundary)', () => {
     // A previous piece reaching into this pattern's run-up (an overhead sign at x 20) rules out jumping right after it.
     const before: Piece[] = [{ kind: 'banner', ...obstacleRect('banner', 20) }];
-    for (const v of [BASE_SPEED, MAX_SPEED]) {
+    for (const v of [BASE_SPEED, TOP_SPEED]) {
       const rng = new Rng(4);
       for (let i = 0; i < 60; i++) {
         const pattern = planPattern(rng, 3, [v], { zone: i % 3, before });
@@ -109,13 +109,14 @@ describe('fair for humans: every pattern, not only people', () => {
   });
 
   it('a lone bin is fair at every speed: one window, nothing after it', () => {
-    const course = courseOf({ name: 'bin', pieces: [{ kind: 'bin', ...obstacleRect('bin', 60) }], length: 140 });
-    expect(humanFairAtAll(course, [BASE_SPEED, MAX_SPEED, constantPace(MAX_SPEED, CHILL_JUMP_SCALE)])).toBe(true);
+    // 80 px of run-up: a pattern's lead at the top speed (patterns.ts leadFor, 77 px at 190 px/s).
+    const course = courseOf({ name: 'bin', pieces: [{ kind: 'bin', ...obstacleRect('bin', 80) }], length: 170 });
+    expect(humanFairAtAll(course, [BASE_SPEED, TOP_SPEED, constantPace(TOP_SPEED, CHILL_JUMP_SCALE)])).toBe(true);
   });
 
   for (const [stage, window, speeds] of [
     ['early', EARLY_TAKEOFF_WINDOW, [96, 110]],
-    ['later', LATE_TAKEOFF_WINDOW, [135, MAX_SPEED]],
+    ['later', LATE_TAKEOFF_WINDOW, [135, TOP_SPEED]],
   ] as const) {
     it(`every take-off a pattern asks for, also after landing, has a human window of >= ${window} ticks (${stage}, all tiers, ${speeds.join('-')} px/s)`, () => {
       const tight: string[] = [];

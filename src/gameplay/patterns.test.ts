@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, GROUND_Y, MAX_SPEED } from '../core/config';
+import { BASE_SPEED, GROUND_Y } from '../core/config';
 import { Rng } from '../core/rng';
 import { isObstacle, isRail } from './catalogue';
-import { gapAt, speedAt, tierAt } from './difficulty';
+import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { courseOf, planPattern, TEMPLATE_NAMES } from './patterns';
 import { Solver } from './solver';
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
 
 describe('spawn patterns', () => {
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`every generated pattern (all tiers and zones, people moving) is clearable with the real jump arcs at ${speed} px/s`, () => {
       for (const seed of SEEDS) {
         const rng = new Rng(seed);
@@ -36,7 +36,7 @@ describe('spawn patterns', () => {
   });
 
   it('uses every template at full difficulty and rarely needs the fallback', () => {
-    for (const speed of [BASE_SPEED, MAX_SPEED]) {
+    for (const speed of [BASE_SPEED, TOP_SPEED]) {
       const names: string[] = [];
       const rng = new Rng(3);
       for (let i = 0; i < 400; i++) names.push(planPattern(rng, 3, [speed], { zone: i % 3 }).name);
@@ -47,7 +47,7 @@ describe('spawn patterns', () => {
 
   it('leaves >= 1.1 s of free street after every pattern (its runout plus the gap to the next), at every distance', () => {
     const rng = new Rng(9);
-    for (let d = 0; d <= 40_000; d += 1000) {
+    for (let d = 0; d <= 50_000; d += 1000) {
       const v = speedAt(d);
       for (let i = 0; i < 6; i++) {
         const p = planPattern(rng, tierAt(d), [v], { zone: i % 3 });
@@ -58,7 +58,7 @@ describe('spawn patterns', () => {
   }, 30_000);
 
   it('obstacles in a row are either close (one jump for both) or >= 0.7 s apart (land, then jump again)', () => {
-    for (const speed of [BASE_SPEED, 130, MAX_SPEED]) {
+    for (const speed of [BASE_SPEED, 130, TOP_SPEED]) {
       const rng = new Rng(17);
       for (let i = 0; i < 200; i++) {
         const p = planPattern(rng, 3, [speed]);

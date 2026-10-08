@@ -4,14 +4,15 @@ import type { Game } from '../core/game';
 import { tick } from '../player/testing';
 import type { Entity } from '../types';
 import { BALL_HIT_POINTS, BALL_SIZE, ricochetRoom } from './ball';
+import { TOP_SPEED } from './difficulty';
 import type { Motion } from './motion';
 import { obstacle, quietGame, record } from './test-kit';
 
 const still: Motion = { walk: 0, sway: 0, phase: 0 };
 
-/** Quiet game (speed 120) with the gameplay rng re-seeded, carrying a football. */
-function withBall(seed = 1): Game {
-  const game = quietGame();
+/** Quiet game (speed 120 unless given) with the gameplay rng re-seeded, carrying a football. */
+function withBall(seed = 1, speed = 120): Game {
+  const game = quietGame(speed);
   game.ctx.rng.seed(seed);
   game.state.carriedItem = 'football';
   return game;
@@ -33,10 +34,10 @@ function untilLanded(game: Game, ball: Entity): number {
 }
 
 /** Seeds whose (rng-decided) miss ricochets back / rolls away on free street. */
-function seedsByOutcome(): { back: number[]; away: number[] } {
+function seedsByOutcome(speed = 120): { back: number[]; away: number[] } {
   const out = { back: [] as number[], away: [] as number[] };
   for (let seed = 1; seed <= 12; seed++) {
-    const game = withBall(seed);
+    const game = withBall(seed, speed);
     const backs = record(game, 'ballBack');
     const ball = throwIt(game);
     untilLanded(game, ball);
@@ -152,18 +153,26 @@ describe('thrown football', () => {
     expect(GROUND_Y - top).toBeLessThan(BALL_SIZE + 12);
   });
 
-  it('jumping over the ricochet avoids it', () => {
-    const game = withBall(seedsByOutcome().back[0]);
-    const crashes = record(game, 'crash');
-    const ball = throwIt(game);
-    untilLanded(game, ball);
-    // Jump when the ball is a short hop away (a tap is enough).
-    for (let i = 0; i < 200 && ball.x - PLAYER_X > 30; i++) game.tick();
-    game.buttons.action.press('test');
-    tick(game, 3);
-    game.buttons.action.release('test');
-    tick(game, 200);
-    expect(crashes).toEqual([]);
+  for (const speed of [120, TOP_SPEED]) {
+    it(`jumping over the ricochet avoids it (${speed} px/s)`, () => {
+      const game = withBall(seedsByOutcome(speed).back[0], speed);
+      const crashes = record(game, 'crash');
+      const ball = throwIt(game);
+      untilLanded(game, ball);
+      // Jump when the ball is a short hop away (a tap is enough).
+      for (let i = 0; i < 200 && ball.x - PLAYER_X > 30; i++) game.tick();
+      game.buttons.action.press('test');
+      tick(game, 3);
+      game.buttons.action.release('test');
+      tick(game, 200);
+      expect(crashes).toEqual([]);
+    });
+  }
+
+  it('still ricochets at the top speed (~50 %), when the street around the meeting point is free', () => {
+    const { back, away } = seedsByOutcome(TOP_SPEED);
+    expect(back.length).toBeGreaterThanOrEqual(3);
+    expect(away.length).toBeGreaterThanOrEqual(3);
   });
 
   it('passing during invulnerability is no crash', () => {
@@ -189,14 +198,16 @@ describe('thrown football', () => {
     }
   });
 
-  it('ricochetRoom: the street (screen x now) that must be free spans a second of riding on both sides of the meeting point', () => {
-    const [from, to] = ricochetRoom(PLAYER_X + 100, 120);
-    expect(to - from).toBeGreaterThanOrEqual(2 * 120);
-    // Centred on what is now street ahead and will be at the skater when the ball arrives.
-    const meeting = (from + to) / 2;
-    expect(meeting).toBeGreaterThan(PLAYER_X);
-    expect(meeting).toBeLessThan(PLAYER_X + 100);
-  });
+  for (const speed of [120, TOP_SPEED]) {
+    it(`ricochetRoom: the street (screen x now) that must be free spans a second of riding on both sides of the meeting point (${speed} px/s)`, () => {
+      const [from, to] = ricochetRoom(PLAYER_X + 100, speed);
+      expect(to - from).toBeGreaterThanOrEqual(2 * speed);
+      // Centred on what is now street ahead and will be at the skater when the ball arrives.
+      const meeting = (from + to) / 2;
+      expect(meeting).toBeGreaterThan(PLAYER_X);
+      expect(meeting).toBeLessThan(PLAYER_X + 100);
+    });
+  }
 
   it('flies over street obstacles without hitting them (only people are hit)', () => {
     const game = withBall();

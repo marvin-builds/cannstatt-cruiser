@@ -4,14 +4,17 @@
  * and which pattern tiers are unlocked. The speed eases out: it picks up
  * noticeably in the first minute and creeps into TOP_SPEED at the end.
  */
-import { BASE_SPEED, MAX_SPEED } from '../core/config';
+import { BASE_SPEED } from '../core/config';
 
 /** Distance (view px) over which density and pattern tiers ramp to full difficulty (~3.5 min of riding). */
 export const RAMP_DISTANCE = 24000;
-/** Distance over which the speed eases from BASE_SPEED to TOP_SPEED (~4.5 min). */
-export const SPEED_RAMP_DISTANCE = 32000;
-/** The difficulty's top speed: a little under the MAX_SPEED cap, so the late game stays playable. */
-export const TOP_SPEED = Math.min(MAX_SPEED, 160);
+/** Distance over which the speed eases from BASE_SPEED to TOP_SPEED (~5.3 min). */
+export const SPEED_RAMP_DISTANCE = 46000;
+/**
+ * The difficulty's top speed and the fastest gameplay ever rides (ROADMAP 23:
+ * 160 felt slow, 220 too fast). Fairness checks run up to it.
+ */
+export const TOP_SPEED = 190;
 /** Ease-out exponent of the speed ramp (1 = linear; higher = faster start, softer end). */
 const SPEED_EASE = 1.6;
 /** Empty pavement between patterns at the start and at full difficulty. */

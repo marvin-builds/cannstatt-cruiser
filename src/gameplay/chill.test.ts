@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, MAX_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
+import { BASE_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { CHILL_DURATION, CHILL_EASE_IN } from '../core/chill';
 import { Rng } from '../core/rng';
 import { createPlayerTestGame, tick } from '../player/testing';
@@ -7,7 +7,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Entity } from '../types';
 import { jointRect } from './catalogue';
 import { CHILL_SPEED_SCALE, chillSpeedFactor } from './chill';
-import { speedAt } from './difficulty';
+import { speedAt, TOP_SPEED } from './difficulty';
 import { createGameplaySystem } from './index';
 import { anchorOf } from './motion';
 import { courseOf, planPattern } from './patterns';
@@ -119,7 +119,7 @@ function ride(seed: number, seconds: number): { spawned: Spawned[]; jointTimes: 
 describe('joint spawning', () => {
   it('is rare: never in the first 30 s, then at most one per 45 s (but it does come)', () => {
     expect(JOINT_FIRST_DISTANCE / speedAt(JOINT_FIRST_DISTANCE)).toBeGreaterThan(30);
-    expect(JOINT_SPACING / MAX_SPEED).toBeGreaterThanOrEqual(45);
+    expect(JOINT_SPACING / TOP_SPEED).toBeGreaterThanOrEqual(45);
     for (const seed of [1, 2, 3, 4]) {
       const { jointTimes } = ride(seed, 300);
       expect(jointTimes.length, `seed ${seed}`).toBeGreaterThanOrEqual(3);
@@ -145,7 +145,7 @@ describe('joint spawning', () => {
 
 describe('patterns verified for the chill jump', () => {
   const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);
-  for (const speed of [BASE_SPEED, MAX_SPEED]) {
+  for (const speed of [BASE_SPEED, TOP_SPEED]) {
     it(`every pattern planned for chill is clearable with CHILL_JUMP_SCALE from ${Math.round(speed * CHILL_SPEED_SCALE)} to ${speed} px/s`, () => {
       const chillSpeeds = [speed * CHILL_SPEED_SCALE, speed];
       for (const seed of SEEDS) {

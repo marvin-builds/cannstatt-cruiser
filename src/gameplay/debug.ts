@@ -1,13 +1,21 @@
 /**
  * Test-only tooling (enabled together with window.__game): lets playtest
- * scenarios put a specific obstacle, person or the joint on the street. See
- * scripts/scenarios/ducking.ts, chill.ts and people.ts.
+ * scenarios put a specific obstacle, person or the joint on the street and
+ * see the dropped items (they are no entities, so window.__game misses them).
+ * See scripts/scenarios/ducking.ts, chill.ts, people.ts and drop.ts.
  */
-import type { Entity, GameContext, ObstacleKind } from '../types';
+import type { CarriedItem, Entity, GameContext, ObstacleKind, Rect } from '../types';
 import { jointRect, OBSTACLES, obstacleRect } from './catalogue';
+import type { DroppedItems } from './drop';
 import { withMotion } from './motion';
 
 export type PlaceableKind = ObstacleKind | 'joint';
+
+/** A dropped item as the hook shows it: its pickup box (screen space) and whether it already lies on the street. */
+export interface DroppedItemView extends Rect {
+  item: CarriedItem;
+  lying: boolean;
+}
 
 export interface GameplayDebugHook {
   /**
@@ -19,6 +27,8 @@ export interface GameplayDebugHook {
   place(kind: PlaceableKind, x: number, variant?: number, prop?: number): number;
   /** Removes every entity (spawning goes on as planned). */
   clear(): void;
+  /** Snapshot of the items knocked out of people's hands (drop.ts), falling or lying; read-only. */
+  drops(): DroppedItemView[];
 }
 
 declare global {
@@ -31,7 +41,7 @@ let nextId = 800_000;
 
 const mid = ([a, b]: [number, number]) => (a + b) / 2;
 
-export function installGameplayDebug(ctx: GameContext): void {
+export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems): void {
   window.__gameplay = {
     place(kind, x, variant = 0, prop = 0) {
       const id = nextId++;
@@ -44,6 +54,9 @@ export function installGameplayDebug(ctx: GameContext): void {
     },
     clear() {
       ctx.state.entities.splice(0);
+    },
+    drops() {
+      return dropped.items.map(({ item, x, y, w, h, lying }) => ({ item, x, y, w, h, lying }));
     },
   };
 }

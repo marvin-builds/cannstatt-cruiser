@@ -6,6 +6,7 @@ import type { Game } from '../core/game';
 import type { Entity } from '../types';
 import { hitBox, isGrindable, isObstacle, OBSTACLES, railRect } from './catalogue';
 import { buildCourse } from './course';
+import { TOP_SPEED } from './difficulty';
 import { overlaps } from './rules';
 import { Solver } from './solver';
 import { obstacle, place, playBot, quietGame, record } from './test-kit';
@@ -44,7 +45,7 @@ function jumpAt(game: Game, target: Entity, hold: number): Landing {
   return result;
 }
 
-const SWEEP_SPEEDS = [90, 120, 165];
+const SWEEP_SPEEDS = [90, 120, TOP_SPEED];
 const SWEEP_HOLDS = [1, 3, 6, 10, 14, 20];
 
 describe('grindable bench', () => {
@@ -54,7 +55,7 @@ describe('grindable bench', () => {
     for (const kind of ['bin', 'barrier', 'planter', 'curbGap', 'vfbFan', 'banner'] as const) expect(isGrindable(kind)).toBe(false);
   });
 
-  for (const speed of [90, 165]) {
+  for (const speed of [90, TOP_SPEED]) {
     it(`landing on the bench top from above grinds it like a rail at ${speed} px/s`, () => {
       const game = quietGame(speed);
       const grinds = record(game, 'grindStart');

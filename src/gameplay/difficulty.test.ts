@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_SPEED, MAX_SPEED, TICK_DT } from '../core/config';
+import { BASE_SPEED, TICK_DT } from '../core/config';
 import { gapAt, RAMP_DISTANCE, SPEED_RAMP_DISTANCE, speedAt, tierAt, TOP_SPEED } from './difficulty';
 
 /** Street ridden after `seconds` from the run start at the difficulty speed. */
@@ -10,10 +10,8 @@ function distanceAfter(seconds: number): number {
 }
 
 describe('difficulty ramp (by distance)', () => {
-  it('tops out at TOP_SPEED, a little under the 165 px/s cap', () => {
-    expect(MAX_SPEED).toBe(165);
-    expect(TOP_SPEED).toBeGreaterThanOrEqual(155);
-    expect(TOP_SPEED).toBeLessThanOrEqual(MAX_SPEED);
+  it('tops out at TOP_SPEED = 190 px/s (ROADMAP 23: 160 felt slow, 220 too fast)', () => {
+    expect(TOP_SPEED).toBe(190);
     for (let d = 0; d < SPEED_RAMP_DISTANCE * 3; d += 250) expect(speedAt(d)).toBeLessThanOrEqual(TOP_SPEED);
   });
 
@@ -27,6 +25,14 @@ describe('difficulty ramp (by distance)', () => {
     expect(speedAt(distanceAfter(30))).toBeGreaterThanOrEqual(99);
     expect(speedAt(distanceAfter(60))).toBeGreaterThanOrEqual(108);
     expect(speedAt(distanceAfter(90))).toBeGreaterThanOrEqual(116);
+  });
+
+  it('ramps as gently as before: no faster in the first 2 min than the old 160 ramp, top speed only after ~5 min', () => {
+    expect(speedAt(distanceAfter(120))).toBeLessThanOrEqual(133);
+    expect(speedAt(distanceAfter(180))).toBeLessThanOrEqual(156);
+    expect(speedAt(distanceAfter(240))).toBeLessThanOrEqual(176);
+    expect(speedAt(distanceAfter(290))).toBeLessThan(TOP_SPEED);
+    expect(speedAt(distanceAfter(360))).toBe(TOP_SPEED);
   });
 
   it('eases into the top speed: the last quarter of the ramp adds far less than the first', () => {
