@@ -9,6 +9,7 @@ import type { EntityKind, GameContext, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
+import { PassBy } from './passby';
 import { GLUG_LENGTH } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
 import { createWebAudioBackend } from './webaudio';
@@ -46,6 +47,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   /** Run time of the last drink sound, so the woozy sting can wait for the gulps. */
   let glugAt = -Infinity;
   const traffic = new TrafficNoise();
+  const passBy = new PassBy();
   const clears = new ClearedSounds();
 
   /** Audio is decoration: a failing backend must never break the game loop. */
@@ -149,6 +151,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         stopGrind();
         play('gameOver');
       });
+      // A vehicle drives past: a pass-by whoosh, ducked like the rumble under gameplay sounds.
+      bus.on('vehiclePassed', (vehicle) => {
+        if (ctx.state.mode !== 'playing') return;
+        const step = passBy.pass(vehicle, ctx.state.time);
+        if (step) play(step.cue, step.intensity * traffic.duckFactor);
+      });
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);
@@ -160,6 +168,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         boostTicks = null;
         glugAt = -Infinity;
         traffic.reset();
+        passBy.reset();
         clears.reset();
       });
     },

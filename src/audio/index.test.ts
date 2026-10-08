@@ -616,3 +616,93 @@ describe('audio system: Mitte traffic', () => {
     expect(heard.filter((name) => name.startsWith('traffic:'))).toEqual(['traffic:start', 'traffic:stop']);
   });
 });
+
+describe('audio system: vehicles passing by', () => {
+  type Vehicle = { kind: 'car' | 'van' | 'bus' | 'truck'; front: boolean; light: boolean };
+  const pass = (s: ReturnType<typeof setup>, v: Partial<Vehicle> = {}) =>
+    s.game.bus.emit('vehiclePassed', { kind: 'car', front: true, light: true, ...v });
+  const passes = (s: ReturnType<typeof setup>) => s.backend.played.filter((p) => p.cue.startsWith('pass'));
+  /** Advances the run time by `seconds` of ticks. */
+  const wait = (s: ReturnType<typeof setup>, seconds: number) => {
+    for (let i = 0; i < seconds * 60; i++) s.game.tick();
+  };
+
+  it('plays a kind- and lane-dependent pass-by sound', () => {
+    const s = playing();
+    pass(s, { kind: 'truck', front: true });
+    wait(s, 0.5);
+    pass(s, { kind: 'car', front: false });
+    const [truck, car] = passes(s);
+    expect(truck!.cue).toBe('passTruck');
+    expect(car!.cue).toBe('passCar');
+    expect(car!.intensity).toBeLessThan(truck!.intensity);
+  });
+
+  it('thins out dense Mitte traffic and keeps it subtle', () => {
+    const s = playing();
+    for (let i = 0; i < 50; i++) {
+      pass(s, { light: false });
+      wait(s, 0.2);
+    }
+    const heard = passes(s);
+    expect(heard.length).toBeGreaterThan(0);
+    expect(heard.length).toBeLessThanOrEqual(12);
+    for (const p of heard) expect(p.intensity).toBeLessThanOrEqual(0.5);
+  });
+
+  it('does not duck the rumble (it is traffic itself)', () => {
+    const s = playing();
+    s.game.state.trafficDensity = 1;
+    wait(s, 5);
+    const sent = s.backend.traffic.length;
+    pass(s, { light: false });
+    wait(s, 0.2);
+    expect(s.backend.traffic.length).toBe(sent);
+  });
+
+  it('ducks under a gameplay sound like the rumble', () => {
+    const s = playing();
+    wait(s, 1);
+    pass(s);
+    const full = passes(s).at(-1)!.intensity;
+    wait(s, 1);
+    s.game.bus.emit('jump', { velocity: 250 });
+    s.game.tick();
+    pass(s);
+    expect(passes(s).at(-1)!.intensity).toBeLessThanOrEqual(full * TRAFFIC.duckTo + 0.001);
+  });
+
+  it.each(['pause', 'gameOver', 'title'] as const)('stays silent on %s', (what) => {
+    const s = playing();
+    if (what === 'pause') s.game.commands.pause();
+    if (what === 'gameOver') s.game.commands.gameOver();
+    if (what === 'title') s.game.state.mode = 'title';
+    s.game.tick();
+    pass(s);
+    expect(passes(s)).toEqual([]);
+  });
+
+  it('is inaudible while muted (logged as muted, the backend stays muted)', () => {
+    const backend = new FakeBackend();
+    const heard: { name: string; muted: boolean }[] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push({ name, muted }) })],
+    });
+    game.commands.startRun();
+    game.commands.setMuted(true);
+    game.bus.emit('vehiclePassed', { kind: 'bus', front: true, light: true });
+    expect(backend.muted).toBe(true);
+    expect(heard.filter((h) => h.name === 'passBus')).toEqual([{ name: 'passBus', muted: true }]);
+  });
+
+  it('makes the light-traffic hum audible but quieter than Mitte', () => {
+    const light = playing();
+    light.game.state.trafficDensity = 0.05;
+    wait(light, 5);
+    const mitte = playing();
+    mitte.game.state.trafficDensity = 1;
+    wait(mitte, 5);
+    expect(light.backend.traffic.at(-1)!).toBeGreaterThanOrEqual(0.15);
+    expect(light.backend.traffic.at(-1)!).toBeLessThanOrEqual(mitte.backend.traffic.at(-1)! * 0.35);
+  });
+});

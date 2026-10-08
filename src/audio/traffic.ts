@@ -7,10 +7,16 @@
  * same run sounds the same.
  */
 import type { Cue } from './backend';
+import { PASS_CUES } from './passby';
 
 export const TRAFFIC = {
   /** Fraction of the remaining gap to the density closed per tick (~0.25 s to settle). */
   smoothing: 0.07,
+  /**
+   * Hum curve exponent: level = density ** humCurve, so the light traffic
+   * outside Mitte (density 0.05) still hums softly (~0.22) under full Mitte (1).
+   */
+  humCurve: 0.5,
   /** Smallest level change worth a backend call; also the snap-to-silence threshold. */
   minStep: 0.01,
   /** Rumble factor right after a gameplay sound (jump, crash, item ...). */
@@ -43,11 +49,16 @@ const HORNS: readonly { cue: TrafficCue; upTo: number }[] = [
 ];
 export const HORN_CUES: readonly TrafficCue[] = HORNS.map((h) => h.cue);
 export const TRAFFIC_CUES: readonly TrafficCue[] = [...HORN_CUES, 'truckPass'];
-const TRAFFIC_CUE_SET: ReadonlySet<Cue> = new Set(TRAFFIC_CUES);
+const TRAFFIC_CUE_SET: ReadonlySet<Cue> = new Set<Cue>([...TRAFFIC_CUES, ...PASS_CUES]);
 
-/** True for horns and passing trucks (they never duck the rumble). */
+/** True for horns, passing trucks and vehicle pass-bys (they never duck the rumble). */
 export function isTrafficCue(cue: Cue): cue is TrafficCue {
   return TRAFFIC_CUE_SET.has(cue);
+}
+
+/** Rumble level 0..1 for a traffic density: a gentle curve that keeps light traffic audible. */
+export function humLevel(density: number): number {
+  return Math.min(1, Math.max(0, density)) ** TRAFFIC.humCurve;
 }
 
 export interface TrafficStep {
@@ -103,7 +114,8 @@ export class TrafficNoise {
    * `time` is the run time in seconds (state.time).
    */
   update(density: number, active: boolean, time: number): TrafficStep {
-    const target = active ? Math.min(1, Math.max(0, density)) : 0;
+    const clamped = active ? Math.min(1, Math.max(0, density)) : 0;
+    const target = humLevel(clamped);
     if (active) {
       this.level += (target - this.level) * TRAFFIC.smoothing;
       if (Math.abs(target - this.level) < TRAFFIC.minStep / 4) this.level = target;
@@ -113,8 +125,13 @@ export class TrafficNoise {
     }
     this.recoverDuck();
     this.step.level = this.send();
-    this.step.cue = this.cue(target, time);
+    this.step.cue = this.cue(clamped, time);
     return this.step;
+  }
+
+  /** Current duck factor (1 = not ducked); pass-by sounds follow it like the rumble. */
+  get duckFactor(): number {
+    return this.duckGain;
   }
 
   /** A gameplay sound plays: dip the rumble so it stays clearly audible. */

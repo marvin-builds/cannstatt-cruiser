@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HORN_CUES, TRAFFIC, TRAFFIC_CUES, TrafficNoise, type TrafficCue } from './traffic';
+import { HORN_CUES, TRAFFIC, TRAFFIC_CUES, TrafficNoise, humLevel, type TrafficCue } from './traffic';
 
 /** Runs `ticks` updates at 60 Hz from `start` seconds; returns the levels sent and the traffic cues. */
 function run(noise: TrafficNoise, ticks: number, density: number, active = true, start = 0) {
@@ -24,10 +24,28 @@ describe('traffic noise: rumble level', () => {
     expect(noise.level).toBeGreaterThan(0.95);
   });
 
-  it('follows a partial density', () => {
+  it('follows a partial density on the hum curve', () => {
     const noise = new TrafficNoise();
     run(noise, 180, 0.4);
-    expect(noise.level).toBeCloseTo(0.4, 2);
+    expect(noise.level).toBeCloseTo(humLevel(0.4), 2);
+  });
+
+  it('makes light traffic (density 0.05) a soft but audible hum, clearly quieter than Mitte', () => {
+    const light = new TrafficNoise();
+    run(light, 300, 0.05);
+    const mitte = new TrafficNoise();
+    run(mitte, 300, 1);
+    expect(light.level).toBeGreaterThanOrEqual(0.15);
+    expect(light.level).toBeLessThanOrEqual(mitte.level * 0.35);
+    expect(mitte.level).toBeCloseTo(1, 2);
+  });
+
+  it('maps density to a rising hum level from silence to full', () => {
+    expect(humLevel(0)).toBe(0);
+    expect(humLevel(1)).toBe(1);
+    expect(humLevel(-1)).toBe(0);
+    expect(humLevel(3)).toBe(1);
+    for (let d = 0.05; d <= 1; d += 0.05) expect(humLevel(d)).toBeGreaterThan(humLevel(d - 0.05));
   });
 
   it('fades out smoothly when the density drops and ends at exactly 0', () => {
