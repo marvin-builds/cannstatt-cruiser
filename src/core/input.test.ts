@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InputFrame, System } from '../types';
 import { Game, type InputHotspot } from './game';
-import { keyDown, keyUp, PointerControls, SWIPE_DISTANCE, SWIPE_DUCK_TICKS, SWIPE_WINDOW } from './input';
+import { keyDown, keyUp, PointerControls, SWIPE_DISTANCE, SWIPE_DUCK_TICKS, SWIPE_WINDOW, USER_GESTURE_EVENTS } from './input';
 
 /** A game with a probe system that records every tick's InputFrame. */
 function setup(mode: 'title' | 'playing' = 'playing') {
@@ -361,5 +361,12 @@ describe('pointers without a decision delay', () => {
     const f = tick(SWIPE_WINDOW + 2);
     expect(presses()).toBe(0);
     expect(f.duck.held).toBe(false);
+  });
+});
+
+describe('user gestures for audio unlock', () => {
+  it('include the events that grant user activation on touch (finger up), not only pointerdown', () => {
+    // Phone browsers allow audio only from a touch's end; a touch's pointerdown is no activation.
+    expect(USER_GESTURE_EVENTS).toEqual(expect.arrayContaining(['keydown', 'pointerdown', 'pointerup', 'touchend']));
   });
 });

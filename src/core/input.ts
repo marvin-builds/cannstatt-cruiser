@@ -174,6 +174,13 @@ export class PointerControls {
 }
 
 /**
+ * DOM events that report a user gesture (audio unlock). On phones only a
+ * touch's end grants user activation, so a context resumed in the touch's
+ * pointerdown can stay silent until a later tap; the up events retry it.
+ */
+export const USER_GESTURE_EVENTS = ['keydown', 'pointerdown', 'pointerup', 'touchend', 'click'] as const;
+
+/**
  * Wires keyboard, mouse and touch (via Pointer Events) to the game's logical
  * buttons and blocks scrolling, zooming, selection and context menus.
  * Returns a function that removes all listeners.
@@ -188,17 +195,18 @@ export function bindInput(game: Game, getLayout: () => Layout): () => void {
   };
   const view = (e: PointerEvent) => screenToView(e.clientX, e.clientY, getLayout());
 
+  // Registered first, so the gesture is reported before the input it carries.
+  for (const type of USER_GESTURE_EVENTS) on(window, type, () => game.notifyUserGesture());
+
   on<KeyboardEvent>(window, 'keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (BLOCKED_KEYS.has(e.code) || e.code in KEY_BUTTONS) e.preventDefault();
-    game.notifyUserGesture();
     keyDown(game, e.code);
   });
   on<KeyboardEvent>(window, 'keyup', (e) => keyUp(game, e.code));
 
   on<PointerEvent>(window, 'pointerdown', (e) => {
     e.preventDefault();
-    game.notifyUserGesture();
     const p = view(e);
     pointers.down(e.pointerId, p.x, p.y, e.pointerType === 'touch');
   });
