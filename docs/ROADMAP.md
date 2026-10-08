@@ -124,3 +124,8 @@ Pages deploy only goes live when you say so.
    - Football: throw it forward. Hitting a person makes them tumble (points, "Treffer!"). A miss can ricochet back (deterministic chance) and knock the skater off the board (crash, −1 health) unless he jumps or ducks it.
 
 Plan: Wave 5a (parallel): core (smoothness + use/drunk contract), world (Cannstatt start, Mombachquelle, Mitte traffic visuals), gameplay (bench edge bug, wider gaps, bin-crash entity handling), player (bin-crash pose). Wave 5b (parallel): item use in gameplay, player, ui and audio (incl. Mitte traffic sound) + perf hot spots from 5a.
+9. **Hair less grey (USER 2026-10-08):** the hair reads as almost completely grey. Make it mostly dark (dark brown/dark grey) with only a few grey pixels at the temple, readable at 1x, in every pose.
+10. **Grind trick facing the player (USER 2026-10-08):** pressing down (↓/S, swipe down) while grinding performs a trick: the skater turns to face the player (front view) for its duration, and in this front view the moustache is visible. All other views and poses stay unchanged (no moustache there). Gameplay awards trick points and a popup; the trick ends when the grind ends or down is released.
+
+Hosting: DONE 2026-10-08. The repo is public, GitHub Pages deploys from main via .github/workflows/deploy.yml, live at https://marvinmai.github.io/cannstatt-cruiser/.
+Wave 5b additionally covers 9 (player) and 10 (player + gameplay + ui popup + audio).
