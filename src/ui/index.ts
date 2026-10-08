@@ -1,7 +1,10 @@
 /**
  * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
- * (pause, mute, fullscreen, the item button) and the hidden settings menu
- * (kid mode, opened by a 3 s long press on the title logo or holding K).
+ * (pause, mute, fullscreen, the item button), the hidden settings menu
+ * (kid mode, opened by a 3 s long press on the title or pause logo or holding
+ * K) and the menu notices: "Neu in dieser Version", the reload button, the
+ * install hint and "Zum Startbildschirm" (rules in notices.ts, layout in
+ * menu-layout.ts and menu-state.ts, drawing in menu-screens.ts).
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
@@ -25,11 +28,13 @@ import { itemButtonRect, itemControl, ItemHint } from './item-button';
 import { catchPopup } from './item-look';
 import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
+import type { MenuButtons } from './menu-layout';
+import { currentMenu, gameOverReady, menuScreen, portraitHintShown } from './menu-state';
 import { PopupFeed } from './popup-feed';
 import { type Popup, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
-import { drawUi, portraitHintShown, type UiView } from './screens';
+import { drawUi, type UiView } from './screens';
 import { statsLayout } from './stats';
 import { TrickHint } from './trick-hint';
 
@@ -67,9 +72,11 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     hud: new HudModel(),
     itemHint: new ItemHint(store),
     trickHint: new TrickHint(store),
-    settings: new SettingsMenu(store),
+    settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
     logoHold: new LongPress(),
   };
+  /** Set in init: restarts a paused run when kid mode was switched in the menu. */
+  let onSettingsClosed: (switched: boolean) => void = () => {};
   /** Gameplay events of the current tick, turned into popups once per tick (see popup-feed.ts). */
   const feed = new PopupFeed();
 
@@ -134,6 +141,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     const full = (): Rect => ({ x: 0, y: 0, w: display.viewWidth, h: display.viewHeight });
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? full() : null), onPress: () => commands.resume() });
+    addWhatsNewHotspot(ctx, full);
     ctx.addHotspot({
       rect: whenButtons(() => (riding(state.mode) ? buttons().pause : null)),
       onPress: () => (state.mode === 'playing' ? commands.pause() : commands.resume()),
@@ -149,6 +157,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       }),
       onPress: () => commands.useItem(),
     });
+    addMenuHotspots(ctx);
     addSettingsHotspots(ctx, full);
     ctx.addHotspot({
       rect: () => (portraitHintShown(ctx, view) ? full() : null),
@@ -156,18 +165,75 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     });
   }
 
-  /** The logo's long press (pointer or K), the menu's modal layer and its buttons. */
+  /** "Neu in dieser Version" is modal: a tap or any key but M closes it (marks the version seen) and shows the title. */
+  function addWhatsNewHotspot(ctx: GameContext, full: () => Rect): void {
+    const shown = () => menuScreen(ctx.state, view) === 'whatsNew' && !portraitHintShown(ctx, view);
+    const close = () => ctx.commands.markVersionSeen();
+    const screen: InputHotspot = {
+      rect: () => (shown() ? full() : null),
+      onPress: close,
+      onKeyDown: (code) => {
+        if (code === 'KeyM') return false;
+        close();
+        return true;
+      },
+    };
+    ctx.addHotspot(screen);
+  }
+
+  /** Ends the run in progress (its score and stars still count) and shows the title. */
+  function leaveRun(ctx: GameContext): void {
+    const { state } = ctx;
+    if (state.mode === 'paused') {
+      view.records = recordRun(view.records, state).records;
+      saveRecords(store, view.records);
+    }
+    ctx.commands.toTitle();
+  }
+
+  /** The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter". */
+  function addMenuHotspots(ctx: GameContext): void {
+    const { state, commands } = ctx;
+    const live = () => (state.mode !== 'gameover' || gameOverReady(state)) && !portraitHintShown(ctx, view);
+    const button = (pick: (b: MenuButtons) => Rect | null, onPress: () => void, key?: string): InputHotspot => ({
+      rect: () => {
+        const menu = live() ? currentMenu(ctx, view) : null;
+        return menu ? pick(menu.buttons) : null;
+      },
+      onPress,
+      onKeyDown: (code) => {
+        if (code !== key) return false;
+        onPress();
+        return true;
+      },
+    });
+    ctx.addHotspot(button((b) => b.reload, () => commands.reloadForUpdate(), 'KeyU'));
+    ctx.addHotspot(button((b) => b.toTitle, () => leaveRun(ctx), 'KeyT'));
+    // Called inside the tap, so the browser's install dialog still counts as a user gesture.
+    ctx.addHotspot(button((b) => b.install, () => commands.promptInstall()));
+    ctx.addHotspot(button((b) => b.dismiss, () => commands.dismissInstallHint()));
+    ctx.addHotspot(button((b) => b.next, () => commands.markVersionSeen()));
+  }
+
+  /** The logo's long press (pointer or K) on the title and pause screens, the menu's modal layer and its buttons. */
   function addSettingsHotspots(ctx: GameContext, full: () => Rect): void {
     const { state, display, commands } = ctx;
     const { settings, logoHold } = view;
     const menu = () => settingsLayout(display.viewWidth, uiMetrics(display));
-    const onTitle = () => state.mode === 'title' && !portraitHintShown(ctx, view);
+    const logoRectNow = (): Rect | null => {
+      if (settings.open || portraitHintShown(ctx, view)) return null;
+      const screen = menuScreen(state, view);
+      if (screen === 'title') return logoRect(display.viewWidth);
+      return screen === 'pause' ? (currentMenu(ctx, view)?.buttons.logo ?? null) : null;
+    };
     const logo: InputHotspot = {
-      rect: () => (onTitle() && !settings.open ? logoRect(display.viewWidth) : null),
+      rect: logoRectNow,
       onPress: () => logoHold.start('pointer'),
-      // Letting go before the menu opened is a normal tap: start the run.
+      // Letting go before the menu opened is a normal tap: start the run (title) or ride on (pause).
       onRelease: () => {
-        if (logoHold.end('pointer') && onTitle() && !settings.open) commands.startRun();
+        if (!logoHold.end('pointer') || !logoRectNow()) return;
+        if (state.mode === 'title') commands.startRun();
+        else commands.resume();
       },
       onKeyDown: (code) => {
         if (code !== 'KeyK') return false;
@@ -203,6 +269,12 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     init(ctx) {
       view.fullscreenAvailable = (options.fullscreenAvailable ?? browserFullscreen)();
       ctx.state.kidMode = loadKidMode(store);
+      onSettingsClosed = (switched) => {
+        if (!switched || ctx.state.mode !== 'paused') return;
+        // Kid mode changes the art of things already on the street: start the run again.
+        leaveRun(ctx);
+        ctx.commands.startRun();
+      };
       bindEvents(ctx);
       addHotspots(ctx);
       if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view, feed);
@@ -212,7 +284,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       const { state, display } = ctx;
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
-      if (state.mode === 'title' && view.logoHold.update(dt)) view.settings.show();
+      if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;

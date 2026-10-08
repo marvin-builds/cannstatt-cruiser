@@ -3,11 +3,12 @@ import { Game } from '../core/game';
 import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
 import { createUiSystem } from './index';
-import type { System } from '../types';
+import type { Rect, System } from '../types';
 import { HudModel } from './hud-model';
 import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
+import { gameOverLayout, type MenuInput, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
 import { loadKidMode, parentQuestion, saveKidMode } from './settings';
 
 function memoryStore(): Store & { raw: Map<string, string> } {
@@ -308,5 +309,234 @@ describe('grind trick hint', () => {
     expect(store.get('grindTrickSeen', false)).toBe(false);
     game.bus.emit('grindTrick', { entityId: 1, ticks: 30, points: 90 });
     expect(store.get('grindTrickSeen', false)).toBe(true);
+  });
+});
+
+describe('update, what is new, install hint and pause navigation', () => {
+  function app(options: { touch?: boolean; portrait?: boolean } = {}) {
+    let reloads = 0;
+    let prompts = 0;
+    const store = memoryStore();
+    const ui = createUiSystem({ store, fullscreenAvailable: () => true });
+    const game = new Game({ systems: [ui], platform: { reload: () => reloads++ } });
+    game.display.touch = options.touch ?? false;
+    game.display.portrait = options.portrait ?? false;
+    const pointers = new PointerControls(game);
+    const ticks = (n: number) => {
+      for (let i = 0; i < n; i++) game.tick();
+    };
+    const input = (fields: Partial<MenuInput> = {}): MenuInput => ({
+      viewWidth: game.display.viewWidth,
+      touch: game.display.touch,
+      portrait: game.display.portrait,
+      fullscreenAvailable: true,
+      reload: game.state.updateReady,
+      install: null,
+      ...fields,
+    });
+    const press = (r: Rect | null) => (r ? game.hitHotspot(...centre(r)) : false);
+    const key = (code: string) => {
+      keyDown(game, code);
+      keyUp(game, code);
+      game.tick();
+    };
+    const capturePrompt = () => game.install.capturePrompt({ preventDefault: () => {}, prompt: () => void prompts++ });
+    const runStarts = () => {
+      let n = 0;
+      game.bus.on('runStarted', () => n++);
+      return () => n;
+    };
+    return { game, store, pointers, ticks, input, press, key, capturePrompt, runStarts, reloads: () => reloads, prompts: () => prompts };
+  }
+
+  it('the reload button shows on title, pause and game over only while a new version waits; tap or U reloads', () => {
+    const t = app();
+    const button = titleLayout(t.input({ reload: true })).buttons.reload;
+    expect(t.press(button)).toBe(false);
+    t.key('KeyU');
+    expect(t.reloads()).toBe(0);
+
+    t.game.state.updateReady = true;
+    expect(t.press(button)).toBe(true);
+    expect(t.reloads()).toBe(1);
+    expect(t.game.state.mode).toBe('title');
+    t.key('KeyU');
+    expect(t.reloads()).toBe(2);
+
+    t.game.commands.startRun();
+    t.key('KeyU');
+    expect(t.reloads()).toBe(2); // never mid-run
+    t.game.commands.pause();
+    expect(t.press(pauseLayout(t.input()).buttons.reload)).toBe(true);
+    expect(t.reloads()).toBe(3);
+    expect(t.game.state.mode).toBe('paused');
+
+    t.game.commands.resume();
+    t.game.commands.gameOver();
+    t.ticks(60);
+    expect(t.press(gameOverLayout({ ...t.input(), newRecord: false }).buttons.reload)).toBe(true);
+    expect(t.reloads()).toBe(4);
+  });
+
+  it('touch: the reload button is a big tap area that does not start a run', () => {
+    const t = app({ touch: true });
+    t.game.state.updateReady = true;
+    const button = titleLayout(t.input()).buttons.reload!;
+    expect(button.h).toBeGreaterThanOrEqual(24);
+    expect(t.press(button)).toBe(true);
+    t.ticks(2);
+    expect(t.game.state.mode).toBe('title');
+    expect(t.reloads()).toBe(1);
+  });
+
+  it("'Neu in dieser Version' comes before the title: a tap or any key continues and marks the version seen", () => {
+    const t = app();
+    t.game.state.whatsNew = [{ version: '2099-01-01.1', date: '2099-01-01', items: ['Neu A'] }];
+    expect(t.game.hitHotspot(160, 120)).toBe(true);
+    t.ticks(2);
+    expect(t.game.state.whatsNew).toEqual([]);
+    expect(t.game.state.mode).toBe('title');
+
+    t.game.state.whatsNew = [{ version: '2099-01-01.1', date: '2099-01-01', items: ['Neu A'] }];
+    t.key('Space');
+    t.ticks(2);
+    expect(t.game.state.whatsNew).toEqual([]);
+    expect(t.game.state.mode).toBe('title'); // the key only closed the screen
+    t.key('Space');
+    expect(t.game.state.mode).toBe('playing');
+  });
+
+  it("the 'Weiter' button continues too, and the logo is not live behind the screen", () => {
+    const t = app({ touch: true });
+    t.game.state.whatsNew = [{ version: '2099-01-01.1', date: '2099-01-01', items: ['Neu A', 'Neu B'] }];
+    const next = whatsNewLayout(t.input(), ['Neu A', 'Neu B']).buttons.next;
+    expect(t.press(next)).toBe(true);
+    expect(t.game.state.whatsNew).toEqual([]);
+    t.ticks(2);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('install hint: Installieren shows the captured prompt from the tap, × dismisses for good', () => {
+    const t = app({ touch: true });
+    t.game.state.install.visits = 2;
+    t.game.state.install.platform = 'android';
+    t.capturePrompt();
+    const l = titleLayout(t.input({ install: 'prompt' }));
+    expect(t.press(l.buttons.install)).toBe(true);
+    expect(t.prompts()).toBe(1);
+    expect(t.game.state.mode).toBe('title');
+    // Without a prompt left there is no hint on Android any more.
+    expect(t.press(l.buttons.dismiss)).toBe(false);
+
+    const ios = app({ touch: true });
+    ios.game.state.install.visits = 3;
+    ios.game.state.install.platform = 'ios';
+    const il = titleLayout(ios.input({ install: 'ios' }));
+    expect(ios.press(il.buttons.dismiss)).toBe(true);
+    expect(ios.game.state.install.dismissed).toBe(true);
+    expect(ios.press(il.buttons.dismiss)).toBe(false);
+  });
+
+  it('install hint: also on game over, never on desktop, mid-run or on the first visit', () => {
+    const t = app({ touch: true });
+    t.game.state.install.platform = 'ios';
+    t.game.state.install.visits = 1;
+    const dismiss = titleLayout(t.input({ install: 'ios' })).buttons.dismiss;
+    expect(t.press(dismiss)).toBe(false);
+    t.game.state.install.visits = 2;
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    t.ticks(60);
+    expect(t.press(gameOverLayout({ ...t.input({ install: 'ios' }), newRecord: false }).buttons.dismiss)).toBe(true);
+    expect(t.game.state.install.dismissed).toBe(true);
+
+    const desk = app();
+    desk.game.state.install.platform = 'ios';
+    desk.game.state.install.visits = 2;
+    desk.game.display.touch = true;
+    const rect = titleLayout(desk.input({ install: 'ios' })).buttons.dismiss;
+    desk.game.display.touch = false;
+    expect(desk.press(rect)).toBe(false);
+  });
+
+  it('pause: Zum Startbildschirm ends the run (its stars still count) and shows the title', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.state.stars = 3;
+    t.game.commands.pause();
+    expect(t.press(pauseLayout(t.input()).buttons.toTitle)).toBe(true);
+    expect(t.game.state.mode).toBe('title');
+    expect(t.store.get('starsTotal', 0)).toBe(3);
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    t.ticks(60);
+    t.key('KeyT');
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('game over: Zum Startbildschirm only after the input delay', () => {
+    const t = app({ touch: true });
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    const button = gameOverLayout({ ...t.input(), newRecord: false }).buttons.toTitle;
+    expect(t.press(button)).toBe(false);
+    t.ticks(60);
+    expect(t.press(button)).toBe(true);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('pause: a short tap on the logo resumes, a 3 s hold (or K) opens the settings', () => {
+    const t = app({ touch: true });
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    const logo = centre(pauseLayout(t.input()).buttons.logo!);
+    t.pointers.down(1, logo[0], logo[1], true);
+    t.ticks(10);
+    t.pointers.up(1);
+    t.ticks(1);
+    expect(t.game.state.mode).toBe('playing');
+
+    t.game.commands.pause();
+    t.pointers.down(1, logo[0], logo[1], true);
+    t.ticks(180);
+    t.pointers.up(1);
+    t.ticks(1);
+    expect(t.game.state.mode).toBe('paused');
+    const menu = settingsLayout(t.game.display.viewWidth, uiMetrics(t.game.display));
+    expect(t.press(menu.back)).toBe(true); // menu open; Zurück closes it
+    expect(t.game.state.mode).toBe('paused');
+
+    keyDown(t.game, 'KeyK');
+    t.ticks(180);
+    keyUp(t.game, 'KeyK');
+    t.ticks(1);
+    expect(t.press(menu.toggle)).toBe(true);
+    expect(t.game.state.kidMode).toBe(true);
+  });
+
+  it('switching kid mode from pause restarts the run when the menu closes; no switch keeps the pause', () => {
+    const t = app();
+    const starts = t.runStarts();
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    const menu = settingsLayout(t.game.display.viewWidth, uiMetrics(t.game.display));
+    const openMenu = () => {
+      keyDown(t.game, 'KeyK');
+      t.ticks(180);
+      keyUp(t.game, 'KeyK');
+      t.ticks(1);
+    };
+    openMenu();
+    t.key('Escape');
+    expect(t.game.state.mode).toBe('paused');
+    expect(starts()).toBe(1);
+
+    openMenu();
+    t.press(menu.toggle);
+    expect(t.game.state.kidMode).toBe(true);
+    expect(t.game.state.mode).toBe('paused'); // the note shows until the menu closes
+    t.press(menu.back);
+    expect(starts()).toBe(2);
+    expect(t.game.state.mode).toBe('playing');
   });
 });

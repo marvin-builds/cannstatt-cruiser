@@ -1,12 +1,13 @@
 /**
- * Drawing of every UI screen. Pure rendering: all state comes in through
- * `UiView` (records, popups, banner) and the RenderContext.
+ * Drawing of the HUD, the riding overlays, the settings menu and the portrait
+ * hint, and the dispatch to the menu screens (menu-screens.ts). Pure
+ * rendering: all state comes in through `UiView` (records, popups, banner)
+ * and the RenderContext.
  */
 import { chillStrength } from '../core/chill';
-import { GAMEOVER_INPUT_DELAY, PLAYER_X } from '../core/config';
+import { PLAYER_X } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
-import type { RenderContext } from '../types';
-import type { Rect } from '../types';
+import type { Rect, RenderContext } from '../types';
 import {
   ARROW_DOWN,
   buttonPlateSprite,
@@ -27,19 +28,16 @@ import {
 } from './art';
 import type { Banner } from './banner';
 import { chillLook } from './chill-look';
-import { drunkShown, drunkStrength, swayOffset } from './drunk-look';
+import { centred, fill, menuButton, ribbon, text } from './draw-kit';
+import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
 import { CHIP_H, type ItemHint, itemButtonRect, itemControl } from './item-button';
 import {
   answerLabel,
-  blinkOn,
   centreX,
-  fitCentred,
-  formatNumber,
   type HudButtons,
   hudButtons,
-  metres,
   popupLeft,
   popupScale,
   riding,
@@ -47,7 +45,9 @@ import {
   type UiMetrics,
   uiMetrics,
 } from './layout';
-import { drawLogo, logoRect } from './logo';
+import { MENU_TEXT } from './menu-layout';
+import { drawGameOver, drawPause, drawTitle, drawWhatsNew } from './menu-screens';
+import { currentMenu, portraitHintShown } from './menu-state';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
@@ -78,37 +78,11 @@ export interface UiView {
   logoHold: LongPress;
 }
 
-const LINE = 11;
-
-/*
- * Text helpers reuse one options object and the HUD passes module-level
- * option constants: the HUD and popups draw every frame and must not allocate.
- */
-const NO_TEXT_OPTIONS: TextOptions = {};
-const scratch: TextOptions = {};
-
-function text(r: RenderContext, s: string, x: number, y: number, options = NO_TEXT_OPTIONS): void {
-  scratch.color = options.color;
-  scratch.scale = options.scale;
-  scratch.align = options.align;
-  scratch.shadow = options.shadow ?? UI.ink;
-  drawText(r.g, s, x, y, scratch);
-}
-
-function centred(r: RenderContext, s: string, y: number, options: TextOptions = {}): void {
-  text(r, s, centreX(r.display.viewWidth), y, { align: 'center', ...options });
-}
-
 const MUTED: TextOptions = { color: UI.muted };
 const SCORE: TextOptions = { scale: 2 };
 const MULTIPLIER: TextOptions = { scale: 2, color: UI.yellow };
 const COMBO_LABEL: TextOptions = { color: UI.orange };
 const KEYCAP: TextOptions = { color: UI.ink, shadow: '' };
-
-function fill(r: RenderContext, color: string): void {
-  r.g.fillStyle = color;
-  r.g.fillRect(0, 0, r.display.viewWidth, r.display.viewHeight);
-}
 
 /** Draws centred `s` with a 1 px ink outline all round, so coloured text reads on any background. */
 function outlined(r: RenderContext, s: string, x: number, y: number, color: string, scale: number): void {
@@ -123,31 +97,6 @@ function outlined(r: RenderContext, s: string, x: number, y: number, color: stri
 const outlineText: TextOptions = { align: 'center' };
 /** dx, dy pairs of the outline passes. */
 const OUTLINE = [-1, 0, 1, 0, 0, -1, 0, 1, -1, -1, 1, -1, -1, 1, 1, 1];
-
-/** Opaque plate with a yellow rule above and below (zone banner, pause prompt), `x`..`x + w`. */
-function ribbon(r: RenderContext, x: number, y: number, w: number, h: number): void {
-  const { g } = r;
-  g.fillStyle = UI.panel;
-  g.fillRect(x, y, w, h);
-  g.fillStyle = UI.yellow;
-  g.fillRect(x, y, w, 1);
-  g.fillRect(x, y + h - 1, w, 1);
-}
-
-/** Opaque plate behind a block of centred text, `w` wide. */
-function panel(r: RenderContext, w: number, y: number, h: number): void {
-  r.g.fillStyle = UI.panel;
-  r.g.fillRect(centreX(r.display.viewWidth) - Math.floor(w / 2), y, w, h);
-}
-
-function hint(r: RenderContext, touch: string, keys: string): string {
-  return r.display.touch ? touch : keys;
-}
-
-/** The grind trick line of the title and pause key hints. */
-function trickKeysHint(r: RenderContext): string {
-  return hint(r, 'Beim Grinden runterwischen = Trick', 'Beim Grinden: Pfeil runter / S = Trick');
-}
 
 /** A light key cap (9 x 10: face and darker bottom edge) at `x`, `y`; the label goes on top. */
 function keyCap(r: RenderContext, x: number, y: number): void {
@@ -188,60 +137,6 @@ function drawButtons(r: RenderContext, view: UiView): void {
   if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
   hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
   if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
-}
-
-/** A 2 px yellow bar under the logo that fills while it is held (shown only after LONG_PRESS_HINT_DELAY). */
-function drawHoldProgress(r: RenderContext, progress: number): void {
-  if (progress <= 0) return;
-  const { g } = r;
-  const logo = logoRect(r.display.viewWidth);
-  const w = logo.w - 20;
-  const x = logo.x + 10;
-  const y = TITLE_PANEL_Y - 3;
-  g.fillStyle = UI.ink;
-  g.fillRect(x - 1, y - 1, w + 2, 4);
-  g.fillStyle = UI.empty;
-  g.fillRect(x, y, w, 2);
-  g.fillStyle = UI.yellow;
-  g.fillRect(x, y, Math.round(w * progress), 2);
-  g.fillStyle = UI.white;
-  g.fillRect(x, y, Math.round(w * progress), 1);
-}
-
-/** Top of the title's text panel, just under the logo. */
-const TITLE_PANEL_Y = 66;
-
-function drawTitle(r: RenderContext, view: UiView): void {
-  const cx = centreX(r.display.viewWidth);
-  const { touch } = r.display;
-  drawLogo(r.g, r.display.viewWidth);
-
-  const y = TITLE_PANEL_Y + 3;
-  const hints = y + 27;
-  const keys = hints + 5 * LINE + 1;
-  const rowY = touch ? keys + 2 : keys + LINE + 3;
-  panel(r, 236, TITLE_PANEL_Y, rowY + LINE - TITLE_PANEL_Y);
-  drawHoldProgress(r, view.logoHold.progress);
-  centred(r, 'Mit dem Longboard durch Stuttgart', y, { color: UI.muted });
-  if (blinkOn(r.state.modeTime)) {
-    centred(r, hint(r, 'Tippen zum Starten', 'Leertaste zum Starten'), y + 13, { color: UI.yellow });
-  }
-  centred(r, hint(r, 'Kurz tippen = kleiner Sprung', 'Leertaste kurz = kleiner Sprung'), hints);
-  centred(r, 'Halten = hoher Sprung', hints + LINE);
-  centred(r, hint(r, 'Nach unten wischen = ducken', 'Pfeil runter oder S = ducken'), hints + 2 * LINE);
-  centred(r, trickKeysHint(r), hints + 3 * LINE);
-  centred(r, hint(r, 'Gegenstand antippen = benutzen', 'E = Gegenstand benutzen'), hints + 4 * LINE);
-  if (!touch) centred(r, 'P/Esc = Pause, M = Ton aus', keys, { color: UI.muted });
-
-  const best = `Highscore ${formatNumber(view.records.highscore)}`;
-  const stars = `${formatNumber(view.records.starsTotal)} gesamt`;
-  const gap = 14;
-  const total = measureText(best) + gap + STAR.width + 3 + measureText(stars);
-  let x = cx - Math.floor(total / 2);
-  text(r, best, x, rowY, { color: UI.white });
-  x += measureText(best) + gap;
-  STAR.draw(r.g, 0, x, rowY);
-  text(r, stars, x + STAR.width + 3, rowY, { color: UI.white });
 }
 
 /** Score, combo, hearts, stars and the timer rows in the top-left corner, from the HUD model (no allocation). */
@@ -315,9 +210,11 @@ function drawChillTint(r: RenderContext): void {
 }
 
 /**
- * Woozy screen while drunk (never in kid mode): a faint double image of the
- * street that sways sideways, and a soft vignette that fades smoothly in from
- * the left and right edges (no bands). Faint enough that obstacles stay sharp where they really are.
+ * Woozy screen while drunk (never in kid mode): two faint double images of
+ * the street that sway against each other, a slow amber wash and a soft
+ * vignette that fades in from the left and right edges (no bands). The real
+ * image always shows through at more than half strength, so obstacles stay
+ * where they really are; the HUD is drawn after it and stays sharp.
  */
 function drawDrunk(r: RenderContext, view: UiView): void {
   if (!drunkShown(r.state)) return;
@@ -325,14 +222,18 @@ function drawDrunk(r: RenderContext, view: UiView): void {
   if (strength <= 0) return;
   const { g } = r;
   const { viewWidth: w, viewHeight: h } = r.display;
-  const dx = swayOffset(r.state.time, strength);
-  const dy = swayOffset(r.state.time * 0.7 + 1, strength * 0.4);
+  const t = r.state.time;
+  const dx = swayOffset(t, strength);
+  const dy = swayOffset(t * 0.7 + 1, strength * 0.4);
   if (dx !== 0 || dy !== 0) {
-    g.globalAlpha = 0.3 * strength;
+    g.globalAlpha = GHOST_ALPHA * strength;
     g.drawImage(g.canvas, dx, dy);
+    g.globalAlpha = SECOND_GHOST_ALPHA * strength;
+    g.drawImage(g.canvas, -swayOffset(t * 1.3 + 2, strength * 0.7), -dy);
     g.globalAlpha = 1;
   }
-  g.fillStyle = tint(UI.drunkTint, 0.08 * strength);
+  // The wash breathes slowly, so the woozy feeling never settles.
+  g.fillStyle = tint(UI.drunkTint, (0.08 + 0.05 * Math.sin(t * 1.7)) * strength);
   g.fillRect(0, 0, w, h);
   g.globalAlpha = strength;
   g.fillStyle = drunkVignette(g, w);
@@ -341,8 +242,8 @@ function drawDrunk(r: RenderContext, view: UiView): void {
 }
 
 /** Widest reach of the drunk vignette from each side (view px) and its alpha right at the edge. */
-const VIGNETTE_REACH = 56;
-const VIGNETTE_EDGE_ALPHA = 0.18;
+const VIGNETTE_REACH = 72;
+const VIGNETTE_EDGE_ALPHA = 0.28;
 let vignette: { g: CanvasRenderingContext2D; width: number; gradient: CanvasGradient } | null = null;
 
 /** A smooth fade from both side edges to clear (no hard bands), built once per buffer and view width. */
@@ -453,60 +354,6 @@ function drawLive(r: RenderContext, view: UiView): void {
   }
 }
 
-function drawPause(r: RenderContext): void {
-  fill(r, UI.dim);
-  centred(r, 'Pause', 54, { scale: 3 });
-  const prompt = hint(r, 'Tippen zum Weiterfahren', 'Leertaste, P oder Esc zum Weiterfahren');
-  const w = measureText(prompt) + 16;
-  ribbon(r, centreX(r.display.viewWidth) - Math.floor(w / 2), 88, w, 15);
-  if (blinkOn(r.state.modeTime)) centred(r, prompt, 92, { color: UI.yellow });
-  if (!r.display.touch) centred(r, 'E = Gegenstand benutzen, M = Ton aus', 110, { color: UI.muted });
-  centred(r, trickKeysHint(r), r.display.touch ? 110 : 121, { color: UI.muted });
-}
-
-/** One "label  value" row of the game-over table, split at the centre line. */
-function row(r: RenderContext, label: string, value: string, y: number, color: string = UI.white): void {
-  const cx = centreX(r.display.viewWidth);
-  text(r, label, cx - 4, y, { align: 'right', color: UI.muted });
-  text(r, value, cx + 4, y, { color });
-}
-
-/** Top of the first game-over table row. */
-const TABLE_Y = 62;
-const TABLE_PAD = 4;
-
-function drawGameOver(r: RenderContext, view: UiView): void {
-  fill(r, UI.dim);
-  const { state } = r;
-  const run = view.lastRun;
-  // Centred, unless that runs under the button row (portrait): then left of it.
-  const buttons = hudButtons(r.display.viewWidth, view.fullscreenAvailable, uiMetrics(r.display), false);
-  const title = 'Sturz! Runde vorbei';
-  const titleX = fitCentred(measureText(title, 2), r.display.viewWidth, (buttons.fullscreen ?? buttons.mute).x);
-  text(r, title, titleX, 16, { scale: 2, color: UI.red, align: 'center' });
-  if (run?.newRecord && blinkOn(state.modeTime * 2)) centred(r, 'Neuer Rekord!', 38, { scale: 2, color: UI.yellow });
-
-  const rows: [string, string, string][] = [
-    ['Punkte', formatNumber(state.score), run?.newRecord ? UI.yellow : UI.white],
-    ['Highscore', formatNumber(view.records.highscore), UI.white],
-    ['Sterne', formatNumber(state.stars), UI.white],
-    ['Sterne gesamt', formatNumber(view.records.starsTotal), UI.white],
-    ['Strecke', `${formatNumber(metres(state.distance))} m`, UI.white],
-  ];
-  // Labels end and values start 4 px from the centre line: the plate is as wide as the longer side, twice.
-  const half = 4 + Math.max(...rows.flatMap(([label, value]) => [measureText(label), measureText(value)]));
-  const bottom = TABLE_Y + LINE * (rows.length - 1) + 8;
-  panel(r, 2 * (half + TABLE_PAD), TABLE_Y - TABLE_PAD, bottom - TABLE_Y + 2 * TABLE_PAD);
-  rows.forEach(([label, value, color], i) => row(r, label, value, TABLE_Y + LINE * i, color));
-
-  if (state.modeTime >= GAMEOVER_INPUT_DELAY) {
-    if (blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) {
-      centred(r, hint(r, 'Tippen für eine neue Runde', 'Leertaste für eine neue Runde'), 134, { color: UI.yellow });
-    }
-    if (!r.display.touch) centred(r, 'Esc = zum Titelbild', 147, { color: UI.muted });
-  }
-}
-
 function drawPortraitHint(r: RenderContext): void {
   fill(r, UI.ink);
   const cx = centreX(r.display.viewWidth);
@@ -514,19 +361,6 @@ function drawPortraitHint(r: RenderContext): void {
   centred(r, 'Bitte Gerät drehen', 66, { scale: 2, color: UI.yellow });
   centred(r, 'Im Querformat fährt es sich besser.', 92);
   centred(r, 'Tippen zum Ignorieren', 120, { color: UI.muted });
-}
-
-/** A settings menu button: rounded face with an edge and a centred label. */
-function menuButton(r: RenderContext, rect: Rect, label: string, color: string = UI.white): void {
-  const { g } = r;
-  const { x, y, w, h } = rect;
-  g.fillStyle = UI.buttonEdge;
-  g.fillRect(x + 1, y, w - 2, h);
-  g.fillRect(x, y + 1, w, h - 2);
-  g.fillStyle = UI.buttonFace;
-  g.fillRect(x + 1, y + 1, w - 2, h - 2);
-  const scale = h >= 24 ? 2 : 1;
-  text(r, label, x + Math.floor(w / 2), y + Math.floor((h - 7 * scale) / 2), { align: 'center', scale, color });
 }
 
 function drawSettings(r: RenderContext, view: UiView): void {
@@ -537,9 +371,10 @@ function drawSettings(r: RenderContext, view: UiView): void {
     const on = r.state.kidMode;
     centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
     menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
-    centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', l.toggle.y + l.toggle.h + 6, {
-      color: UI.muted,
-    });
+    const note = l.toggle.y + l.toggle.h + 6;
+    // Switched during a run: closing the menu restarts it.
+    if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, note, { color: UI.yellow });
+    else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', note, { color: UI.muted });
     if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
     menuButton(r, l.back, 'Zurück');
   } else if (settings.question) {
@@ -552,15 +387,13 @@ function drawSettings(r: RenderContext, view: UiView): void {
   }
 }
 
-export function portraitHintShown(r: { display: { portrait: boolean; touch: boolean } }, view: UiView): boolean {
-  return r.display.portrait && r.display.touch && !view.portraitDismissed;
-}
-
 export function drawUi(r: RenderContext, view: UiView): void {
+  const menu = currentMenu(r, view);
   switch (r.state.mode) {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
-      else drawTitle(r, view);
+      else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!);
+      else drawTitle(r, view, menu!);
       break;
     case 'playing':
       drawDrunk(r, view);
@@ -572,14 +405,18 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawTrickHint(r, view);
       break;
     case 'paused':
+      if (view.settings.open) {
+        drawSettings(r, view);
+        break;
+      }
       drawDrunk(r, view);
       drawChillTint(r);
       drawStats(r, view);
       drawItemControl(r, view);
-      drawPause(r);
+      drawPause(r, view, menu!);
       break;
     case 'gameover':
-      drawGameOver(r, view);
+      drawGameOver(r, view, menu!);
       break;
   }
   if (portraitHintShown(r, view)) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drunkShown, drunkStrength, DRUNK_EASE_IN, DRUNK_EASE_OUT, swayOffset } from './drunk-look';
+import { drunkShown, drunkStrength, DRUNK_EASE_IN, DRUNK_EASE_OUT, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 
 describe('drunk look', () => {
   it('shows only while the timer runs, never in kid mode', () => {
@@ -17,12 +17,20 @@ describe('drunk look', () => {
     expect(drunkStrength(0, d)).toBe(0);
   });
 
-  it('sways by whole pixels, at most 3, and not at all when sober', () => {
+  it('sways clearly (up to 6 px at full strength) by whole pixels, and not at all when sober', () => {
+    let widest = 0;
     for (let t = 0; t < 5; t += 0.05) {
       const s = swayOffset(t, 1);
       expect(Number.isInteger(s)).toBe(true);
-      expect(Math.abs(s)).toBeLessThanOrEqual(3);
+      expect(Math.abs(s)).toBeLessThanOrEqual(6);
       expect(swayOffset(t, 0)).toBe(0);
+      widest = Math.max(widest, Math.abs(s));
     }
+    expect(widest).toBe(6);
+  });
+
+  it('the double images stay faint enough that the real street reads through', () => {
+    expect(GHOST_ALPHA).toBeGreaterThan(0.3);
+    expect(GHOST_ALPHA + SECOND_GHOST_ALPHA).toBeLessThanOrEqual(0.6);
   });
 });
