@@ -23,24 +23,36 @@ function rideTo(game: Game, distance: number): void {
 }
 
 describe('world system zones', () => {
-  it('emits zoneChanged only when the gateway reaches the player', () => {
+  it('starts a run in Bad Cannstatt on its first tick', () => {
     const game = playing();
     const seen = zoneEvents(game);
+    game.tick();
+    expect(game.state.zoneIndex).toBe(2);
+    expect(seen).toEqual([{ index: 2, previous: 0 }]);
+    game.tick();
+    expect(seen).toHaveLength(1);
+  });
+
+  it('emits zoneChanged only when the gateway reaches the player', () => {
+    const game = playing();
+    game.tick();
+    const seen = zoneEvents(game);
     rideTo(game, ZONE_LENGTH - 1);
-    expect(game.state.zoneIndex).toBe(0);
+    expect(game.state.zoneIndex).toBe(2);
     expect(seen).toEqual([]);
     rideTo(game, ZONE_LENGTH);
     expect(game.state.zoneIndex).toBe(1);
-    expect(seen).toEqual([{ index: 1, previous: 0 }]);
+    expect(seen).toEqual([{ index: 1, previous: 2 }]);
     rideTo(game, ZONE_LENGTH + 100);
     expect(seen).toHaveLength(1);
   });
 
-  it('cycles through all zones back to Stuttgart-Mitte at fixed distances', () => {
+  it('rides Cannstatt, Neckar, Mitte, Neckar, Cannstatt at fixed distances', () => {
     const game = playing();
+    game.tick();
     const seen = zoneEvents(game);
-    for (let k = 1; k <= 3; k++) rideTo(game, k * ZONE_LENGTH);
-    expect(seen.map((e) => e.index)).toEqual([1, 2, 0]);
+    for (let k = 1; k <= 5; k++) rideTo(game, k * ZONE_LENGTH);
+    expect(seen.map((e) => e.index)).toEqual([1, 0, 1, 2, 1]);
   });
 
   it('keeps its schedule through its own zone changes (no snap)', () => {
@@ -48,7 +60,7 @@ describe('world system zones', () => {
     rideTo(game, ZONE_LENGTH + 10);
     expect(game.state.zoneIndex).toBe(1);
     rideTo(game, 2 * ZONE_LENGTH);
-    expect(game.state.zoneIndex).toBe(2);
+    expect(game.state.zoneIndex).toBe(0);
   });
 
   it('does not advance outside a running game', () => {
@@ -65,17 +77,48 @@ describe('world system zones', () => {
     rideTo(game, next - 1);
     expect(game.state.zoneIndex).toBe(2);
     rideTo(game, next);
-    expect(game.state.zoneIndex).toBe(0);
+    expect(game.state.zoneIndex).toBe(1);
   });
 
-  it('starts every run in zone 0 with a fresh zone length', () => {
+  it('starts every run in Bad Cannstatt with a fresh zone length', () => {
     const game = playing();
     rideTo(game, ZONE_LENGTH * 1.5);
     expect(game.state.zoneIndex).toBe(1);
     game.commands.gameOver();
     game.commands.startRun();
-    expect(game.state.zoneIndex).toBe(0);
+    game.tick();
+    expect(game.state.zoneIndex).toBe(2);
     rideTo(game, ZONE_LENGTH - 1);
-    expect(game.state.zoneIndex).toBe(0);
+    expect(game.state.zoneIndex).toBe(2);
+  });
+});
+
+describe('world system traffic', () => {
+  it('has no traffic in Bad Cannstatt and at the Neckar, dense traffic in Mitte', () => {
+    const world = createWorldSystem();
+    const game = new Game({ systems: [world] });
+    game.seed(1);
+    game.commands.startRun();
+    game.tick();
+    expect(world.trafficDensity()).toBe(0);
+    rideTo(game, ZONE_LENGTH + 1000);
+    expect(world.trafficDensity()).toBe(0);
+    rideTo(game, 2 * ZONE_LENGTH + 1500);
+    expect(world.trafficDensity()).toBe(1);
+  });
+
+  it('shows Bad Cannstatt (no traffic) again once back on the title', () => {
+    const world = createWorldSystem();
+    const game = new Game({ systems: [world] });
+    game.commands.startRun();
+    game.commands.setZone(0);
+    game.tick();
+    expect(world.trafficDensity()).toBe(1);
+    game.commands.gameOver();
+    game.tick();
+    expect(world.trafficDensity()).toBe(1);
+    game.commands.toTitle();
+    game.tick();
+    expect(world.trafficDensity()).toBe(0);
   });
 });

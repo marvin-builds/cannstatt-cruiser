@@ -1,16 +1,17 @@
 /**
  * Gateways: the art that sits on each depth's seam between two zones, so a
- * zone change reads as riding into the next district. Indexed by the zone
- * being entered (the cycle is fixed: Mitte -> Neckar -> Cannstatt -> Mitte).
+ * zone change reads as riding into the next district. The route rides back
+ * and forth (Cannstatt <-> Neckar <-> Mitte), so every crossing has a gateway
+ * in both directions; the zone left behind is always on the gateway's left.
  */
 import { GROUND_Y } from '../../core/config';
 import { MID, NEAR } from '../palette';
-import type { Gateway } from '../scene';
-import { MID_TREE, treeCluster } from './city';
+import type { Gateway, GatewayTable } from '../scene';
+import { ZONE_COUNT } from '../zones';
+import { MID_TREE } from './city';
 import { hillProp, housesHillProp } from './hills';
-import { TRAIN_RAIL_Y } from './layout';
-import { BANK_Y } from './neckar';
-import { noise, type Painter, type Prop, staticProp } from './paint';
+import { BANK_Y, TRAIN_RAIL_Y } from './layout';
+import { mirrored, noise, type Painter, type Prop, staticProp } from './paint';
 import { tree } from './street';
 
 /** Props drawn together, back to front, each at its x offset. */
@@ -97,25 +98,6 @@ function embankment(): Prop {
   ]);
 }
 
-/** Cannstatt -> Mitte: the last Wasen market stalls before the city blocks. */
-function wasenEdge(): Prop {
-  const stall = (stripe: string) =>
-    staticProp(18, 22, GROUND_Y, (p) => {
-      p.rect(MID.stoneShade, 0, 6, 1, 16);
-      p.rect(MID.stoneShade, 17, 6, 1, 16);
-      p.rect(MID.plaster, 1, 14, 16, 8);
-      p.rect(MID.plasterShade, 1, 14, 16, 1);
-      for (let x = 2; x < 16; x += 2) p.px([MID.roof, MID.ochre, MID.green][x % 3]!, x, 13);
-      p.gable(stripe, 0, 0, 18, 4);
-      for (let x = 0; x < 18; x++) p.rect(Math.floor(x / 3) % 2 === 0 ? stripe : MID.white, x, 4, 1, x % 2 === 0 ? 4 : 3);
-    });
-  return group(80, [
-    [stall(MID.roof), 0],
-    [stall(MID.blue), 22],
-    [treeCluster(), 46],
-  ]);
-}
-
 // --------------------------------------------------------------- near ----
 
 /** Mitte -> Neckar: the Stadtbahn track ends at a buffer stop, the river railing starts at a quay pillar. */
@@ -146,7 +128,7 @@ function pillar(p: Painter, x: number, w: number, h: number): void {
   p.rect(NEAR.stoneShade, x - 1, 5, w + 2, 1);
 }
 
-/** Cannstatt -> Mitte: the hedge ends at a grassy Stadtbahn tunnel portal (the train vanishes into it). */
+/** Neckar -> Mitte: the river railing ends at a grassy Stadtbahn tunnel portal (the train vanishes into it). */
 const tunnelPortal = staticProp(56, 46, GROUND_Y, (p) => {
   const h = 46;
   const wall = 39;
@@ -177,21 +159,45 @@ const tunnelPortal = staticProp(56, 46, GROUND_Y, (p) => {
   p.rect(NEAR.railShade, wall + 3, rail, 11, 1);
 });
 
-/** Gateways into zone i: [far, mid, near]. */
-export const GATEWAYS: readonly (readonly Gateway[])[] = [
-  [
-    { prop: housesHillProp(FAR_W, FAR_RISE, 14), seam: FAR_W / 2 },
-    { prop: wasenEdge(), seam: 40 },
-    { prop: tunnelPortal, seam: 30 },
-  ],
-  [
-    { prop: hillProp(FAR_W, FAR_RISE, false, 12), seam: FAR_W / 2 },
-    { prop: riverStart(), seam: 46 },
-    { prop: quayGate, seam: 16 },
-  ],
-  [
-    { prop: hillProp(FAR_W, FAR_RISE, true, 13), seam: FAR_W / 2 },
-    { prop: embankment(), seam: 30 },
-    { prop: parkGate, seam: 6 },
-  ],
+/** A gateway for the opposite direction: the same art mirrored, so the zone left behind stays on the left. */
+function reversed(gate: Gateway): Gateway {
+  return { prop: mirrored(gate.prop), seam: gate.prop.width - gate.seam };
+}
+
+const MITTE = 0;
+const NECKAR = 1;
+const CANNSTATT = 2;
+
+const intoNeckar: Gateway[] = [
+  { prop: hillProp(FAR_W, FAR_RISE, false, 12), seam: FAR_W / 2 },
+  { prop: riverStart(), seam: 46 },
+  { prop: quayGate, seam: 16 },
 ];
+const intoCannstatt: Gateway[] = [
+  { prop: hillProp(FAR_W, FAR_RISE, true, 13), seam: FAR_W / 2 },
+  { prop: embankment(), seam: 30 },
+  { prop: parkGate, seam: 6 },
+];
+
+/** [far, mid, near] gateway per crossing of the route. */
+const CROSSINGS: ReadonlyArray<readonly [from: number, to: number, gates: readonly Gateway[]]> = [
+  [MITTE, NECKAR, intoNeckar],
+  [
+    NECKAR,
+    MITTE,
+    [
+      { prop: housesHillProp(FAR_W, FAR_RISE, 14), seam: FAR_W / 2 },
+      reversed(intoNeckar[1]!),
+      { prop: tunnelPortal, seam: 30 },
+    ],
+  ],
+  [NECKAR, CANNSTATT, intoCannstatt],
+  [CANNSTATT, NECKAR, [intoCannstatt[0]!, reversed(intoCannstatt[1]!), intoCannstatt[2]!]],
+];
+
+/** The gateways of one depth (0 far, 1 mid, 2 near), indexed [from zone][to zone]. */
+export function gatewayTable(depth: number): GatewayTable {
+  const table = Array.from({ length: ZONE_COUNT }, () => Array.from<Gateway | null>({ length: ZONE_COUNT }).fill(null));
+  for (const [from, to, gates] of CROSSINGS) table[from]![to] = gates[depth]!;
+  return table;
+}

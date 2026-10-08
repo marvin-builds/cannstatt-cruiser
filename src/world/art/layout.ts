@@ -19,6 +19,11 @@ export const NEAR_DEPTH: Depth = { factor: NEAR_FACTOR, seamAt: PLAYER_X };
 export const MID_DEPTH: Depth = { factor: MID_FACTOR, seamAt: 250 };
 export const FAR_DEPTH: Depth = { factor: FAR_FACTOR, seamAt: 372 };
 
+/** View y of the far Neckar bank's grass (mid layer); bank props stand on it. */
+export const BANK_Y = 122;
+/** View y where the Neckar's water surface starts. */
+export const WATER_Y = 127;
+
 /** Y of the near-layer Stadtbahn rail (wheel line). */
 export const TRAIN_RAIL_Y = 146;
 

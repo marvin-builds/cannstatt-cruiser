@@ -3,7 +3,7 @@ import { Rng } from '../core/rng';
 import type { BaseTile, Prop } from './art/paint';
 import { PropStream, type StreamConfig } from './stream';
 import { tileStarts } from './tiling';
-import { type Depth, type Leg, normalizeZone, type ZoneRoute } from './zones';
+import type { Depth, Leg, ZoneRoute } from './zones';
 
 /** One zone's look on one parallax depth. */
 export interface LayerSpec {
@@ -32,6 +32,9 @@ export interface Gateway {
   readonly seam: number;
 }
 
+/** One depth's gateways, indexed [from zone][to zone]; null where the route never crosses. */
+export type GatewayTable = readonly (readonly (Gateway | null)[])[];
+
 /** Space kept between a gateway and the props of the zones on either side. */
 const GATEWAY_MARGIN = 4;
 
@@ -50,8 +53,7 @@ export class DepthLayer {
     private readonly depth: Depth,
     /** Per zone index. */
     private readonly specs: readonly LayerSpec[],
-    /** Per zone index: the gateway into that zone. */
-    private readonly gateways: readonly Gateway[],
+    private readonly gateways: GatewayTable,
     private readonly salt: number,
   ) {}
 
@@ -77,7 +79,7 @@ export class DepthLayer {
     for (const leg of legs) this.drawLeg(g, leg, scroll, time, viewWidth);
     for (const leg of legs) {
       if (leg.index === 0) continue;
-      const gate = this.gateways[leg.zone]!;
+      const gate = this.gateway(leg.previous, leg.zone);
       gate.prop.draw(g, leg.from - gate.seam - s, time, leg.index);
     }
     for (const index of this.streams.keys()) if (index < legs[0]!.index) this.streams.delete(index);
@@ -88,7 +90,13 @@ export class DepthLayer {
       spec.base?.warm();
       for (const prop of Object.values(spec.props?.catalogue ?? {})) prop.warm();
     }
-    for (const gate of this.gateways) gate.prop.warm();
+    for (const row of this.gateways) for (const gate of row) gate?.prop.warm();
+  }
+
+  private gateway(from: number, to: number): Gateway {
+    const gate = this.gateways[from]?.[to];
+    if (!gate) throw new Error(`No gateway from zone ${from} to zone ${to}`);
+    return gate;
   }
 
   private drawLeg(g: CanvasRenderingContext2D, leg: Leg, scroll: number, time: number, viewWidth: number): void {
@@ -119,8 +127,8 @@ export class DepthLayer {
     let stream = this.streams.get(leg.index);
     if (stream) return stream;
     const props = this.specs[leg.zone]!.props!;
-    const into = this.gateways[leg.zone]!;
-    const out = this.gateways[normalizeZone(leg.zone + 1)]!;
+    const into = this.gateway(leg.previous, leg.zone);
+    const out = this.gateway(leg.zone, leg.next);
     const start = leg.index === 0 ? this.restartX + props.startAt : leg.from + into.prop.width - into.seam + GATEWAY_MARGIN;
     const end = leg.to - out.seam - GATEWAY_MARGIN;
     const rng = new Rng(mixSeed(mixSeed(this.seed, this.salt), leg.index));

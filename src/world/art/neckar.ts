@@ -5,14 +5,12 @@ import { MID_TREE, treeCluster } from './city';
 import { farHills, hillProp, housesHillProp } from './hills';
 import { crossingX } from '../crossing';
 import { baseTile, lazyCanvas, noise, type Painter, type Prop, staticProp } from './paint';
+import { BANK_Y, WATER_Y } from './layout';
+import { mombachquelle } from './mombach';
 import { skyCanvas } from './sky';
 import { stadtbahn } from './stadtbahn';
 import { STREET, tree } from './street';
 
-/** View y of the far river bank's grass; bank props stand on it. */
-export const BANK_Y = 122;
-/** View y where the water surface starts. */
-export const WATER_Y = 127;
 
 /** Mercedes-Benz Arena: low oval bowl with a white membrane roof on masts. */
 const arena = staticProp(88, 26, BANK_Y + 2, (p) => {
@@ -270,10 +268,11 @@ export function neckarZone(): ZoneSpec {
             bankTree: tree(8, 5, BANK_Y + 1, MID_TREE),
             poplar,
             boathouse,
+            mombachquelle,
           },
           stream: {
-            intro: ['bankTree', 'bridge'],
-            landmarks: ['bridge', 'ship'],
+            intro: ['bankTree', 'mombachquelle', 'bridge'],
+            landmarks: ['bridge', 'mombachquelle', 'ship'],
             fillers: ['bankTrees', 'bankTree', 'poplar', 'boathouse'],
             gap: [6, 28],
             fillersBetween: [2, 4],

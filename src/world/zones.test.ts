@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_SPEED, PLAYER_X } from '../core/config';
 import { FAR_DEPTH, GROUND_DEPTH, MID_DEPTH, NEAR_DEPTH } from './art/layout';
-import { type Depth, normalizeZone, PALETTE_BLEND, SEAM_GRID, ZONE_COUNT, ZONE_LENGTH, ZoneRoute } from './zones';
+import { type Depth, normalizeZone, PALETTE_BLEND, SEAM_GRID, START_ZONE, ZONE_COUNT, ZONE_LENGTH, ZoneRoute } from './zones';
 
 describe('normalizeZone', () => {
   it('wraps any index into 0..ZONE_COUNT-1', () => {
@@ -20,21 +20,40 @@ describe('ZoneRoute schedule', () => {
     expect(ZONE_LENGTH % SEAM_GRID).toBe(0);
   });
 
-  it('places gateways every ZONE_LENGTH and cycles the zones', () => {
+  it('starts in Bad Cannstatt and rides Cannstatt, Neckar, Mitte, Neckar, Cannstatt (ping-pong)', () => {
+    expect(START_ZONE).toBe(2);
     const route = new ZoneRoute();
-    route.snap(0, 0);
+    expect(route.zoneAt(0)).toBe(2);
     expect(route.boundary(1)).toBe(ZONE_LENGTH);
     expect(route.boundary(2)).toBe(2 * ZONE_LENGTH);
-    expect([0, 1, 2, 3].map((k) => route.zoneOf(k))).toEqual([0, 1, 2, 0]);
+    expect([0, 1, 2, 3, 4, 5, 6].map((k) => route.zoneOf(k))).toEqual([2, 1, 0, 1, 2, 1, 0]);
+  });
+
+  it('only ever moves to a neighbouring zone', () => {
+    for (const zone of [0, 1, 2]) {
+      const route = new ZoneRoute();
+      route.snap(zone, 0);
+      for (let k = 1; k < 12; k++) expect(Math.abs(route.zoneOf(k) - route.zoneOf(k - 1))).toBe(1);
+    }
+  });
+
+  it('turns around at the ends of the route after a snap', () => {
+    const route = new ZoneRoute();
+    route.snap(0, 0);
+    expect([0, 1, 2, 3, 4].map((k) => route.zoneOf(k))).toEqual([0, 1, 2, 1, 0]);
+    route.snap(1, 0);
+    expect([0, 1, 2, 3].map((k) => route.zoneOf(k))).toEqual([1, 0, 1, 2]);
   });
 
   it('switches zone only once the gateway has reached the player', () => {
     const route = new ZoneRoute();
-    route.snap(0, 0);
-    expect(route.zoneAt(ZONE_LENGTH - 1)).toBe(0);
+    route.snap(2, 0);
+    expect(route.zoneAt(ZONE_LENGTH - 1)).toBe(2);
     expect(route.zoneAt(ZONE_LENGTH)).toBe(1);
     expect(route.zoneAt(2 * ZONE_LENGTH - 1)).toBe(1);
-    expect(route.zoneAt(3 * ZONE_LENGTH)).toBe(0);
+    expect(route.zoneAt(2 * ZONE_LENGTH)).toBe(0);
+    expect(route.zoneAt(3 * ZONE_LENGTH)).toBe(1);
+    expect(route.zoneAt(4 * ZONE_LENGTH)).toBe(2);
   });
 
   it('puts the ground and near-layer seams under the player at the boundary', () => {
@@ -83,7 +102,7 @@ describe('ZoneRoute layers', () => {
     route.snap(0, 0);
     const seam = route.seam(MID_DEPTH, 1);
     const legs = route.legs(MID_DEPTH, seam - 100, seam + 100);
-    expect(legs.map((l) => [l.index, l.zone])).toEqual([[0, 0], [1, 1]]);
+    expect(legs.map((l) => [l.index, l.zone, l.previous, l.next])).toEqual([[0, 0, 1, 1], [1, 1, 0, 2]]);
     expect(legs[0]!.from).toBe(-Infinity);
     expect(legs[0]!.to).toBe(seam);
     expect(legs[1]!.from).toBe(seam);
@@ -131,6 +150,6 @@ describe('ZoneRoute snap', () => {
     route.snap(2, 1000);
     expect(route.boundary(1)).toBeGreaterThanOrEqual(1000 + ZONE_LENGTH);
     expect(route.boundary(1)).toBeLessThan(1000 + ZONE_LENGTH + SEAM_GRID);
-    expect(route.zoneOf(1)).toBe(0);
+    expect(route.zoneOf(1)).toBe(1);
   });
 });

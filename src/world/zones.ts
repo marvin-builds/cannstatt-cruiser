@@ -1,5 +1,14 @@
-/** Zone order: 0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt. */
+/** Zone indices: 0 Stuttgart-Mitte, 1 Neckar, 2 Bad Cannstatt. */
 export const ZONE_COUNT = 3;
+
+/** Every run (and the title) starts in Bad Cannstatt. */
+export const START_ZONE = 2;
+
+/**
+ * The route rides back and forth along the river, always to a neighbouring
+ * zone: Cannstatt -> Neckar -> Mitte -> Neckar -> Cannstatt -> ...
+ */
+export const ROUTE_CYCLE: readonly number[] = [2, 1, 0, 1];
 
 /** Ground distance (view px) one zone lasts: 56 paving tiles, ~40 s at start speed, ~16 s at top speed. */
 export const ZONE_LENGTH = 3584;
@@ -20,6 +29,9 @@ export interface Depth {
 export interface Leg {
   readonly index: number;
   readonly zone: number;
+  /** Zone the route came from (through this leg's gateway) and the zone it goes on to. */
+  readonly previous: number;
+  readonly next: number;
   readonly from: number;
   readonly to: number;
 }
@@ -35,21 +47,29 @@ export function normalizeZone(index: number): number {
   return ((Math.floor(index) % ZONE_COUNT) + ZONE_COUNT) % ZONE_COUNT;
 }
 
+/** Position in ROUTE_CYCLE a snap to `zone` continues from (the Neckar heads on to Mitte). */
+function cyclePosition(zone: number): number {
+  return ROUTE_CYCLE.indexOf(normalizeZone(zone));
+}
+
 /**
  * The deterministic zone schedule of a run. Leg 0 is the zone shown since the
  * last snap; leg k (k >= 1) begins at ground distance `boundary(k)`, when its
  * gateway reaches the player. Every parallax layer carries the same legs,
- * shifted by its own factor and seam offset.
+ * shifted by its own factor and seam offset. A new route starts in START_ZONE.
  */
 export class ZoneRoute {
-  private first = 0;
-  private firstBoundary = ZONE_LENGTH;
+  /** ROUTE_CYCLE position of leg 0. */
+  private first = cyclePosition(START_ZONE);
+  private firstBoundary: number;
 
-  constructor(private readonly length = ZONE_LENGTH) {}
+  constructor(private readonly length = ZONE_LENGTH) {
+    this.firstBoundary = length;
+  }
 
   /** Shows `zone` from `distance` on with no transition; the next gateway is a full zone length away. */
   snap(zone: number, distance: number): void {
-    this.first = normalizeZone(zone);
+    this.first = cyclePosition(zone);
     this.firstBoundary = Math.ceil((distance + this.length) / SEAM_GRID) * SEAM_GRID;
   }
 
@@ -58,8 +78,10 @@ export class ZoneRoute {
     return this.firstBoundary + (k - 1) * this.length;
   }
 
+  /** Zone of leg `k` (also defined for k < 0: the zones the route came from). */
   zoneOf(k: number): number {
-    return normalizeZone(this.first + k);
+    const n = ROUTE_CYCLE.length;
+    return ROUTE_CYCLE[(((this.first + k) % n) + n) % n]!;
   }
 
   /** Leg whose gateway the player has passed at `distance`. */
@@ -112,6 +134,13 @@ export class ZoneRoute {
   }
 
   private leg(depth: Depth, k: number): Leg {
-    return { index: k, zone: this.zoneOf(k), from: k === 0 ? -Infinity : this.seam(depth, k), to: this.seam(depth, k + 1) };
+    return {
+      index: k,
+      zone: this.zoneOf(k),
+      previous: this.zoneOf(k - 1),
+      next: this.zoneOf(k + 1),
+      from: k === 0 ? -Infinity : this.seam(depth, k),
+      to: this.seam(depth, k + 1),
+    };
   }
 }

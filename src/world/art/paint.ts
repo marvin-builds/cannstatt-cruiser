@@ -1,3 +1,5 @@
+import { VIEW_H } from '../../core/config';
+
 /**
  * Pixel painting helpers for pre-rendered world art. Everything is painted
  * once into offscreen canvases (lazily, on first draw) at integer pixels.
@@ -107,6 +109,20 @@ export function staticProp(w: number, h: number, bottom: number, paint: (p: Pain
   return {
     width: w,
     draw: (g, x) => g.drawImage(canvas(), x, bottom - h),
+    warm: () => void canvas(),
+  };
+}
+
+/** `prop` mirrored left to right, rendered once (static art only: drawn at time 0, seed 0). */
+export function mirrored(prop: Prop): Prop {
+  const canvas = lazyCanvas(prop.width, VIEW_H, (p) => {
+    p.g.translate(prop.width, 0);
+    p.g.scale(-1, 1);
+    prop.draw(p.g, 0, 0, 0);
+  });
+  return {
+    width: prop.width,
+    draw: (g, x) => g.drawImage(canvas(), x, 0),
     warm: () => void canvas(),
   };
 }
