@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cue } from './backend';
 import { GLUG_LENGTH, GULP_AT, SOUNDS } from './sounds';
+import { PASS_CUES } from './passby';
 import { TRAFFIC_CUES } from './traffic';
 
 /** Merged [start, end] intervals in which any of the voices sounds. */
@@ -65,5 +66,49 @@ describe('sounds: traffic stays under the gameplay sounds', () => {
 
   it('fades the passing truck in and out slowly (a whoosh, not a click)', () => {
     for (const v of SOUNDS.truckPass) expect(v.attack ?? 0).toBeGreaterThanOrEqual(0.05);
+  });
+});
+
+describe('sounds: vehicles passing by', () => {
+  const peak = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.gain));
+  const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
+  /** Lowest engine pitch of a cue (its tonal voices). */
+  const pitch = (cue: Cue) => Math.min(...SOUNDS[cue].filter((v) => v.wave !== 'noise').map((v) => Math.min(v.freq, v.to ?? v.freq)));
+
+  it('stays under the gameplay sounds and the horns', () => {
+    const quietest = Math.min(peak('jump'), peak('crash'), peak('honk'));
+    for (const cue of PASS_CUES) expect(peak(cue)).toBeLessThanOrEqual(quietest);
+  });
+
+  it('swells in and fades out (a whoosh, not a click) within about a second', () => {
+    for (const cue of PASS_CUES) {
+      for (const v of SOUNDS[cue]) expect(v.attack ?? 0).toBeGreaterThanOrEqual(0.02);
+      expect(end(cue)).toBeGreaterThan(0.5);
+      expect(end(cue)).toBeLessThanOrEqual(1.4);
+    }
+  });
+
+  it('rises in pitch while approaching and drops as it drives away (Doppler)', () => {
+    for (const cue of PASS_CUES) {
+      const engine = SOUNDS[cue].filter((v) => v.wave !== 'noise' && v.to !== undefined).sort((a, b) => a.at - b.at);
+      expect(engine.some((v) => v.to! > v.freq)).toBe(true);
+      const last = engine.at(-1)!;
+      expect(last.to!).toBeLessThan(last.freq);
+    }
+  });
+
+  it('sounds higher for a car, lower for a van and deep for a bus or truck', () => {
+    expect(pitch('passCar')).toBeGreaterThan(pitch('passVan'));
+    expect(pitch('passVan')).toBeGreaterThan(pitch('passBus'));
+    expect(pitch('passVan')).toBeGreaterThan(pitch('passTruck'));
+  });
+
+  it('gives buses and trucks a diesel rattle (a very low square)', () => {
+    for (const cue of ['passBus', 'passTruck'] as const) {
+      expect(SOUNDS[cue].some((v) => v.wave === 'square' && v.freq < 50)).toBe(true);
+    }
+    for (const cue of ['passCar', 'passVan'] as const) {
+      expect(SOUNDS[cue].some((v) => v.wave === 'square' && v.freq < 50)).toBe(false);
+    }
   });
 });

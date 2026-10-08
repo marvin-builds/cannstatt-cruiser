@@ -84,6 +84,47 @@ function notes(wave: OscillatorType, freqs: number[], step: number, gain: number
   }));
 }
 
+/** How a vehicle sounds driving past: its engine and the air it pushes. */
+interface PassBody {
+  /** Engine wave and pitch (Hz) while far away. */
+  wave: OscillatorType;
+  hz: number;
+  engineGain: number;
+  /** Lowpass the engine for a muffled, heavy body. */
+  muffled?: boolean;
+  /** Lowpass cutoff (Hz) of the air whoosh at its loudest. */
+  air: number;
+  airGain: number;
+  /** Total length in seconds. */
+  len: number;
+  /** Diesel rattle: a very low square under the engine (bus, truck). */
+  rattleHz?: number;
+}
+
+/** Doppler-ish pitch factors: up while approaching, down while driving away. */
+const DOPPLER_UP = 1.1;
+const DOPPLER_DOWN = 0.72;
+
+/**
+ * A vehicle passing by: engine and air swell in with rising pitch until it is
+ * level with the skater (45 % of the length), then the pitch drops and both fade.
+ */
+function passBy(b: PassBody): Voice[] {
+  const near = b.len * 0.45;
+  const filter: BiquadFilterType | undefined = b.muffled ? 'lowpass' : undefined;
+  const top = b.hz * DOPPLER_UP;
+  const voices: Voice[] = [
+    { wave: b.wave, at: 0, dur: near + 0.06, freq: b.hz, to: top, gain: b.engineGain, filter, attack: near },
+    { wave: 'noise', at: 0, dur: near + 0.06, freq: b.air * 0.35, to: b.air, gain: b.airGain, filter: 'lowpass', attack: near },
+    { wave: 'noise', at: near, dur: b.len - near, freq: b.air, to: b.air * 0.25, gain: b.airGain, filter: 'lowpass', attack: 0.04 },
+    { wave: b.wave, at: near, dur: b.len - near, freq: top, to: b.hz * DOPPLER_DOWN, gain: b.engineGain, filter, attack: 0.04 },
+  ];
+  if (b.rattleHz) {
+    voices.unshift({ wave: 'square', at: 0.05, dur: b.len - 0.1, freq: b.rattleHz, gain: 0.035, attack: near * 0.8 });
+  }
+  return voices;
+}
+
 /** A bubble gum bubble bursting: a tiny bright click with a quick falling blip. */
 const POP: Voice[] = [
   { wave: 'noise', at: 0, dur: 0.04, freq: 3500, gain: 0.3, filter: 'highpass' },
@@ -234,6 +275,14 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'sawtooth', at: 0, dur: 1.1, freq: 62, to: 48, gain: 0.08, attack: 0.45 },
     { wave: 'noise', at: 0.75, dur: 0.45, freq: 4200, to: 3000, gain: 0.07, filter: 'highpass', attack: 0.06 },
   ],
+  // Vehicles driving past (vehiclePassed): a light, higher car hum ...
+  passCar: passBy({ wave: 'triangle', hz: 150, engineGain: 0.12, air: 1600, airGain: 0.09, len: 0.75 }),
+  // ... a slightly lower, buzzier van ...
+  passVan: passBy({ wave: 'sawtooth', hz: 100, engineGain: 0.05, air: 1200, airGain: 0.1, len: 0.9 }),
+  // ... and deep, muffled diesel bodies that rattle: the bus ...
+  passBus: passBy({ wave: 'sawtooth', hz: 72, engineGain: 0.12, muffled: true, air: 900, airGain: 0.11, len: 1.2, rattleHz: 38 }),
+  // ... and the even deeper truck.
+  passTruck: passBy({ wave: 'sawtooth', hz: 60, engineGain: 0.13, muffled: true, air: 800, airGain: 0.12, len: 1.25, rattleHz: 32 }),
 };
 
 /**

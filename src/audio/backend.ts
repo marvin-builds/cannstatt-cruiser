@@ -33,7 +33,11 @@ export type Cue =
   | 'honk'
   | 'honkShort'
   | 'hornDeep'
-  | 'truckPass';
+  | 'truckPass'
+  | 'passCar'
+  | 'passVan'
+  | 'passBus'
+  | 'passTruck';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';
