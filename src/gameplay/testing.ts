@@ -83,8 +83,10 @@ const STOMP_SEARCH_TICKS = 180;
 
 /**
  * A jump (take-off tick, hold) from the current support that lands on a
- * person's head: it passes with stomps on but would crash without. For
- * playtests and tests of the stomp; null when none exists.
+ * person's head: it passes with stomps on but would crash without. It aims
+ * at the middle of the widest run of such take-off ticks (one hold), so a
+ * take-off a few ticks early or late still stomps. For playtests and tests
+ * of the stomp; null when none exists.
  */
 export function planStomp(state: GameState, speedPinned = false): { tick: number; hold: number } | null {
   const course = courseAhead(state);
@@ -92,12 +94,19 @@ export function planStomp(state: GameState, speedPinned = false): { tick: number
   const start = startBody(state);
   const plain = new Solver(course, pace);
   const stomping = new Solver(course, pace, { stomps: true });
+  let best: { tick: number; hold: number; ticks: number } | null = null;
   for (const hold of HOLDS) {
-    for (let tick = 0; tick < STOMP_SEARCH_TICKS; tick++) {
-      if (stomping.jumpWorks(tick, hold, start) && !plain.jumpWorks(tick, hold, start)) return { tick, hold };
+    let run = 0;
+    for (let tick = 0; tick <= STOMP_SEARCH_TICKS; tick++) {
+      const stomps = tick < STOMP_SEARCH_TICKS && stomping.jumpWorks(tick, hold, start) && !plain.jumpWorks(tick, hold, start);
+      if (stomps) run++;
+      else if (run > 0) {
+        if (!best || run > best.ticks) best = { tick: tick - run + Math.floor((run - 1) / 2), hold, ticks: run };
+        run = 0;
+      }
     }
   }
-  return null;
+  return best && { tick: best.tick, hold: best.hold };
 }
 
 /**

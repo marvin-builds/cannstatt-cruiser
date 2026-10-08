@@ -7,11 +7,12 @@
  * Uses the same rules as the clearability solver (rules.ts). Runs every
  * tick, so it reuses scratch objects instead of allocating.
  */
+import { TICK_DT } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, PlayerState, Rect } from '../types';
 import { collectJoints } from './chill';
 import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
 import { crashInto } from './health';
-import { feetOf, LEDGE_FRONT_REACH, landsOnLedge, landsOnRail, overlaps, pastLedge } from './rules';
+import { feetOf, LEDGE_FRONT_REACH, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
 import { addPoints, addTrick } from './scoring';
 import { stompPeople } from './stomp';
 
@@ -56,7 +57,7 @@ function checkObstacles(ctx: GameContext): void {
       if (!crashInto(ctx, e)) continue;
       if (isPerson(e.kind)) e.data = { ...e.data, hit: true };
       if (OBSTACLES[e.kind as ObstacleKind].swallows) swallowed.push(e);
-    } else if (box.x + box.w <= body.x) {
+    } else if (box.x + box.w + passReach(e, box, state.speed) <= body.x) {
       e.done = true;
       // Ducked under on the ground: points, but no trick in an airborne chain.
       const base = OBSTACLES[e.kind as ObstacleKind].points;
@@ -67,6 +68,11 @@ function checkObstacles(ctx: GameContext): void {
   // The skater now sticks in it (drawn by the player): it leaves the street.
   for (const e of swallowed) state.entities.splice(state.entities.indexOf(e), 1);
   swallowed.length = 0;
+}
+
+/** A person counts as passed only once it is out of the stomp zone's reach behind the skater (it can still be stomped until then). */
+function passReach(e: Entity, box: Rect, speed: number): number {
+  return isPerson(e.kind) ? stompReach(speed * TICK_DT, box.w) : 0;
 }
 
 /** The player grinds on top of this bench (it never crashes into the one it rides). */

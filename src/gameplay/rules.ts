@@ -72,13 +72,32 @@ export function pastLedge(feetX: number, top: Rect): boolean {
   return feetX > top.x + top.w;
 }
 
+/** How far below the top of a person's box the stomp zone reaches: head and shoulders. */
+export const STOMP_DEPTH = 8;
+/** Least reach of the stomp zone beside the head (px, each side). */
+export const STOMP_MIN_REACH = 4;
 /**
- * Stomp: the falling feet came down onto the top edge of `head` this tick
- * (from above, crossing `head.y`) while the body is over it. Rising into a
- * person, or touching it from the side, is not a stomp but a crash.
+ * Take-off ticks the stomp zone spans horizontally (skater's hitbox plus the
+ * widened head) at any speed: the zone grows with the scroll step, so the
+ * stomp window in ticks stays about the same when the street gets faster.
  */
-export function landsOnHead(feet: Feet, body: Rect, head: Rect): boolean {
-  if (feet.supported || feet.vy <= 0) return false;
-  const before = feet.y - feet.vy * TICK_DT;
-  return before <= head.y && feet.y >= head.y && body.x < head.x + head.w && head.x < body.x + body.w;
+export const STOMP_SPAN_TICKS = 16;
+
+/** How far beside the head (px, each side) the stomp zone reaches at `step` px of scroll per tick. */
+export function stompReach(step: number, headW = 6): number {
+  return Math.max(STOMP_MIN_REACH, (STOMP_SPAN_TICKS * step - HITBOX_W - headW) / 2);
+}
+
+/**
+ * Stomp: the falling skater's board is in the person's stomp zone, its head
+ * and shoulders (STOMP_DEPTH below the top of `head`, the person's box) widened
+ * by stompReach on both sides; `step` is the scroll per tick. So coming down
+ * slightly beside the head, or touching the upper body from the side while
+ * descending, stomps too. Rising into a person, or running into one lower
+ * (on the ground), is still a crash.
+ */
+export function landsOnHead(feet: Feet, body: Rect, head: Rect, step: number): boolean {
+  if (feet.supported || feet.vy <= 0 || feet.y < head.y || feet.y > head.y + STOMP_DEPTH) return false;
+  const reach = stompReach(step, head.w);
+  return body.x < head.x + head.w + reach && head.x - reach < body.x + body.w;
 }

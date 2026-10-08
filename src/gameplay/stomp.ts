@@ -1,5 +1,6 @@
 /**
- * Stomps: the falling skater's board lands on a person's head. That is no
+ * Stomps: the falling skater's board comes down on a person's head or
+ * shoulders (or just beside the head, see landsOnHead). That is no
  * crash: the person tumbles over and sits up dazed (people-art.ts draws it
  * from `data.stompedAt`), stops moving and stays harmless (done), the stomp
  * counts as a trick scored like a clean clear (`obstacleCleared`), and
@@ -7,22 +8,24 @@
  * bounces off on the next tick (player contract) and the item flies to the
  * skater's hands (toss.ts).
  */
+import { TICK_DT } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, Rect } from '../types';
 import { hitBoxInto, isPerson, OBSTACLES } from './catalogue';
 import { itemOf } from './items';
 import { feetOf, landsOnHead } from './rules';
 import { addTrick } from './scoring';
 
-/** Stomps the first person whose head the falling skater lands on this tick (call before the crash check). */
+/** Stomps the first person whose stomp zone (head and shoulders, rules.ts) the falling skater's board is in (call before the crash check). */
 export function stompPeople(ctx: GameContext): void {
   const { state } = ctx;
   const p = state.player;
   if (p.state === 'crash') return;
   const feet = feetOf(p);
+  const step = state.speed * TICK_DT;
   const entities = state.entities;
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i]!;
-    if (e.done || !isPerson(e.kind) || !landsOnHead(feet, p.hitbox, hitBoxInto(e as Entity & { kind: ObstacleKind }, head))) continue;
+    if (e.done || !isPerson(e.kind) || !landsOnHead(feet, p.hitbox, hitBoxInto(e as Entity & { kind: ObstacleKind }, head), step)) continue;
     stomp(ctx, e);
     return;
   }

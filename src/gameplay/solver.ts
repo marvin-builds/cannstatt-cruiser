@@ -595,7 +595,7 @@ export class Solver {
       else if (this.stomps) {
         for (let j = 0; j < this.movers.length; j++) {
           const m = this.movers[j]!;
-          if (stomped & (1 << j) || !landsOnHead(scratchFeet, box, at(m.rest, m, x))) continue;
+          if (stomped & (1 << j) || !landsOnHead(scratchFeet, box, at(m.rest, m, x), x - this.x(from.tick))) continue;
           stomped |= 1 << j;
           stompInto(body);
           break;
