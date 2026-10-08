@@ -120,7 +120,8 @@ export interface GameState {
   /**
    * Seconds left of being drunk after drinking a Maßkrug (0 = sober).
    * Gameplay sets and counts it down; while it is > 0 during a run, core
-   * delivers action / duck input late (DRUNK_DELAY_MIN..MAX ticks, core/drunk.ts).
+   * delivers action / duck input late (DRUNK_DELAY_MIN..MAX ticks) and wobbles
+   * each press's hold by up to DRUNK_HOLD_WOBBLE ticks (core/drunk.ts).
    * Core zeroes it at every run start.
    */
   drunkTimer: number;

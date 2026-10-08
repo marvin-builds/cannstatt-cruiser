@@ -13,13 +13,13 @@ src/main.ts             composition root: lists the systems in update order (do 
 src/types.ts            shared contracts: GameState, System, events, context (foundation-owned)
 src/changelog.ts        CHANGELOG (newest first), BUILD_VERSION, changesSince(), compareVersions() (see Changelog)
 src/core/               engine pieces (foundation-owned, slices only import from here)
-  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX, START_ZONE
+  config.ts             VIEW_W (min width)/VIEW_MAX_W/VIEW_H, GROUND_Y, TICK_DT, PLAYER_X, speeds (BASE_SPEED 90, MAX_SPEED 165), health, DRUNK_DELAY_MIN/MAX, DRUNK_HOLD_WOBBLE, START_ZONE
   chill.ts              chill effect timing shared by gameplay and ui: CHILL_DURATION, ease in/out, chillStrength(timer)
   game.ts               Game: state, bus, rng, buttons, mode machine, tick(), render(), hotspots (InputHotspot: hold + keys)
   state.ts              createInitialState(), createPlayer(), resetRun()
   modes.ts              nextMode(mode, command): title -> playing <-> paused -> gameover -> playing/title
   loop.ts               FixedTimestep accumulator (60 Hz, clamp, timeScale, vsync snapping, see Frame loop)
-  drunk.ts              drunk input: DelayedButton (action/duck edges held back while drunk), drunkDelay(), drunkWindow() for the solver
+  drunk.ts              drunk input: DelayedButton (action/duck edges held back, holds wobbled while drunk), drunkDelay(), drunkHoldWobble(), drunkWindow() for the solver
   perf.ts               FrameProbe: allocation-free per-frame timing for scripts/frametimes.ts (window.__game.perf)
   action.ts             ActionButton: multi-source button with pressed/held/released/holdTime
   input.ts              DOM binding: keys (hotspots first, then action, duck), pointer (mouse+touch, tap vs swipe down), blocks scroll/zoom/menus
@@ -41,10 +41,15 @@ src/core/               engine pieces (foundation-owned, slices only import from
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
   world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
   world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
-  world/traffic.ts      Stuttgart-Mitte foreground traffic (TRAFFIC_TOP, trafficDensity())
-  world/debug.ts        window.__world (test only): trafficDensity(), traffic()
+  world/traffic.ts      Stuttgart-Mitte foreground traffic: LANES, VEHICLES, TRAFFIC_TOP / FRONT_TOP / EXHAUST_TOP, trafficDensity() (see Mitte traffic)
+  world/art/traffic.ts  vehicle and exhaust art: drawBackTraffic (world layer), drawFrontTraffic (fx layer), smog haze
+  world/art/mombach.ts  the Mombachquelle scene on the far Neckar bank (mid layer, see Zones)
+  world/debug.ts        window.__world (test only): trafficDensity(), traffic() {vehicles, puffs, shake}
   gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins
-  gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead)
+  gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead, STOMP_DEPTH, stompReach)
+  gameplay/stomp.ts     stompPeople(): stomp detection and knockOver (see Stomp and carried items)
+  gameplay/testing.ts   test / playtest tooling: HumanBot, planJump, planStomp (DOM-free, not used by the game)
+  gameplay/stomp-bot.ts test tooling: stomp window per scene (stompWindow, humanStomp) and rideStomping runs
   gameplay/use.ts       the use button: drink / eat / throw the carried item (DRUNK_DURATION, EAT_BONUS_POINTS)
   gameplay/auto-drink.ts  a carried Maßkrug is drunk by itself after BEER_AUTO_DRINK (6 s)
   gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
@@ -54,7 +59,8 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
   ui/item-button.ts     touch item button / desktop "E" chip, first-catch hint (storage key itemHintSeen)
   ui/drunk-look.ts      drunk HUD row and woozy screen (sway, vignette); ui/item-look.ts catch popups
-  audio/traffic.ts      Mitte traffic rumble level and rng-free honks from state.trafficDensity
+  ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
+  audio/traffic.ts      TrafficNoise: Mitte rumble level (ducked under gameplay sounds), rng-free horns and truck passes from state.trafficDensity
   player/bin.ts         bin crash: the bin the player draws around the skater
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
@@ -324,24 +330,39 @@ ctx.addHotspot(itemButton);
 
 While `state.drunkTimer > 0` **and** the mode is `playing`, `core/drunk.ts`
 holds back every press and release of `action` and `duck` by a random
-`DRUNK_DELAY_MIN`..`DRUNK_DELAY_MAX` (3..8) extra ticks (`core/config.ts`):
+`DRUNK_DELAY_MIN`..`DRUNK_DELAY_MAX` (8..20, ~130-330 ms) extra ticks and
+wobbles every delayed press's hold (`core/config.ts`, tuning pinned by
+`core/drunk-tuning.test.ts`):
 
-- each edge draws its own delay, so a hold can shrink or grow by up to
-  `MAX - MIN` ticks; a release never arrives before its press (it may arrive
-  in the same tick: a tap), and no press is ever dropped;
-- the delays come from a separate rng seeded from the run seed at every run
-  start, so runs replay deterministically and the gameplay rng (`ctx.rng`) is
+- each edge draws its own delay, so the release delay alone stretches or
+  shortens a hold by up to `MAX - MIN` ticks;
+- **hold wobble** (ROADMAP 21): each delayed press also draws
+  `-DRUNK_HOLD_WOBBLE..+DRUNK_HOLD_WOBBLE` (10) ticks; its release is
+  delivered that much later / earlier, so a tap can become a high jump and a
+  long hold a small one. The release never arrives before the press and a
+  delayed press is always held at least 1 tick (no same-tick tap while
+  drunk). A press that passes through sober (no delay) is never wobbled; a
+  sober release of a press queued while drunk still gets that press's
+  wobble;
+- order per source is kept and no press is ever dropped;
+- delays and wobbles come from a separate rng seeded from the run seed at
+  every run start (per press: delay, then wobble; per release: delay), so
+  runs replay deterministically and the gameplay rng (`ctx.rng`) is
   untouched;
 - `use`, pause and mute are never delayed; focus loss and game over release
   everything at once and drop queued edges.
 
 Gameplay's solver validates drunk patterns with
-`drunkWindow(holdTicks)` → `{pressMin, pressMax, holdMin, holdMax}` (every
+`drunkWindow(holdTicks)` → `{pressMin, pressMax, holdMin, holdMax}`: every
 take-off from `pressMin` to `pressMax` ticks late with any hold in
-`[holdMin, holdMax]` must clear the pattern) and `drunkDelay(rng)` for its own
-simulations. Under the hood `Game.buttons.action` / `.duck` are
+`[holdMin, holdMax]` must clear the pattern, where the hold may change by
+`DRUNK_DELAY_MAX - DRUNK_DELAY_MIN + DRUNK_HOLD_WOBBLE` (22) ticks either way
+and `holdMin >= 1`. `drunkDelay(rng)` / `drunkHoldWobble(rng)` draw single
+values for simulations. Under the hood `Game.buttons.action` / `.duck` are
 `DelayedButton`s (same `press/release/releaseAll/tick` interface as
-`ActionButton`), so tests and the test hook press them as before.
+`ActionButton`; their `DelayClock` gives `frame()`, `delay()` and
+`holdWobble()`, both 0 while sober), so tests and the test hook press them
+as before.
 
 `core/input.ts` maps DOM events through two DOM-free pieces that unit tests
 drive directly: `keyDown/keyUp(game, code)` and `PointerControls`
@@ -514,25 +535,58 @@ each other along the street; there is no time-based cycle.
   pattern lies in (VfB fans at the Neckar, zone 1; Wasen visitors in Bad
   Cannstatt, zone 2). Playtests import `ZONE_LENGTH` instead of hard-coding it.
 - **Mombachquelle** (`world/art/mombach.ts`): background scenery on the far
-  Neckar bank (mid layer) with people chilling at its pool; never an obstacle.
+  Neckar bank (mid layer), after the real place and without any sign or name:
+  at the foot of a green embankment a basin of light grey boulders juts into
+  the river; left of it a stair climbs the embankment and a bench stands on a
+  flat area by the water; a second bench on a terrace above the basin, the
+  spring water leaving a culvert below it in a jet that splashes into the
+  basin; a bin hanging on a tree upper right. Soft mid-palette people chill
+  on both benches and one has the feet in the basin (six frames: splash,
+  kicking foot, wave). Never an obstacle.
 
 ### Mitte traffic
 
-In Stuttgart-Mitte cars, vans and buses drive in two lanes on the foreground
-street (`world/traffic.ts`, art in `world/art/traffic.ts`), with exhaust puffs:
+In Stuttgart-Mitte big, dense traffic drives on the foreground street, close
+to the camera (`world/traffic.ts`, art in `world/art/traffic.ts`). Two lanes
+(`LANES`), each a fixed pool, never allocating while driving:
 
-- They stay **below the riding line**: no vehicle roof or puff ever reaches
-  above `TRAFFIC_TOP` (`GROUND_Y + 6`), so they never cover obstacles, people
-  or the skater (`traffic.test.ts`).
-- Traffic ramps in shortly before the Mitte gateway and out after it
-  (`trafficDensity(route, distance)`, 0..1). The world writes it to
-  `state.trafficDensity` every tick (0 outside a run); audio reads it for the rumble and the odd
-  honk (only in Mitte; `audio/traffic.ts`: smoothed rumble level, honks
-  from a hash of the run time, no rng). No other slice writes it. The audio
-  test log `window.__audio.log` records `traffic:start` / `traffic:stop` when
-  the rumble starts and stops.
-- Fixed pools, no allocation while driving. Test hook: `window.__world`
-  (`world/debug.ts`, see docs/TESTING.md).
+- **Back lane** (`front: false`): hatchbacks, sedans and vans driving with the
+  skater (they always overtake him). Drawn in the **world** layer
+  (`drawBackTraffic`, after the street), so under every entity. No body ever
+  reaches above `TRAFFIC_TOP` = `GROUND_Y + 2` (the riding line stays free).
+- **Front lane** (`front: true`): oncoming traffic that adds city buses and
+  trucks (`VEHICLES`: `heavy`), wheels below the view edge. Drawn in the
+  **fx** layer (`drawFrontTraffic`), over gameplay, so it starts at
+  `FRONT_TOP` = `GROUND_Y + 7`: below the deepest thing gameplay draws under
+  the riding line (the curb gap, 6 px).
+- **Exhaust clouds**: every vehicle puffs see-through clouds that rise and
+  drift (`PUFF_LIFE` 3.2 s; buses and trucks puff big diesel clouds more
+  often). They are drawn with the back lane (under gameplay) and may rise
+  above the riding line, but never above `EXHAUST_TOP` = `GROUND_Y - 44`.
+- **Rumble**: while a bus or truck is on screen the traffic lanes shake by
+  1 px (`Traffic.shake`, 0 or 1, toggling every 4 ticks).
+- **Headlight flashes**: each vehicle flashes its headlights (a honk, two
+  short blinks) every 2.5-7 s.
+- A smoggy haze goes over the far layers while there is traffic.
+- `traffic.test.ts` holds the limits; the playtest
+  `scripts/scenarios/world.ts` checks them per vehicle / puff in a real run.
+
+Traffic ramps in shortly before the Mitte gateway and out after it
+(`trafficDensity(route, distance)`, 0..1). The world writes it to
+`state.trafficDensity` every tick (0 outside a run); no other slice writes
+it. Test hook: `window.__world` (`world/debug.ts`, see docs/TESTING.md).
+
+**Traffic audio** (`audio/traffic.ts` `TrafficNoise`, `audio/sounds.ts`
+`TRAFFIC_RUMBLE`): a layered rumble on one gain bus that follows a smoothed
+`state.trafficDensity` (lowpassed road noise whose cutoff opens with the
+level, tyre hiss and a throbbing engine drone of two detuned low saws). It is
+silent unless playing and unmuted, and dips to `duckTo` (0.45) for ~8 ticks
+whenever a gameplay sound plays, then glides back (traffic sounds never duck
+it). One-shot cues are rng-free (a hash of the run-time slot): horns from
+density 0.5 (`honk` car, `honkShort` small-car double beep, `hornDeep`
+bus / truck; at most one per 1.5 s slot) and a passing truck (`truckPass`,
+from density 0.6, at most one per 6 s slot). `window.__audio.log` records
+`traffic:start` / `traffic:stop` and the cues.
 
 ## Settings menu and kid mode
 
@@ -596,13 +650,19 @@ shows "Stomp!" on `stomp`; gameplay adds the points.
 Contract between gameplay, player, ui and audio (types in `src/types.ts`,
 `STOMP_BOUNCE_VELOCITY` in `player/tuning.ts`):
 
-- **Detection** (gameplay, `stomp.ts`, rule `landsOnHead` in `rules.ts`
-  shared with the solver): the player is not supported, falls (`vy > 0`), its
-  feet (`player.y`) crossed the top of the person's collision box this tick
-  (from `y - vy*dt` above it) and its hitbox overlaps the box horizontally.
+- **Detection** (gameplay, `stomp.ts` `stompPeople`, rule `landsOnHead` in
+  `rules.ts` shared with the solver): the player is not supported, falls
+  (`vy > 0`), its feet (`player.y`) are within `STOMP_DEPTH` (8 px) below the
+  top of the person's collision box (head and shoulders) and its hitbox
+  overlaps that box widened on both sides by `stompReach(step)` =
+  `max(4, (16 * step - HITBOX_W - head w) / 2)` (`step` = scroll px per tick,
+  `STOMP_SPAN_TICKS` 16). The reach grows with the speed, so the stomp window
+  stays ~15 take-off ticks (full hold) at every speed (`stomp-ease.test.ts`).
+  A person counts as passed (`obstacleCleared`, `contacts.ts`) only once it
+  is beyond that reach behind the skater, so it can be stomped until then.
   Checked after rail landings and before the crash check, never while the
-  player is in the crash animation. Touching a person from the side or rising
-  into one is still a crash.
+  player is in the crash animation. Touching a person from the side lower
+  down, or rising into one, is still a crash.
 - **Stomp** (gameplay): the person becomes `done` (harmless), stops moving
   (`data.walk`/`sway` 0, anchored where it is) and gets `data.stompedAt =
   state.time`; people-art draws it tumbling onto its back (0.35 s), sitting
@@ -662,7 +722,14 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   landing as a valid path with the bounce (bit mask of stomped movers per
   node); the spawner verifies patterns without stomps, so no pattern ever
   requires one. `planStomp(state)` (`testing.ts`) finds a real stomp jump for
-  tests and playtests.
+  tests and playtests: the middle of the widest run of take-off ticks (one
+  hold) that stomp, so a take-off a few ticks off still stomps.
+- **Stomp tooling** (`gameplay/stomp-bot.ts`, Vitest only): `stompWindow` /
+  `tryStomp` measure the window for a scene (one walking or swaying person at
+  a pinned speed, played by the real player + gameplay), `humanStomp` aims at
+  the head with up to `jitter` ticks of error, and `rideStomping(seed,
+  seconds, from)` lets a HumanBot that goes for every person ride a real run
+  and reports stomps and crashes on the bounce.
 
 ## Human margins (fairness.ts)
 
@@ -781,6 +848,12 @@ top. Rules in `gameplay/rules.ts`, shared by contacts and the solver:
   tick, times the multiplier, on top of the grind points); the ui shows
   "Grind-Trick! +…" and audio plays a sound.
 - Ducking on the ground is unchanged; a grind trick never ducks.
+- **Hint** (ui, `ui/trick-hint.ts` `TrickHint`): while grinding, on the first
+  `TRICK_HINT_GRINDS` (3) grinds of a run and until the player has scored a
+  grind trick once ever (storage key `grindTrickSeen`, set on the first
+  `grindTrick`), a small plate centred under the skater just below the riding
+  line says "↓ = Trick!" (desktop, with a key cap) or "Wisch runter = Trick!"
+  (touch). It hides while the trick is held and when the grind ends.
 
 ## Chill effect (joint pickup)
 

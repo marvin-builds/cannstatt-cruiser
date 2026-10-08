@@ -35,8 +35,14 @@ export const DEFAULT_LETTERBOX = '#1b1f2e';
  * and release reaches the systems this many ticks late, drawn per edge from a
  * run-seeded rng (see core/drunk.ts). Presses are never dropped.
  */
-export const DRUNK_DELAY_MIN = 3;
-export const DRUNK_DELAY_MAX = 8;
+export const DRUNK_DELAY_MIN = 8;
+export const DRUNK_DELAY_MAX = 20;
+/**
+ * Drunk jump height: each drunk press's hold length is shortened or stretched
+ * by up to this many ticks (seeded), so a tap can become a high jump and a
+ * long hold a small one. Core input applies it; gameplay's solver plans with it.
+ */
+export const DRUNK_HOLD_WOBBLE = 10;
 
 /** Zone a run (and the title screen) starts in: 2 = Bad Cannstatt. */
 export const START_ZONE = 2;

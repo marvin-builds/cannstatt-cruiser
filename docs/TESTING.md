@@ -80,7 +80,7 @@ only available with `?test=1` in the URL.
 | `input.tap(frames = 2)` / `input.hold(frames = 30)` | press, keep down for `frames` ticks, release. When frozen this steps synchronously; when running the release is scheduled. |
 | `input.duck.press()` / `input.duck.release()` | holds / releases duck (source `test`), like ArrowDown |
 | `input.use()` | uses the carried item: the use button pressed for one tick (`commands.useItem()`, like the ui item button); key E does the same in the browser |
-| `setDrunk(seconds)` | sets `state.drunkTimer`; while > 0 in a run, action / duck reach the systems 3-8 ticks late (see ARCHITECTURE, Drunk input) |
+| `setDrunk(seconds)` | sets `state.drunkTimer`; while > 0 in a run, action / duck reach the systems 8-20 ticks late and every press's hold is wobbled by up to ±10 ticks (see ARCHITECTURE, Drunk input) |
 | `perf.start(frames = 3600)` / `perf.stop()` | frame-time probe: records every real rAF frame (elapsed, updates, update/render ms per system, scroll, JS heap) until stopped; used by `scripts/frametimes.ts` |
 | `input.duck.hold(frames = 72)` | duck for `frames` ticks (default = one swipe down, `SWIPE_DUCK_TICKS`, 1.2 s), then release; steps synchronously when frozen like `hold` |
 | `pauseGame()` / `resumeGame()` | in-game pause screen (`mode` paused / playing) |
@@ -162,7 +162,7 @@ g.endRun();                                     // game-over screen now
 | `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__world.trafficDensity()` | current Stuttgart-Mitte traffic density 0..1 (1 = full traffic; 0 outside Mitte) |
-| `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h}], puffs: [{x, y}]}`: view rects of the vehicles and exhaust puffs on screen (check `y >= TRAFFIC_TOP`, `world/traffic.ts`) |
+| `window.__world.traffic()` | `{vehicles: [{kind, x, y, w, h, front}], puffs: [{x, y}], shake}`: view rects of the vehicles (`kind` hatch / sedan / van / bus / truck; `front` = front lane, drawn over gameplay) and the tops of the exhaust puffs on screen, plus the street rumble offset `shake` (0 or 1 px while a bus or truck is on screen). Limits from `world/traffic.ts`: back lane `y >= TRAFFIC_TOP`, front lane `y >= FRONT_TOP`, puffs `y >= EXHAUST_TOP` |
 | `window.__player.crash(kind = 'barrier')` | emits a crash into `kind` like gameplay would; `'bin'` plays the bin crash (head first into the bin) |
 | `window.__player.grind(height?, length?)` / `removeRail(id)` | a static rail under the player with a grind on it / removes it (the player falls off) |
 | `window.__player.chill(s)`, `kidMode(on)`, `carry(item)`, `stomp(item?)`, `catchItem(item)`, `lineup(scale?, look?, item?)` | player-side effects and the pose lineup PNG, see `src/player/debug.ts` |
@@ -268,9 +268,12 @@ npm run playtest -- --headed
 - `scripts/scenarios/world.ts`: title and run start in Bad Cannstatt, four
   gateways (one full back-and-forth route, both directions of each crossing)
   as frame sequences with exactly one `zoneChanged` each, the Mombachquelle at
-  the Neckar, the Mitte traffic (dense, never above `TRAFFIC_TOP`, with
-  obstacles in front; wider views on desktop), `setZone` snaps, the Neckar
-  bridge and the Grabkapelle.
+  the Neckar, the Mitte traffic (dense; check "vehicles below the riding
+  line, exhaust behind gameplay": every back-lane vehicle at or below
+  `TRAFFIC_TOP`, front-lane vehicle at or below `FRONT_TOP` and puff at or
+  below `EXHAUST_TOP`, sampled over 5 s; obstacles in front; wider views on
+  desktop), `setZone` snaps, the Neckar bridge and the Grabkapelle. Run it on
+  `desktop,phone-landscape,phone-portrait`.
 - `scripts/scenarios/skater.ts` has the bin crash (`__player.crash('bin')`):
   canvas shots and skater crops of the dive, kicking legs, pop out and the
   tumbling bin, then a normal crash that still throws the skater off. It
@@ -294,6 +297,18 @@ npm run playtest -- --headed
   tap on the item button uses the item and does not jump), the merged item popups via `__ui.itemPopups`, the drunk look from
   easing in to easing out (`setDrunk`), and kid mode with a drunk timer
   (no drunk look).
+- `scripts/scenarios/gameplay.ts`: a solver bot (real jump arcs, ducking)
+  rides 60 s on seed 1 through all zones, nothing spawns inside the view, a
+  rail grind, a run without input ends in game over; again at 427 px.
+- `scripts/scenarios/zones.ts`: example scenario, a canvas shot per zone.
+- `scripts/scenarios/audio-pwa.ts` (production build): manifest, icons and
+  service worker, audio unlock on the first real input, a sound for every
+  gameplay event (`window.__audio.log`), mute across reloads, offline reload
+  after a simulated deploy.
+- Final personas: `final-keyboard.ts` (real key events, `desktop,laptop`),
+  `final-phone-touch.ts`, `final-phone-rotate.ts` (portrait, then rotating:
+  rotate hint, pause on rotation, nothing cut off) and `final-casual.ts`
+  (a first-timer).
 - `scripts/scenarios/final-phone-touch.ts`: a held touch only jumps after the
   swipe window, so its bench-grind bot plans `SWIPE_WINDOW` ticks ahead
   (`ahead(state)`), like a player who learnt the lag.

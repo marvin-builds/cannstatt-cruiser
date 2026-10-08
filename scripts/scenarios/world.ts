@@ -4,14 +4,14 @@
  * -> Cannstatt) as frame sequences around each gateway (the next zone streams
  * in near first, far last; both directions of every crossing), the
  * zoneChanged timing, the Mombachquelle at the Neckar, the Mitte traffic below
- * the riding line, setZone snapping, the Neckar bridge with its tram crossing
+ * the riding line (exhaust behind gameplay), setZone snapping, the Neckar bridge with its tram crossing
  * and the Grabkapelle on its hill in Cannstatt.
  *   npm run playtest -- --scenario scripts/scenarios/world.ts --viewports desktop,phone-landscape --name world
  */
 import { MAX_SPEED, START_ZONE } from '../../src/core/config';
 import type {} from '../../src/gameplay/debug'; // window.__gameplay
 import type {} from '../../src/world/debug'; // window.__world
-import { TRAFFIC_TOP } from '../../src/world/traffic';
+import { EXHAUST_TOP, FRONT_TOP, TRAFFIC_TOP } from '../../src/world/traffic';
 import { ZONE_LENGTH, ZoneRoute } from '../../src/world/zones';
 import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
@@ -91,25 +91,31 @@ async function rideTo(t: PlaytestContext, target: number) {
 }
 
 /**
- * Stuttgart-Mitte: dense foreground traffic that never rises above
- * TRAFFIC_TOP (below the riding line), drawn behind obstacles and people; on
- * desktop also at wider views. Rides on at the current speed afterwards.
+ * Stuttgart-Mitte: dense foreground traffic below the riding line. Back-lane
+ * vehicles (drawn behind gameplay) never rise above TRAFFIC_TOP, front-lane
+ * vehicles (drawn over gameplay) never above FRONT_TOP, and the exhaust
+ * clouds (behind gameplay) never above EXHAUST_TOP. On desktop also at wider
+ * views. Rides on at the current speed afterwards.
  */
 async function mitteTraffic(t: PlaytestContext): Promise<void> {
   const speed = (await t.game.state()).speed;
   await t.game.setSpeed(90);
   let maxVehicles = 0;
-  let highest = Infinity;
+  /** Vehicles and puffs above their limit (none expected). */
+  const tooHigh: Array<{ x: number; y: number; limit: number; front?: boolean }> = [];
   for (let i = 0; i < 20; i++) {
     await t.game.step(15);
     const traffic = await t.page.evaluate(() => window.__world!.traffic());
     maxVehicles = Math.max(maxVehicles, traffic.vehicles.length);
-    for (const v of traffic.vehicles) highest = Math.min(highest, v.y);
-    for (const p of traffic.puffs) highest = Math.min(highest, p.y);
+    for (const v of traffic.vehicles) {
+      const limit = v.front ? FRONT_TOP : TRAFFIC_TOP;
+      if (v.y < limit) tooHigh.push({ x: v.x, y: v.y, limit, front: v.front });
+    }
+    for (const p of traffic.puffs) if (p.y < EXHAUST_TOP) tooHigh.push({ ...p, limit: EXHAUST_TOP });
   }
   const density = await t.page.evaluate(() => window.__world!.trafficDensity());
   t.check('mitte: dense traffic', maxVehicles >= 5 && density === 1, { maxVehicles, density });
-  t.check('mitte: traffic stays below the riding line', highest >= TRAFFIC_TOP, { highest, TRAFFIC_TOP });
+  t.check('mitte: vehicles below the riding line, exhaust behind gameplay', tooHigh.length === 0, tooHigh.slice(0, 5));
   await t.page.evaluate(() => {
     window.__gameplay!.place('bin', 150);
     window.__gameplay!.place('vfbFan', 230);
