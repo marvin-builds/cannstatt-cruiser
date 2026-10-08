@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { BASE_SPEED, GROUND_Y, TICK_DT } from '../core/config';
 import { TOP_SPEED } from './difficulty';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
-import { railRect } from './catalogue';
+import { obstacleRect, railRect } from './catalogue';
+import { drunkFairness, EARLY_TAKEOFF_WINDOW } from './fairness';
+import { courseOf } from './patterns';
 import type { Motion } from './motion';
 import { groundBody, railBody } from './jumpsim';
 import { constantPace, type Course, OUT_OF_WORK, Solver, type WorkBudget } from './solver';
@@ -96,6 +98,17 @@ describe('solver with ledges (grindable obstacles such as the bench)', () => {
     expect(s.bestJump()!.grinds).toBe(true);
     // The same box without a top to land on is a wall.
     expect(new Solver(course([long.box]), BASE_SPEED).solvable()).toBe(false);
+  });
+
+  it('a landing behind a bench with the body still over its top leaves the full street to the next obstacle for the next take-off', () => {
+    // The drunk margin needs every take-off of a long run over the bench, also the one landing right behind it.
+    const { window, holds, spread } = drunkFairness(EARLY_TAKEOFF_WINDOW);
+    const bench = { kind: 'bench' as const, ...obstacleRect('bench', 87) };
+    const next = { kind: 'bench' as const, ...obstacleRect('bench', bench.x + bench.w + 300) };
+    const alone = courseOf({ name: 'bench', pieces: [bench], length: next.x + next.w + 85 });
+    const both = courseOf({ name: 'benches', pieces: [bench, next], length: next.x + next.w + 85 });
+    expect(new Solver(alone, BASE_SPEED).fair(holds, window, undefined, spread)).toBe(true);
+    expect(new Solver(both, BASE_SPEED).fair(holds, window, undefined, spread)).toBe(true);
   });
 });
 

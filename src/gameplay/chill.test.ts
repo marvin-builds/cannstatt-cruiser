@@ -5,8 +5,8 @@ import { Rng } from '../core/rng';
 import { createPlayerTestGame, tick } from '../player/testing';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Entity } from '../types';
-import { jointRect } from './catalogue';
-import { CHILL_SPEED_SCALE, chillSpeedFactor } from './chill';
+import { isObstacle, isOverhead, isRail, jointRect } from './catalogue';
+import { CHILL_SPEED_SCALE, chillSpeedFactor, chillStreet } from './chill';
 import { speedAt, TOP_SPEED } from './difficulty';
 import { createGameplaySystem } from './index';
 import { anchorOf } from './motion';
@@ -81,6 +81,18 @@ describe('joint pickup', () => {
     expect(game.state.chillTimer).toBe(0);
   });
 
+  it('chillStreet is the street the effect lasts at a difficulty speed', () => {
+    const game = freeGame();
+    place(game, 'joint', jointRect(PLAYER_X + 2));
+    tick(game, 1);
+    const from = game.state.distance;
+    const speed = speedAt(from);
+    while (game.state.chillTimer > 0) tick(game, 1);
+    expect(game.state.distance - from).toBeGreaterThan(chillStreet(speed) * 0.97);
+    expect(game.state.distance - from).toBeLessThan(chillStreet(speed) * 1.03);
+    expect(chillStreet(TOP_SPEED)).toBeLessThan(CHILL_DURATION * TOP_SPEED);
+  });
+
   it('the speed factor is 1 without the effect and CHILL_SPEED_SCALE at its height', () => {
     expect(chillSpeedFactor(0)).toBe(1);
     expect(chillSpeedFactor(CHILL_DURATION / 2)).toBeCloseTo(CHILL_SPEED_SCALE, 9);
@@ -142,6 +154,29 @@ describe('joint spawning', () => {
     }
   }, 60_000);
 });
+
+describe('the street while chilled', () => {
+  it('has only easy patterns: a rail or an overhead sign never comes with another obstacle close by (no combos)', () => {
+    let joints = 0;
+    for (const seed of [1, 2, 3, 4]) {
+      const { spawned } = ride(seed, 300);
+      const blocking = spawned.filter((s) => isObstacle(s.entity.kind) || isRail(s.entity.kind));
+      for (const joint of spawned.filter((s) => s.entity.kind === 'joint')) {
+        joints++;
+        const end = joint.street + chillStreet(speedAt(joint.street));
+        const chilled = blocking.filter((s) => s.street >= joint.street && s.street <= end);
+        for (const lone of chilled.filter((s) => isRail(s.entity.kind) || isOverhead(s.entity.kind))) {
+          const close = blocking.filter((s) => s !== lone && s.street < lone.street + lone.entity.w + COMBO_REACH && s.street + s.entity.w > lone.street - COMBO_REACH);
+          expect(close.map((s) => s.entity.kind), `seed ${seed} ${lone.entity.kind} at ${Math.round(lone.street)}`).toEqual([]);
+        }
+      }
+    }
+    expect(joints).toBeGreaterThan(8);
+  }, 60_000);
+});
+
+/** Street within which a combo pattern puts a second piece next to a rail or overhead sign (patterns.ts DUCK_THEN_JUMP, RAIL_TO_OBSTACLE, ...). */
+const COMBO_REACH = 100;
 
 describe('patterns verified for the chill jump', () => {
   const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);

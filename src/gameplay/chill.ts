@@ -5,6 +5,7 @@
  * timing) and the player jumps with CHILL_JUMP_SCALE (player/tuning.ts).
  */
 import { CHILL_DURATION, chillStrength } from '../core/chill';
+import { TICK_DT } from '../core/config';
 import type { GameContext } from '../types';
 import { overlaps } from './rules';
 
@@ -14,6 +15,13 @@ export const CHILL_SPEED_SCALE = 0.6;
 /** Factor on the difficulty speed for the remaining chill time (1 = no effect). */
 export function chillSpeedFactor(chillTimer: number): number {
   return 1 - (1 - CHILL_SPEED_SCALE) * chillStrength(chillTimer);
+}
+
+/** Street the chill effect lasts from the pickup at difficulty speed `speed` (it rides slower than CHILL_DURATION * speed). */
+export function chillStreet(speed: number): number {
+  let street = 0;
+  for (let timer = CHILL_DURATION; timer > 0; timer -= TICK_DT) street += speed * chillSpeedFactor(timer) * TICK_DT;
+  return street;
 }
 
 /** Counts the chill effect down by one tick. */

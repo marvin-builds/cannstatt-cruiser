@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_SPEED, GROUND_Y } from '../core/config';
 import { Rng } from '../core/rng';
-import { isObstacle, isRail } from './catalogue';
+import { isObstacle, isRail, obstacleRect } from './catalogue';
+import { drunkFairness, EARLY_TAKEOFF_WINDOW } from './fairness';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { courseOf, planPattern, TEMPLATE_NAMES } from './patterns';
 import { Solver } from './solver';
@@ -34,6 +35,38 @@ describe('spawn patterns', () => {
       expect(new Solver(courseOf(pattern), 160).solvable()).toBe(true);
     }
   });
+
+  it('while an effect may be on (`effect`), never an empty star pattern: there is always something to jump', () => {
+    for (const speed of [BASE_SPEED, TOP_SPEED]) {
+      const rng = new Rng(5);
+      const names = Array.from({ length: 300 }, (_, i) => planPattern(rng, 3, [speed], { zone: i % 3, effect: true }).name);
+      expect(names).not.toContain('stars');
+      expect(names).toContain('single');
+    }
+  }, 30_000);
+
+  it('while an effect may be on, no empty fallback either: a lone low obstacle, further out if the previous pattern needs it, fair across', () => {
+    // After a tall obstacle a drunk landing scatters far, so the next take-off needs a longer run-up.
+    const { window, holds, spread } = drunkFairness(EARLY_TAKEOFF_WINDOW);
+    let checked = 0;
+    for (const speed of [BASE_SPEED, 140, TOP_SPEED]) {
+      for (const kind of ['curbGap', 'bench', 'planter', 'bin', 'barrier'] as const) {
+        const previous = { kind, ...obstacleRect(kind, 100) };
+        // Only after a previous pattern that is drunk-fair itself (planned drunk, it always is).
+        if (!new Solver(courseOf({ name: kind, pieces: [previous], length: 250 }), speed).fair(holds, window, undefined, spread)) continue;
+        checked++;
+        const before = [{ ...previous, x: -150 }];
+        const rng = new Rng(11);
+        for (let i = 0; i < 20; i++) {
+          const p = planPattern(rng, 3, [speed], { drunk: true, effect: true, before, window: EARLY_TAKEOFF_WINDOW });
+          expect(p.name, `${speed} after ${kind}`).not.toBe('fallback');
+          expect(p.pieces.some((x) => isObstacle(x.kind))).toBe(true);
+          expect(new Solver(courseOf(p), speed).fair(holds, window, undefined, spread)).toBe(true);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(6);
+  }, 60_000);
 
   it('uses every template at full difficulty and rarely needs the fallback', () => {
     for (const speed of [BASE_SPEED, TOP_SPEED]) {
