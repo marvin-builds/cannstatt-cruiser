@@ -9,4 +9,4 @@ workers_dev = true
 binding = "DB"
 database_name = "cannstatt-cruiser-scores"
 # Fill in the id printed by `npx wrangler d1 create cannstatt-cruiser-scores` (see README.md).
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "b55e836d-059d-4c52-bf32-30d698dc906c"
