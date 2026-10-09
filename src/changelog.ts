@@ -20,6 +20,16 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.4',
+    date: '2026-10-09',
+    items: [
+      'Online-Bestenliste mit Pokal-Knopf',
+      'Rampe: selbst springen drücken',
+      'Ohne Sprung rollst du drüber',
+      'Hinweis zeigt, wann du springst',
+    ],
+  },
+  {
     version: '2026-10-09.3',
     date: '2026-10-09',
     items: [
