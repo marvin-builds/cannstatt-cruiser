@@ -214,3 +214,9 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
 - MAJOR (item 37): street kickflip practically impossible; dragging the held jump finger down never triggers it; weak "Air-Trick" feedback.
 - Minor: "Punkte"/"Combo N" overlap in the HUD with short scores; "Combo" means both the combo and the stunt line multiplier; game over says "Esc = zum Titelbild" and "Zum Startbildschirm (T)"; "Prost!" shows twice; "Ab über die Rampe!" anchored at the skater and replacing the high five hint; E pressed slightly early at the high fiver eats the carried item; wording "Wisch runter" vs "runterwischen" and "Gegenstand antippen"; no kid-mode sign on the title; small menu text in portrait; game-over text under dimmed stars; kid-mode beer render crash only via debug hooks; harness Fingers.up ends the wrong finger (scripts/scenarios/final-phone-touch.ts).
 - Fix-round ownership exception (orchestrator decision): the input slice owns src/core/input.ts + input.test.ts for the jump-finger drag gesture.
+
+## User wishes 2026-10-09 (afternoon)
+38. **No kid-mode badge on the title (USER):** remove the "Kindermodus" chip the final fix round added; kid mode stays invisible on the title.
+39. **Kid mode is the default (USER):** a player without an explicit choice (no stored kidMode) plays in kid mode; an explicit choice in the hidden settings is kept. Core initial state kidMode true; ui loadKidMode default true.
+40. **Ramps need a jump press (USER):** riding onto a kicker no longer launches automatically. The player presses jump while on the ramp (generous window: a press shortly before the ramp, on it, or right after the lip counts; an ollie started in that window turns into the launch). Without a press the skater just rolls over the ramp (no launch, never a crash). Stunt-line fairness and the bots must account for it; hints say to jump on the ramp.
+- USER: push only once at the very end again (commit locally until then).
