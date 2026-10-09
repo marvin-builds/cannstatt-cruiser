@@ -4,7 +4,9 @@
  * staggers (a sudden lurch against the sway with a flailing arm), an arm
  * flails up and a small hiccup bubble rises from the mouth. A pure function of the run time,
  * so replays look the same. Looks only: the hitbox never changes.
+ * A drunk kickflip also shakes the spinning board (drunkPoseAt).
  */
+import { type Pose, poseAt, type TimelineName } from './poses';
 
 export type Lean = -2 | -1 | 0 | 1 | 2;
 
@@ -67,4 +69,23 @@ const swayAt = (time: number) => Math.sin((phase(time, SWAY_PERIOD) / SWAY_PERIO
 function swayLean(sway: number): Lean {
   const size = Math.abs(sway) >= LEAN_2 ? 2 : Math.abs(sway) >= LEAN_1 ? 1 : 0;
   return (sway < 0 ? -size : size) as Lean;
+}
+
+/** Board offsets (px) of a drunk kickflip, one per FLIP_WOBBLE_STEP seconds of the flip clock, looping. */
+const FLIP_WOBBLE: readonly { dx: number; dy: number }[] = [
+  { dx: 1, dy: 0 },
+  { dx: 2, dy: 1 },
+  { dx: 0, dy: 1 },
+  { dx: -2, dy: 0 },
+  { dx: -1, dy: -1 },
+  { dx: 1, dy: -1 },
+];
+const FLIP_WOBBLE_STEP = 0.033;
+
+/** The pose of `timeline` at `time`; while drunk the board of a kickflip wobbles a pixel or two as it spins. */
+export function drunkPoseAt(timeline: TimelineName, time: number, drunk: DrunkLook | null): Pose {
+  const pose = poseAt(timeline, time);
+  if (!drunk || timeline !== 'kickflip') return pose;
+  const w = FLIP_WOBBLE[Math.floor(time / FLIP_WOBBLE_STEP) % FLIP_WOBBLE.length]!;
+  return { ...pose, boardDx: (pose.boardDx ?? 0) + w.dx, boardDy: (pose.boardDy ?? 0) + w.dy };
 }

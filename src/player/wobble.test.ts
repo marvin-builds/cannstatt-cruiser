@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { drunkLook } from './wobble';
+import { poseAt } from './poses';
+import { drunkLook, drunkPoseAt } from './wobble';
 
 const DT = 1 / 60;
 const sample = (from: number, seconds: number) =>
@@ -61,5 +62,31 @@ describe('drunk wobble (state.drunkTimer > 0)', () => {
   it('is a pure function of the run time (deterministic replays)', () => {
     expect(sample(1.3, 3)).toEqual(sample(1.3, 3));
     expect(drunkLook(2, 4.2)).toEqual(drunkLook(6, 4.2));
+  });
+});
+
+describe('drunk kickflip board wobble (ROADMAP 42)', () => {
+  const drunk = drunkLook(5, 1);
+
+  it('leaves every pose alone while sober and every other timeline while drunk', () => {
+    for (let t = 0; t < 0.4; t += DT) {
+      expect(drunkPoseAt('kickflip', t, null)).toEqual(poseAt('kickflip', t));
+      expect(drunkPoseAt('airFall', t, drunk)).toEqual(poseAt('airFall', t));
+    }
+  });
+
+  it('shakes the spinning board by a pixel or two, never the body', () => {
+    const offsets = new Set<string>();
+    for (let t = 0; t < 0.2; t += DT) {
+      const plain = poseAt('kickflip', t);
+      const pose = drunkPoseAt('kickflip', t, drunk);
+      const dx = (pose.boardDx ?? 0) - (plain.boardDx ?? 0);
+      const dy = (pose.boardDy ?? 0) - (plain.boardDy ?? 0);
+      expect(Math.abs(dx)).toBeLessThanOrEqual(2);
+      expect(Math.abs(dy)).toBeLessThanOrEqual(1);
+      expect({ ...pose, boardDx: plain.boardDx, boardDy: plain.boardDy }).toEqual(plain);
+      offsets.add(`${dx},${dy}`);
+    }
+    expect(offsets.size).toBeGreaterThanOrEqual(3);
   });
 });

@@ -29,7 +29,7 @@ export function createPlayerSystem(): PlayerSystem {
     init(ctx) {
       const c = new SkaterController(ctx.bus);
       controller = c;
-      ctx.bus.on('runStarted', () => c.reset());
+      ctx.bus.on('runStarted', (e) => c.reset(e.seed));
       ctx.bus.on('grindStart', (e) => c.startGrind(ctx.state, e.entityId));
       ctx.bus.on('grindEnd', (e) => c.endGrindExternally(ctx.state, e.entityId));
       ctx.bus.on('crash', (e) => c.crash(ctx.state, e.kind, e.entityId));
