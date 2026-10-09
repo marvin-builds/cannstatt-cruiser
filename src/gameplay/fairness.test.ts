@@ -193,8 +193,8 @@ describe('fair people: the street around them (spawner rides, 20 seeds x 3 min)'
         }
       }
     }
-    // Stunt lines and the NorDIY park (no people) take some of the street.
-    expect(people).toBeGreaterThan(75);
+    // Stunt lines, the NorDIY park and the combo patterns (no people) take some of the street.
+    expect(people).toBeGreaterThan(70);
   }, 60_000);
 });
 

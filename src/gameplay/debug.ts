@@ -2,8 +2,9 @@
  * Test-only tooling (enabled together with window.__game): lets playtest
  * scenarios put a specific obstacle, person, the joint or stunt pieces on the
  * street, see the dropped items (they are no entities, so window.__game
- * misses them) and the running stunt line, and plan a NorDIY park right ahead.
- * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts and nordiy.ts.
+ * misses them) and the running stunt line, plan a NorDIY park right ahead, and
+ * lay a named spawn pattern (the combos).
+ * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts and combos.ts.
  */
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
@@ -12,6 +13,7 @@ import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect } from './cat
 import type { DroppedItems } from './drop';
 import { withMotion } from './motion';
 import { parkPiecesOf, planParkLine } from './park-line';
+import { planPattern } from './patterns';
 import { planStuntLine } from './stunt-line';
 import { DEFAULT_LEDGE_HEIGHT, type StuntLines, type StuntLineView } from './stunts';
 
@@ -44,6 +46,14 @@ export interface GameplayDebugHook {
    * (stars included). `seed` picks the design.
    */
   stuntLine(x: number, seed?: number): number[];
+  /**
+   * Plans the spawn template `name` (patterns.ts, e.g. a combo from
+   * combos.ts) for the current speed and zone with its origin (the player's
+   * x when it starts, before its run-up) at screen x, removing whatever
+   * stood there and keeping that street free of spawned patterns; returns
+   * the entity ids (stars included). `seed` picks the layout.
+   */
+  pattern(name: string, x?: number, seed?: number): number[];
   /** The running stunt line (steps, made, multiplier, points), or null; read-only. */
   stunts(): StuntLineView | null;
   /**
@@ -116,6 +126,20 @@ export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, st
       return pieces.map((p) => {
         const e: Entity = { ...p, data: p.data && { ...p.data }, id: nextId++, x: p.x + dx, done: false };
         ctx.state.entities.push(e);
+        return e.id;
+      });
+    },
+    pattern(name, x = PLAYER_X, seed = 1) {
+      const { state } = ctx;
+      const planned = planPattern(new Rng(seed), 3, [state.speed], { zone: state.zoneIndex, template: name });
+      if (planned.name !== name) throw new Error(`pattern ${name}: nothing fair at ${state.speed} px/s`);
+      const entities = state.entities;
+      for (let i = entities.length - 1; i >= 0; i--) if (entities[i]!.x + entities[i]!.w > x) entities.splice(i, 1);
+      const start = state.distance + (x - PLAYER_X);
+      reserve(start, start + planned.length, state.distance);
+      return planned.pieces.map((p) => {
+        const e: Entity = { ...p, data: p.data && { ...p.data }, id: nextId++, x: x + p.x, done: false };
+        entities.push(e);
         return e.id;
       });
     },
