@@ -14,6 +14,8 @@ import type { PopupFeed } from './popup-feed';
 import type { HintKind } from './hint-plate';
 import type { UiView } from './screens';
 import type { SettingsScreen } from './settings';
+import type { ScoreScreen } from './highscore-flow';
+import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -58,6 +60,29 @@ export interface UiDebugHook {
    * the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter), null off menus.
    */
   layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; logo: Rect; screen: MenuButtons | null };
+  /**
+   * The online list's state and tap areas (view px), or null without an online list: the title's
+   * trophy, the open screen's close button, the entry's field, submit and "Neuer Name" buttons.
+   */
+  highscores(): HighscoresDebug | null;
+}
+
+export interface HighscoresDebug {
+  screen: ScoreScreen;
+  offered: boolean;
+  name: string;
+  kid: boolean;
+  message: string | null;
+  topState: string;
+  entries: number;
+  highlight: number | null;
+  scroll: number;
+  maxScroll: number;
+  trophy: Rect;
+  close: Rect;
+  field: Rect;
+  submit: Rect;
+  reroll: Rect | null;
 }
 
 declare global {
@@ -148,6 +173,30 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         menu: settingsLayout(display.viewWidth, metrics),
         logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
         screen: currentMenu(ctx, view)?.buttons ?? null,
+      };
+    },
+    highscores() {
+      const flow = view.scores;
+      if (!flow) return null;
+      const { display } = ctx;
+      const metrics = uiMetrics(display);
+      const entry = scoreEntryLayout(display, flow.kid);
+      return {
+        screen: flow.screen,
+        offered: flow.offered,
+        name: flow.name,
+        kid: flow.kid,
+        message: flow.message,
+        topState: flow.topState,
+        entries: flow.entries.length,
+        highlight: flow.highlight,
+        scroll: flow.scroll,
+        maxScroll: scoreListLayout(display, flow.entries.length, flow.message !== null).maxScroll,
+        trophy: titleTrophy(display.viewWidth, view.fullscreenAvailable, metrics),
+        close: closeButton(display.viewWidth, metrics),
+        field: entry.field,
+        submit: entry.submit,
+        reroll: entry.reroll,
       };
     },
   };

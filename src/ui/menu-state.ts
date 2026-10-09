@@ -16,6 +16,8 @@ export interface MenuView {
   portraitDismissed: boolean;
   /** The HUD stats plate as drawn now (the pause logo keeps clear of it). */
   hud: { layout: { plate: Rect } };
+  /** The online list (highscore-flow.ts): its screens cover the menus; `offered` adds "Eintragen" to game over. Null without one. */
+  scores: { open: boolean; offered: boolean } | null;
 }
 
 export type MenuScreen = 'whatsNew' | 'title' | 'pause' | 'gameOver';
@@ -29,9 +31,9 @@ export function portraitHintShown(r: { display: { portrait: boolean; touch: bool
   return r.display.portrait && r.display.touch && !view.portraitDismissed;
 }
 
-/** The menu screen of this mode, or null while riding or while the settings menu covers it. */
+/** The menu screen of this mode, or null while riding or while the settings menu or a highscore screen covers it. */
 export function menuScreen(state: GameState, view: MenuView): MenuScreen | null {
-  if (view.settings.open) return null;
+  if (view.settings.open || view.scores?.open) return null;
   switch (state.mode) {
     case 'title':
       return state.whatsNew.length > 0 ? 'whatsNew' : 'title';
@@ -68,7 +70,8 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
   };
   const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
-  const key = `${screen}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${plate}|${
+  const submit = screen === 'gameOver' && !!view.scores?.offered;
+  const key = `${screen}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;
@@ -79,7 +82,7 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
         ? titleLayout(input)
         : screen === 'pause'
           ? pauseLayout(input)
-          : gameOverLayout({ ...input, newRecord });
+          : gameOverLayout({ ...input, newRecord, submit });
   cache = { key, layout };
   return layout;
 }

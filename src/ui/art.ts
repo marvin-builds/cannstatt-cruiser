@@ -158,6 +158,18 @@ export const ICON_PLAY = new PixelIcon(ICON, [`
   ........
 `]);
 
+/** The title's "Bestenliste" button: a golden cup. */
+export const ICON_TROPHY = new PixelIcon({ y: UI.yellow, o: UI.orange, w: UI.white }, [`
+  .yyyyyy.
+  yywyyyoy
+  y.wyyy.y
+  .yyyyyo.
+  ..yyyo..
+  ...yo...
+  ..oooo..
+  .oooooo.
+`]);
+
 /** Frame 0 sound on, frame 1 muted. */
 export const ICON_SOUND = new PixelIcon(ICON, [
   `

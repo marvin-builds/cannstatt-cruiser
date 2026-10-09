@@ -45,6 +45,8 @@ export interface MenuButtons {
   next: Rect | null;
   /** The pause screen's logo: a long press opens the settings. */
   logo: Rect | null;
+  /** "Eintragen" on game over (the run makes the online list, see highscore-flow.ts). */
+  submit: Rect | null;
 }
 
 /**
@@ -96,6 +98,8 @@ export const controlsLine = (touch: boolean) =>
   touch ? 'Tippen = springen, runterwischen = ducken' : 'Leertaste = springen, S = ducken';
 export const trickKeysHint = (touch: boolean) =>
   touch ? 'Beim Grinden runterwischen = Trick' : 'Beim Grinden: Pfeil runter / S = Trick';
+/** Game over's "Eintragen" (E or Enter on desktop). */
+export const submitLabel = (touch: boolean) => (touch ? 'Eintragen' : 'Eintragen (E)');
 export const gameOverPrompt = (touch: boolean) => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde');
 
 /** The title's controls help, one line each. */
@@ -132,6 +136,8 @@ export const RESULT_ROWS = ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'S
 const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5];
 /** On a crowded game over the (compact) install hint goes before stars and distance (the title still shows it). */
 const INSTALL_DROP_GAMEOVER = 0.75;
+/** With "Eintragen" on a crowded game over (portrait), the reload card gives way last (the title still shows it). */
+const RELOAD_DROP_SUBMIT = 0.1;
 
 /** Height of a text line; text sits at the top of its row. */
 export const LINE = 11;
@@ -245,7 +251,7 @@ export function installParts(
 }
 
 function noButtons(): MenuButtons {
-  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null };
+  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null };
 }
 
 /** The install card for the input: compacted where asked (only the prompt kind has a short form). */
@@ -362,9 +368,9 @@ function titlePanel(viewWidth: number, rows: Rect[]): Rect {
   return { x: cx - half, y: TITLE_PANEL_Y, w: 2 * half, h: bottom - TITLE_PANEL_Y };
 }
 
-/** The reload card as a column block. */
-function reloadBlock(input: MenuInput, m: UiMetrics): Block[] {
-  return input.reload ? [{ id: 'reload', ...reloadCardSize(m, input.touch), gap: 4 }] : [];
+/** The reload card as a column block (droppable from level `drop` on, if given). */
+function reloadBlock(input: MenuInput, m: UiMetrics, drop?: number): Block[] {
+  return input.reload ? [{ id: 'reload', ...reloadCardSize(m, input.touch), gap: 4, drop }] : [];
 }
 
 /**
@@ -415,8 +421,11 @@ export function pauseLayout(input: MenuInput): MenuLayout {
   return layout;
 }
 
-/** Game over: headline, new record, results, prompt, install hint, reload; "Startbildschirm" in the corner. */
-export function gameOverLayout(input: MenuInput & { newRecord: boolean }): MenuLayout {
+/**
+ * Game over: headline, new record, results, "Eintragen" (when `submit`),
+ * prompt, install hint, reload; "Startbildschirm" in the corner.
+ */
+export function gameOverLayout(input: MenuInput & { newRecord: boolean; submit?: boolean }): MenuLayout {
   const m = uiMetrics(input);
   const hud = hudBand(input, m, false);
   const corner = toTitleButton(input, m, 'gameOver');
@@ -428,14 +437,19 @@ export function gameOverLayout(input: MenuInput & { newRecord: boolean }): MenuL
     RESULT_ROWS.forEach((_, i) => {
       list.push({ id: `row${i}`, w: TABLE_W, h: LINE, gap: i === 0 ? 8 : 0, drop: RESULT_ROW_DROP[i] });
     });
+    if (input.submit) list.push({ id: 'submit', w: buttonWidth(submitLabel(input.touch), m), h: m.menuButtonH, gap: 6 });
     list.push({ id: 'prompt', w: measureText(gameOverPrompt(input.touch), scale), h: textRowH(scale), gap: 6 });
-    list.push(...noticeBlocks({ ...input, reload: false }, m, install, INSTALL_DROP_GAMEOVER), ...reloadBlock(input, m));
+    list.push(
+      ...noticeBlocks({ ...input, reload: false }, m, install, INSTALL_DROP_GAMEOVER),
+      ...reloadBlock(input, m, input.submit ? RELOAD_DROP_SUBMIT : undefined),
+    );
     return list;
   };
   const { placed, scale } = fitBody(input, blocks, skaterBounds(input, Math.max(title.y + title.h, hud.bottom), corner));
   placed.set('title', title);
   const layout = withCards(input, m, placed, install);
   layout.buttons.toTitle = corner;
+  layout.buttons.submit = placed.get('submit') ?? null;
   layout.textScale = scale;
   return layout;
 }

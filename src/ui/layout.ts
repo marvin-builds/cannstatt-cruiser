@@ -30,8 +30,8 @@ export function uiMetrics(display: { touch: boolean; portrait: boolean }): UiMet
   return display.portrait ? TOUCH_PORTRAIT : TOUCH_LANDSCAPE;
 }
 
-/** View pixels per metre for the distance readout (the skater is ~30 px, ~1.8 m tall). */
-const PX_PER_METRE = 10;
+/** View pixels per metre for the distance readout and the online list (the skater is ~30 px, ~1.8 m tall; the server's plausibility bounds use it too). */
+export const PX_PER_METRE = 10;
 /** Seconds of one on/off blink cycle of prompts. */
 const BLINK_PERIOD = 1;
 

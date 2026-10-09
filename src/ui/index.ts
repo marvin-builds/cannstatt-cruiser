@@ -14,7 +14,10 @@
  * hint plate at a time, long enough to read: hint-slot.ts), the NorDIY high
  * five (hand button and its hint) in high-five.ts, the drunk look in drunk-look.ts, the zone ribbon in
  * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
- * all drawing in screens.ts.
+ * all drawing in screens.ts. The online list ("Bestenliste", "Eintragen"
+ * after game over) is highscore-flow.ts over src/net, laid out in
+ * score-layout.ts and drawn in score-screens.ts; the native name input is
+ * name-field.ts, drag and wheel scrolling list-scroll.ts.
  */
 import { CHILL_DURATION } from '../core/chill';
 import { GROUND_Y, PLAYER_X } from '../core/config';
@@ -22,6 +25,7 @@ import { fullscreenSupported } from '../core/fullscreen';
 import type { InputHotspot } from '../core/game';
 import { store as defaultStore, type Store } from '../core/storage';
 import { testHookEnabled } from '../core/testhook';
+import { createBrowserScoreService } from '../net/browser';
 import type { GameContext, Rect, System } from '../types';
 import { AirTrickHint } from './air-trick-hint';
 import { UI } from './art';
@@ -34,13 +38,17 @@ import { HudModel } from './hud-model';
 import { KickerHint } from './kicker-hint';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
+import { HighscoreFlow, type ScoreServiceLike } from './highscore-flow';
 import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
+import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu, gameOverReady, menuScreen, portraitHintShown } from './menu-state';
 import { PopupFeed } from './popup-feed';
 import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
+import { createDomNameField, type NameField } from './name-field';
+import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
 import { Sparkle } from './sparkle';
@@ -52,7 +60,17 @@ export interface UiSystemOptions {
   store?: Store;
   /** Whether to offer the fullscreen button (default: the browser has a Fullscreen API). */
   fullscreenAvailable?: () => boolean;
+  /**
+   * The online list (default: the live worker in a browser, none elsewhere). null = no trophy
+   * button and no "Eintragen"; tests pass a fake, never the real network.
+   */
+  scores?: ScoreServiceLike | null;
+  /** The native name input (default: an HTML input in a browser, none elsewhere). */
+  nameField?: NameField | null;
 }
+
+/** The ui system; `highscores` is the online list's flow (null without an online list). */
+export type UiSystem = System & { highscores: HighscoreFlow | null };
 
 /** Popups appear with their bottom this far above the skater's feet, clear of his head. */
 const HEAD_CLEARANCE = 33;
@@ -70,11 +88,32 @@ const BELOW_PLATE = 2;
 const POPUP_FLOOR = GROUND_Y;
 /** Drunk timer bar length until drunkStart says otherwise (the test hook's setDrunk sends no event). */
 const DEFAULT_DRUNK_DURATION = 6;
+/** Arrow keys held on the "Bestenliste" scroll this many rows per second (a press moves one row at once). */
+const LIST_KEY_ROWS_PER_SECOND = 10;
 
 const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSupported();
 
-export function createUiSystem(options: UiSystemOptions = {}): System {
+export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const store = options.store ?? defaultStore;
+  const browser = typeof window !== 'undefined';
+  const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
+  /** Kid nicknames draw from the game rng (set in init; re-seeded at every run start). */
+  let random: () => number = () => 0;
+  const flow = scores ? new HighscoreFlow({ service: scores, store, random: () => random() }) : null;
+  const nameField =
+    options.nameField !== undefined
+      ? options.nameField
+      : browser && flow
+        ? createDomNameField(
+            { onInput: (v) => flow.setName(v), onSubmit: () => void flow.submit(), onCancel: () => flow.close() },
+            () => document.getElementById('game'),
+          )
+        : null;
+  /** Seconds of play in the current run (not paused time), for the online entry. */
+  let runSeconds = 0;
+  /** The arrow keys held on the list: -1 up, 1 down, 0 none. */
+  let listScroll = 0;
+  let lastMode: string | null = null;
   const view: UiView = {
     records: loadRecords(store),
     lastRun: null,
@@ -96,6 +135,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     stuntRect: null,
     settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
     logoHold: new LongPress(),
+    scores: flow,
   };
   /** Set in init: restarts a paused run when kid mode was switched in the menu. */
   let onSettingsClosed: (switched: boolean) => void = () => {};
@@ -121,6 +161,8 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.spawn(text, PLAYER_X, rise === undefined ? aboveHead(ctx, scale) : state.player.y - rise, color, scale);
     };
     bus.on('runStarted', () => {
+      runSeconds = 0;
+      flow?.runStarted();
       view.popups.clear();
       feed.clear();
       view.itemHint.hide();
@@ -190,6 +232,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });
     bus.on('gameOver', (e) => {
+      flow?.runEnded({ score: e.score, distance: e.distance, seconds: runSeconds });
       view.lastRun = recordRun(view.records, e);
       view.records = view.lastRun.records;
       saveRecords(store, view.records);
@@ -225,6 +268,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     });
     addMenuHotspots(ctx);
     addSettingsHotspots(ctx, full);
+    addScoreHotspots(ctx, full);
     ctx.addHotspot({
       rect: () => (portraitHintShown(ctx, view) ? full() : null),
       onPress: () => (view.portraitDismissed = true),
@@ -257,24 +301,25 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     ctx.commands.toTitle();
   }
 
-  /** The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter". */
+  /** The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter", "Eintragen" (E / Enter). */
   function addMenuHotspots(ctx: GameContext): void {
     const { state, commands } = ctx;
     const live = () => (state.mode !== 'gameover' || gameOverReady(state)) && !portraitHintShown(ctx, view);
-    const button = (pick: (b: MenuButtons) => Rect | null, onPress: () => void, key?: string): InputHotspot => ({
+    const button = (pick: (b: MenuButtons) => Rect | null, onPress: () => void, keys: readonly string[] = []): InputHotspot => ({
       rect: () => {
         const menu = live() ? currentMenu(ctx, view) : null;
         return menu ? pick(menu.buttons) : null;
       },
       onPress,
       onKeyDown: (code) => {
-        if (code !== key) return false;
+        if (!keys.includes(code)) return false;
         onPress();
         return true;
       },
     });
-    ctx.addHotspot(button((b) => b.reload, () => commands.reloadForUpdate(), 'KeyU'));
-    ctx.addHotspot(button((b) => b.toTitle, () => leaveRun(ctx), 'KeyT'));
+    ctx.addHotspot(button((b) => b.reload, () => commands.reloadForUpdate(), ['KeyU']));
+    ctx.addHotspot(button((b) => b.toTitle, () => leaveRun(ctx), ['KeyT']));
+    ctx.addHotspot(button((b) => b.submit, () => openEntry(ctx), ['KeyE', 'Enter', 'NumpadEnter']));
     // Called inside the tap, so the browser's install dialog still counts as a user gesture.
     ctx.addHotspot(button((b) => b.install, () => commands.promptInstall()));
     ctx.addHotspot(button((b) => b.dismiss, () => commands.dismissInstallHint()));
@@ -324,6 +369,101 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     ctx.addHotspot({ rect: () => (settings.open ? menu().back : null), onPress: () => settings.close() });
   }
 
+  /** The native name input over the entry's field (adult mode only), else hidden. */
+  function placeNameField(ctx: GameContext): void {
+    if (!flow || !nameField) return;
+    const shown = flow.screen === 'entry' && !flow.kid && !portraitHintShown(ctx, view);
+    nameField.place(shown ? scoreEntryLayout(ctx.display, false).field : null, flow.name);
+  }
+
+  /**
+   * "Eintragen": the name entry. Called inside the tap or key press, so the
+   * input can take the focus there: on desktop always (type at once), on a
+   * phone only without a remembered name (with one, "Als <Name> eintragen" is one tap).
+   */
+  function openEntry(ctx: GameContext): void {
+    if (!flow) return;
+    flow.openEntry(ctx.state.kidMode);
+    placeNameField(ctx);
+    if (!flow.kid && (!ctx.display.touch || !flow.name)) nameField?.focus();
+  }
+
+  /** The "Bestenliste" layout as drawn now. */
+  function listLayout(ctx: GameContext) {
+    return scoreListLayout(ctx.display, flow!.entries.length, flow!.message !== null);
+  }
+
+  /** Keys while a highscore screen shows: it takes every key but M, so nothing starts a run behind it. */
+  function scoreKey(ctx: GameContext, code: string): boolean {
+    if (!flow || code === 'KeyM') return false;
+    if (flow.screen === 'list') {
+      const step = listLayout(ctx).rowH;
+      const down = code === 'ArrowDown' || code === 'KeyS';
+      if (code === 'Escape' || code === 'KeyB') flow.close();
+      else if (down || code === 'ArrowUp' || code === 'KeyW') {
+        listScroll = down ? 1 : -1;
+        flow.scrollBy(listScroll * step);
+      } else if (code === 'PageDown' || code === 'PageUp') flow.scrollBy((code === 'PageDown' ? 1 : -1) * listLayout(ctx).list.h);
+      return true;
+    }
+    if (code === 'Escape') flow.close();
+    else if (code === 'Enter' || code === 'NumpadEnter') void flow.submit();
+    else if (code === 'KeyN') flow.reroll();
+    else if (!flow.kid) nameField?.focus();
+    return true;
+  }
+
+  /** The trophy on the title (B), the modal layer of the list and the entry, and their buttons. */
+  function addScoreHotspots(ctx: GameContext, full: () => Rect): void {
+    if (!flow) return;
+    const { state, display } = ctx;
+    const covered = () => portraitHintShown(ctx, view) || view.settings.open;
+    const trophy: InputHotspot = {
+      rect: () =>
+        !covered() && menuScreen(state, view) === 'title' ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
+      onPress: () => flow.openList(),
+      onKeyDown: (code) => {
+        if (code !== 'KeyB') return false;
+        flow.openList();
+        return true;
+      },
+    };
+    const modal: InputHotspot = {
+      rect: () => (flow.open && !covered() ? full() : null),
+      onPress: () => {},
+      onKeyDown: (code) => scoreKey(ctx, code),
+      onKeyUp: () => void (listScroll = 0),
+    };
+    const entry = (pick: (l: ReturnType<typeof scoreEntryLayout>) => Rect | null) => () =>
+      flow.screen === 'entry' && !covered() ? pick(scoreEntryLayout(display, flow.kid)) : null;
+    ctx.addHotspot(trophy);
+    ctx.addHotspot(modal);
+    ctx.addHotspot({ rect: () => (flow.open && !covered() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
+    ctx.addHotspot({ rect: entry((l) => l.submit), onPress: () => void flow.submit() });
+    ctx.addHotspot({ rect: entry((l) => l.reroll), onPress: () => flow.reroll() });
+    ctx.addHotspot({ rect: entry((l) => (flow.kid ? null : l.field)), onPress: () => nameField?.focus() });
+  }
+
+  /** Per tick while a highscore screen shows: held arrow keys, keeping the scroll in range (and the own entry in view), the name input. */
+  function updateScores(ctx: GameContext, dt: number): void {
+    if (!flow) return;
+    if (ctx.state.mode === 'title' && lastMode !== 'title') void scores!.retryPending();
+    lastMode = ctx.state.mode;
+    placeNameField(ctx);
+    if (flow.screen !== 'list') {
+      listScroll = 0;
+      return;
+    }
+    const l = listLayout(ctx);
+    if (listScroll !== 0) flow.scrollBy(listScroll * LIST_KEY_ROWS_PER_SECOND * l.rowH * dt);
+    const own = flow.highlight;
+    if (flow.revealOwn && flow.topState !== 'loading') {
+      flow.revealOwn = false;
+      if (own !== null) flow.scroll = (own - 1) * l.rowH - Math.floor((l.list.h - l.rowH) / 2);
+    }
+    flow.clampScroll(l.maxScroll);
+  }
+
   /** The hint beside the touch item button while it shows (the high five hint wins over the first-catch hint), else null. */
   function buttonHintRect(ctx: GameContext, button: boolean): Rect | null {
     const { display } = ctx;
@@ -349,6 +489,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
 
   return {
     name: 'ui',
+    highscores: flow,
 
     init(ctx) {
       view.fullscreenAvailable = (options.fullscreenAvailable ?? browserFullscreen)();
@@ -359,8 +500,15 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
         leaveRun(ctx);
         ctx.commands.startRun();
       };
+      random = () => ctx.rng.next();
       bindEvents(ctx);
       addHotspots(ctx);
+      if (browser && flow) {
+        bindListScroll(
+          { active: () => flow.screen === 'list', scrollBy: (dy) => flow.scrollBy(dy), lineHeight: () => listLayout(ctx).rowH },
+          () => document.getElementById('game'),
+        );
+      }
       if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view, feed);
     },
 
@@ -393,7 +541,9 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
+      updateScores(ctx, dt);
       if (state.mode !== 'playing') return;
+      runSeconds += dt;
       const { player } = state;
       view.popups.update(dt);
       view.banner.update(dt);
