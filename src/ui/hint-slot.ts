@@ -4,7 +4,7 @@
  * The hints themselves only say whether they want to show (their rules); the
  * slot keeps a shown hint readable: at least HINT_MIN_TIME on screen, so it
  * lingers after a short grind or a landing, and never swapped for another
- * within HINT_NO_SWAP. A hint whose job is done (its trick started, the
+ * within HINT_NO_SWAP (a high five hint not within HINT_MIN_TIME). A hint whose job is done (its trick started, the
  * skater took off from the kicker) is dismissed at once.
  */
 import { type HintKind, shownHint } from './hint-plate';
@@ -36,8 +36,8 @@ export class HintSlot {
     const best = shownHint(wants);
     if (this.kind !== null) {
       this.time += dt;
-      // Still the one to show; too fresh to swap; or lingering with nothing else waiting.
-      if (best === this.kind || this.time < HINT_NO_SWAP) return;
+      // Still the one to show; too fresh to swap (a high five hint is never cut short); or lingering with nothing else waiting.
+      if (best === this.kind || this.time < (this.kind === 'highFive' ? HINT_MIN_TIME : HINT_NO_SWAP)) return;
       if (best === null && this.time < HINT_MIN_TIME) return;
     }
     this.show(best);

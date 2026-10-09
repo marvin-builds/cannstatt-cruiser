@@ -4,7 +4,7 @@ import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
 import { airTrickHintPlate } from './air-trick-hint';
 import { hintPlateSize, hintSpotRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
-import { kickerHintRect } from './kicker-hint';
+import { kickerHintPlate } from './kicker-hint';
 import { POPUP_MARGIN, popupScale } from './layout';
 import { TRICK_HINT_GRINDS, TrickHint, trickHintPlate } from './trick-hint';
 
@@ -91,7 +91,7 @@ describe('grind trick hint', () => {
         const p = trickHintPlate(display);
         expect(p.rows).toEqual([[SWIPE_DOWN, 'wischen = Trick!']]);
         expect(p.scale).toBe(popupScale(display, false));
-        const kicker = kickerHintRect(p.scale, viewWidth);
+        const kicker = kickerHintPlate(display).rect;
         const air = airTrickHintPlate(display).rect;
         expect(p.rect.w).toBeLessThanOrEqual(Math.min(kicker.w, air.w));
         expect(p.rect.h).toBeLessThanOrEqual(Math.min(kicker.h, air.h));

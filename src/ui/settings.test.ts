@@ -69,8 +69,10 @@ describe('LongPress', () => {
 });
 
 describe('kid mode persistence', () => {
-  it('saves and loads the flag, defaulting to adult mode', () => {
+  it('saves and loads the flag, defaulting to kid mode (ROADMAP 39)', () => {
     const store = memoryStore();
+    expect(loadKidMode(store)).toBe(true);
+    saveKidMode(store, false);
     expect(loadKidMode(store)).toBe(false);
     saveKidMode(store, true);
     expect(loadKidMode(store)).toBe(true);
@@ -78,8 +80,8 @@ describe('kid mode persistence', () => {
     expect(loadKidMode(store)).toBe(false);
   });
 
-  it('falls back to adult mode when storage is unavailable or holds junk', () => {
-    expect(loadKidMode(createStore(null))).toBe(false);
+  it('falls back to kid mode when storage is unavailable or holds junk: only a stored false is adult mode', () => {
+    expect(loadKidMode(createStore(null))).toBe(true);
     const broken = createStore({
       getItem: () => {
         throw new Error('denied');
@@ -89,10 +91,10 @@ describe('kid mode persistence', () => {
       },
     } as unknown as Storage);
     expect(() => saveKidMode(broken, true)).not.toThrow();
-    expect(loadKidMode(broken)).toBe(false);
+    expect(loadKidMode(broken)).toBe(true);
     const junk = memoryStore();
-    junk.set('kidMode', 'yes');
-    expect(loadKidMode(junk)).toBe(false);
+    junk.set('kidMode', 'no');
+    expect(loadKidMode(junk)).toBe(true);
   });
 });
 

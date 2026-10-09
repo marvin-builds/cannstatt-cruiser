@@ -48,7 +48,7 @@ describe('hint plate', () => {
   });
 
   it('sits at the hint spot under the skater', () => {
-    const rows: HintRow[] = [['Ab über die Rampe!']];
+    const rows: HintRow[] = [['Auf der Rampe tippen!']];
     const size = hintPlateSize(rows, 1);
     expect(hintPlateRect(rows, 1, 320)).toEqual(hintSpotRect(size.w, size.h, 320));
   });

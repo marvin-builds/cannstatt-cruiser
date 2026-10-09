@@ -40,6 +40,7 @@ describe('HUD model', () => {
   it('adds the drunk row only while drunk and never in kid mode', () => {
     const state = playingState();
     const hud = new HudModel();
+    state.kidMode = false;
     state.drunkTimer = 3;
     hud.update(state);
     expect(hud.layout.drunk).not.toBeNull();

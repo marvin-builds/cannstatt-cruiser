@@ -154,7 +154,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       return view.hints.kind;
     },
     previewKickerHint() {
-      view.kickerHint.update([{ id: -1, kind: 'kicker', x: PLAYER_X + 60, y: GROUND_Y - 8, w: 24, h: 8, done: false }]);
+      view.kickerHint.update([{ id: -1, kind: 'kicker', x: PLAYER_X + 60, y: GROUND_Y - 8, w: 24, h: 8, done: false }], ctx.state.speed);
       view.hints.update(0, { highFive: false, trick: false, air: false, kicker: view.kickerHint.visible });
       return view.kickerHint.visible;
     },

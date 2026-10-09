@@ -203,13 +203,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     bus.on('launch', () => {
       view.kickerHint.launched();
       view.airHint.launched();
-      // Over the ramp: the kicker hint has done its job, the air trick hint may show at once.
+      // Off the ramp: the ramp hint has done its job, the air trick hint may show at once.
       view.hints.dismiss('kicker');
     });
     bus.on('stuntStep', (e) => view.stunt.step(e.multiplier));
     bus.on('stuntEnd', (e) => {
       view.stunt.end(e.completed, e.points);
-      if (e.completed) view.kickerHint.lineCompleted();
     });
     bus.on('highFive', (e) => {
       feed.highFive(e.points);
@@ -549,7 +548,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.banner.update(dt);
       view.stunt.update(dt, view.stuntRect !== null);
       view.sparkle.update(dt);
-      view.kickerHint.update(state.entities);
+      view.kickerHint.update(state.entities, state.speed);
       view.highFiveHint.update(state.entities);
       view.airHint.update(!player.grounded && !player.grinding, player.airTrick, GROUND_Y - player.y);
       view.itemHint.update(dt, view.banner.visible);
