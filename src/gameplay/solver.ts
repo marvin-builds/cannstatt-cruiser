@@ -110,6 +110,18 @@ export interface WorkBudget {
 /** Thrown by a budgeted solver whose budget ran out; retry later with new budget. */
 export const OUT_OF_WORK = new Error('solver: out of work budget');
 
+/** Runs solver `work` (it must not draw from the rng), yielding and retrying while its budget is out: reuse the solvers, so a retry goes on from their caches. */
+export function* resumable<T>(work: () => T): Generator<void, T> {
+  for (;;) {
+    try {
+      return work();
+    } catch (e) {
+      if (e !== OUT_OF_WORK) throw e;
+    }
+    yield;
+  }
+}
+
 export interface SolverOptions {
   /** Landing on a person's head bounces (stomp event) instead of crashing. Default off. */
   stomps?: boolean;

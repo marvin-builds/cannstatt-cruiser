@@ -12,7 +12,9 @@
  * (`options.drunk`) only DRUNK_TEMPLATES come, checked with the drunk margin
  * (fairness.ts drunkFairness). While an effect may be on (`options.effect`)
  * no empty star pattern comes, and instead of empty street the fallback is a
- * lone low obstacle (EFFECT_FALLBACK).
+ * lone low obstacle (EFFECT_FALLBACK). Combo templates (combos.ts) are grind
+ * lines: also fair from a grind on each of their pieces, and their stars
+ * follow the line (line-guide.ts).
  *
  * planSteps is the same planning as a resumable generator: with a work
  * budget (`options.budget`) it yields whenever the solvers run out of it and
@@ -23,13 +25,15 @@ import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
-import { isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
+import { COMBO_TEMPLATES, type PieceBuilder } from './combos';
+import { isGrindable, isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
 import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
 import { PROPS } from './items';
-import { groundBody, hitboxOf, stepBody } from './jumpsim';
+import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
+import { lineGuide, type Point, spreadStars } from './line-guide';
 import type { Motion } from './motion';
-import { constantPace, type Course, HOLDS, OUT_OF_WORK, type Solver, type WorkBudget } from './solver';
+import { constantPace, type Course, HOLDS, resumable, type Solver, type WorkBudget } from './solver';
 
 export type { Piece };
 
@@ -48,6 +52,8 @@ export interface PlanOptions {
   effect?: boolean;
   /** Work budget of the solvers (planSteps yields when it runs out). Default: unlimited. */
   budget?: WorkBudget;
+  /** Plan only this template (by name), whatever the tier, zone and effect (tests and the debug hook). */
+  template?: string;
 }
 
 export interface Pattern {
@@ -63,6 +69,8 @@ interface Template {
   weight: number;
   /** Only in zones with people (ZONE_PEOPLE). */
   people?: boolean;
+  /** A grind line (combos.ts): a grind on any of its pieces must lead on fairly, and its stars follow the line (line-guide.ts). */
+  line?: boolean;
   build(b: Builder): void;
 }
 
@@ -73,6 +81,8 @@ const ZONE_PEOPLE: Record<number, ObstacleKind> = { 1: 'vfbFan', 2: 'wasenGuest'
 /** Chance that a pattern with obstacles also gets a star arc over its best jump (keeps the wider street lively). */
 const STAR_CHANCE = 0.6;
 const MAX_STARS = 5;
+/** A grind line is longer than one jump: more stars to lead along it. */
+const MAX_LINE_STARS = 9;
 /** Minimum horizontal distance between stars of an arc. */
 const STAR_SPACING = 13;
 const ATTEMPTS = 10;
@@ -112,7 +122,7 @@ export function runoutFor(speed: number): number {
   return Math.round(32 + 0.55 * speed);
 }
 
-class Builder {
+class Builder implements PieceBuilder {
   readonly pieces: Piece[] = [];
 
   readonly lead: number;
@@ -133,7 +143,11 @@ class Builder {
    * frame-perfect timing (fairness.ts would reject them).
    */
   spacing(): number {
-    if (this.rng.chance(CLOSE_CHANCE)) return this.rng.int(...CLOSE_GAP);
+    return this.rng.chance(CLOSE_CHANCE) ? this.rng.int(...CLOSE_GAP) : this.openGap();
+  }
+
+  /** Street between two ground obstacles open enough to land in between and take off again. */
+  openGap(): number {
     const open = Math.round(OPEN_GAP_SECONDS * this.speed);
     return this.rng.int(open, open + OPEN_GAP_SPREAD);
   }
@@ -249,16 +263,18 @@ const TEMPLATES: Template[] = [
       for (let i = 0; i < 3; i++) b.obstacle(b.pick(), i === 0 ? b.lead : b.end + b.spacing());
     },
   },
+  ...COMBO_TEMPLATES.map((t) => ({ ...t, line: true })),
 ];
 
 export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
 
 const isDrunkTemplate = (t: Template) => (DRUNK_TEMPLATES as readonly string[]).includes(t.name);
 
-function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean, effect: boolean): Template {
-  const open = TEMPLATES.filter(
-    (t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)) && (!effect || t.name !== 'stars'),
-  );
+function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean, effect: boolean, only?: string): Template {
+  const open = only
+    ? TEMPLATES.filter((t) => t.name === only)
+    : TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)) && (!effect || t.name !== 'stars'));
+  if (open.length === 0) throw new Error(`no spawn template ${only}`);
   let roll = rng.next() * open.reduce((sum, t) => sum + t.weight, 0);
   for (const t of open) {
     roll -= t.weight;
@@ -324,17 +340,34 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
     }
     return solvers;
   }
+  /** Whether a grind on every grindable piece (landed at its start) leads on fairly at every pace: its solvers per piece, or null. */
+  function* grindsFair(pattern: Pattern): Generator<void, Map<Piece, Solver[]> | null> {
+    const found = new Map<Piece, Solver[]>();
+    for (const top of pattern.pieces.filter((p) => isGrindable(p.kind))) {
+      const solvers = solversFor(courseOf(pattern, top.x), paces, budget);
+      const fair = () => solvers.every((s) => s.fair(margin.holds, margin.window, railBody(top.y, top.w), margin.spread));
+      if (!(yield* resumable(fair))) return null;
+      found.set(top, solvers);
+    }
+    return found;
+  }
   for (let i = 0; i < ATTEMPTS; i++) {
-    const template = pickTemplate(rng, tier, zone, drunk, effect);
+    const template = pickTemplate(rng, tier, zone, drunk, effect, options.template);
     const builder = new Builder(rng, fast, zone, drunk);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = yield* fairSolvers(pattern);
     if (!solvers) continue;
-    if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
+    const slowest = paces.indexOf(slow);
+    if (template.line) {
+      const grinds = yield* grindsFair(pattern);
+      if (!grinds) continue;
+      const guide = yield* lineGuide(pattern.pieces, (top) => (top ? grinds.get(top)! : solvers)[slowest]!, slow * TICK_DT, margin);
+      placeStars(pattern, spreadStars(guide, STAR_SPACING, MAX_LINE_STARS));
+    } else if (template.name === 'stars') addStars(pattern, arcPath(builder.lead, slow));
     // Stars mark a jump a human can repeat (one of the margin's holds: the full jump while drunk).
     else if (rng.chance(STAR_CHANCE)) {
-      const guide = solvers[paces.indexOf(slow)]!;
+      const guide = solvers[slowest]!;
       addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), margin.holds)))?.path ?? []);
     }
     return pattern;
@@ -365,18 +398,6 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   }
   // Nothing fair found: a stretch of empty street (always fair, also after any previous pattern).
   return finish('fallback', [], fast);
-}
-
-/** Runs solver `work` (it must not draw from the rng), yielding and retrying while its budget is out. */
-function* resumable<T>(work: () => T): Generator<void, T> {
-  for (;;) {
-    try {
-      return work();
-    } catch (e) {
-      if (e !== OUT_OF_WORK) throw e;
-    }
-    yield;
-  }
 }
 
 /** The previous pattern's pieces followed by `pattern`, as one course starting from free street before them. */
@@ -412,15 +433,21 @@ function arcPath(from: number, speed: number): { x: number; y: number }[] {
 }
 
 /** Up to MAX_STARS stars spread along the middle of an airborne path. */
-function addStars(pattern: Pattern, path: { x: number; y: number }[]): void {
+function addStars(pattern: Pattern, path: Point[]): void {
   const middle = path.slice(Math.floor(path.length * 0.15), Math.ceil(path.length * 0.85));
   let lastX = -Infinity;
-  const stars: Piece[] = [];
+  const stars: Point[] = [];
   for (const p of middle) {
     if (p.x - lastX < STAR_SPACING || stars.length >= MAX_STARS || p.y > GROUND_Y - 6) continue;
     lastX = p.x;
-    stars.push({ kind: 'star', ...starRect(p.x, p.y) });
+    stars.push(p);
   }
-  pattern.pieces.push(...stars);
-  if (stars.length > 0) pattern.length = Math.max(pattern.length, lastX + STAR_SPACING);
+  placeStars(pattern, stars);
+}
+
+/** Stars centred on `points` (in riding order); the pattern lasts until past the last one. */
+function placeStars(pattern: Pattern, points: Point[]): void {
+  pattern.pieces.push(...points.map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) })));
+  const last = points[points.length - 1];
+  if (last) pattern.length = Math.max(pattern.length, last.x + STAR_SPACING);
 }

@@ -82,4 +82,23 @@ describe('gameplay debug hook (window.__gameplay)', () => {
     expect(near.start).toBe(game.state.distance + 100);
     expect(game.state.entities.filter((e) => e.kind === 'highFiver').length).toBe(1);
   });
+
+  it('places a named spawn pattern (a combo) with its origin at screen x, reserving its street from the spawner', () => {
+    vi.stubGlobal('window', {});
+    const game = quietGame(140);
+    const reserved: [number, number][] = [];
+    installGameplayDebug(game.ctx, new DroppedItems(), new StuntLines(), (start, end) => reserved.push([start, end]));
+    const hook = window.__gameplay!;
+    hook.place('bin', PLAYER_X + 120);
+    const ids = hook.pattern('railBenchRail');
+    const placed = game.state.entities.filter((e) => ids.includes(e.id));
+    expect(game.state.entities.some((e) => e.kind === 'bin')).toBe(false);
+    expect(placed.filter((e) => e.kind === 'handrail').length).toBe(2);
+    expect(placed.filter((e) => e.kind === 'bench').length).toBe(1);
+    expect(placed.some((e) => e.kind === 'star')).toBe(true);
+    expect(Math.min(...placed.map((e) => e.x))).toBeGreaterThan(PLAYER_X);
+    expect(reserved).toHaveLength(1);
+    expect(reserved[0]![0]).toBe(game.state.distance);
+    expect(() => hook.pattern('nope')).toThrow();
+  });
 });

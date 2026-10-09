@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
+import { BASE_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
 import type { Entity } from '../types';
 import { ZoneRoute } from '../world/zones';
@@ -83,14 +83,19 @@ describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
         .map((s) => r.timeAt(s.street))
         .filter((t) => t < Infinity);
       const parks = parkEnds(r);
+      const joints = r.seen.filter((s) => s.e.kind === 'joint').map((s) => r.timeAt(s.street));
       expect(parks.length).toBeGreaterThanOrEqual(2);
       expect(times.length).toBeGreaterThanOrEqual(5);
       expect(times[0]!).toBeGreaterThanOrEqual(20);
       for (let i = 1; i < times.length; i++) {
         const gap = times[i]! - times[i - 1]!;
         const park = parks.find((t) => t > times[i - 1]! && t < times[i]!);
+        // A line due in the chill street after a joint waits until it is over (at most CHILL_REACH at the slowest speed).
+        const joint = joints.find((t) => t > times[i - 1]! && t < times[i]!);
+        const due = Math.max(STUNT_LINE_INTERVAL[1], park === undefined ? 0 : park - times[i - 1]! + STUNT_LINE_INTERVAL[0]);
+        const chillWait = joint === undefined ? 0 : joint - times[i - 1]! + CHILL_REACH / BASE_SPEED;
         expect(gap).toBeGreaterThanOrEqual(STUNT_LINE_INTERVAL[0] - 1);
-        expect(gap).toBeLessThanOrEqual(Math.max(STUNT_LINE_INTERVAL[1], park === undefined ? 0 : park - times[i - 1]! + STUNT_LINE_INTERVAL[0]) + 6);
+        expect(gap).toBeLessThanOrEqual(Math.max(due, chillWait) + 6);
         if (park !== undefined) expect(times[i]! - park).toBeGreaterThanOrEqual(STUNT_LINE_INTERVAL[0] - 1);
       }
     }
