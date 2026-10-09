@@ -20,6 +20,14 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.6',
+    date: '2026-10-09',
+    items: [
+      'Wacklig oder entspannt: Flip schwerer',
+      'Das Brett wackelt beim Flip',
+    ],
+  },
+  {
     version: '2026-10-09.5',
     date: '2026-10-09',
     items: [
