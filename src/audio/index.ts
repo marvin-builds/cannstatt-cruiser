@@ -47,6 +47,8 @@ const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGue
 const TRICK_FULL_POINTS = 100;
 /** Grind trick points from which a sparkle follows the sting. */
 const TRICK_BIG_POINTS = 100;
+/** Air trick points from which a kickflip counts as a launch kickflip and gets the bigger sting. */
+const KICKFLIP_BIG_POINTS = 150;
 /** Seconds after the session roar starts until the finger whistle cuts through it. */
 const SESSION_WHISTLE_DELAY = 0.35;
 
@@ -208,8 +210,9 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('launch', () => play('launch'));
       bus.on('stuntStep', ({ step }) => play('stuntStep', 1, 0, stuntStepPitch(step)));
       bus.on('stuntEnd', ({ completed }) => play(completed ? 'stuntFanfare' : 'stuntFizzle'));
-      // Air trick: the spin plays as the trick starts (update), a bright ping when it is made.
-      bus.on('airTrick', () => play('airTrick'));
+      // Kickflip (air trick): a quick spin as it starts (update); once landed a flip whoosh,
+      // a catch click and a bright sting, bigger for a launch kickflip.
+      bus.on('airTrick', ({ points }) => play(points >= KICKFLIP_BIG_POINTS ? 'airTrickBig' : 'airTrick'));
       // NorDIY park: the crowd cheers each trick (bigger with the session), roars and
       // whistles for a "Session!" bonus, and a crisp clap for a high five. Same in kid mode.
       bus.on('sessionCheer', ({ level }) => play(cheerCue(level), cheerIntensity(level)));

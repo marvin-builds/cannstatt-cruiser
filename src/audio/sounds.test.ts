@@ -159,12 +159,40 @@ describe('sounds: air trick and big drops', () => {
     expect(end('airSpin')).toBeLessThanOrEqual(0.4);
   });
 
-  it('pings brightly on a made air trick, ending on its highest note', () => {
-    const notes = tonal('airTrick');
-    const top = Math.max(...notes.map((v) => v.freq));
-    expect(top).toBeGreaterThanOrEqual(1000);
-    expect(notes.at(-1)!.freq).toBe(top);
-    expect(end('airTrick')).toBeLessThanOrEqual(0.6);
+  /** The sting: the steady (unswept) tonal notes of a cue, in order, one per start time. */
+  const sting = (cue: Cue) => [...new Set(tonal(cue).filter((v) => v.to === undefined).map((v) => v.at))].map((at) => Math.max(...tonal(cue).filter((v) => v.at === at && v.to === undefined).map((v) => v.freq)));
+
+  it.each(['airTrick', 'airTrickBig'] as const)('lands the kickflip %s with a flip whoosh, then a crisp catch click', (cue) => {
+    const noise = SOUNDS[cue].filter((v) => v.wave === 'noise').sort((a, b) => a.at - b.at);
+    const whoosh = noise[0];
+    const click = noise.find((v) => v.dur <= 0.03 && v.at > whoosh.at)!;
+    expect(whoosh.dur).toBeGreaterThanOrEqual(0.08);
+    expect(whoosh.to).not.toBe(whoosh.freq);
+    expect(click).toBeDefined();
+    expect(click.freq).toBeGreaterThanOrEqual(2000);
+  });
+
+  it.each(['airTrick', 'airTrickBig'] as const)('rings the kickflip %s out in a bright 2-3 note sting on its highest note', (cue) => {
+    const notes = sting(cue);
+    expect(notes.length).toBeGreaterThanOrEqual(2);
+    expect(notes.length).toBeLessThanOrEqual(3);
+    expect(notes.at(-1)).toBe(Math.max(...notes));
+    expect(notes.at(-1)!).toBeGreaterThanOrEqual(1000);
+    expect(end(cue)).toBeLessThanOrEqual(0.8);
+  });
+
+  it('gives the kickflip its own melody, unlike the grind trick, star and stunt sounds', () => {
+    const melody = (cue: Cue) => sting(cue).map(Math.round).join();
+    for (const other of ['trick', 'trickBig', 'star', 'stuntStep', 'stuntFanfare', 'airSpin'] as const) {
+      expect(melody('airTrick')).not.toBe(melody(other));
+      expect(melody('airTrickBig')).not.toBe(melody(other));
+    }
+  });
+
+  it('makes the launch kickflip slightly bigger: more notes, longer and reaching higher', () => {
+    expect(sting('airTrickBig').length).toBeGreaterThan(sting('airTrick').length);
+    expect(end('airTrickBig')).toBeGreaterThan(end('airTrick'));
+    expect(Math.max(...sting('airTrickBig'))).toBeGreaterThanOrEqual(Math.max(...sting('airTrick')));
   });
 
   it('adds a deeper, longer boom under the landing thud for big drops', () => {
@@ -200,8 +228,8 @@ describe('sounds: stunt mix headroom', () => {
     expect(out(level, duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
   });
 
-  it('keeps an air trick caught on a ledge (grind loop on) under the clipping level', () => {
-    const level = summedPeak([{ cue: 'airTrick' }, { cue: 'stuntStep' }, { cue: 'land' }]);
+  it.each(['airTrick', 'airTrickBig'] as const)('keeps a kickflip (%s) caught on a ledge (grind loop on) under the clipping level', (cue) => {
+    const level = summedPeak([{ cue }, { cue: 'stuntStep' }, { cue: 'land' }]);
     expect(out(level, grind + duckedTraffic)).toBeLessThanOrEqual(HEADROOM);
   });
 
@@ -209,7 +237,7 @@ describe('sounds: stunt mix headroom', () => {
     const level = summedPeak([
       { cue: 'land' },
       { cue: 'landHeavy' },
-      { cue: 'airTrick' },
+      { cue: 'airTrickBig' },
       { cue: 'stuntStep' },
       { cue: 'stuntFanfare' },
     ]);

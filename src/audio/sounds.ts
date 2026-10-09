@@ -41,6 +41,8 @@ const N = {
   C6: 1046.5,
   E6: 1318.51,
   G6: 1567.98,
+  Gb6: 1479.98,
+  A6: 1760.0,
   C7: 2093.0,
 } as const;
 
@@ -54,6 +56,28 @@ export const GULP_AT = [0.1, 0.38, 0.66] as const;
 const AAH_AT = 0.98;
 /** Drinking the Maßkrug: three gulps (one per player gulp) and a friendly 'aah' end within this many seconds. */
 export const GLUG_LENGTH = AAH_AT + 0.3;
+
+/**
+ * A landed kickflip: a band-passed flip whoosh of `flip` seconds, a short bright
+ * catch click (noise tick plus a falling triangle 'klack') as it ends, then a
+ * sting of `sting` notes (square, triangle octave below for body) whose last
+ * note rings out with a sine bell. More notes make the sting longer.
+ */
+function kickflip(sting: number[], flip: number): Voice[] {
+  const step = 0.07;
+  const start = flip + 0.02;
+  const top = start + step * (sting.length - 1);
+  return [
+    { wave: 'noise', at: 0, dur: flip, freq: 700, to: 3400, gain: 0.2, filter: 'bandpass' },
+    { wave: 'noise', at: flip - 0.01, dur: 0.025, freq: 5200, gain: 0.22, filter: 'highpass' },
+    { wave: 'triangle', at: flip - 0.01, dur: 0.04, freq: 900, to: 380, gain: 0.16 },
+    ...sting.flatMap((freq, i): Voice[] => [
+      { wave: 'square', at: start + i * step, dur: i === sting.length - 1 ? 0.18 : 0.07, freq, gain: 0.055 },
+      { wave: 'triangle', at: start + i * step, dur: 0.07, freq: freq / 2, gain: 0.08 },
+    ]),
+    { wave: 'sine', at: top, dur: 0.3 + 0.06 * sting.length, freq: sting.at(-1)!, gain: 0.13 },
+  ];
+}
 
 /** One low gulp: a falling triangle 'gloomp' with a wet lowpassed noise tap. */
 function gulp(at: number): Voice[] {
@@ -352,12 +376,12 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'noise', at: 0.12, dur: 0.1, freq: 1200, to: 3600, gain: 0.24, filter: 'bandpass' },
     { wave: 'triangle', at: 0, dur: 0.22, freq: 330, to: 660, gain: 0.07 },
   ],
-  // Air trick made: a bright two-note ping with a soft bell ringing on the top note.
-  airTrick: [
-    { wave: 'square', at: 0, dur: 0.06, freq: N.G6, gain: 0.06 },
-    { wave: 'square', at: 0.06, dur: 0.16, freq: N.C7, gain: 0.06 },
-    { wave: 'sine', at: 0.06, dur: 0.38, freq: N.C7, gain: 0.14 },
-  ],
+  // Kickflip landed: the board flips with a swishy 'fwoosh', the feet catch it with a
+  // crisp 'klack', then a bright 'ta-daa' (D6 up to A6) with a bell ringing on top.
+  airTrick: kickflip([N.D6, N.A6], 0.12),
+  // Launch kickflip (150+ points): a longer flip, a fuller catch and a three-note
+  // D major run (D6, F#6, A6) that rings longer.
+  airTrickBig: kickflip([N.D6, N.Gb6, N.A6], 0.16),
   // Big drop: a deep, slightly longer boom under the landing thud (scaled by the drop).
   landHeavy: [
     { wave: 'triangle', at: 0, dur: 0.2, freq: 90, to: 38, gain: 0.3 },
