@@ -82,13 +82,16 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   audio/traffic.ts      TrafficNoise: Mitte rumble level from state.trafficDensity, light-traffic swells per passing vehicle (TRAFFIC.swell), ducking under gameplay sounds, rng-free horns and truck passes
   audio/passby.ts       PassBy: vehiclePassed -> pass-by cue (passCar / passVan / passBus / passTruck) and intensity, rate-limited
   player/bin.ts         bin crash: the bin the player draws around the skater
+src/net/                online highscores client (owned by the ui slice, see Online highscores)
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
+server/                 highscore API: Cloudflare Worker + D1, own package.json, tsconfig and tests
+                        (the root build and `npm test` ignore it; see Online highscores, server/README.md)
 ```
 
 ## Ownership
 
-Every slice owns exactly one directory. Inside it the slice may create any files
+Every slice owns its directory (the ui slice also owns `src/net/`). Inside it the slice may create any files
 (sprites, sub-modules, tests). It must keep `index.ts` exporting the factory
 listed below. Slices **never** edit `src/main.ts`, `src/core/`, `src/types.ts`
 or another slice's directory. If a contract change is needed, report it so the
@@ -100,8 +103,9 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
-| `src/ui/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence) |
+| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
+| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
 creates them in `public/`):
@@ -774,9 +778,9 @@ picks one (null while riding or while the settings menu covers it):
 | Screen | When | Buttons (key) |
 |---|---|---|
 | "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
-| title | mode `title` | reload, install hint; the logo's long press opens the settings |
+| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, see [Online highscores](#online-highscores-roadmap-34)); the logo's long press opens the settings |
 | pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), reload |
-| game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Zum Startbildschirm" (T), reload, install hint |
+| game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Eintragen" (E / Enter, only when the run makes the online top 20), "Zum Startbildschirm" (T), reload, install hint |
 
 - **Reload** (`notices.ts` `reloadOffered`): a card "Neue Version da" with
   the button "Neu laden" (desktop label "Neu laden (U)") while
@@ -877,6 +881,104 @@ health), "Prost! Gluck gluck gluck" (never in kid mode), "Wurf!",
 stacks then grow downwards). Every popup has a 1 px ink outline; catch popups
 and all popups in portrait are drawn at scale 2 (`popupScale`). The ui slice
 shows "Stomp!" on `stomp`; gameplay adds the points.
+
+## Online highscores (ROADMAP 34)
+
+A public top-20 list ("Bestenliste") shared by all players. Not cheat-proof
+(the game runs on the client); the server only stops absurd entries, which is
+enough for friends and family.
+
+### Server (`server/`, owned by the server slice)
+
+- A Cloudflare Worker with a D1 database (free plan), live at
+  `https://cannstatt-cruiser-scores.marvinmai.workers.dev`. Self-contained:
+  own `package.json`, `tsconfig.json` and Vitest tests; the root build and
+  `npm test` ignore the folder. Layout, local dev, deploy steps and the full
+  API contract: [server/README.md](../server/README.md). Deploys
+  (`npx wrangler deploy`) are done by the orchestrator.
+- **API** (JSON, CORS for `https://marvinmai.github.io` and
+  `http://localhost:*` / `http://127.0.0.1:*`):
+  - `GET /top` -> `200 {entries: [{rank, name, score, distance, date}]}`, top
+    20 by score (a tie goes to the earlier entry), cached 30 s.
+  - `POST /score` with `{name, score, distance, duration, version, device}`
+    -> `200 {ok: true, rank, entries}` (`rank` 1-based or `null` outside the
+    top 20), `400 bad-request`, `422 name`, `422 implausible`, `429 rate`.
+  - `distance` is in metres (game px / 10), `duration` in whole seconds of
+    play, `version` the build string (`BUILD_VERSION`), `device` a random id
+    kept per install (8-64 of `A-Z a-z 0-9 -`).
+- **Protection**, in `server/src/`:
+  - `submission.ts` checks shape first (integers, body <= 2 KB), then the
+    name, then plausibility;
+  - `name.ts` + `word-filter.ts`: 2-16 chars after trimming, letters incl.
+    äöüß, digits, space, `-_.`, plus a word filter;
+  - `rate-limit.ts`: one accepted run per device per 20 s, 50 per rolling day;
+  - `plausibility.ts`: see below;
+  - `store.ts` / `ranking.ts`: only the best 500 runs are kept.
+- **Privacy**: stored per run are name, score, distance, duration, version,
+  date and the SHA-256 hash of the device id. No IP address, no headers.
+- **Plausibility bounds are tied to the game's tuning.** `plausibility.ts`
+  hard-codes `MAX_SPEED_M_PER_S = 190 / 10`, which is `TOP_SPEED`
+  (`src/gameplay/difficulty.ts`) over `PX_PER_METRE` (`src/ui/layout.ts`),
+  with a 10 % margin; and point rates (`MAX_POINTS_PER_METRE`,
+  `MAX_POINTS_PER_SECOND`, `SCORE_ALLOWANCE`) sized from the point constants
+  (`catalogue.ts` obstacle points and `MAX_MULTIPLIER`, `ITEM_POINTS`,
+  `AIR_TRICK_POINTS`, `STUNT_MAX_MULTIPLIER` / `STUNT_LINE_BONUS`,
+  `SESSION_MAX_POINTS`, ...). **A change that makes the game faster, changes
+  `PX_PER_METRE` or gives more points must update `server/src/plausibility.ts`
+  (and its tests) and redeploy the worker**, otherwise real runs come back as
+  `422 implausible`. The server does not import from `src/`, so nothing
+  catches this automatically.
+
+### Client (`src/net/` + `src/ui/`, owned by the ui slice)
+
+Placement approved by the user (ROADMAP 34):
+
+- **Title**: a trophy button in the top-right button row (key B) opens the
+  "Bestenliste" screen: the top 20 (scrollable on phones), an offline note
+  instead of the list when there is no connection, and a short privacy note.
+- **Game over**: an "Eintragen" button only when the score would reach the
+  top 20 (compared with the last fetched list). It leads to a name entry
+  (on-screen keyboard on touch); in kid mode only generated nicknames such as
+  "Flinker Fuchs 42" can be picked, no free text. The remembered name makes
+  later entries one tap. Afterwards the list shows with the own entry
+  highlighted.
+- Nothing in the pause menu.
+- `src/net/`: a small network module that talks to the worker (`GET /top`,
+  `POST /score`) and keeps an **offline queue**: an entry made offline is
+  stored and sent later. It takes `fetch` and the store as parameters so unit
+  tests use a fake fetch and a memory store.
+
+Modules (as built by the ui slice; the screens were still being polished
+when this was written, so check names against the code):
+
+| Module | Content |
+|---|---|
+| `net/api.ts` | `ScoresApi(fetch, {baseUrl, timeoutMs})`: `top()` / `submit(run)`; `SCORES_URL` (the live worker), `REQUEST_TIMEOUT_MS` (6 s, then it counts as offline). Never throws: failures map to `ScoreError` `'offline' \| 'name' \| 'implausible' \| 'rate' \| 'bad-request' \| 'server'`. Answers are validated (`parseEntries`) |
+| `net/payload.ts` | `scorePayload(run, name, version, device)`: `RunStats {score, distance (px), seconds}` -> the POST body (integers, metres via `PX_PER_METRE` from `ui/layout.ts`, duration >= 1 s) |
+| `net/device.ts` | `loadDeviceId(store)`: random id (`crypto.randomUUID` or random hex), store key `deviceId` |
+| `net/queue.ts` | `ScoreQueue`: the offline queue, store key `pendingScore`, keeps only the best pending run; `SEND_SPACING_MS` 20 s (the server's rate limit) |
+| `net/service.ts` | `ScoreService`: `top` (last fetched list) and `topState` (`'idle' \| 'loading' \| 'ready' \| 'offline'`), `refreshTop()`, `submit(run, name)` -> `SubmitOutcome` (`ok` with rank / `queued` offline or on a server error / `failed` name, implausible, rate, bad-request), `retryPending()` (spaced by `SEND_SPACING_MS`). Clock, `online()`, timers, store and api are injected |
+| `net/browser.ts` | `createBrowserScoreService(store)`: real `fetch`, `navigator.onLine`, `BUILD_VERSION`; retries the queue on `online` and when the page becomes visible |
+| `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store keys `scoreName`, kid mode `scoreKidName`), last entry (`scoreLastEntry`) and `ownRank` for the highlight |
+| `ui/nicknames.ts` | kid-mode nicknames "Adjektiv Tier NN" (all <= 16 chars, numbers with a bad meaning skipped; the test checks every combination against the rules) |
+| `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `SCORE_TEXT` (all German texts incl. the privacy note), `offered`, `openList()`, `openEntry(kid)`, `setName`, `reroll` (kid mode "Neuer Name"), `submit()`, scroll. A run start fetches the list in the background so `offered` is known at game over |
+| `ui/score-layout.ts` / `ui/score-screens.ts` | pure layouts (title trophy left of mute / fullscreen, moved below the row where it would touch the logo; list rows and scroll; entry field and buttons) and their drawing |
+| `ui/name-field.ts` | the native `<input>` over the drawn field in adult mode, so phones open their own keyboard; its key and touch events stop there and never reach the game |
+| `ui/list-scroll.ts` | drag and wheel scrolling of the list (arrow keys scroll in `index.ts`) |
+
+- `createUiSystem({scores, nameField})`: `scores` defaults to the browser
+  service in a browser and to `null` elsewhere (no trophy, no "Eintragen");
+  tests pass a fake `ScoreServiceLike`, never the real network. The returned
+  system exposes `highscores` (the flow).
+- Keys: B opens / closes the list on the title, Esc closes; "Eintragen" on
+  game over is E or Enter; in the entry Enter sends, Esc goes back, N picks a
+  new nickname in kid mode.
+- Kid mode never shows a text input: the entry offers the remembered or a
+  generated nickname and "Neuer Name".
+- `window.__ui.highscores()` reports the flow's state and tap areas for
+  playtests (docs/TESTING.md).
+- The server's name rules are duplicated in `ui/score-rules.ts` (to catch a
+  bad name before sending); change both together.
 
 ## Stomp and carried items
 

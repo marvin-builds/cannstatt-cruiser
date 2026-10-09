@@ -321,6 +321,26 @@ The art is recognisable but stylised.
 - On phones the pause, mute, fullscreen and settings buttons have tap areas
   of at least ~44 CSS px; desktop keeps small buttons.
 
+## Bestenliste (online highscores)
+
+- A shared online top 20 ("Bestenliste") with nickname, Punkte and date.
+  The title has a trophy button in the top-right row (key B) that opens it;
+  on phones the list scrolls. Offline the list is hidden behind a short
+  note.
+- After game over an "Eintragen" button appears only when the score would
+  make the top 20. It asks for a name (on-screen keyboard on touch); the name
+  is remembered, so later entries take one tap. Then the list shows with the
+  own entry highlighted. Nothing in the pause menu.
+- Kid mode: no free-text names, only generated nicknames such as "Flinker
+  Fuchs 42".
+- Entering is optional. An entry made offline is queued and sent later.
+- Privacy: only nickname, score, distance, run time and date are stored (no
+  IP address, no account); a short note in the game says so.
+- The server rejects names that break the rules or the word filter and runs
+  that the game cannot produce (too fast, too many points), and limits how
+  often one device can send. It is not cheat-proof, which is fine for
+  friends and family.
+
 ## Updates, install hint and what's new
 
 - **New version:** when the service worker has fully cached a newer
