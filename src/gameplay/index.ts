@@ -29,7 +29,7 @@ import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
 import { AirTrickScore } from './air-trick';
 import { AutoDrink } from './auto-drink';
-import { bail, landedLate } from './bail';
+import { bail, duckLanding, landedLate } from './bail';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
@@ -201,10 +201,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         if (route.zoneAt(ctx.state.distance) !== e.index) route.snap(e.index, ctx.state.distance);
       });
       ctx.bus.on('land', (e) => {
-        // A kickflip still turning on the touchdown (bail.ts): no points, and a bail unless down is still held (a duck landing).
+        // A kickflip still turning on the touchdown (bail.ts): no points, and a bail unless it is a duck landing.
         if (landedLate(e.flipLeft)) {
           airTrick.drop();
-          if (!ctx.input.duck.held) bail(ctx);
+          if (!duckLanding(ctx)) bail(ctx);
         }
         breakCombo(ctx.state);
         stunts.landed(ctx);

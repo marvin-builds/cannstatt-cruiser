@@ -21,6 +21,9 @@ describe('drunk human bot', () => {
       const crashed = runs.filter((r) => r.crashes.length > 0);
       expect(runs.every((r) => r.drunkSeconds > 5)).toBe(true);
       expect(crashed.length, JSON.stringify(crashed)).toBeLessThanOrEqual(2);
+      // ROADMAP 42: down held on a drunk touchdown is no duck landing (bail.ts), but the bot only presses down
+      // under something overhead, which the drunk spawner never lays, so it never starts a flip to bail on.
+      expect(runs.flatMap((r) => r.crashes).filter((c) => c.kind === 'bail')).toEqual([]);
       // Not an empty street: the drunk phase has obstacles to jump.
       const cleared = runs.reduce((sum, r) => sum + r.cleared, 0);
       expect(cleared / runs.length, `${cleared} cleared`).toBeGreaterThanOrEqual(1);

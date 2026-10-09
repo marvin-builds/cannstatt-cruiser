@@ -433,6 +433,30 @@ describe('kickflip bail (ROADMAP 41)', () => {
     expect(tricks).toEqual([]);
   });
 
+  /** Down held on the street (long enough for core's drunk delay to deliver it), then a landing `flipLeft` ticks late. */
+  function landLateWithDownHeld(game: Game, flipLeft: number): void {
+    game.buttons.duck.press('test');
+    tick(game, 40);
+    game.bus.emit('land', { impact: 0, flipLeft });
+  }
+
+  it('while drunk down held on the touchdown is no duck landing: the late flip bails (nothing overhead to duck under)', () => {
+    const game = trickGame().game;
+    const crashes = record(game, 'crash');
+    game.state.drunkTimer = 20;
+    const health = game.state.health;
+    landLateWithDownHeld(game, KICKFLIP_BAIL_GRACE_TICKS + 1);
+    expect(crashes).toEqual([{ entityId: -1, kind: 'bail', health: health - 1 }]);
+  });
+
+  it('while chilled down held on the touchdown is still a duck landing: no bail', () => {
+    const game = trickGame().game;
+    const crashes = record(game, 'crash');
+    game.state.chillTimer = 20;
+    landLateWithDownHeld(game, KICKFLIP_BAIL_GRACE_TICKS + 1);
+    expect(crashes).toEqual([]);
+  });
+
   it('a ledge catch with the flip still turning never bails', () => {
     const { game, trick } = trickGame();
     const tricks = record(game, 'airTrick');
