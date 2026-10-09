@@ -20,6 +20,18 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.1',
+    date: '2026-10-09',
+    items: [
+      'Neuer Skatepark NorDIY in Cannstatt',
+      'High Five mit E oder dem Knopf',
+      'Session-Bonus für Tricks im Park',
+      'Kickflip in der Luft mit Pfeil runter',
+      'Musik aus der Boombox im Park',
+      'Kleinere Hinweise am Handy hochkant',
+    ],
+  },
+  {
     version: '2026-10-08.8',
     date: '2026-10-08',
     items: [
