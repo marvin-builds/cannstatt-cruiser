@@ -201,4 +201,7 @@ Wave 5b additionally covers 9 (player) and 10 (player + gameplay + ui popup + au
 - Stunt Wave B committed locally (4bbc825, 1031bb4, 70752ba, fbe4d4f), not pushed; live is 2026-10-08.8.
 - NorDIY wave done (e77775e gameplay, ee5b007 world, f5efcdc ui, 7481db6 audio, 1ccd00f docs); deployed as 2026-10-09.1 together with Stunt Wave B. USER 2026-10-09: push whenever a verified state makes sense.
 - Backlog minors: spawner hangs if speed is pinned to 0 from the first tick (test-only); concrete bank art mostly hidden behind the kicker wedge; UI duplicates the high five reach constant.
-- Next: item 33, final playtest + fix round, highscore (34).
+- Item 33 done (combos: pipeUp, pipeStairs, railBenchRail, benchHopRail; human bot 0 -> 1 crash in 60 min from an rng shift, 0 -> 0 at full difficulty). Deployed as 2026-10-09.2.
+- Backlog: docs for combos.ts, line-guide.ts, PlanOptions.template, window.__gameplay.pattern and scenarios/combos.ts; drunk replan budget overrun (spawner.test.ts tolerates one tick per 6 seeds, real fix belongs in the spawner); guide stars sit a bit off the arc at the top speed of a pattern's range.
+- USER question 2026-10-09: the kickflip by swiping down practically never works on street jumps (taps never qualify, a full jump only while the jump finger still holds). Proposal waiting for the user's answer: jump-finger drag down counts as the trick, a shorter street kickflip, maybe a one-time hint.
+- Next: final playtest + fix round, highscore (34).

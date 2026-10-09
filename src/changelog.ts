@@ -20,6 +20,11 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.2',
+    date: '2026-10-09',
+    items: ['Neue Grind-Kombis mit Sternen'],
+  },
+  {
     version: '2026-10-09.1',
     date: '2026-10-09',
     items: [
