@@ -3,7 +3,7 @@ import { GROUND_Y, PLAYER_X } from '../core/config';
 import { Game } from '../core/game';
 import type { GameEvents } from '../types';
 import { createPlayerSystem } from './index';
-import { addRail, crash, createPlayerTestGame, jumpApex, startGrind, tick } from './testing';
+import { addRail, crash, createPlayerTestGame, jumpApex, playerController, startGrind, tick } from './testing';
 import { CRASH_TIME, HITBOX_W, INVULNERABLE_TIME } from './tuning';
 
 function record<K extends keyof GameEvents>(game: Game, name: K): GameEvents[K][] {
@@ -212,6 +212,22 @@ describe('crash contract', () => {
 
     tick(game, Math.ceil((INVULNERABLE_TIME - CRASH_TIME) * 60) + 1);
     expect(game.state.player.invulnerableTimer).toBe(0);
+  });
+
+  it('a kickflip bail (kind bail, entityId -1) throws the skater off like an obstacle crash', () => {
+    const game = createPlayerTestGame();
+    tick(game, 5);
+    game.state.health -= 1;
+    game.bus.emit('crash', { entityId: -1, kind: 'bail', health: game.state.health });
+    expect(game.state.player.grounded).toBe(false);
+    expect(game.state.player.vy).toBeLessThan(0);
+    tick(game, 1);
+    expect(game.state.player.state).toBe('crash');
+    expect(playerController(game).view(game.state.player).binCrash).toBe(false);
+    expect(game.state.player.invulnerableTimer).toBeGreaterThan(INVULNERABLE_TIME - 0.05);
+    tick(game, Math.ceil(CRASH_TIME * 60) + 1);
+    expect(game.state.player.state).not.toBe('crash');
+    expect(game.state.player.grounded).toBe(true);
   });
 
   it('ignores further crashes while invulnerable', () => {

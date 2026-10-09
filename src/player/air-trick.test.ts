@@ -5,7 +5,10 @@ import { airTicksLeft, airTrickTicks, canStartAirTrick } from './air-trick';
 import { BD } from './art';
 import { poseAt, timelineFor } from './poses';
 import { addRail, crash, createPlayerTestGame, playerController, startGrind, tick } from './testing';
-import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, HITBOX_H, STREET_AIR_TRICK_MIN_AIR, STREET_AIR_TRICK_TICKS } from './tuning';
+import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, HITBOX_H, STREET_AIR_TRICK_TICKS } from './tuning';
+
+/** Ticks in which a street kickflip shows every flip frame (see poses.ts `kickflip`). */
+const FLIP_FRAMES_TICKS = 8;
 
 /** Launch speeds gameplay uses (debug default 360, ledges 42..58 px up -> ~382..433). */
 const LAUNCHES = [330, 360, 382, 433];
@@ -169,10 +172,14 @@ describe('air trick start rule', () => {
 });
 
 /** Street jump: action held `hold` ticks (Infinity: the whole jump), down pressed before tick `pressAt` of the flight. */
-function streetJump(hold: number, pressAt: number | null): { flight: Sample[]; lands: number[] } {
+function streetJump(hold: number, pressAt: number | null): { flight: Sample[]; lands: number[]; flipLefts: (number | undefined)[] } {
   const game = createPlayerTestGame();
   const lands: number[] = [];
-  game.bus.on('land', (e) => lands.push(e.impact));
+  const flipLefts: (number | undefined)[] = [];
+  game.bus.on('land', (e) => {
+    lands.push(e.impact);
+    flipLefts.push(e.flipLeft);
+  });
   tick(game, 3);
   game.buttons.action.press('test');
   const flight = fly(game, (i) => {
@@ -180,7 +187,7 @@ function streetJump(hold: number, pressAt: number | null): { flight: Sample[]; l
     if (i === pressAt) game.buttons.duck.press('test');
     if (pressAt !== null && i === pressAt + 1) game.buttons.duck.release('test');
   });
-  return { flight, lands };
+  return { flight, lands, flipLefts };
 }
 
 /** Flight ticks at which a down press starts the trick on a street jump with `hold`. */
@@ -228,15 +235,76 @@ describe('street kickflip window', () => {
   });
 });
 
+/** Flight tick of the apex (the last tick still rising) of a street jump with `hold`. */
+function apexTick(hold: number): number {
+  const flight = streetJump(hold, null).flight;
+  return flight.findIndex((s) => s.vy >= 0);
+}
+
+describe('street kickflip risk (ROADMAP 41)', () => {
+  it('land reports flipLeft 0 on a jump without a flip', () => {
+    expect(streetJump(Infinity, null).flipLefts).toEqual([0]);
+  });
+
+  it('an early start on a full and on a medium street jump finishes before touchdown (flipLeft 0)', () => {
+    for (const hold of [Infinity, 15, 10]) {
+      const first = streetStarts(hold)[0]!;
+      const jump = streetJump(hold, first);
+      expect(jump.flight[first]!.airTrick, `hold ${hold}`).toBe(true);
+      expect(jump.flipLefts, `hold ${hold}`).toEqual([0]);
+    }
+  });
+
+  it('a start at the apex of a medium jump still finishes', () => {
+    for (const hold of [10, 15]) {
+      const apex = apexTick(hold);
+      const jump = streetJump(hold, apex);
+      expect(jump.flight[apex]!.airTrick, `hold ${hold}`).toBe(true);
+      expect(jump.flipLefts, `hold ${hold}`).toEqual([0]);
+    }
+  });
+
+  it('a late start is allowed and lands with the flip still turning (flipLeft > 3)', () => {
+    for (const hold of [Infinity, 15, 10]) {
+      const last = streetStarts(hold).at(-1)!;
+      const jump = streetJump(hold, last);
+      expect(jump.flight[last]!.airTrick, `hold ${hold}`).toBe(true);
+      expect(jump.flipLefts[0], `hold ${hold}`).toBeGreaterThan(3);
+      // flipLeft is what the flip still needed on the touchdown tick.
+      const ran = jump.flight.length - 1 - last;
+      expect(jump.flipLefts, `hold ${hold}`).toEqual([STREET_AIR_TRICK_TICKS - ran]);
+    }
+  });
+
+  it('a launch kickflip never lands turning (flipLeft 0)', () => {
+    for (const v of LAUNCHES) {
+      const game = createPlayerTestGame();
+      const flipLefts: (number | undefined)[] = [];
+      game.bus.on('land', (e) => flipLefts.push(e.flipLeft));
+      tick(game, 3);
+      launch(game, v);
+      // Down tapped every other tick: a new flip starts whenever the launch rule allows one.
+      fly(game, (i) => {
+        if (i % 2 === 0) game.buttons.duck.press('test');
+        else game.buttons.duck.release('test');
+      });
+      expect(game.state.player.grounded).toBe(true);
+      expect(flipLefts, `launch ${v}`).toEqual([0]);
+    }
+  });
+});
+
 describe('canStartAirTrick (pure rule)', () => {
-  it('a launch needs the full trick air time, a street jump only the height and STREET_AIR_TRICK_MIN_AIR', () => {
+  it('a launch needs the full trick air time, a street jump only AIR_TRICK_HEIGHT (a late start is a risk)', () => {
     const y = GROUND_Y - 30;
     // Falling from rest 30 px up: about 13 ticks of air left.
-    const left = airTicksLeft(y, 0);
-    expect(left).toBeGreaterThanOrEqual(STREET_AIR_TRICK_MIN_AIR);
-    expect(left).toBeLessThan(AIR_TRICK_TICKS);
+    expect(airTicksLeft(y, 0)).toBeLessThan(AIR_TRICK_TICKS);
     expect(canStartAirTrick(y, 0, false)).toBe(true);
     expect(canStartAirTrick(y, 0, true)).toBe(false);
+    // Falling fast just at the height: far too little air left, it starts anyway.
+    const low = GROUND_Y - AIR_TRICK_HEIGHT;
+    expect(airTicksLeft(low, 300)).toBeLessThan(STREET_AIR_TRICK_TICKS / 2);
+    expect(canStartAirTrick(low, 300, false)).toBe(true);
     expect(canStartAirTrick(GROUND_Y - AIR_TRICK_HEIGHT + 1, -200, false)).toBe(false);
     expect(canStartAirTrick(GROUND_Y - 10, -400, true)).toBe(true);
     expect(airTrickTicks(true)).toBe(AIR_TRICK_TICKS);
@@ -310,13 +378,13 @@ describe('air trick look', () => {
     expect(playerController(game).view(game.state.player).airTrick).toBeCloseTo((3 * TICK_DT * STREET_AIR_TRICK_TICKS) / AIR_TRICK_TICKS, 9);
   });
 
-  it('flips the board through every flip frame within the first STREET_AIR_TRICK_MIN_AIR + 1 ticks of a street kickflip', () => {
+  it('flips the board through every flip frame within the first FLIP_FRAMES_TICKS + 1 ticks of a street kickflip', () => {
     const game = createPlayerTestGame();
     tick(game, 3);
     game.buttons.action.press('test');
     while (!playerController(game).view(game.state.player).airTrick && !game.state.player.airTrick) pressDown(game);
     const boards = new Set<number>();
-    for (let i = 0; i <= STREET_AIR_TRICK_MIN_AIR; i++) {
+    for (let i = 0; i <= FLIP_FRAMES_TICKS; i++) {
       const view = playerController(game).view(game.state.player);
       boards.add(poseAt('kickflip', view.airTrick!).board);
       tick(game);

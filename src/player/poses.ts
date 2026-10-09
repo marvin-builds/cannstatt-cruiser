@@ -83,8 +83,7 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
   // Air trick, timed for the street kickflip (STREET_AIR_TRICK_TICKS = 0.2 s; the launch kickflip
   // plays it slower, see AnimView.airTrick): the skater pops and tucks high (knees up, arms out)
   // while the board drops clear of his feet and flips once around its long axis (grip on edge,
-  // upside down, the bright underside on edge) within STREET_AIR_TRICK_MIN_AIR ticks, so a late
-  // start still shows the whole flip before the landing; then he catches it flat.
+  // upside down, the bright underside on edge) within its first 8 ticks; then he catches it flat.
   kickflip: {
     loop: false,
     steps: [

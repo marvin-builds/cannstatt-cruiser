@@ -228,9 +228,10 @@ export class SkaterController {
   /**
    * Gameplay reported a collision (crash) with entity `entityId` of `kind`.
    * Ignored while invulnerable. A bin dives head first into it on the rolling
-   * board (no hop); every other kind throws the skater off.
+   * board (no hop); every other kind, also a kickflip 'bail', throws the
+   * skater off.
    */
-  crash(state: GameState, kind?: EntityKind, entityId = -1): void {
+  crash(state: GameState, kind?: EntityKind | 'bail', entityId = -1): void {
     const p = state.player;
     if (p.invulnerableTimer > 0 || this.crashing) return;
     if (p.grinding) this.leaveRail(p, true);
@@ -437,9 +438,10 @@ export class SkaterController {
     this.landTimer = T.LAND_TIME;
     this.hardLanding = impact >= T.HARD_LANDING_IMPACT;
     this.cruiseTime = 0;
-    // A street kickflip still running is caught on touch-down (looks only, the landing is the same).
+    // A street kickflip still running ends on touch-down (the landing is the same); gameplay judges the bail from flipLeft.
+    const flipLeft = this.airTrickTick >= 0 ? this.airTrickLength - this.airTrickTick : 0;
     this.endAirTrick(p);
-    this.bus.emit('land', { impact });
+    this.bus.emit('land', { impact, flipLeft });
     this.tryJump(p);
   }
 

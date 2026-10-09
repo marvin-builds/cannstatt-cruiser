@@ -49,6 +49,11 @@ in any slice's Vitest tests.
   tumble, lying, kneel, back on the board) for `CRASH_TIME` (1.0 s), ignores
   the action meanwhile, leaves a rail (emitting `grindEnd`), and sets
   `player.invulnerableTimer = INVULNERABLE_TIME` (1.5 s).
+- **Kickflip bail** (`kind === 'bail'`, `entityId` -1, ROADMAP 41): gameplay
+  emits it when a `land` reports a flip still turning (`flipLeft`); the
+  player plays the normal throw-off crash above (the board tumbles ahead).
+  It arrives on the landing tick, so the crash hop lifts the skater off the
+  street at once. Like every crash it is ignored while invulnerable.
 - **Bin crash** (`kind === 'bin'`): instead of being thrown off, the skater
   dives head first into the bin and keeps rolling on the ground (no crash
   hop): the open bin sits on the deck with his legs kicking out of the top
@@ -75,8 +80,9 @@ in any slice's Vitest tests.
   (clears 12-14 px obstacles), full hold ~52 px (clears 35 px and reaches
   rails). Jump buffer 120 ms, coyote time 80 ms. All numbers live in
   `tuning.ts`.
-- Events: `jump { velocity }` on take-off, `land { impact }` (downward
-  speed) on touching the ground.
+- Events: `jump { velocity }` on take-off, `land { impact, flipLeft }`
+  (downward speed; ticks the running kickflip still needed on this tick, 0
+  when none ran or it finished) on touching the ground.
 
 ## Chill (joint pickup)
 
@@ -189,19 +195,25 @@ in any slice's Vitest tests.
     `GRAVITY`, `MAX_FALL_SPEED`) until `y >= GROUND_Y` and returns the number
     of further ticks until the landing tick. The hold boost only lowers
     gravity, so the real flight is never shorter than predicted.
-  - **street kickflip:** at least `AIR_TRICK_HEIGHT` (20 px) above the street
-    and `airTicksLeft(y, vy) >= STREET_AIR_TRICK_MIN_AIR` (8).
+  - **street kickflip:** at least `AIR_TRICK_HEIGHT` (20 px) above the street,
+    however little air is left (ROADMAP 41: a late start is the player's
+    risk, it may land still turning and gameplay calls that a bail).
   Gameplay can import `canStartAirTrick`, `airTicksLeft` and `airTrickTicks`
   to mirror the rule. Otherwise the press is ignored (not remembered). A tap
   hop never qualifies (apex ~17 px); a full-hold street jump qualifies for
-  ~28 ticks (from ~20 px up in the rise to ~8 ticks before the landing), a
-  10- / 15-tick hold for ~17 / ~23 ticks; every launch right after the take-off.
+  ~31 ticks (from ~20 px up in the rise to ~5 ticks before the landing), of
+  which the first ~24 finish in the air (`flipLeft` 0) and the last ~7 land
+  with `flipLeft` 1..7; a 10-tick hold: ~19 ticks, ~13 safe (also a start at
+  the apex), the last ~6 land with 1..6; a 5-tick hold: ~10 ticks, ~5 safe.
+  Every launch qualifies right after the take-off.
 - **Duration:** `player.airTrick` is true on the start tick and the next
   `airTrickTicks(launched) - 1` ticks (`AIR_TRICK_TICKS` = 21, 0.35 s after a
   launch, always over before the landing tick; `STREET_AIR_TRICK_TICKS` = 12,
   0.2 s otherwise), then false. A street kickflip still running at the street
   landing ends on the landing tick (`player.airTrick` is false on it, like
-  after a rail catch); the landing itself is unchanged. A press while it runs
+  after a rail catch); the landing physics are unchanged and `land.flipLeft`
+  reports the ticks it still needed (`STREET_AIR_TRICK_TICKS` minus the ticks
+  it ran). A rail or ledge catch never reports one (no `land`). A press while it runs
   is ignored; after it ended, another press starts a new one if the rule
   above allows it.
 - **Cut short:** a `grindStart` (rail or ledge catch) ends it at once, in the
@@ -210,17 +222,17 @@ in any slice's Vitest tests.
   while grounded or grinding. To score it, gameplay can watch it go from true
   to false: it ended completed unless a crash caused it (the skater then lands
   on the street or is on the ledge it caught).
-- **Never harder:** physics, hitbox (the normal air tuck) and the landing are
+- **Same physics:** physics, hitbox (the normal air tuck) and the landing are
   identical with and without the trick, also for a street kickflip cut short
   by the landing (covered in `air-trick.test.ts`); down in the air never ducks.
+  The only risk is the bail gameplay judges from `land.flipLeft`.
 - **Look** (timeline `kickflip`, wins over the grab; `AnimView.airTrick` is
   its clock: seconds since the start, slowed by `STREET_AIR_TRICK_TICKS /
   AIR_TRICK_TICKS` for the launch kickflip): the skater pops and tucks high
   with the arms out while the board drops clear of his feet and turns once
   around its long axis (board frames `edgeGrip`, `upsideDown` with the wheels
   up, `edgeBottom` with the bright yellow/pink underside graphic) within the
-  first `STREET_AIR_TRICK_MIN_AIR` ticks of a street kickflip, so even a late
-  start shows the whole flip; then he catches it flat. Every overlay (carried
+  first 8 ticks of a street kickflip; then he catches it flat. Every overlay (carried
   item, joint / red eyes,
   bubble gum, item use, drunk look) works as in the air pose.
 
