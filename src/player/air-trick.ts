@@ -1,11 +1,17 @@
 /**
  * Air trick start rule (kickflip, down pressed in the air): pure functions so
- * gameplay's scoring can mirror them. The trick runs AIR_TRICK_TICKS ticks
- * and only starts when the remaining air time to the street lets it finish
- * before touching down, so it never makes a landing harder.
+ * gameplay's scoring can mirror them. The trick never touches the physics, so
+ * it never makes a landing harder.
+ *
+ * - After a kicker launch the kickflip runs AIR_TRICK_TICKS and only starts
+ *   when the remaining air time lets it finish before touching down.
+ * - On any other jump (a street jump) it runs STREET_AIR_TRICK_TICKS and
+ *   starts from AIR_TRICK_HEIGHT above the street with at least
+ *   STREET_AIR_TRICK_MIN_AIR ticks of air left; a flip still running at
+ *   touch-down ends on the landing tick.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
-import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, GRAVITY, MAX_FALL_SPEED } from './tuning';
+import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, GRAVITY, MAX_FALL_SPEED, STREET_AIR_TRICK_MIN_AIR, STREET_AIR_TRICK_TICKS } from './tuning';
 
 /** Upper bound for the prediction (a very long flight is simply "long enough"). */
 const MAX_PREDICTED_TICKS = 600;
@@ -26,12 +32,18 @@ export function airTicksLeft(y: number, vy: number): number {
   return ticks;
 }
 
+/** Ticks the kickflip runs: the full one after a kicker launch, the quick street one otherwise. */
+export function airTrickTicks(launched: boolean): number {
+  return launched ? AIR_TRICK_TICKS : STREET_AIR_TRICK_TICKS;
+}
+
 /**
- * Down pressed in the air (after this tick's physics) starts the trick: big
- * air (any kicker launch, or a jump GRAB_HEIGHT above its take-off) or at
- * least AIR_TRICK_HEIGHT above the street, and at least AIR_TRICK_TICKS of
- * air time left, so the trick is over by the landing tick.
+ * Down pressed in the air (after this tick's physics) starts the trick:
+ * after a launch with at least AIR_TRICK_TICKS of air time left, on a street
+ * jump at least AIR_TRICK_HEIGHT above the street with at least
+ * STREET_AIR_TRICK_MIN_AIR ticks left.
  */
-export function canStartAirTrick(y: number, vy: number, bigAir: boolean): boolean {
-  return (bigAir || GROUND_Y - y >= AIR_TRICK_HEIGHT) && airTicksLeft(y, vy) >= AIR_TRICK_TICKS;
+export function canStartAirTrick(y: number, vy: number, launched: boolean): boolean {
+  if (launched) return airTicksLeft(y, vy) >= AIR_TRICK_TICKS;
+  return GROUND_Y - y >= AIR_TRICK_HEIGHT && airTicksLeft(y, vy) >= STREET_AIR_TRICK_MIN_AIR;
 }

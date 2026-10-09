@@ -9,7 +9,7 @@
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, ItemAction, PlayerAnim, PlayerState, Rect } from '../types';
-import { canStartAirTrick } from './air-trick';
+import { airTrickTicks, canStartAirTrick } from './air-trick';
 import { BinCrash } from './bin';
 import * as T from './tuning';
 import { ITEM_USE_TIME, MugToss, TOSS_AT } from './use';
@@ -37,7 +37,11 @@ export interface AnimView {
   onKicker: boolean;
   /** Px the ramp surface lifts the drawn skater while onKicker (0 elsewhere); y stays GROUND_Y. */
   kickerLift: number;
-  /** Seconds since the air trick (kickflip) started, or null when none runs. */
+  /**
+   * Clock of the kickflip timeline (seconds since the air trick started,
+   * slowed for the longer launch kickflip so its flip spans the same share of
+   * the trick), or null when none runs.
+   */
   airTrick: number | null;
   /** The item being used (itemUsed) and the seconds since, or null. */
   use: ItemUse | null;
@@ -83,11 +87,15 @@ export class SkaterController {
   /** y the skater last left the ground or a rail from (big air is measured from it). */
   private takeOffY = GROUND_Y;
   private bigAir = false;
+  /** In the air after a kicker launch (the full kickflip); cleared on any support or crash. */
+  private launched = false;
   private hardLanding = false;
   private onKicker = false;
   private kickerLift = 0;
   /** Ticks since the air trick started, or -1 when none runs. */
   private airTrickTick = -1;
+  /** Ticks the running air trick lasts (airTrickTicks). */
+  private airTrickLength = 0;
   private catchTimer = 0;
   /** Grind trick held (down on the rail) and seconds since it started. */
   private tricking = false;
@@ -121,10 +129,12 @@ export class SkaterController {
     this.takeOff = null;
     this.takeOffY = GROUND_Y;
     this.bigAir = false;
+    this.launched = false;
     this.hardLanding = false;
     this.onKicker = false;
     this.kickerLift = 0;
     this.airTrickTick = -1;
+    this.airTrickLength = 0;
     this.catchTimer = 0;
     this.tricking = false;
     this.trickTime = 0;
@@ -154,7 +164,7 @@ export class SkaterController {
       hardLanding: this.hardLanding && this.anim === 'land',
       onKicker: this.onKicker,
       kickerLift: this.kickerLift,
-      airTrick: this.airTrickTick >= 0 ? this.airTrickTick * TICK_DT : null,
+      airTrick: this.airTrickTick >= 0 ? (this.airTrickTick * TICK_DT * T.STREET_AIR_TRICK_TICKS) / this.airTrickLength : null,
     };
   }
 
@@ -223,6 +233,7 @@ export class SkaterController {
     this.crashTimer = T.CRASH_TIME;
     this.takeOff = null;
     this.bigAir = false;
+    this.launched = false;
     this.catchTimer = 0;
     this.use = null;
     this.setTrick(p, false);
@@ -288,16 +299,17 @@ export class SkaterController {
   /** Starts the air trick if none runs and canStartAirTrick allows it (airborne, not on a rail, not crashing). */
   private tryAirTrick(p: PlayerState): void {
     if (this.airTrickTick >= 0 || p.grounded || p.grinding || this.crashing) return;
-    if (!canStartAirTrick(p.y, p.vy, this.bigAir)) return;
+    if (!canStartAirTrick(p.y, p.vy, this.launched)) return;
     this.airTrickTick = 0;
+    this.airTrickLength = airTrickTicks(this.launched);
     p.airTrick = true;
   }
 
-  /** Counts the running air trick on; it ends after AIR_TRICK_TICKS (before the landing tick, see air-trick.ts). */
+  /** Counts the running air trick on; it ends after its length or on the landing (see air-trick.ts). */
   private advanceAirTrick(p: PlayerState): void {
     if (this.airTrickTick < 0) return;
     this.airTrickTick++;
-    if (this.airTrickTick >= T.AIR_TRICK_TICKS) this.endAirTrick(p);
+    if (this.airTrickTick >= this.airTrickLength) this.endAirTrick(p);
   }
 
   /** Ends the air trick at once: done, or cut short by a rail / ledge catch or a crash. */
@@ -367,13 +379,16 @@ export class SkaterController {
     this.buffer = 0;
     p.grounded = false;
     p.vy = -takeOff.velocity;
+    this.launched = takeOff.launch;
     if (takeOff.launch) this.bigAir = true;
   }
 
-  /** Big air starts with a launch or GRAB_HEIGHT above the take-off and ends on any support or crash. */
+  /** Big air starts with a launch or GRAB_HEIGHT above the take-off and ends on any support or crash (so does `launched`). */
   private updateBigAir(p: PlayerState): void {
-    if (p.grounded || p.grinding || this.crashing) this.bigAir = false;
-    else if (this.takeOffY - p.y >= T.GRAB_HEIGHT) this.bigAir = true;
+    if (p.grounded || p.grinding || this.crashing) {
+      this.bigAir = false;
+      this.launched = false;
+    } else if (this.takeOffY - p.y >= T.GRAB_HEIGHT) this.bigAir = true;
   }
 
   private ride(state: GameState): void {
@@ -416,6 +431,8 @@ export class SkaterController {
     this.landTimer = T.LAND_TIME;
     this.hardLanding = impact >= T.HARD_LANDING_IMPACT;
     this.cruiseTime = 0;
+    // A street kickflip still running is caught on touch-down (looks only, the landing is the same).
+    this.endAirTrick(p);
     this.bus.emit('land', { impact });
     this.tryJump(p);
   }

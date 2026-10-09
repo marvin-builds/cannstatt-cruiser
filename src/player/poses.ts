@@ -80,15 +80,18 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 1, body: B.grab, board: BD.flat, bodyDy: -2, boardDy: -2 },
     ],
   },
-  // Air trick (AIR_TRICK_TICKS = 0.35 s): the skater tucks high (arms out) while the board flips once
-  // around its long axis under his feet (on edge, upside down, on edge), then he catches it flat.
+  // Air trick, timed for the street kickflip (STREET_AIR_TRICK_TICKS = 0.2 s; the launch kickflip
+  // plays it slower, see AnimView.airTrick): the skater pops and tucks high (knees up, arms out)
+  // while the board drops clear of his feet and flips once around its long axis (grip on edge,
+  // upside down, the bright underside on edge) within STREET_AIR_TRICK_MIN_AIR ticks, so a late
+  // start still shows the whole flip before the landing; then he catches it flat.
   kickflip: {
     loop: false,
     steps: [
-      { t: 0.05, body: B.airRise, board: BD.noseUp, bodyDy: -2 },
-      { t: 0.06, body: B.airRise, board: BD.edgeGrip, bodyDy: -2, boardDy: -1 },
-      { t: 0.06, body: B.airRise, board: BD.upsideDown, bodyDy: -2, boardDy: -1 },
-      { t: 0.06, body: B.airRise, board: BD.edgeBottom, bodyDy: -2, boardDy: -1 },
+      { t: 0.016, body: B.airRise, board: BD.pop, bodyDy: -2 },
+      { t: 0.033, body: B.airRise, board: BD.edgeGrip, bodyDy: -3, boardDy: 1 },
+      { t: 0.05, body: B.airRise, board: BD.upsideDown, bodyDy: -4, boardDy: 2 },
+      { t: 0.033, body: B.airRise, board: BD.edgeBottom, bodyDy: -3, boardDy: 1 },
       { t: 1, body: B.airRise, board: BD.flat, bodyDy: -1 },
     ],
   },

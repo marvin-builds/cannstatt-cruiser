@@ -99,10 +99,20 @@ export const HARD_LANDING_IMPACT = 280;
  */
 export const KICKER_WHEEL_REACH = 8;
 
-/** Air trick (kickflip, down pressed in the air): ticks it runs (0.35 s at 60 Hz). */
+/** Air trick (kickflip, down pressed in the air) after a kicker launch: ticks it runs (0.35 s at 60 Hz). */
 export const AIR_TRICK_TICKS = 21;
 /**
- * Height above the street from which down starts the air trick (always after
- * a launch). A tap hop never has the air time left for it anyway.
+ * The quicker street kickflip (any jump that is no launch): ticks it runs
+ * (0.2 s). It may still run at touch-down; the landing then ends it.
+ */
+export const STREET_AIR_TRICK_TICKS = 12;
+/**
+ * A street kickflip starts only with at least this many ticks of air time
+ * left, so most of the flip shows before the landing cuts it short.
+ */
+export const STREET_AIR_TRICK_MIN_AIR = 8;
+/**
+ * Height above the street from which down starts the street kickflip (a
+ * launch has no such limit). A tap hop (apex ~17 px) never reaches it.
  */
 export const AIR_TRICK_HEIGHT = 20;

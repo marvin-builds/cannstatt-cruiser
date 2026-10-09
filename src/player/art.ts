@@ -37,6 +37,8 @@ export const PALETTE = {
   T: '#6c717b', // truck shade
   o: '#f0902a', // wheel
   O: '#b45d16', // wheel shade
+  y: '#ffd23a', // deck underside graphic (shows in the kickflip)
+  x: '#ff4f8b', // deck underside graphic, second colour
 } as const;
 
 export const BODY_W = 24;
@@ -682,11 +684,11 @@ const EDGE_GRIP_ART = rowsFromString(`
   ..........................
 `);
 
-/** The deck on edge (kickflip), bottom side: wood with the trucks and the near wheels on it. */
+/** The deck on edge (kickflip), bottom side: the bright graphic with the trucks and the near wheels on it. */
 const EDGE_BOTTOM_ART = rowsFromString(`
   .kkkkkkkkkkkkkkkkkkkkkkkk.
-  kDdooTTooddddddddooTToodDk
-  kDdOOTTOOddddddddOOTTOODDk
+  kyyooTTooyyxxyyxxooTTooyyk
+  kxxOOTTOOxxyyxxyyOOTTOOxxk
   .kkkkkkkkkkkkkkkkkkkkkkkk.
   ..........................
   ..........................
