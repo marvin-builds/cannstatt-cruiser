@@ -64,8 +64,10 @@ function setup(storage = new MemoryStorage()) {
   return { game, backend, storage, cues: () => backend.played.map((p) => p.cue) };
 }
 
-function playing() {
+/** A running game; kid mode is the default, `adult` switches it off for the adult variants. */
+function playing({ adult = false } = {}) {
   const s = setup();
+  s.game.state.kidMode = !adult;
   s.game.commands.startRun();
   return s;
 }
@@ -76,7 +78,7 @@ describe('audio system: event to sound mapping', () => {
     ['land', { impact: 200 }, 'land'],
     ['starCollected', { entityId: 1, stars: 3 }, 'star'],
     ['crash', { entityId: 1, kind: 'bin', health: 2 }, 'crash'],
-    ['chillStart', { entityId: 1, duration: 8 }, 'chill'],
+    ['chillStart', { entityId: 1, duration: 8 }, 'bubble'],
   ] as const)('%s plays %s', (event, payload, cue) => {
     const { game, cues } = playing();
     game.bus.emit(event, payload as never);
@@ -193,12 +195,13 @@ describe('audio system: unlock and mute', () => {
 });
 
 describe('audio system: chill', () => {
-  it('plays the chill sound on chillStart, inaudible while muted', () => {
+  it('plays the adult chill sound on chillStart, inaudible while muted', () => {
     const backend = new FakeBackend();
     const heard: [string, boolean][] = [];
     const game = new Game({
       systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
     });
+    game.state.kidMode = false;
     game.commands.startRun();
     game.bus.emit('chillStart', { entityId: 1, duration: 8 });
     game.commands.setMuted(true);
@@ -222,6 +225,17 @@ describe('audio system: kid mode bubble gum', () => {
     game.commands.startRun();
     return { game, backend, heard };
   }
+
+  it('plays the bubble sound by default, as kid mode is the default', () => {
+    const backend = new FakeBackend();
+    const heard: string[] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name) => heard.push(name) })],
+    });
+    game.commands.startRun();
+    game.bus.emit('chillStart', { entityId: 1, duration: 6 });
+    expect(heard).toEqual(['bubble']);
+  });
 
   it('plays the sweet bubble sound instead of the chill sound on chillStart in kid mode', () => {
     const { game, heard } = listening(true);
@@ -402,12 +416,13 @@ describe('audio system: cleared obstacles', () => {
 });
 
 describe('audio system: stomp and carried items', () => {
-  function listening() {
+  function listening(kidMode = true) {
     const backend = new FakeBackend();
     const heard: [string, boolean][] = [];
     const game = new Game({
       systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
     });
+    game.state.kidMode = kidMode;
     game.commands.startRun();
     return { game, backend, heard };
   }
@@ -440,9 +455,8 @@ describe('audio system: stomp and carried items', () => {
     expect(backend.muted).toBe(true);
   });
 
-  it('uses the same sounds in kid mode', () => {
-    const { game, heard } = listening();
-    game.state.kidMode = true;
+  it.each([true, false])('uses the same stomp and catch sounds with kid mode %s', (kidMode) => {
+    const { game, heard } = listening(kidMode);
     game.bus.emit('stomp', { entityId: 3, kind: 'vfbFan', item: 'gingerbread' });
     game.bus.emit('itemCaught', { item: 'gingerbread' });
     expect(heard.map(([name]) => name)).toEqual(['boing', 'hoppla', 'catch']);
@@ -456,9 +470,15 @@ describe('audio system: using items', () => {
     ['gingerbread', 'eat', 'munch'],
     ['football', 'throw', 'whoosh'],
   ] as const)('itemUsed %s (%s) plays %s', (item, action, cue) => {
-    const { game, cues } = playing();
+    const { game, cues } = playing({ adult: action === 'drink' });
     game.bus.emit('itemUsed', { item, action });
     expect(cues()).toEqual([cue]);
+  });
+
+  it('munches without a glug when kid mode turns the Maßkrug into a pretzel to eat', () => {
+    const { game, cues } = playing();
+    game.bus.emit('itemUsed', { item: 'beer', action: 'eat' });
+    expect(cues()).toEqual(['munch']);
   });
 
   it('adds no second whoosh when the ball entity appears', () => {
@@ -493,13 +513,13 @@ describe('audio system: using items', () => {
   });
 
   it('plays the woozy sting right away when drunk without a drink sound', () => {
-    const { game, backend } = playing();
+    const { game, backend } = playing({ adult: true });
     game.bus.emit('drunkStart', { duration: 6 });
     expect(backend.played).toEqual([{ cue: 'woozy', intensity: 1, delay: 0, pitch: 1 }]);
   });
 
   it('lets the woozy sting wait until the gulps are done', () => {
-    const { game, backend } = playing();
+    const { game, backend } = playing({ adult: true });
     game.bus.emit('itemUsed', { item: 'beer', action: 'drink' });
     game.bus.emit('drunkStart', { duration: 6 });
     const woozy = backend.played.find((p) => p.cue === 'woozy')!;
@@ -1024,9 +1044,8 @@ describe('audio system: NorDIY park', () => {
     expect(cues()).toEqual(['highFive']);
   });
 
-  it('sounds the same in kid mode', () => {
-    const { game, cues } = playing();
-    game.state.kidMode = true;
+  it.each([false, true])('sounds the same for session and high five with adult mode %s', (adult) => {
+    const { game, cues } = playing({ adult });
     game.bus.emit('sessionCheer', { level: 1 });
     game.bus.emit('sessionEnd', { level: 1, points: 100 });
     game.bus.emit('highFive', { entityId: 7, points: 50 });
