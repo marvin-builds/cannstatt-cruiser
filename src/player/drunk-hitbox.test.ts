@@ -6,6 +6,7 @@ import { addRail, createPlayerTestGame, startGrind, tick } from './testing';
 /** Hitboxes tick by tick: riding, then grinding a long rail. */
 function hitboxes(drunk: boolean): Rect[] {
   const game = createPlayerTestGame();
+  game.state.kidMode = false; // drunk is adult content (kid mode is the default)
   if (drunk) game.state.drunkTimer = 60;
   const seen: Rect[] = [];
   const run = (ticks: number) => {

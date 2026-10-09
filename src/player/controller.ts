@@ -183,7 +183,11 @@ export class SkaterController {
     this.queueTakeOff({ velocity: T.STOMP_BOUNCE_VELOCITY, launch: false });
   }
 
-  /** Gameplay: the skater rode onto a kicker (launch). Takes off with `velocity` on the next tick, no hold boost. */
+  /**
+   * Gameplay: jump pressed in a kicker's launch window (launch). Takes off
+   * with `velocity` on the next tick, no hold boost; an ollie already in the
+   * air (the same press) flies the arc of a launch from the street.
+   */
   launch(velocity: number): void {
     this.queueTakeOff({ velocity, launch: true });
   }
@@ -276,10 +280,9 @@ export class SkaterController {
     this.updateBigAir(p);
     // After the physics, from the post-move y/vy: down in the air is the air trick (never a duck).
     if (input.duck.pressed) this.tryAirTrick(p);
-    // The front wheel reaches the ramp first: lift from there on, crouch once the contact point is over it.
-    const kicker = p.grounded && !this.crashing ? kickerAhead(state) : null;
-    this.onKicker = kicker !== null && kicker.x <= p.x;
-    this.kickerLift = kicker ? rampLift(kicker, p.x + T.KICKER_WHEEL_REACH) : 0;
+    const look = p.grounded && !this.crashing ? kickerLook(state) : null;
+    this.onKicker = look?.onKicker ?? false;
+    this.kickerLift = look?.lift ?? 0;
 
     this.setAnim(this.pickAnim(p), dt);
     p.state = this.anim;
@@ -377,10 +380,13 @@ export class SkaterController {
     this.boosting = false;
     this.coyote = 0;
     this.buffer = 0;
+    p.vy = -(takeOff.launch ? launchVelocityAt(takeOff.velocity, p) : takeOff.velocity);
     p.grounded = false;
-    p.vy = -takeOff.velocity;
     this.launched = takeOff.launch;
-    if (takeOff.launch) this.bigAir = true;
+    if (!takeOff.launch) return;
+    this.bigAir = true;
+    // An ollie in the air becomes the launch: no ollie pose, the big air starts now.
+    this.sinceJump = Infinity;
   }
 
   /** Big air starts with a launch or GRAB_HEIGHT above the take-off and ends on any support or crash (so does `launched`). */
@@ -466,10 +472,43 @@ export function jumpVelocity(chill: boolean): number {
   return chill ? T.JUMP_VELOCITY * T.CHILL_JUMP_SCALE : T.JUMP_VELOCITY;
 }
 
-/** The kicker under the board: from its front wheel (KICKER_WHEEL_REACH ahead) to the contact point past its end, or null. */
-function kickerAhead(state: GameState): Entity | null {
+/**
+ * Launch speed for a launch whose take-off is `p` (ROADMAP 40): from the
+ * street `velocity` itself; from an ollie already in the air (the same press)
+ * the speed that tops out where a street launch would (no double jump, no
+ * lost height), and never slower than the ollie still rises.
+ */
+function launchVelocityAt(velocity: number, p: PlayerState): number {
+  const height = Math.max(0, GROUND_Y - p.y);
+  return Math.max(Math.sqrt(Math.max(0, velocity * velocity - 2 * T.GRAVITY * height)), -p.vy);
+}
+
+interface KickerLook {
+  /** The contact point is on the ramp: crouched, board nose up. */
+  onKicker: boolean;
+  /** Px the drawn skater is lifted (look only). */
+  lift: number;
+}
+
+/**
+ * Rolling over a kicker without a launch (look only, y stays GROUND_Y). The
+ * wheels sit KICKER_WHEEL_REACH ahead of and behind the contact point: the
+ * front wheel lifts the board up the ramp surface, the board rests on the lip
+ * until the rear wheel passes it, then the skater drops off like off a curb,
+ * with GRAVITY over the time the street needs to scroll by. Null when no
+ * kicker is under the board.
+ */
+function kickerLook(state: GameState): KickerLook | null {
   const { x } = state.player;
-  for (const e of state.entities) if (e.kind === 'kicker' && e.x <= x + T.KICKER_WHEEL_REACH && x <= e.x + e.w) return e;
+  const reach = T.KICKER_WHEEL_REACH;
+  for (const e of state.entities) {
+    if (e.kind !== 'kicker' || e.x > x + reach) continue;
+    const lip = e.x + e.w;
+    const top = rampLift(e, lip);
+    if (x - reach <= lip) return { onKicker: e.x <= x, lift: x + reach < lip ? rampLift(e, x + reach) : top };
+    const lift = lipDrop(top, x - reach - lip, state.speed);
+    if (lift > 0) return { onKicker: false, lift };
+  }
   return null;
 }
 
@@ -477,6 +516,13 @@ function kickerAhead(state: GameState): Entity | null {
 function rampLift(kicker: Rect, wheelX: number): number {
   const surface = Math.max(0, Math.min(kicker.h, Math.round((kicker.h * (wheelX - kicker.x)) / kicker.w)));
   return Math.max(0, surface - 1);
+}
+
+/** Height left of a fall from `height` off the lip, the rear wheel `past` px beyond it at street `speed` (0 once down). */
+function lipDrop(height: number, past: number, speed: number): number {
+  if (speed <= 0) return 0;
+  const t = past / speed;
+  return Math.max(0, Math.round(height - 0.5 * T.GRAVITY * t * t));
 }
 
 function findRail(state: GameState, id: number | null): Entity | undefined {
