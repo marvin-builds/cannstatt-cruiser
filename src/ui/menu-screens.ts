@@ -30,6 +30,7 @@ import {
   reloadParts,
   STEP_GAP,
   startPrompt,
+  submitLabel,
   titleHelp,
   toTitleLabel,
   toTitlePlate,
@@ -106,8 +107,8 @@ function drawInstallCard(r: RenderContext, card: Rect, kind: InstallCard): void 
   text(r, MENU_TEXT.iosHome, x, y, { color: UI.yellow });
 }
 
-/** The install hint's "×" button: an empty button face with a pixel cross sized to the button. */
-function drawDismiss(r: RenderContext, rect: Rect): void {
+/** A "×" button (install hint, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
+export function drawDismiss(r: RenderContext, rect: Rect): void {
   menuButton(r, rect, '');
   const scale = Math.max(1, Math.floor(rect.h / 12));
   const size = DISMISS_ICON.width * scale;
@@ -125,6 +126,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
     const label = toTitleLabel(display.touch, state.mode === 'gameover');
     menuButton(r, toTitlePlate(l.buttons.toTitle), label, UI.white, 1);
   }
+  if (l.buttons.submit) menuButton(r, l.buttons.submit, submitLabel(display.touch), UI.yellow);
 }
 
 /** The kid mode chip in the title's top-left corner: a heart and "Kindermodus" on a plate. */

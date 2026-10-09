@@ -58,7 +58,7 @@ const inside = (r: Rect, w: number) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w &&
 /** Every tap area of a screen: the buttons and the pause logo. */
 function buttons(l: MenuLayout): Rect[] {
   const b = l.buttons;
-  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo].filter((r): r is Rect => !!r);
+  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit].filter((r): r is Rect => !!r);
 }
 
 function hud(input: MenuInput, riding: boolean): Rect[] {
@@ -188,6 +188,22 @@ describe('menu screen layouts', () => {
         expect(l.blocks.has('title') && l.blocks.has('prompt') && l.blocks.has('row0'), input.label).toBe(true);
         // Portrait (44 px buttons) leaves the install hint to the title screen.
         if (!input.portrait) expect(!!l.buttons.dismiss, `${input.label} record=${newRecord}`).toBe(!!input.install);
+      }
+    }
+  });
+
+  it('game over: "Eintragen" fits with the results and the prompt when offered, all variants', () => {
+    for (const input of inputs()) {
+      for (const newRecord of [false, true]) {
+        const label = `${input.label} record=${newRecord}`;
+        const l = gameOverLayout({ ...input, newRecord, submit: true });
+        checkScreen({ ...input, label }, l, false);
+        const submit = l.buttons.submit;
+        expect(submit, label).not.toBeNull();
+        expect(l.blocks.get('submit'), label).toEqual(submit);
+        expect(l.blocks.has('prompt') && l.blocks.has('row0'), label).toBe(true);
+        expect(submit!.y, `${label}: under the score`).toBeGreaterThan(l.blocks.get('row0')!.y);
+        expect(gameOverLayout({ ...input, newRecord }).buttons.submit, label).toBeNull();
       }
     }
   });

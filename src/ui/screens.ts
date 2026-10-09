@@ -20,6 +20,7 @@ import {
   ICON_PLAY,
   ICON_SIZE,
   ICON_SOUND,
+  ICON_TROPHY,
   ITEM_ICONS,
   JOINT_ICON,
   type PixelIcon,
@@ -64,7 +65,10 @@ import {
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
 import { drawGameOver, drawPause, drawTitle, drawWhatsNew } from './menu-screens';
-import { currentMenu, portraitHintShown } from './menu-state';
+import { currentMenu, menuScreen, portraitHintShown } from './menu-state';
+import type { HighscoreFlow } from './highscore-flow';
+import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
+import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
@@ -109,6 +113,8 @@ export interface UiView {
   /** The hidden settings menu and the long press on the title logo that opens it. */
   settings: SettingsMenu;
   logoHold: LongPress;
+  /** The online list's screens and the "Eintragen" offer; null without an online list (tests, headless). */
+  scores: HighscoreFlow | null;
 }
 
 const MUTED: TextOptions = { color: UI.muted };
@@ -168,6 +174,15 @@ function drawButtons(r: RenderContext, view: UiView): void {
   if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
   hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
   if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
+  if (view.scores && menuScreen(r.state, view) === 'title') {
+    hudButton(r, m, titleTrophy(r.display.viewWidth, view.fullscreenAvailable, m), ICON_TROPHY, 0);
+  }
+}
+
+/** The "Bestenliste" or the name entry over the title or game over. */
+function drawScores(r: RenderContext, flow: HighscoreFlow): void {
+  if (flow.screen === 'list') drawScoreList(r, flow, scoreListLayout(r.display, flow.entries.length, flow.message !== null));
+  else drawScoreEntry(r, flow, scoreEntryLayout(r.display, flow.kid));
 }
 
 /** Score, combo, hearts, stars and the timer rows in the top-left corner, from the HUD model (no allocation). */
@@ -502,6 +517,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
   switch (r.state.mode) {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
+      else if (view.scores?.open) drawScores(r, view.scores);
       else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!);
       else drawTitle(r, view, menu!);
       break;
@@ -528,12 +544,13 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawPause(r, view, menu!);
       break;
     case 'gameover':
-      drawGameOver(r, view, menu!);
+      if (view.scores?.open) drawScores(r, view.scores);
+      else drawGameOver(r, view, menu!);
       break;
   }
   if (portraitHintShown(r, view)) {
     drawPortraitHint(r);
     return;
   }
-  if (!view.settings.open) drawButtons(r, view);
+  if (!view.settings.open && !view.scores?.open) drawButtons(r, view);
 }
