@@ -1,0 +1,12 @@
+# Cloudflare Worker for the Cannstatt Cruiser highscore list.
+# URL after deploy: https://cannstatt-cruiser-scores.marvinmai.workers.dev
+name = "cannstatt-cruiser-scores"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cannstatt-cruiser-scores"
+# Fill in the id printed by `npx wrangler d1 create cannstatt-cruiser-scores` (see README.md).
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

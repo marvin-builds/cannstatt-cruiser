@@ -1,0 +1,22 @@
+{
+  "name": "cannstatt-cruiser-scores",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Online highscore list for Cannstatt Cruiser (Cloudflare Worker + D1)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:init:local": "wrangler d1 execute cannstatt-cruiser-scores --local --file=schema.sql",
+    "db:init:remote": "wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260901.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.149.0"
+  }
+}
