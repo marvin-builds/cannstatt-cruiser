@@ -283,6 +283,22 @@ describe('audio system: crashing into people', () => {
   });
 });
 
+describe('audio system: kickflip bail', () => {
+  const bail = { entityId: -1, kind: 'bail', health: 2 } as const;
+
+  it('plays the crash and a board clatter, with no oof', () => {
+    const { game, cues } = playing();
+    game.bus.emit('crash', bail);
+    expect(cues()).toEqual(['crash', 'clatter']);
+  });
+
+  it('adds no clatter to a crash into an obstacle', () => {
+    const { game, cues } = playing();
+    game.bus.emit('crash', { entityId: 1, kind: 'bin', health: 2 });
+    expect(cues()).not.toContain('clatter');
+  });
+});
+
 describe('audio system: robustness', () => {
   it('never lets a failing backend break the game', () => {
     const broken: AudioBackend = {
@@ -609,7 +625,7 @@ describe('audio system: Mitte traffic', () => {
     const spin = (game: Game) => {
       game.state.player.airTrick = true;
     };
-    for (const sound of [spin, (g: Game) => g.bus.emit('airTrick', { ticks: 20, points: 150 }), (g: Game) => g.bus.emit('land', { impact: 600 })]) {
+    for (const sound of [spin, (g: Game) => g.bus.emit('airTrick', { ticks: 20, points: 150, full: true }), (g: Game) => g.bus.emit('land', { impact: 600 })]) {
       expect(duckedBy(sound)).toBeLessThanOrEqual(TRAFFIC.duckTo + 0.001);
     }
   });
@@ -844,7 +860,7 @@ describe('audio system: stunt lines', () => {
 });
 
 describe('audio system: air trick', () => {
-  const trick = { ticks: 20, points: 150 };
+  const trick = { ticks: 20, points: 150, full: true };
 
   it('plays the spin once when the air trick starts', () => {
     const { game, cues } = playing();
@@ -873,16 +889,30 @@ describe('audio system: air trick', () => {
 
   it('plays the kickflip sting when a small air trick is made', () => {
     const { game, cues } = playing();
-    game.bus.emit('airTrick', { ticks: 12, points: 100 });
+    game.bus.emit('airTrick', { ticks: 12, points: 100, full: true });
     expect(cues()).toEqual(['airTrick']);
   });
 
   it('plays the bigger kickflip sting for a launch kickflip (150 points or more)', () => {
     for (const points of [150, 450]) {
       const { game, cues } = playing();
-      game.bus.emit('airTrick', { ticks: 30, points });
+      game.bus.emit('airTrick', { ticks: 30, points, full: true });
       expect(cues()).toEqual(['airTrickBig']);
     }
+  });
+
+  it('plays only the plain trick sound for a reduced kickflip (repeated or into empty air)', () => {
+    for (const points of [10, 20, 50, 150]) {
+      const { game, cues } = playing();
+      game.bus.emit('airTrick', { ticks: 30, points, full: false });
+      expect(cues()).toEqual(['trick']);
+    }
+  });
+
+  it('keeps the reduced kickflip quieter than a full one', () => {
+    const { game, backend } = playing();
+    game.bus.emit('airTrick', { ticks: 12, points: 50, full: false });
+    expect(backend.played.find((p) => p.cue === 'trick')!.intensity).toBeLessThan(1);
   });
 
   it('keeps the spin and both kickflip stings inaudible while muted', () => {
@@ -895,7 +925,7 @@ describe('audio system: air trick', () => {
     game.commands.setMuted(true);
     game.state.player.airTrick = true;
     game.tick();
-    game.bus.emit('airTrick', { ticks: 12, points: 100 });
+    game.bus.emit('airTrick', { ticks: 12, points: 100, full: true });
     game.bus.emit('airTrick', trick);
     game.bus.emit('land', { impact: 600 });
     expect(heard.filter(([name]) => !name.startsWith('traffic'))).toEqual([

@@ -245,6 +245,30 @@ describe('sounds: stunt mix headroom', () => {
   });
 });
 
+describe('sounds: kickflip bail clatter', () => {
+  const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
+  const peak = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.gain));
+
+  it('clatters the board in a few short separate wooden knocks, quieter than the crash', () => {
+    expect(soundingSpans(SOUNDS.clatter).length).toBeGreaterThanOrEqual(3);
+    expect(end('clatter')).toBeLessThanOrEqual(0.6);
+    expect(peak('clatter')).toBeLessThan(peak('crash'));
+  });
+
+  it('has no voice-like low tone (no oof): every tonal knock stays above 200 Hz', () => {
+    for (const v of SOUNDS.clatter.filter((v) => v.wave !== 'noise')) {
+      expect(Math.min(v.freq, v.to ?? v.freq)).toBeGreaterThanOrEqual(200);
+    }
+  });
+
+  it('keeps a bail (crash plus clatter) under the clipping level', () => {
+    const level = summedPeak([{ cue: 'crash' }, { cue: 'clatter' }]);
+    const { noise, hiss, drone } = TRAFFIC_RUMBLE;
+    const duckedTraffic = (noise.gain + hiss.gain + drone.gain + drone.throbDepth) * TRAFFIC.duckTo;
+    expect((level + duckedTraffic) * MASTER_GAIN).toBeLessThanOrEqual(0.9);
+  });
+});
+
 describe('sounds: NorDIY park', () => {
   const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
 

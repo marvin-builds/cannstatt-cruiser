@@ -223,6 +223,15 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'noise', at: 0, dur: 0.28, freq: 1800, gain: 0.5, filter: 'lowpass' },
     { wave: 'square', at: 0, dur: 0.38, freq: 420, to: 70, gain: 0.18 },
   ],
+  // Kickflip bail: the loose board clatters away on top of the crash, a few quick wooden
+  // knocks bouncing off quieter and higher, then a short scrape (no voice, kid-safe).
+  clatter: [
+    ...[0.06, 0.17, 0.25].flatMap((at, i): Voice[] => [
+      { wave: 'triangle', at, dur: 0.04, freq: 560 + 90 * i, to: 300 + 40 * i, gain: 0.16 - 0.04 * i },
+      { wave: 'noise', at, dur: 0.025, freq: 1700 + 300 * i, gain: 0.14 - 0.03 * i, filter: 'bandpass' },
+    ]),
+    { wave: 'noise', at: 0.31, dur: 0.16, freq: 2400, to: 1300, gain: 0.07, filter: 'bandpass', attack: 0.02 },
+  ],
   // Sad descending jingle that ends on a long low note.
   gameOver: [
     ...notes('square', [N.G4, N.Gb4, N.F4, N.E4], 0.18, 0.12, 0.5),
