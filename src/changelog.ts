@@ -20,6 +20,15 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.5',
+    date: '2026-10-09',
+    items: [
+      'Kickflip-Serien bringen weniger',
+      'Kickflip über Hindernisse lohnt sich',
+      'Zu spät geflippt, dann fällst du',
+    ],
+  },
+  {
     version: '2026-10-09.4',
     date: '2026-10-09',
     items: [
