@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { measureText } from '../core/font';
+import { UI } from './art';
+import { POPUP_MARGIN } from './layout';
 import { PopupFeed } from './popup-feed';
 
 const texts = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map((p) => p.text);
@@ -96,6 +99,30 @@ describe('PopupFeed', () => {
     expect(texts(feed)).toEqual(['Autsch!']);
   });
 
+  it('a kickflip bail (ROADMAP 41) says it came too late instead of "Autsch!"', () => {
+    const feed = new PopupFeed();
+    feed.crash(true);
+    const [p] = feed.flush(false);
+    expect(p).toMatchObject({ text: 'Zu spät geflippt!', color: UI.red, icon: null });
+    feed.crash(true);
+    expect(texts(feed, true)).toEqual(['Zu spät geflippt!']);
+  });
+
+  it('the bail text fits between the popup margins of the narrowest view, even at the big portrait scale', () => {
+    const feed = new PopupFeed();
+    feed.crash(true);
+    const [p] = feed.flush(false);
+    expect(measureText(p!.text, 2) + 2).toBeLessThanOrEqual(320 - 2 * POPUP_MARGIN);
+  });
+
+  it('a reduced kickflip (ROADMAP 41) is a plain "Kickflip +N" popup in a paler colour, not the pink callout', () => {
+    const feed = new PopupFeed();
+    feed.reducedKickflip(20);
+    const [p] = feed.flush(false);
+    expect(p).toMatchObject({ text: 'Kickflip +20', color: UI.palePink, icon: null });
+    expect(p!.color).not.toBe(UI.pink);
+  });
+
   it('a grind trick: "Grind-Trick! +N"', () => {
     const feed = new PopupFeed();
     feed.grindTrick(1500);
@@ -116,6 +143,8 @@ describe('PopupFeed', () => {
     feed.ballBack();
     feed.grindTrick(10);
     feed.highFive(10);
+    feed.crash(true);
+    feed.reducedKickflip(10);
     for (const p of feed.flush(false)) expect(p.color).toMatch(/^#/);
   });
 });

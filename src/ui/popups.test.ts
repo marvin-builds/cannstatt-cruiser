@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
+import { POPUP_MARGIN, popupLeft } from './layout';
 import { POPUP_LIFETIME, PopupPool, popupHeight, type Popup } from './popups';
 
 /** The box a popup covers: its text (1 px outline round it) centred on x. */
@@ -192,6 +193,25 @@ describe('PopupPool', () => {
       expectApart(pool.active());
       for (const p of pool.active()) expect(p.y).toBeGreaterThanOrEqual(56);
       pool.update(1 / 60);
+    }
+  });
+
+  it.each([320, 427])('the bail and reduced kickflip popups (ROADMAP 41) stay below the HUD and inside a %i px view', (viewWidth) => {
+    for (const scale of [1, 2]) {
+      const pool = new PopupPool(4);
+      pool.ceiling = 30;
+      // A skater high on a ledge: the popups spawn right under the HUD plate.
+      for (const t of ['Zu spät geflippt!', 'Kickflip +20', '+50']) pool.spawn(t, 64, 20, '#fff', scale);
+      for (let i = 0; i < 60; i++) {
+        for (const p of pool.active()) {
+          expect(p.y).toBeGreaterThanOrEqual(30);
+          const w = measureText(p.text, p.scale) + 2;
+          const left = popupLeft(p.x, w, viewWidth);
+          expect(left).toBeGreaterThanOrEqual(POPUP_MARGIN);
+          expect(left + w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
+        }
+        pool.update(1 / 60);
+      }
     }
   });
 

@@ -35,8 +35,13 @@ export interface UiDebugHook {
   /** Emits stunt line events like gameplay: a step with this multiplier, or the end of the line. */
   stuntStep(multiplier: number): void;
   stuntEnd(completed: boolean, points: number): void;
-  /** Emits an air trick like gameplay ("Kickflip! +points" callout and sparkle, the air trick hint is never shown again). */
-  airTrick(points: number): void;
+  /**
+   * Emits an air trick like gameplay: full, the "Kickflip! +points" callout and sparkle; reduced
+   * (`full` false, ROADMAP 41), the plain "Kickflip +points" popup. Either way the air trick hint is never shown again.
+   */
+  airTrick(points: number, full?: boolean): void;
+  /** Emits a kickflip bail like gameplay (crash kind 'bail', health unchanged): the "Zu spät geflippt!" popup. */
+  bail(): void;
   /** Emits the NorDIY events like gameplay: a high five ("High Five! +points") and the park's session end ("Session! +points"). */
   highFive(points: number): void;
   sessionEnd(points: number): void;
@@ -135,8 +140,11 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     stuntEnd(completed, points) {
       ctx.bus.emit('stuntEnd', { steps: 3, made: completed ? 3 : 1, completed, points });
     },
-    airTrick(points) {
-      ctx.bus.emit('airTrick', { ticks: 20, points });
+    airTrick(points, full = true) {
+      ctx.bus.emit('airTrick', { ticks: 20, points, full });
+    },
+    bail() {
+      ctx.bus.emit('crash', { entityId: -1, kind: 'bail', health: ctx.state.health });
     },
     highFive(points) {
       ctx.bus.emit('highFive', { entityId: -1, points });

@@ -4,6 +4,8 @@
  * collects them and the ui flushes once per tick: a stomp and the points of
  * the same person become one "Stomp! +150", a ball hit and its points one
  * "Treffer! +200". Every text is German; kid mode never mentions beer.
+ * A full kickflip gets the big stunt callout instead (stunt-callout.ts); a
+ * reduced one (ROADMAP 41) only a plain popup here.
  */
 import type { ItemAction } from '../types';
 import { UI } from './art';
@@ -21,8 +23,9 @@ type Entry =
   | { kind: 'stomp' | 'ballHit'; entityId: number }
   | { kind: 'used'; action: ItemAction }
   | { kind: 'score'; delta: number }
-  | { kind: 'healthGained' | 'ballBack' | 'crash' }
-  | { kind: 'grindTrick' | 'highFive'; points: number };
+  | { kind: 'healthGained' | 'ballBack' }
+  | { kind: 'crash'; bail: boolean }
+  | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number };
 
 /** Events that take the points of a clear of the same entity into their own popup. */
 const MERGED = { stomp: ['Stomp!', UI.orange], ballHit: ['Treffer!', UI.yellow] } as const;
@@ -65,8 +68,14 @@ export class PopupFeed {
     this.entries.push({ kind: 'ballBack' });
   }
 
-  crash(): void {
-    this.entries.push({ kind: 'crash' });
+  /** The skater crashed; `bail` when a kickflip was still turning on the landing (ROADMAP 41). */
+  crash(bail = false): void {
+    this.entries.push({ kind: 'crash', bail });
+  }
+
+  /** A kickflip whose points were cut (airTrick with full false). */
+  reducedKickflip(points: number): void {
+    this.entries.push({ kind: 'reducedKickflip', points });
   }
 
   grindTrick(points: number): void {
@@ -109,13 +118,16 @@ export class PopupFeed {
           add('Achtung, der Ball!', UI.red);
           break;
         case 'crash':
-          add('Autsch!', UI.red);
+          add(e.bail ? 'Zu spät geflippt!' : 'Autsch!', UI.red);
           break;
         case 'grindTrick':
           add(`Grind-Trick! ${plusPoints(e.points)}`, UI.teal);
           break;
         case 'highFive':
           add(`High Five! ${plusPoints(e.points)}`, UI.yellow);
+          break;
+        case 'reducedKickflip':
+          add(`Kickflip ${plusPoints(e.points)}`, UI.palePink);
           break;
       }
     });

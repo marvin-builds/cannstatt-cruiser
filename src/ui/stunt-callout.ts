@@ -2,8 +2,9 @@
  * The stunt line callout (ROADMAP 27): "Linie xN!" on every `stuntStep`
  * (punching in a size bigger for a moment), "Stunt-Linie!" and the points on
  * a completed line, "Session!" and the bonus when the skater leaves the
- * NorDIY park with points, and the big "Kickflip! +N" on every `airTrick`
- * (ROADMAP 37c; a stunt step of the same tick joins it as a second line).
+ * NorDIY park with points, and the big "Kickflip! +N" on every full
+ * `airTrick` (ROADMAP 37c; a stunt step of the same tick joins it as a second
+ * line; a reduced kickflip, ROADMAP 41, only gets a plain popup instead).
  * A missed line says nothing: falling off stays quiet.
  *
  * It lives in the top strip of the view, between the HUD stats plate (and

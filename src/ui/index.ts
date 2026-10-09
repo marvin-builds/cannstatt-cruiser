@@ -176,7 +176,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     });
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
     bus.on('stomp', (e) => feed.stomp(e.entityId));
-    bus.on('crash', () => feed.crash());
+    bus.on('crash', (e) => feed.crash(e.kind === 'bail'));
     bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta));
     bus.on('itemUsed', (e) => {
       feed.itemUsed(e.action);
@@ -194,9 +194,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     bus.on('grindStart', () => {
       if (!view.stunt.lineActive) popup('Grind!', UI.teal);
     });
+    // Only a full kickflip gets the big callout and sparkle; a reduced one (ROADMAP 41) a plain popup.
     bus.on('airTrick', (e) => {
-      view.stunt.kickflip(e.points);
-      view.sparkle.start();
+      if (e.full) {
+        view.stunt.kickflip(e.points);
+        view.sparkle.start();
+      } else feed.reducedKickflip(e.points);
       view.airHint.trickDone();
       view.hints.dismiss('air');
     });
