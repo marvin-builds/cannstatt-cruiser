@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import type { Rect } from '../types';
-import { hudButtons, uiMetrics } from './layout';
+import { measureText } from '../core/font';
+import { centreX, hudButtons, uiMetrics } from './layout';
 import { logoRect } from './logo';
+import { statsLayout } from './stats';
 import {
   gameOverLayout,
   installParts,
+  kidChipRect,
   type MenuInput,
   type MenuLayout,
   PANEL_PAD,
   pauseLayout,
   reloadParts,
   SKATER_CLEAR,
+  titleHelp,
   titleLayout,
+  toTitleLabel,
   whatsNewLayout,
 } from './menu-layout';
 import type { InstallHintKind } from './notices';
@@ -72,6 +77,10 @@ function checkScreen(input: MenuInput & { label: string }, l: MenuLayout, riding
     for (const [other, b] of blocks.slice(i + 1)) expect(overlap(a, b), `${input.label}: ${id} vs ${other}`).toBe(false);
     for (const e of extra) expect(overlap(a, e), `${input.label}: ${id} vs logo`).toBe(false);
   });
+  const nav = l.buttons.toTitle;
+  if (nav) for (const [id, r] of [...l.blocks.entries(), ...extra.map((e) => ['logo', e] as const)]) {
+    expect(overlap(nav, r), `${input.label}: Startbildschirm vs ${id}`).toBe(false);
+  }
   const taps = buttons(l);
   taps.forEach((a, i) => {
     for (const b of taps.slice(i + 1)) expect(overlap(a, b), `${input.label}: buttons overlap`).toBe(false);
@@ -156,10 +165,10 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it('pause: the logo, "Zum Startbildschirm" and the reload button fit, all variants', () => {
+  it('pause: the logo, "Startbildschirm" and the reload button fit, all variants', () => {
     for (const input of inputs()) {
       const l = pauseLayout({ ...input, install: null });
-      checkScreen(input, l, true);
+      checkScreen(input, l, true, [l.buttons.logo!]);
       expect(l.buttons.logo, input.label).not.toBeNull();
       expect(l.buttons.toTitle, input.label).not.toBeNull();
       expect(!!l.buttons.reload, input.label).toBe(input.reload);
@@ -168,7 +177,7 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it('game over: results, "Zum Startbildschirm", reload and install fit, all variants', () => {
+  it('game over: results, "Startbildschirm", reload and install fit, all variants', () => {
     for (const input of inputs()) {
       for (const newRecord of [false, true]) {
         const l = gameOverLayout({ ...input, newRecord });
@@ -179,6 +188,88 @@ describe('menu screen layouts', () => {
         // Portrait (44 px buttons) leaves the install hint to the title screen.
         if (!input.portrait) expect(!!l.buttons.dismiss, `${input.label} record=${newRecord}`).toBe(!!input.install);
       }
+    }
+  });
+
+  it('pause and game over: "Startbildschirm" is a small top-left corner button (pause: under the stats plate), away from the centre', () => {
+    const tallest = statsLayout(0, true, true).plate;
+    for (const input of inputs()) {
+      const m = uiMetrics(input);
+      const screens = [
+        ['pause', pauseLayout({ ...input, install: null })],
+        ['game over', gameOverLayout({ ...input, newRecord: true })],
+      ] as const;
+      for (const [name, l] of screens) {
+        const b = l.buttons.toTitle!;
+        const at = `${input.label} ${name}: ${JSON.stringify(b)}`;
+        expect(b.x, at).toBeLessThanOrEqual(4);
+        if (name === 'pause') expect(b.y, `${at}: under the tallest stats plate`).toBeGreaterThanOrEqual(tallest.y + tallest.h);
+        else expect(b.y, `${at}: in the corner`).toBeLessThanOrEqual(4);
+        expect(b.x + b.w, `${at}: left of the centre`).toBeLessThan(centreX(input.viewWidth));
+        expect(b.y + b.h, `${at}: in the upper part`).toBeLessThanOrEqual(VIEW_H * 0.62);
+        expect(b.h, at).toBe(m.menuButtonH);
+      }
+    }
+  });
+
+  it('"Startbildschirm" is one label everywhere: T on desktop, Esc too on game over (where Esc already leads there)', () => {
+    expect(toTitleLabel(true)).toBe('Startbildschirm');
+    expect(toTitleLabel(true, true)).toBe('Startbildschirm');
+    expect(toTitleLabel(false)).toBe('Startbildschirm (T)');
+    expect(toTitleLabel(false, true)).toBe('Startbildschirm (T/Esc)');
+    for (const input of inputs()) expect(gameOverLayout({ ...input, newRecord: false }).blocks.has('keys'), input.label).toBe(false);
+  });
+
+  it('pause: the logo never overlaps the HUD stats plate (small and big scores, combo, timer rows), also in portrait', () => {
+    const plates = [statsLayout(40, false).plate, statsLayout(110, false).plate, statsLayout(110, true, true).plate];
+    for (const input of inputs()) {
+      for (const plate of plates) {
+        const l = pauseLayout({ ...input, install: null, plate });
+        const logo = l.buttons.logo!;
+        const at = `${input.label} plate ${JSON.stringify(plate)}: logo ${JSON.stringify(logo)}`;
+        expect(overlap(logo, plate), at).toBe(false);
+        expect(inside(logo, input.viewWidth), at).toBe(true);
+        checkScreen(input, l, true, [logo, plate]);
+      }
+    }
+  });
+
+  it('portrait: the menu body text uses the big font where it fits', () => {
+    for (const input of inputs()) {
+      const pause = pauseLayout({ ...input, install: null });
+      const over = gameOverLayout({ ...input, newRecord: false });
+      if (!input.portrait) {
+        expect(pause.textScale, input.label).toBe(1);
+        expect(over.textScale, input.label).toBe(1);
+        continue;
+      }
+      if (!input.reload) expect(pause.textScale, input.label).toBe(2);
+      if (!input.reload) expect(pauseLayout({ ...input, install: null, plate: statsLayout(60, false).plate }).textScale, input.label).toBe(2);
+      if (!input.reload && !input.install) expect(over.textScale, input.label).toBe(2);
+      for (const l of [pause, over]) {
+        const prompt = l.blocks.get('prompt')!;
+        expect(prompt.h, input.label).toBeGreaterThanOrEqual(l.textScale === 2 ? 14 : 7);
+      }
+    }
+  });
+
+  it('title: the help has a kickflip line and says "runterwischen" and "Knopf antippen"', () => {
+    expect(titleHelp(true)).toContain('In der Luft runterwischen = Kickflip');
+    expect(titleHelp(false)).toContain('In der Luft Pfeil runter = Kickflip');
+    expect(titleHelp(true)).toContain('Knopf antippen = Gegenstand benutzen');
+    for (const touch of [true, false]) for (const line of titleHelp(touch)) expect(line).not.toMatch(/Wisch runter|nach unten wischen/i);
+  });
+
+  it('title: the kid mode chip sits in the top-left corner, clear of the logo, the HUD buttons and the panel', () => {
+    for (const input of inputs()) {
+      const chip = kidChipRect();
+      const l = titleLayout(input);
+      const at = `${input.label}: ${JSON.stringify(chip)}`;
+      expect(inside(chip, input.viewWidth), at).toBe(true);
+      expect(overlap(chip, logoRect(input.viewWidth)), at).toBe(false);
+      expect(overlap(chip, l.panel!), at).toBe(false);
+      for (const b of hud(input, false)) expect(overlap(chip, b), at).toBe(false);
+      expect(chip.w).toBeGreaterThan(measureText('Kindermodus'));
     }
   });
 

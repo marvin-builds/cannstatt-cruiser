@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState } from '../core/state';
+import { measureText } from '../core/font';
 import { HudModel } from './hud-model';
 
 function playingState() {
@@ -57,5 +58,23 @@ describe('HUD model', () => {
     expect(hud.chip!.x).toBeGreaterThan(hud.layout.plate.x + hud.layout.plate.w);
     hud.update(state, false);
     expect(hud.chip).toBeNull();
+  });
+
+  it('"Punkte" and "Combo N" never overlap, and the plate holds both (scores 0..99, combo up to 12)', () => {
+    const state = playingState();
+    const hud = new HudModel();
+    for (let score = 0; score <= 99; score++) {
+      for (let combo = 2; combo <= 12; combo++) {
+        Object.assign(state, { score, combo, multiplier: Math.min(5, combo) });
+        hud.update(state);
+        const { x, plate } = hud.layout;
+        const at = `score ${score} combo ${combo}`;
+        expect(hud.showComboLabel, at).toBe(true);
+        expect(x + measureText('Punkte'), at).toBeLessThan(x + hud.comboX);
+        expect(x + hud.score.width, `${at}: multiplier right of the score`).toBeLessThan(x + hud.comboX);
+        expect(x + hud.comboX + hud.comboLabel.width, `${at}: label inside the plate`).toBeLessThanOrEqual(plate.x + plate.w);
+        expect(x + hud.comboX + hud.multiplier.width, `${at}: multiplier inside the plate`).toBeLessThanOrEqual(plate.x + plate.w);
+      }
+    }
   });
 });

@@ -1,9 +1,10 @@
 /**
  * The grind trick hint: while grinding, until the player has done a grind
  * trick once ever (storage key grindTrickSeen), a small plate at the hint spot
- * under the skater says "[↓] = Trick!" (desktop, with a key cap), "Wisch
- * runter = Trick!" (touch landscape) or the compact "Wisch ↓ = Trick!" (the
- * big portrait font). Only on the first TRICK_HINT_GRINDS grinds of a run.
+ * under the skater says "[↓] = Trick!" (desktop, with a key cap),
+ * "Runterwischen = Trick!" (touch landscape) or the compact "[↓] wischen =
+ * Trick!" (the big portrait font). Only on the first TRICK_HINT_GRINDS
+ * grinds of a run; the hint slot (hint-slot.ts) lets it linger after a short grind.
  */
 import type { Store } from '../core/storage';
 import type { Rect } from '../types';
@@ -55,8 +56,8 @@ export class TrickHint {
 }
 
 const DESKTOP_ROWS: readonly HintRow[] = [[KEY_DOWN, '= Trick!']];
-const TOUCH_ROWS: readonly HintRow[] = [['Wisch runter = Trick!']];
-const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [['Wisch', SWIPE_DOWN, '= Trick!']];
+const TOUCH_ROWS: readonly HintRow[] = [['Runterwischen = Trick!']];
+const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [[SWIPE_DOWN, 'wischen = Trick!']];
 
 /** The plate's rows, font scale (as the other hints) and rect at the hint spot for `display`. */
 export function trickHintPlate(display: { touch: boolean; portrait: boolean; viewWidth: number }): {

@@ -3,9 +3,10 @@
  * on the first KICKER_HINT_RUNS kickers of a run and until the player has
  * completed a stunt line once ever (storage key stuntLineSeen), a small plate
  * at the hint spot under the skater says "Ab über die Rampe!" (short, so it
- * stays compact in the big portrait font). The
- * ramp needs no button, so touch and keyboard read the same. It disappears
- * on `launch` and once the kicker has passed.
+ * stays compact in the big portrait font), centred on the ramp under the
+ * street (anchorX). The ramp needs no button, so touch and keyboard read the
+ * same. It disappears on `launch` and once the kicker has passed (the hint
+ * slot lets it linger, hint-slot.ts).
  */
 import { PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
@@ -27,6 +28,10 @@ export class KickerHint {
   /** Id of the kicker the hint is about, or null. */
   private current: number | null = null;
   private launchedFrom: number | null = null;
+  /** The kicker the hint was last about (its anchor), or null. */
+  private target: number | null = null;
+  /** Centre x of that kicker (where the plate is anchored); PLAYER_X before the first one. */
+  anchorX = PLAYER_X;
 
   constructor(private readonly store: Store) {
     this.seen = store.get(SEEN_KEY, false);
@@ -57,6 +62,7 @@ export class KickerHint {
 
   /** Once per playing tick with state.entities. */
   update(entities: readonly Entity[]): void {
+    this.follow(entities);
     const ahead = this.seen ? undefined : entities.find(approaching);
     if (!ahead) {
       this.current = null;
@@ -66,6 +72,15 @@ export class KickerHint {
     if (this.shown >= KICKER_HINT_RUNS) return;
     this.shown++;
     this.current = ahead.id;
+    this.target = ahead.id;
+    this.follow(entities);
+  }
+
+  /** Moves the anchor with the target kicker while it is on the street. */
+  private follow(entities: readonly Entity[]): void {
+    if (this.target === null) return;
+    const e = entities.find((x) => x.id === this.target);
+    if (e) this.anchorX = e.x + e.w / 2;
   }
 }
 
@@ -74,7 +89,7 @@ function approaching(e: Entity): boolean {
   return e.kind === 'kicker' && e.x + e.w > PLAYER_X && e.x - PLAYER_X <= KICKER_HINT_AHEAD;
 }
 
-/** The plate for the label at font `scale`: at the trick hint's spot under the skater. */
-export function kickerHintRect(scale: number, viewWidth: number): Rect {
-  return hintPlateRect(KICKER_HINT_ROWS, scale, viewWidth);
+/** The plate for the label at font `scale`: at the hint spot's height, centred on `anchorX` (the ramp). */
+export function kickerHintRect(scale: number, viewWidth: number, anchorX = PLAYER_X): Rect {
+  return hintPlateRect(KICKER_HINT_ROWS, scale, viewWidth, Math.round(anchorX));
 }

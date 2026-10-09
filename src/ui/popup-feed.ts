@@ -22,7 +22,7 @@ type Entry =
   | { kind: 'used'; action: ItemAction }
   | { kind: 'score'; delta: number }
   | { kind: 'healthGained' | 'ballBack' | 'crash' }
-  | { kind: 'grindTrick' | 'airTrick' | 'highFive'; points: number };
+  | { kind: 'grindTrick' | 'highFive'; points: number };
 
 /** Events that take the points of a clear of the same entity into their own popup. */
 const MERGED = { stomp: ['Stomp!', UI.orange], ballHit: ['Treffer!', UI.yellow] } as const;
@@ -73,10 +73,6 @@ export class PopupFeed {
     this.entries.push({ kind: 'grindTrick', points });
   }
 
-  airTrick(points: number): void {
-    this.entries.push({ kind: 'airTrick', points });
-  }
-
   highFive(points: number): void {
     this.entries.push({ kind: 'highFive', points });
   }
@@ -104,7 +100,7 @@ export class PopupFeed {
           break;
         case 'used':
           if (e.action === 'throw') add('Wurf!', UI.white);
-          else if (e.action === 'drink' && !kidMode) add('Prost! Gluck gluck gluck', UI.yellow);
+          else if (e.action === 'drink' && !kidMode) add('Gluck gluck gluck!', UI.yellow);
           else if (entries.some((h) => h.kind === 'healthGained')) add('Lecker! +1', UI.pink, 'heart');
           // Gameplay scores the bonus right after itemUsed; the score before it may belong to a clear.
           else add(`Lecker! ${bonus(entries[i + 1]) ?? bonus(entries[i - 1]) ?? '+Punkte'}`, UI.pink);
@@ -117,9 +113,6 @@ export class PopupFeed {
           break;
         case 'grindTrick':
           add(`Grind-Trick! ${plusPoints(e.points)}`, UI.teal);
-          break;
-        case 'airTrick':
-          add(`Air-Trick! ${plusPoints(e.points)}`, UI.pink);
           break;
         case 'highFive':
           add(`High Five! ${plusPoints(e.points)}`, UI.yellow);

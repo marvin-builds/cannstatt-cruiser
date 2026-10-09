@@ -11,6 +11,7 @@ import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu } from './menu-state';
 import type { PopupFeed } from './popup-feed';
+import type { HintKind } from './hint-plate';
 import type { UiView } from './screens';
 import type { SettingsScreen } from './settings';
 
@@ -32,15 +33,17 @@ export interface UiDebugHook {
   /** Emits stunt line events like gameplay: a step with this multiplier, or the end of the line. */
   stuntStep(multiplier: number): void;
   stuntEnd(completed: boolean, points: number): void;
-  /** Emits an air trick like gameplay ("Air-Trick! +points" popup, the air trick hint is never shown again). */
+  /** Emits an air trick like gameplay ("Kickflip! +points" callout and sparkle, the air trick hint is never shown again). */
   airTrick(points: number): void;
   /** Emits the NorDIY events like gameplay: a high five ("High Five! +points") and the park's session end ("Session! +points"). */
   highFive(points: number): void;
   sessionEnd(points: number): void;
-  /** Whether the one-time high five hint shows now. */
+  /** Whether the high five hint shows now. */
   highFiveHintVisible(): boolean;
-  /** Whether the first-time air trick hint wants to show now (shownHint picks one plate if several do). */
+  /** Whether the air trick hint wants to show now (the hint slot picks one plate if several do). */
   airHintVisible(): boolean;
+  /** The riding hint on the hint spot now (hint-slot.ts), or null. */
+  shownHint(): HintKind | null;
   /**
    * Feeds the kicker hint one kicker just ahead of the skater, as if gameplay had spawned it
    * (shows on the next redraw until the next tick); returns whether the hint shows.
@@ -122,8 +125,12 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
     airHintVisible() {
       return view.airHint.visible;
     },
+    shownHint() {
+      return view.hints.kind;
+    },
     previewKickerHint() {
       view.kickerHint.update([{ id: -1, kind: 'kicker', x: PLAYER_X + 60, y: GROUND_Y - 8, w: 24, h: 8, done: false }]);
+      view.hints.update(0, { highFive: false, trick: false, air: false, kicker: view.kickerHint.visible });
       return view.kickerHint.visible;
     },
     setRecords(highscore = 0, starsTotal = 0) {

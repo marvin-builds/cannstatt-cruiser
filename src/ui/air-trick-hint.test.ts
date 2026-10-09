@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
-import { AIR_HINT_LAUNCHES, AirTrickHint, airTrickHintPlate } from './air-trick-hint';
+import { AirTrickHint, airTrickHintPlate, STREET_HINT_HEIGHT } from './air-trick-hint';
 import { KEY_DOWN, SWIPE_DOWN } from './hint-plate';
 import { kickerHintRect } from './kicker-hint';
 import { POPUP_MARGIN, popupScale } from './layout';
@@ -42,10 +42,28 @@ describe('air trick hint', () => {
     expect(flight(hint)).toEqual([false, true, true, true, true, false]);
   });
 
-  it('never shows on a plain jump (no launch)', () => {
+  it('never shows on a low plain jump (no launch)', () => {
     const hint = new AirTrickHint(memoryStore());
-    for (let i = 0; i < 5; i++) hint.update(true, false);
+    for (let i = 0; i < 5; i++) hint.update(true, false, STREET_HINT_HEIGHT - 1);
     expect(hint.visible).toBe(false);
+  });
+
+  it('once per run on the first full street jump (high enough for a kickflip), until landing', () => {
+    const hint = new AirTrickHint(memoryStore());
+    hint.runStarted();
+    hint.update(true, false, 10);
+    expect(hint.visible).toBe(false);
+    hint.update(true, false, STREET_HINT_HEIGHT);
+    expect(hint.visible).toBe(true);
+    hint.update(true, false, 10);
+    expect(hint.visible).toBe(true);
+    hint.update(false, false, 0);
+    expect(hint.visible).toBe(false);
+    hint.update(true, false, STREET_HINT_HEIGHT + 10); // the next full jump of the run: unobtrusive, no repeat
+    expect(hint.visible).toBe(false);
+    hint.runStarted();
+    hint.update(true, false, STREET_HINT_HEIGHT);
+    expect(hint.visible).toBe(true);
   });
 
   it('hides when the trick starts and stays hidden for the rest of that flight', () => {
@@ -61,13 +79,10 @@ describe('air trick hint', () => {
     expect(hint.visible).toBe(false);
   });
 
-  it('shows on the first few launches of a run only, and again in the next run', () => {
+  it('keeps showing on every launch until a kickflip was done', () => {
     const hint = new AirTrickHint(memoryStore());
     hint.runStarted();
-    for (let i = 0; i < AIR_HINT_LAUNCHES; i++) expect(flight(hint).some(Boolean)).toBe(true);
-    expect(flight(hint).some(Boolean)).toBe(false);
-    hint.runStarted();
-    expect(flight(hint).some(Boolean)).toBe(true);
+    for (let i = 0; i < 10; i++) expect(flight(hint).some(Boolean), `launch ${i}`).toBe(true);
   });
 
   it('never shows again once an air trick was done, also after a reload', () => {
@@ -79,9 +94,13 @@ describe('air trick hint', () => {
     expect(hint.visible).toBe(false);
     hint.runStarted();
     expect(flight(hint).some(Boolean)).toBe(false);
+    hint.update(true, false, STREET_HINT_HEIGHT + 10);
+    expect(hint.visible).toBe(false);
     const reloaded = new AirTrickHint(store);
     reloaded.runStarted();
     expect(flight(reloaded).some(Boolean)).toBe(false);
+    reloaded.update(true, false, STREET_HINT_HEIGHT + 10);
+    expect(reloaded.visible).toBe(false);
   });
 
   it('a new run hides a hint still showing', () => {
@@ -93,20 +112,20 @@ describe('air trick hint', () => {
   });
 
   describe('plate', () => {
-    it('desktop: "In der Luft", a ↓ key cap, "= Trick!" in one row', () => {
+    it('desktop: "In der Luft", a ↓ key cap, "= Kickflip!" in one row', () => {
       const p = airTrickHintPlate({ touch: false, portrait: false, viewWidth: 320 });
-      expect(p.rows).toEqual([['In der Luft', KEY_DOWN, '= Trick!']]);
+      expect(p.rows).toEqual([['In der Luft', KEY_DOWN, '= Kickflip!']]);
       expect(p.scale).toBe(1);
     });
 
-    it('touch landscape: "In der Luft runterwischen = Trick!" in two compact rows', () => {
+    it('touch landscape: "In der Luft runterwischen = Kickflip!" in two compact rows', () => {
       const p = airTrickHintPlate({ touch: true, portrait: false, viewWidth: 384 });
-      expect(p.rows.map((r) => r.join(' '))).toEqual(['In der Luft', 'runterwischen = Trick!']);
+      expect(p.rows.map((r) => r.join(' '))).toEqual(['In der Luft', 'runterwischen = Kickflip!']);
     });
 
-    it('touch portrait (big font): the compact swipe row "Wisch ↓ = Trick!" (as the grind trick hint)', () => {
+    it('touch portrait (big font): the compact swipe row "↓ wischen = Kickflip!" (as the grind trick hint)', () => {
       const p = airTrickHintPlate({ touch: true, portrait: true, viewWidth: 390 });
-      expect(p.rows).toEqual([['Wisch', SWIPE_DOWN, '= Trick!']]);
+      expect(p.rows).toEqual([[SWIPE_DOWN, 'wischen = Kickflip!']]);
       expect(p.scale).toBe(popupScale({ portrait: true }, false));
     });
 

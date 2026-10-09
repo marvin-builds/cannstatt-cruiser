@@ -8,10 +8,11 @@
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
- * trick-hint.ts, the stunt line callout ("Combo xN!") in stunt-callout.ts, the
- * first-time kicker and air trick hints in kicker-hint.ts and air-trick-hint.ts
- * (one hint plate at a time, hint-plate.ts), the NorDIY high five (window,
- * hand button and its one-time hint) in high-five.ts, the drunk look in drunk-look.ts, the zone ribbon in
+ * trick-hint.ts, the stunt line and kickflip callout ("Linie xN!", "Kickflip!
+ * +N") in stunt-callout.ts with the kickflip sparkle in sparkle.ts, the
+ * kicker and air trick hints in kicker-hint.ts and air-trick-hint.ts (one
+ * hint plate at a time, long enough to read: hint-slot.ts), the NorDIY high
+ * five (hand button and its hint) in high-five.ts, the drunk look in drunk-look.ts, the zone ribbon in
  * banner.ts, the settings logic in settings.ts, layout math in layout.ts and
  * all drawing in screens.ts.
  */
@@ -27,7 +28,8 @@ import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { installUiDebug } from './debug';
-import { highFiveHintPlate, HighFiveHint, highFiveOpen } from './high-five';
+import { handShown, highFiveHand, highFiveHintPlate, HighFiveHint } from './high-five';
+import { HintSlot, type HintWants } from './hint-slot';
 import { HudModel } from './hud-model';
 import { KickerHint } from './kicker-hint';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
@@ -41,6 +43,7 @@ import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
+import { Sparkle } from './sparkle';
 import { TrickHint } from './trick-hint';
 import { placeCallout, StuntCallout } from './stunt-callout';
 
@@ -87,7 +90,9 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     kickerHint: new KickerHint(store),
     airHint: new AirTrickHint(store),
     highFiveHint: new HighFiveHint(store),
+    hints: new HintSlot(),
     stunt: new StuntCallout(),
+    sparkle: new Sparkle(),
     stuntRect: null,
     settings: new SettingsMenu(store, (switched) => onSettingsClosed(switched)),
     logoHold: new LongPress(),
@@ -123,6 +128,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.kickerHint.runStarted();
       view.airHint.runStarted();
       view.highFiveHint.runStarted();
+      view.hints.runStarted();
       view.stunt.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
@@ -147,12 +153,16 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!view.stunt.lineActive) popup('Grind!', UI.teal);
     });
     bus.on('airTrick', (e) => {
-      feed.airTrick(e.points);
+      view.stunt.kickflip(e.points);
+      view.sparkle.start();
       view.airHint.trickDone();
+      view.hints.dismiss('air');
     });
     bus.on('launch', () => {
       view.kickerHint.launched();
       view.airHint.launched();
+      // Over the ramp: the kicker hint has done its job, the air trick hint may show at once.
+      view.hints.dismiss('kicker');
     });
     bus.on('stuntStep', (e) => view.stunt.step(e.multiplier));
     bus.on('stuntEnd', (e) => {
@@ -162,6 +172,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     bus.on('highFive', (e) => {
       feed.highFive(e.points);
       view.highFiveHint.highFived();
+      view.hints.dismiss('highFive');
     });
     bus.on('sessionEnd', (e) => view.stunt.session(e.points));
     bus.on('starCollected', () => popup('Stern!', UI.yellow));
@@ -201,13 +212,16 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     ctx.addHotspot({ rect: whenButtons(() => buttons().mute), onPress: () => commands.setMuted(!state.muted) });
     ctx.addHotspot({ rect: whenButtons(() => buttons().fullscreen), onPress: () => commands.toggleFullscreen() });
     // The item button (touch) or the E key cap chip (desktop): uses the carried item, never jumps.
+    // While the hand shows ahead of gameplay's high five window, a tap is swallowed: it must not use the item.
     ctx.addHotspot({
       rect: whenButtons(() => {
         if (state.mode !== 'playing') return null;
-        const control = itemControl(display, state.mode, state.carriedItem, highFiveOpen(state.entities));
+        const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));
         return control === 'button' ? itemButtonRect(display.viewWidth, display) : control ? view.hud.chip : null;
       }),
-      onPress: () => commands.useItem(),
+      onPress: () => {
+        if (highFiveHand(state.entities) !== 'show') commands.useItem();
+      },
     });
     addMenuHotspots(ctx);
     addSettingsHotspots(ctx, full);
@@ -318,6 +332,21 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
     return view.itemHint.visible ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null;
   }
 
+  /** What each riding hint wants this tick (reused). */
+  const wants: HintWants = { highFive: false, trick: false, air: false, kicker: false };
+
+  /** The hint spot's slot from what each riding hint wants; a trick that started hides its hint at once. */
+  function updateHints(ctx: GameContext, dt: number): void {
+    const { player } = ctx.state;
+    if (player.grindTrick) view.hints.dismiss('trick');
+    if (player.airTrick) view.hints.dismiss('air');
+    wants.highFive = view.highFiveHint.visible && !ctx.display.touch;
+    wants.trick = view.trickHint.visible;
+    wants.air = view.airHint.visible;
+    wants.kicker = view.kickerHint.visible;
+    view.hints.update(dt, wants);
+  }
+
   return {
     name: 'ui',
 
@@ -340,7 +369,7 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       if (!display.portrait) view.portraitDismissed = false;
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
-      const control = itemControl(display, state.mode, state.carriedItem, highFiveOpen(state.entities));
+      const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));
       const hintRect = buttonHintRect(ctx, control === 'button');
       if (riding(state.mode)) view.hud.update(state, control === 'keycap');
       // Laid out only while it shows (the scene allocates).
@@ -369,11 +398,13 @@ export function createUiSystem(options: UiSystemOptions = {}): System {
       view.popups.update(dt);
       view.banner.update(dt);
       view.stunt.update(dt, view.stuntRect !== null);
+      view.sparkle.update(dt);
       view.kickerHint.update(state.entities);
       view.highFiveHint.update(state.entities);
-      view.airHint.update(!player.grounded && !player.grinding, player.airTrick);
+      view.airHint.update(!player.grounded && !player.grinding, player.airTrick, GROUND_Y - player.y);
       view.itemHint.update(dt, view.banner.visible);
       view.trickHint.update(player.grinding, player.grindTrick);
+      updateHints(ctx, dt);
     },
 
     render: {

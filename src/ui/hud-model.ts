@@ -16,7 +16,7 @@ import { type StatsLayout, statsLayout } from './stats';
 
 const LABEL_W = measureText('Punkte');
 /** Gap between the score and the multiplier / combo label. */
-export const COMBO_GAP = 6;
+const COMBO_GAP = 6;
 /** Hearts are 8 px apart; the star row starts this far right of the last one. */
 export const HEART_STEP = 8;
 export const STAR_GAP = 6;
@@ -30,6 +30,8 @@ export class HudModel {
   /** The multiplier shows (> 1); `comboLabel` too while the combo is > 1. */
   combo = false;
   showComboLabel = false;
+  /** x of the multiplier and the combo label from the content's left: right of both the score and "Punkte". */
+  comboX = 0;
   layout: StatsLayout = statsLayout(0, false);
   /** The desktop item chip next to the plate, or null while hidden. */
   chip: Rect | null = null;
@@ -47,8 +49,9 @@ export class HudModel {
     if (this.combo) this.multiplier.update(state.multiplier);
     if (this.showComboLabel) this.comboLabel.update(state.combo);
 
-    const scoreW = this.score.width + (this.combo ? COMBO_GAP + this.multiplier.width : 0);
-    const labelW = this.showComboLabel ? this.score.width + COMBO_GAP + this.comboLabel.width : LABEL_W;
+    this.comboX = Math.max(this.score.width, this.showComboLabel ? LABEL_W : 0) + COMBO_GAP;
+    const scoreW = this.combo ? this.comboX + this.multiplier.width : this.score.width;
+    const labelW = this.showComboLabel ? this.comboX + this.comboLabel.width : LABEL_W;
     const heartsW = state.maxHealth * HEART_STEP - 1;
     const rowW = heartsW + STAR_GAP + STAR.width + STAR_TEXT_GAP + this.stars.width;
     const contentW = Math.max(scoreW, labelW, rowW);

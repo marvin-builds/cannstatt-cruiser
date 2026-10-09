@@ -7,16 +7,19 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { ARROW_RIGHT, DISMISS_ICON, SHARE_ICON, STAR, UI } from './art';
-import { centred, fill, menuButton, panel, ribbon, text } from './draw-kit';
+import { ARROW_RIGHT, DISMISS_ICON, HEART_ICON, SHARE_ICON, STAR, UI } from './art';
+import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
 import {
   BULLET_W,
   controlsLine,
-  GAMEOVER_KEYS,
+  cornerLabelScale,
   gameOverPrompt,
   installParts,
+  KID_CHIP_GAP,
+  KID_CHIP_LABEL,
+  kidChipRect,
   LINE,
   MENU_TEXT,
   type InstallCard,
@@ -28,6 +31,7 @@ import {
   reloadParts,
   STEP_GAP,
   startPrompt,
+  titleHelp,
   toTitleLabel,
   trickKeysHint,
 } from './menu-layout';
@@ -116,18 +120,21 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   if (reload) drawReloadCard(r, reload);
   const install = l.blocks.get('install');
   if (install && l.install) drawInstallCard(r, install, l.install);
-  if (l.buttons.toTitle) menuButton(r, l.buttons.toTitle, toTitleLabel(r.display.touch));
+  const { display, state } = r;
+  if (l.buttons.toTitle) {
+    const label = toTitleLabel(display.touch, state.mode === 'gameover');
+    menuButton(r, l.buttons.toTitle, label, UI.white, cornerLabelScale(display.portrait));
+  }
 }
 
-/** The title's five controls lines. */
-function titleHelp(touch: boolean): string[] {
-  return [
-    touch ? 'Kurz tippen = kleiner Sprung' : 'Leertaste kurz = kleiner Sprung',
-    'Halten = hoher Sprung',
-    touch ? 'Nach unten wischen = ducken' : 'Pfeil runter oder S = ducken',
-    trickKeysHint(touch),
-    touch ? 'Gegenstand antippen = benutzen' : 'E = Gegenstand benutzen',
-  ];
+/** The kid mode chip in the title's top-left corner: a heart and "Kindermodus" on a plate. */
+function drawKidChip(r: RenderContext): void {
+  const chip = kidChipRect();
+  r.g.fillStyle = UI.panel;
+  r.g.fillRect(chip.x, chip.y, chip.w, chip.h);
+  const x = chip.x + 3;
+  HEART_ICON.draw(r.g, 0, x, chip.y + Math.floor((chip.h - HEART_ICON.height) / 2), 1);
+  text(r, KID_CHIP_LABEL, x + HEART_ICON.width + KID_CHIP_GAP, chip.y + 2, { color: UI.pink });
 }
 
 export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {
@@ -138,6 +145,7 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
     r.g.fillRect(l.panel.x, l.panel.y, l.panel.w, l.panel.h);
   }
   drawHoldProgress(r, view.logoHold.progress, logo);
+  if (r.state.kidMode) drawKidChip(r);
   const y = (id: string) => l.blocks.get(id)?.y;
   const tagline = y('tagline');
   if (tagline !== undefined) centred(r, 'Mit dem Longboard durch Stuttgart', tagline, { color: UI.muted });
@@ -196,34 +204,42 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
   }
   const pause = l.blocks.get('pause');
   if (pause) centredIn(r, MENU_TEXT.pause, pause, { scale: 2 });
+  const scale = l.textScale;
   const prompt = l.blocks.get('prompt');
   if (prompt) {
     ribbon(r, prompt.x, prompt.y, prompt.w, prompt.h);
-    if (blinkOn(r.state.modeTime)) centredIn(r, pausePrompt(r.display.touch), { ...prompt, y: prompt.y + 4 }, { color: UI.yellow });
+    if (blinkOn(r.state.modeTime)) centredIn(r, pausePrompt(r.display.touch), { ...prompt, y: prompt.y + 4 }, { color: UI.yellow, scale });
   }
   const keys = l.blocks.get('keys');
-  if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted });
+  if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted, scale });
   const trick = l.blocks.get('trick');
-  if (trick) centredIn(r, trickKeysHint(r.display.touch), trick, { color: UI.muted });
+  if (trick) centredIn(r, trickKeysHint(r.display.touch), trick, { color: UI.muted, scale });
   drawNotices(r, l);
 }
 
-/** One "label  value" row of the game-over table, split at the centre line. */
-function resultRow(r: RenderContext, label: string, value: string, y: number, color: string): void {
-  const cx = centreX(r.display.viewWidth);
+/** One "label  value" row of the game-over table, split at the centre line `cx`. */
+function resultRow(r: RenderContext, label: string, value: string, cx: number, y: number, color: string): void {
   text(r, label, cx - 4, y, { align: 'right', color: UI.muted });
   text(r, value, cx + 4, y, { color });
 }
 
 const TABLE_PAD = 4;
 
+/** An opaque plate behind a line of text (game over: the stars of the street never show through). */
+function textPlate(r: RenderContext, block: Rect): void {
+  r.g.fillStyle = UI.panel;
+  r.g.fillRect(block.x - TABLE_PAD, block.y - 3, block.w + 2 * TABLE_PAD, block.h + 3);
+}
+
 export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {
   fill(r, UI.dim);
   const { state } = r;
   const run = view.lastRun;
   const title = l.blocks.get('title')!;
+  textPlate(r, title);
   text(r, MENU_TEXT.gameOver, title.x, title.y, { scale: 2, color: UI.red });
   const record = l.blocks.get('record');
+  if (record) textPlate(r, record);
   if (record && blinkOn(state.modeTime * 2)) centredIn(r, MENU_TEXT.newRecord, record, { scale: 2, color: UI.yellow });
 
   const values = [
@@ -238,13 +254,17 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
   const half = 4 + Math.max(...rows.flatMap((x) => [measureText(x.label), measureText(x.value)]));
   const top = rows[0]!.rect!.y;
   const bottom = rows[rows.length - 1]!.rect!.y + 8;
-  panel(r, 2 * (half + TABLE_PAD), top - TABLE_PAD, bottom - top + 2 * TABLE_PAD);
-  rows.forEach((x, i) => resultRow(r, x.label, x.value, x.rect!.y, i === 0 && run?.newRecord ? UI.yellow : UI.white));
+  const cx = rows[0]!.rect!.x + Math.floor(rows[0]!.rect!.w / 2);
+  const w = 2 * (half + TABLE_PAD);
+  r.g.fillStyle = UI.panel;
+  r.g.fillRect(cx - Math.floor(w / 2), top - TABLE_PAD, w, bottom - top + 2 * TABLE_PAD);
+  rows.forEach((x, i) => resultRow(r, x.label, x.value, cx, x.rect!.y, i === 0 && run?.newRecord ? UI.yellow : UI.white));
 
   if (!gameOverReady(state)) return;
   const prompt = l.blocks.get('prompt');
-  if (prompt && blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow });
-  const keys = l.blocks.get('keys');
-  if (keys) centredIn(r, GAMEOVER_KEYS, keys, { color: UI.muted });
+  if (prompt) {
+    textPlate(r, prompt);
+    if (blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow, scale: l.textScale });
+  }
   drawNotices(r, l);
 }
