@@ -9,7 +9,8 @@
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, ItemAction, PlayerAnim, PlayerState, Rect } from '../types';
-import { airTrickTicks, canStartAirTrick } from './air-trick';
+import { Rng } from '../core/rng';
+import { airTrickTicks, canStartAirTrick, flipMood } from './air-trick';
 import { BinCrash } from './bin';
 import * as T from './tuning';
 import { ITEM_USE_TIME, MugToss, TOSS_AT } from './use';
@@ -58,6 +59,9 @@ export interface ItemUse {
 /** Where the mug leaves the hand when tossed, relative to the wheel contact point (about the shoulder). */
 const TOSS_FROM = { dx: 2, dy: -26 } as const;
 
+/** Mixed into the run seed for the player's own rng, so it shares no sequence with gameplay's or core's drunk-input rng. */
+const FLIP_SEED_SALT = 0x5bd1e995;
+
 /** A take-off gameplay asked for (stomp bounce or kicker launch), applied at the start of the next tick. */
 interface TakeOff {
   velocity: number;
@@ -96,6 +100,8 @@ export class SkaterController {
   private airTrickTick = -1;
   /** Ticks the running air trick lasts (airTrickTicks). */
   private airTrickLength = 0;
+  /** Draws the drunk flip jitter; re-seeded from the run seed in reset(), never touches ctx.rng. */
+  private readonly flipRng = new Rng(0);
   private catchTimer = 0;
   /** Grind trick held (down on the rail) and seconds since it started. */
   private tricking = false;
@@ -110,7 +116,9 @@ export class SkaterController {
 
   constructor(private readonly bus: GameBus) {}
 
-  reset(): void {
+  /** Run start: clears everything and re-seeds the player's rng from the run `seed`. */
+  reset(seed = 0): void {
+    this.flipRng.seed(seed ^ FLIP_SEED_SALT);
     this.boosting = false;
     this.boostTime = 0;
     this.coyote = 0;
@@ -280,7 +288,7 @@ export class SkaterController {
     this.setTrick(p, input.duck.held && p.grinding && !this.crashing);
     this.updateBigAir(p);
     // After the physics, from the post-move y/vy: down in the air is the air trick (never a duck).
-    if (input.duck.pressed) this.tryAirTrick(p);
+    if (input.duck.pressed) this.tryAirTrick(state);
     const look = p.grounded && !this.crashing ? kickerLook(state) : null;
     this.onKicker = look?.onKicker ?? false;
     this.kickerLift = look?.lift ?? 0;
@@ -300,12 +308,19 @@ export class SkaterController {
     p.grindTrick = on;
   }
 
-  /** Starts the air trick if none runs and canStartAirTrick allows it (airborne, not on a rail, not crashing). */
-  private tryAirTrick(p: PlayerState): void {
+  /**
+   * Starts the air trick if none runs and canStartAirTrick allows it (airborne,
+   * not on a rail, not crashing). Its length depends on the mood at the start;
+   * only a drunk street flip draws its jitter.
+   */
+  private tryAirTrick(state: GameState): void {
+    const p = state.player;
     if (this.airTrickTick >= 0 || p.grounded || p.grinding || this.crashing) return;
     if (!canStartAirTrick(p.y, p.vy, this.launched)) return;
+    const mood = flipMood(state);
+    const jitter = mood === 'drunk' && !this.launched ? this.flipRng.int(0, T.DRUNK_FLIP_JITTER) : 0;
     this.airTrickTick = 0;
-    this.airTrickLength = airTrickTicks(this.launched);
+    this.airTrickLength = airTrickTicks(this.launched, mood, jitter);
     p.airTrick = true;
   }
 

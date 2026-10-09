@@ -21,7 +21,7 @@ import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
 import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw, kidSafeItem } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView, SkaterController } from './controller';
-import { type Pose, poseAt, type TimelineName, timelineFor } from './poses';
+import { type Pose, type TimelineName, timelineFor } from './poses';
 import { type UseFrame, itemUseFrame, type MugToss } from './use';
 import {
   armLine,
@@ -35,7 +35,7 @@ import {
   useDraw,
   type UseSprite,
 } from './use-art';
-import { type DrunkLook, drunkLook } from './wobble';
+import { type DrunkLook, drunkLook, drunkPoseAt } from './wobble';
 
 const BODY = sprite(PALETTE, BODY_FRAMES);
 const CHILL_BODY = sprite(PALETTE, CHILL_BODY_FRAMES);
@@ -239,6 +239,6 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const use = view.use && frame ? { item: kidSafeItem(view.use.item, state.kidMode), frame, timeline } : null;
   const drunk = drunkLook(state.drunkTimer, state.time);
   // On a kicker the wheels ride up the ramp surface (look only, y stays GROUND_Y).
-  drawPose(g, poseAt(timeline, animTime), p.x, p.y - view.kickerLift, { chill, carry, use, drunk, binLid: skater.bin.lid });
+  drawPose(g, drunkPoseAt(timeline, animTime, drunk), p.x, p.y - view.kickerLift, { chill, carry, use, drunk, binLid: skater.bin.lid });
   if (timeline === 'hardLand') drawLandingDust(g, p.x, p.y, view.time);
 }

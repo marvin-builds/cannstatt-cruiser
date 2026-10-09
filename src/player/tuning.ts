@@ -113,3 +113,18 @@ export const STREET_AIR_TRICK_TICKS = 12;
  * launch has no such limit). A tap hop (apex ~17 px) never reaches it.
  */
 export const AIR_TRICK_HEIGHT = 20;
+/**
+ * Drunk street kickflip (ROADMAP 42, state.drunkTimer > 0 when it starts): it
+ * turns DRUNK_FLIP_SCALE times as long as the sober one, plus 0..DRUNK_FLIP_JITTER
+ * ticks drawn from the player's run-seeded rng: about every second drunk flip
+ * bails, about 1 in 5 pressed at the first chance of a full jump despite the
+ * input delay (flip-fail-rate.test.ts measures it).
+ */
+export const DRUNK_FLIP_SCALE = 1.5;
+export const DRUNK_FLIP_JITTER = 6;
+/**
+ * Chilled street kickflip (state.chillTimer > 0, not drunk): this many times
+ * as long, no randomness. The lower chill jumps already shorten the window,
+ * so a small scale gives about 1 in 5 bails (1.25 would be over 1 in 3).
+ */
+export const CHILL_FLIP_SCALE = 1.1;

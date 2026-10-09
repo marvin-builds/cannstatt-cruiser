@@ -11,7 +11,7 @@ import { chillStyle } from './chill';
 import { drawBoard, drawPose } from './render';
 import { poseAt, TIMELINES, type TimelineName } from './poses';
 import { ITEM_USE_TIME, itemUseFrame, type UseFrame } from './use';
-import { drunkLook } from './wobble';
+import { drunkLook, drunkPoseAt } from './wobble';
 
 export type LineupLook = 'normal' | 'chill' | 'kid';
 
@@ -205,7 +205,7 @@ const USES: [CarriedItem, ItemAction][] = [
   ['football', 'throw'],
 ];
 const USE_POSES: TimelineName[] = ['ride', 'airRise', 'grind', 'grindTrick'];
-const DRUNK_POSES: TimelineName[] = ['ride', 'push', 'airFall', 'grind', 'grindTrick', 'duck'];
+const DRUNK_POSES: TimelineName[] = ['ride', 'push', 'airFall', 'grind', 'grindTrick', 'duck', 'kickflip'];
 const DRUNK_SAMPLES = 10;
 
 /** Every distinct frame of a use animation (a new one whenever the arm, item or crumbs change). */
@@ -239,8 +239,10 @@ function renderUseLineup(scale: number): string {
     drawText(g, `drunk ${name}`, 2, row * CELL_H + 2, { color: '#241c24' });
     for (let col = 0; col < DRUNK_SAMPLES; col++) {
       const { x, groundY } = cell(g, col, row);
-      const time = col * 0.23;
-      drawPose(g, poseAt(name, time), x, groundY, { drunk: drunkLook(1, time) });
+      // The kickflip row steps through the flip (its board wobbles), the others through the sway.
+      const time = name === 'kickflip' ? col * 0.02 : col * 0.23;
+      const drunk = drunkLook(1, time);
+      drawPose(g, drunkPoseAt(name, time, drunk), x, groundY, { drunk });
     }
     row++;
   }

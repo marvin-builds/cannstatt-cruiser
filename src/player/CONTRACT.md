@@ -212,8 +212,24 @@ in any slice's Vitest tests.
   0.2 s otherwise), then false. A street kickflip still running at the street
   landing ends on the landing tick (`player.airTrick` is false on it, like
   after a rail catch); the landing physics are unchanged and `land.flipLeft`
-  reports the ticks it still needed (`STREET_AIR_TRICK_TICKS` minus the ticks
-  it ran). A rail or ledge catch never reports one (no `land`). A press while it runs
+  reports the ticks it still needed (its length minus the ticks it ran).
+- **Drunk or chilled street flips (ROADMAP 42):** the street length is
+  `airTrickTicks(launched, flipMood(state), jitter)` (`air-trick.ts`), the mood
+  read when the flip starts: drunk (`state.drunkTimer > 0`, wins over chill)
+  `round(STREET_AIR_TRICK_TICKS * DRUNK_FLIP_SCALE)` (1.5 -> 18) plus a jitter
+  of 0..`DRUNK_FLIP_JITTER` (6) ticks; chilled (`state.chillTimer > 0`: joint,
+  or the kid-mode gum) `round(STREET_AIR_TRICK_TICKS * CHILL_FLIP_SCALE)` (1.1
+  -> 13, no randomness; the lower chill jumps already shorten the window). A
+  launch kickflip always keeps `AIR_TRICK_TICKS` and its start rule. The
+  jitter comes from the player's own `Rng`, re-seeded on `runStarted` from
+  `seed ^ FLIP_SEED_SALT` (`controller.ts`), drawn only when a drunk street
+  flip starts: runs replay deterministically and `ctx.rng` is never touched.
+  No event changes: a too-long flip simply lands with a larger `flipLeft`
+  and gameplay's item-41 bail judge applies. `flip-fail-rate.test.ts`
+  measures the bail shares (flip start uniform over the allowed window,
+  medium 10-tick and full-hold jumps weighted equally): sober ~14%, drunk
+  ~52% (~23% when down is pressed on the first allowed tick of a full jump,
+  with the core input delay), chilled ~22%. A rail or ledge catch never reports one (no `land`). A press while it runs
   is ignored; after it ended, another press starts a new one if the rule
   above allows it.
 - **Cut short:** a `grindStart` (rail or ledge catch) ends it at once, in the
@@ -267,6 +283,8 @@ in any slice's Vitest tests.
 - `drunkLook(drunkTimer, state.time)` (`wobble.ts`): the body sways 1 px
   over the board, an arm flails now and then and a hiccup bubble rises from
   the mouth. Pure function of the run time; hitbox unchanged.
+- A drunk kickflip shakes the spinning board by up to 2 px sideways and
+  1 px up/down (`drunkPoseAt`, on the flip clock). Looks only.
 
 ## Grind trick (player.grindTrick)
 

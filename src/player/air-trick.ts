@@ -10,9 +10,28 @@
  *   left (ROADMAP 41: a late start is the player's risk). A flip still
  *   running at touch-down ends on the landing tick; the land event reports
  *   the ticks it still needed (flipLeft) and gameplay judges the bail.
+ * - Drunk or chilled (ROADMAP 42) the street kickflip turns longer
+ *   (flipMood, airTrickTicks), so a late start bails more often.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
-import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, GRAVITY, MAX_FALL_SPEED, STREET_AIR_TRICK_TICKS } from './tuning';
+import type { GameState } from '../types';
+import {
+  AIR_TRICK_HEIGHT,
+  AIR_TRICK_TICKS,
+  CHILL_FLIP_SCALE,
+  DRUNK_FLIP_SCALE,
+  GRAVITY,
+  MAX_FALL_SPEED,
+  STREET_AIR_TRICK_TICKS,
+} from './tuning';
+
+/** What makes a street kickflip slower: drunk (Maßkrug) wins over chilled (joint / kid-mode gum). */
+export type FlipMood = 'sober' | 'drunk' | 'chill';
+
+export function flipMood(state: Pick<GameState, 'drunkTimer' | 'chillTimer'>): FlipMood {
+  if (state.drunkTimer > 0) return 'drunk';
+  return state.chillTimer > 0 ? 'chill' : 'sober';
+}
 
 /** Upper bound for the prediction (a very long flight is simply "long enough"). */
 const MAX_PREDICTED_TICKS = 600;
@@ -33,9 +52,16 @@ export function airTicksLeft(y: number, vy: number): number {
   return ticks;
 }
 
-/** Ticks the kickflip runs: the full one after a kicker launch, the quick street one otherwise. */
-export function airTrickTicks(launched: boolean): number {
-  return launched ? AIR_TRICK_TICKS : STREET_AIR_TRICK_TICKS;
+/**
+ * Ticks the kickflip runs: the full one after a kicker launch (never
+ * changed), the quick street one otherwise, longer by DRUNK_FLIP_SCALE plus
+ * `jitter` (the drunk extra ticks, 0..DRUNK_FLIP_JITTER) or by CHILL_FLIP_SCALE.
+ */
+export function airTrickTicks(launched: boolean, mood: FlipMood = 'sober', jitter = 0): number {
+  if (launched) return AIR_TRICK_TICKS;
+  if (mood === 'drunk') return Math.round(STREET_AIR_TRICK_TICKS * DRUNK_FLIP_SCALE) + jitter;
+  if (mood === 'chill') return Math.round(STREET_AIR_TRICK_TICKS * CHILL_FLIP_SCALE);
+  return STREET_AIR_TRICK_TICKS;
 }
 
 /**
