@@ -82,6 +82,22 @@ and on desktop (keyboard and mouse). The UI language is German.
   held. It ends when down is released or the grind ends and scores 3 trick
   points per tick (times the multiplier) on top of the grind, with the popup
   "Grind-Trick! +…".
+- Kickflip (down in the air, see Stunt lines) pays for a reason, not for spam:
+  - Over something: a street kickflip pays its full 100 only when that jump
+    cleared an obstacle or stomped someone; a flip into empty air pays 20. A
+    kickflip after a kicker launch always pays its full 150.
+  - Repetition fades: kickflips in a row with nothing else in between pay
+    100 %, 50 %, 25 %, then 10 % of that. Clearing an obstacle, a stomp, a
+    grind start (rail, bench, ledge), a kicker launch, a high five or 3 s of
+    riding without a kickflip make the next one full again.
+  - Risk: a kickflip still turning when the wheels touch the street (more
+    than 3 ticks left) is a bail: a crash like on any obstacle (one heart,
+    combo broken, carried item lost) with the popup "Zu spät geflippt!", and
+    the trick scores nothing. Started early on a high jump, e.g. at the top,
+    it always finishes; a rail or ledge catch never bails.
+  - A full kickflip gets the big "Kickflip! +…" callout and its sting; a cut
+    one only a plain "Kickflip +…" popup and the plain trick sound. Kid mode
+    follows the same rules.
 - Grind trick hint: until the player has done a grind trick once (stored on
   the device), the first 3 grinds of a run show a small plate under the
   skater: "↓ = Trick!" with a key cap on desktop, "Wisch runter = Trick!" on
@@ -157,7 +173,7 @@ empties the hands:
 ## Health
 
 - Health bar with 5 segments.
-- Crashing into an obstacle costs 1 segment, plays a short stumble animation and
+- Crashing into an obstacle (or a kickflip bail) costs 1 segment, plays a short stumble animation and
   gives ~1.5 s of invulnerability (blinking). Empty = Game Over.
 
 ## Stars
@@ -242,8 +258,9 @@ not harder.
   for a growing combo ("Combo x2!", "Combo x3!" ...; the first piece starts
   the line without a callout) and a line bonus ("Stunt-Linie! +…").
 - Air trick: down (↓ / S, a swipe down) in the air after a launch or a high
-  jump does a kickflip, scored on a clean landing ("Air-Trick! +…"). It
-  never changes the jump. Hints explain the ramp jump and the trick.
+  jump does a kickflip, scored on a clean landing ("Kickflip! +…"; see
+  Obstacles and scoring for what it pays and the late-flip bail). It never
+  changes the jump. Hints explain the ramp jump and the trick.
 - The camera never moves; the upper level is slim and covers little of the
   background.
 - Falling off or missing a stunt piece never costs health or crashes: the

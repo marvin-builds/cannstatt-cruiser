@@ -260,7 +260,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
-| `window.__ui.airTrick(points)` / `airHintVisible()` | emits `airTrick` ("Kickflip! +…" callout and sparkle; the first-time air trick hint is never shown again) / whether the air trick hint wants to show now |
+| `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu spät geflippt!" popup) / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
@@ -437,7 +437,8 @@ npm run playtest -- --headed
   trick (Stunt Wave B): a kicker alone, down
   held for 2 ticks (`input.duck`) 4 ticks after `launch`, sets
   `player.airTrick`, and the street landing scores one `airTrick` (ticks and
-  points > 0, the kickflip callout), no crash. Then in each zone a kicker and a ledge there are
+  points > 0, `full`: a launch kickflip always pays its base; the kickflip
+  callout), no crash. Then in each zone a kicker and a ledge there are
   placed together as one line: the press on the kicker launches, `grindStart` on the
   ledge, one `stuntStep` (step 2 of 2 at x2: the first piece made starts the
   line quietly, there is no "Combo x1!") and a completed
@@ -445,17 +446,25 @@ npm run playtest -- --headed
   desktop a 100 s ride with no input but a Space press on each kicker's
   ramp checks that the spawner brings >= 2 lines (launches and `stuntEnd`s)
   and that no `kicker` / `ledge` crash happens.
-- `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37; run it on
-  `desktop,phone-landscape,phone-portrait`, `--name kickflip`): a run at a
-  pinned 120 px/s on an empty street (cleared while the zone banner fades),
-  a full jump with real input and the trick gesture at the apex: keyboard
-  Space held + ArrowDown tapped (every viewport), and on touch viewports
-  one finger held for the jump and then dragged down 14 view px
-  ([kickflip drag](ARCHITECTURE.md#kickflip-drag), `Fingers`). Checks per
-  input: `player.airTrick` a tick after the gesture while airborne, exactly
-  one `jump`, one `airTrick` with points > 0 on the landing, no crash.
-  Shots: the board spin mid-trick, the "Kickflip!" callout 4 and 16 ticks
-  after the landing (plus a page shot on touch).
+- `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37, and its
+  spam rules, ROADMAP 41; run it on `desktop,phone-landscape,phone-portrait`,
+  `--name kickflip`): a run at a pinned 120 px/s on an empty street (cleared
+  while the zone banner fades and before every jump), full jumps with real
+  input: keyboard Space held + ArrowDown tapped (every viewport), and on
+  touch viewports one finger held for the jump and then dragged down 14 view
+  px ([kickflip drag](ARCHITECTURE.md#kickflip-drag), `Fingers`). Per input:
+  a plain jump measures the ticks to the apex; a kickflip at the apex over a
+  planter placed to sit under the apex (`obstacleCleared` for it, one
+  `airTrick` with `full` and at least `STREET_AIR_TRICK_POINTS`, no crash);
+  three kickflips at the apex into empty air right after each other (each
+  `full` false, each paying less than the one before, the first less than
+  the full one); a kickflip started `LATE_AIR_LEFT` (5) ticks before the
+  touchdown (`land.flipLeft` > 0, one `crash` kind `'bail'` with `entityId`
+  -1, one health lost, no `airTrick`). Every flight: `player.airTrick` a
+  tick after the gesture while airborne, exactly one `jump`. Shots (4 and
+  16 ticks after the landing, plus a page shot on touch): `full popup`
+  (the "Kickflip!" callout), `reduced popup` (the plain "Kickflip +…"),
+  `bail` (the "Zu spät geflippt!" popup); plus the board spin mid-trick.
 - `scripts/scenarios/combos.ts` (combo patterns, ROADMAP 33; run it on
   `desktop,phone-landscape`, `--name combos`): each combo of `COMBO_NAMES`
   laid right ahead with `window.__gameplay.pattern(name)` at a pinned 130

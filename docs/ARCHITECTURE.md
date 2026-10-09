@@ -61,7 +61,9 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
   gameplay/stunts.ts    StuntLines: kicker launches and the line tracker (stuntStep / stuntEnd, STUNT_POINTS, STUNT_LINE_BONUS, DEFAULT_LEDGE_HEIGHT)
   gameplay/stunt-line.ts  designed stunt lines (kickers, ledges, gaps, star trail) checked with stunt-sim.ts
-  gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS launch / STREET_AIR_TRICK_POINTS street kickflip), emits airTrick
+  gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS launch / STREET_AIR_TRICK_POINTS street kickflip over an obstacle / EMPTY_AIR_TRICK_POINTS into empty air), emits airTrick
+  gameplay/flip-fade.ts KickflipFade: the repetition fade of kickflips in a row (KICKFLIP_FADE, KICKFLIP_REFRESH_SECONDS, see Air trick)
+  gameplay/bail.ts      landedLate() / bail(): a kickflip still turning on the landing is a crash (KICKFLIP_BAIL_GRACE_TICKS, see Air trick)
   player/air-trick.ts   canStartAirTrick(), airTrickTicks(), airTicksLeft(): the kickflip start rule and length (see Air trick, src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
   gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
@@ -316,12 +318,12 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `mute` | `{muted}` | core (`commands.setMuted`, M key) |
 | `zoneChanged` | `{index, previous}` | core (`commands.setZone`); world calls `setZone` when it advances |
 | `jump` | `{velocity}` | player |
-| `land` | `{impact}` | player |
+| `land` | `{impact, flipLeft?}` | player (`flipLeft`: ticks the running kickflip still needed on the touchdown tick, 0 or absent without one; gameplay judges the [bail](#air-trick) from it) |
 | `grindStart` | `{entityId}` | gameplay |
 | `grindEnd` | `{entityId, ticks}` | gameplay |
 | `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
-| `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash)) |
+| `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
@@ -337,7 +339,7 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `launch` | `{entityId, velocity}` | gameplay (the skater pressed jump in a kicker's launch window, never automatically, see [Manual ramp jump](#manual-ramp-jump-roadmap-40); the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce, replacing an ollie the same press started; jumpsim mirrors it) |
 | `stuntStep` | `{step, steps, multiplier, points}` | gameplay (a further piece of a running stunt line was made: kicker air or ledge grind; the first piece made starts the line quietly, so the first `stuntStep` is the second piece at x2; `step` = the piece's place 2..`steps`, `multiplier` = pieces made in the attempt; the ui shows "Combo xN!", audio a rising sound) |
 | `stuntEnd` | `{steps, made, completed, points}` | gameplay (a started attempt ended, exactly once: `completed` when the skater left the line's last piece with at least 2 pieces made, else he dropped out, never with a crash or lost health; `points` = line bonus, 0 if none; the ui shows "Stunt-Linie! +…" only when completed) |
-| `airTrick` | `{ticks, points}` | gameplay (an [air trick](#air-trick) ended and the skater touched down cleanly: street landing or a grind start; `ticks` it ran; the ui shows "Air-Trick! +…", audio a sound) |
+| `airTrick` | `{ticks, points, full}` | gameplay (an [air trick](#air-trick) ended and the skater touched down cleanly: street landing or a grind start; `ticks` it ran; `full` false when the points were cut, a kickflip into empty air or a repeated one; the ui shows the big "Kickflip! +…" callout when full, else a plain "Kickflip +…" popup; audio the kickflip sting when full, else the plain trick sting) |
 | `highFive` | `{entityId, points}` | gameplay (the use press inside a `highFiver`'s high five window; that press never uses the carried item; see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `sessionCheer` | `{level}` | gameplay (a grind trick, air trick or combo step inside the park; `level` 0..1 is the session's cheering so far; world animates the crowd, audio scales the cheers) |
 | `sessionEnd` | `{level, points}` | gameplay (the skater left the park; `points` = the "Session!" bonus scaled by `level`, 0 if none; the ui shows the callout) |
@@ -1455,7 +1457,8 @@ Kickers never launch by themselves: the player presses jump on the ramp.
 
 ### Air trick
 
-Stunt Wave B: a kickflip in the air, never harder.
+Stunt Wave B: a kickflip in the air that never changes the jump; ROADMAP 41
+makes spamming it not pay and a late flip a risk.
 
 - **Input**: a duck **press** in the air: ↓ / S on the keyboard; on touch
   a swipe down or, with one finger, the held jump finger dragged down (see
@@ -1465,36 +1468,62 @@ Stunt Wave B: a kickflip in the air, never harder.
   `airTrickTicks(launched)`):
   - **launch kickflip** (in the air after a kicker launch): starts when the
     remaining air time (`airTicksLeft`) lets the `AIR_TRICK_TICKS` (21)
-    ticks finish before the landing tick;
+    ticks finish before the landing tick, so it never lands turning;
   - **street kickflip** (any other jump): starts from `AIR_TRICK_HEIGHT`
-    (20 px) above the street (a tap hop never gets there) with at least
-    `STREET_AIR_TRICK_MIN_AIR` (8) ticks of air left and runs the quicker
-    `STREET_AIR_TRICK_TICKS` (12); one still running at touch-down ends on
-    the landing tick (looks only, the landing is the same). So a full jump
-    and a medium one leave a comfortable window, e.g. at the apex.
+    (20 px) above the street (a tap hop never gets there), however little
+    air is left, and runs the quicker `STREET_AIR_TRICK_TICKS` (12). One
+    still running at touch-down ends on the landing tick, and `land`
+    reports the ticks it still needed as `flipLeft` (0 without a flip).
+    Started early on a full or medium jump (e.g. at the apex) it finishes;
+    started late in the fall it lands turning.
   `player.airTrick` is true while it runs; a rail or ledge catch or a crash
   cuts it short. Physics and hitbox are unchanged; down in the air never
-  ducks.
+  ducks. A `crash` of kind `'bail'` throws the skater off like any crash.
 - **Gameplay** (`gameplay/air-trick.ts` `AirTrickScore`) only reads
   `player.airTrick` (it never gates the trick): an ended trick waits for the
   next clean touchdown (`land` or `grindStart`) and then emits `airTrick
-  {ticks, points}` once, its base times the best multiplier seen (the
-  combo, or a running line's multiplier when higher). The base is
-  `AIR_TRICK_POINTS` (150) when a `launch` came since the last touchdown,
-  else `STREET_AIR_TRICK_POINTS` (100). A crash drops it. It is no line
-  piece: no `stuntStep`, never ends a line.
-- **UI**: a landed kickflip shows the big "Kickflip! +N" callout with a
-  sparkle (`ui/stunt-callout.ts`, top strip, instead of the small
-  "Air-Trick" popup). Until the first kickflip ever (storage key
-  `airTrickSeen`) a hint "In der Luft [↓] = Kickflip!" / "In der Luft
-  runterwischen = Kickflip!" shows in the air after every kicker launch and
-  once per run on the first full street jump (`STREET_HINT_HEIGHT` 24 px
-  up), `ui/air-trick-hint.ts`. **Audio**: `airSpin` as it starts; on the score
-  `airTrick` (street) or the bigger `airTrickBig` (`points >=` 150, a
-  launch kickflip).
-- **Playtest**: `scripts/scenarios/kickflip.ts` (street kickflip with real
-  keys and the one-finger drag); `scripts/scenarios/stunts.ts` (after a
-  kicker launch).
+  {ticks, points, full}` once. Points = `round(base * share) *
+  multiplier`, the best multiplier seen (the combo, or a running line's
+  multiplier when higher). It is no line piece: no `stuntStep`, never ends a
+  line.
+  - **Base, a reason to flip**: `AIR_TRICK_POINTS` (150) when a `launch`
+    came since the last touchdown (a launch kickflip always gets its full
+    base); a street kickflip gets `STREET_AIR_TRICK_POINTS` (100) only when
+    the same flight (from its `jump` to the touchdown) cleared an obstacle
+    or stomped someone (`obstacleCleared` / `stomp`), else the small
+    `EMPTY_AIR_TRICK_POINTS` (20).
+  - **Repetition fade** (`gameplay/flip-fade.ts` `KickflipFade`): paid
+    kickflips in a row get the share `KICKFLIP_FADE` [1, 0.5, 0.25, 0.1] of
+    their base (100 %, 50 %, 25 %, then 10 % for every later one). The next
+    one is full again after a refresh: an obstacle cleared or a stomp, a
+    grind start (rail, bench, ledge), a kicker `launch`, a `highFive`, or
+    `KICKFLIP_REFRESH_SECONDS` (3 s) of playing time without a kickflip
+    running or waiting for its touchdown. A run start resets it.
+  - `full` is false when the empty-air base or the fade cut the points.
+  - **Bail** (`gameplay/bail.ts`): a `land` whose `flipLeft` is more than
+    `KICKFLIP_BAIL_GRACE_TICKS` (3) drops the trick (no `airTrick`) and is a
+    crash like on any obstacle (`health.ts` `hurt`: one health, combo broken,
+    carried item lost; ignored while invulnerable): `crash {entityId: -1,
+    kind: 'bail', health}`. A rail or ledge catch is no `land` and never
+    bails. Any other crash drops the waiting trick too.
+  Kid mode follows the same rules. Points only go down, so the server's
+  plausibility check needs no change.
+- **UI**: a full kickflip shows the big "Kickflip! +N" callout with a
+  sparkle (`ui/stunt-callout.ts`, top strip); a reduced one (`full` false)
+  only the plain popup "Kickflip +N" (`ui/popup-feed.ts`); a bail the popup
+  "Zu spät geflippt!" instead of "Autsch!". Until the first kickflip ever
+  (storage key `airTrickSeen`) a hint "In der Luft [↓] = Kickflip!" / "In
+  der Luft runterwischen = Kickflip!" shows in the air after every kicker
+  launch and once per run on the first full street jump
+  (`STREET_HINT_HEIGHT` 24 px up), `ui/air-trick-hint.ts`. **Audio**:
+  `airSpin` as it starts; on a full score `airTrick` (street) or the bigger
+  `airTrickBig` (`points >=` 150, a launch kickflip), on a reduced one the
+  plain `trick` sting (louder for more points); a bail clatters the board
+  (`clatter`).
+- **Playtest**: `scripts/scenarios/kickflip.ts` (street kickflips with real
+  keys and the one-finger drag: full over an obstacle, fading into empty
+  air, the late bail); `scripts/scenarios/stunts.ts` (a full kickflip after
+  a kicker launch).
 
 ## NorDIY skatepark (ROADMAP 36)
 

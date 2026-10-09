@@ -13,8 +13,8 @@
  * pieces (`stuntStep`: the first piece starts the line quietly, so the ledge
  * is step 2 at x2) and its end (`stuntEnd`), never with a crash or lost
  * health. An air trick (Stunt Wave B): down pressed in the air after a
- * kicker launch sets `player.airTrick` and scores `airTrick` on the street
- * landing. On desktop a 100 s ride, with no input but the press on each
+ * kicker launch sets `player.airTrick` and scores a full `airTrick` on the
+ * street landing (a launch kickflip always pays its base, ROADMAP 41). On desktop a 100 s ride, with no input but the press on each
  * kicker's ramp, checks that the spawner brings stunt lines by itself (about
  * one per 30-45 s of riding) and that no stunt piece ever crashes the skater.
  *
@@ -163,7 +163,7 @@ async function airTrick(t: PlaytestContext, rider: Rider): Promise<void> {
   await t.game.step(6);
   await t.canvasShot('air trick kickflip');
   const tricks = await until(t, start.frame, 'airTrick', 240);
-  t.check('air trick: the landing scores one airTrick', tricks.length === 1 && tricks[0]!.ticks > 0 && tricks[0]!.points > 0, tricks);
+  t.check('air trick: the landing scores one full airTrick (a launch kickflip always pays its base)', tricks.length === 1 && tricks[0]!.ticks > 0 && tricks[0]!.points > 0 && tricks[0]!.full, tricks);
   await t.game.step(4);
   await t.canvasShot('air trick popup');
   const harm = await noStuntHarm(t, start.frame, start.health);
@@ -248,7 +248,7 @@ async function spawnedLines(t: PlaytestContext): Promise<void> {
   await t.canvasShot('spawned ride end');
   const launches = await payloads(t, start.frame, 'launch');
   const ends = await payloads(t, start.frame, 'stuntEnd');
-  const stuntCrashes = (await payloads(t, start.frame, 'crash')).filter((c) => STUNT_KINDS.includes(c.kind));
+  const stuntCrashes = (await payloads(t, start.frame, 'crash')).filter((c) => c.kind !== 'bail' && STUNT_KINDS.includes(c.kind));
   await t.log('spawned lines', { presses: pressed.size, launches: launches.length, ends });
   t.check(`spawner: stunt lines come by themselves (>= 2 in ${RIDE_SECONDS} s)`, launches.length >= 2 && ends.length >= 2, {
     launches: launches.length,
