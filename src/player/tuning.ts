@@ -104,14 +104,10 @@ export const KICKER_WHEEL_REACH = 8;
 export const AIR_TRICK_TICKS = 21;
 /**
  * The quicker street kickflip (any jump that is no launch): ticks it runs
- * (0.2 s). It may still run at touch-down; the landing then ends it.
+ * (0.2 s). Started too late it still runs at touch-down; the landing then
+ * ends it and gameplay may call it a bail (ROADMAP 41).
  */
 export const STREET_AIR_TRICK_TICKS = 12;
-/**
- * A street kickflip starts only with at least this many ticks of air time
- * left, so most of the flip shows before the landing cuts it short.
- */
-export const STREET_AIR_TRICK_MIN_AIR = 8;
 /**
  * Height above the street from which down starts the street kickflip (a
  * launch has no such limit). A tap hop (apex ~17 px) never reaches it.

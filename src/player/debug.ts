@@ -33,8 +33,8 @@ export interface PlayerDebugHook {
   rollingKicker(ahead?: number): number;
   /** Removes a rail added by grind() (the player then falls off). */
   removeRail(id: number): void;
-  /** Emits a crash into `kind` like gameplay would (`bin`: head first into the bin). */
-  crash(kind?: EntityKind): void;
+  /** Emits a crash into `kind` like gameplay would (`bin`: head first into the bin, `bail`: a kickflip bail). */
+  crash(kind?: EntityKind | 'bail'): void;
   /** Sets `state.chillTimer` (the joint effect; gameplay counts it down while playing). */
   chill(seconds?: number): void;
   /** Sets `state.kidMode` (bubble gum instead of the joint and red eyes). */
