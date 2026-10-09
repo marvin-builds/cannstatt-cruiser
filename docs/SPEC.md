@@ -94,7 +94,19 @@ and on desktop (keyboard and mouse). The UI language is German.
     than 3 ticks left) is a bail: a crash like on any obstacle (one heart,
     combo broken, carried item lost) with the popup "Zu spät geflippt!", and
     the trick scores nothing. Started early on a high jump, e.g. at the top,
-    it always finishes; a rail or ledge catch never bails.
+    it always finishes; a rail or ledge catch never bails. Down still held
+    on the touchdown counts as ducking (down pressed late in a jump to duck
+    under a banner ahead also starts a kickflip): no bail, but no points
+    either. Not while drunk: the delayed release nearly always keeps down
+    held then, and nothing overhead comes while drunk, so a late drunk flip
+    bails even with down held.
+  - Bail rates, from the fail-rate simulation (flips started on a random
+    allowed tick of a street jump): sober about 14 %, drunk about 50 %,
+    chilled about 22 %.
+  - Drunk or chilled the street kickflip turns longer, so it bails more
+    often (see Using items and Joint): the same bail, but the popup says
+    "Zu wacklig!" while drunk and "Zu entspannt!" while chilled (also with
+    the kid-mode bubble gum). A kickflip after a kicker launch never changes.
   - A full kickflip gets the big "Kickflip! +…" callout and its sting; a cut
     one only a plain "Kickflip +…" popup and the plain trick sound. Kid mode
     follows the same rules.
@@ -143,6 +155,12 @@ empties the hands:
   (~0.7 s) for a sure full jump. The street never goes empty while drunk
   (see Difficulty). Not used within ~6 s (counted from when it
   came into the hands), it is drunk by itself.
+  A street kickflip started while drunk turns 1.5x as long as a sober one
+  (18 instead of 12 ticks) plus a random 0-6 ticks, and the board wobbles
+  while it spins. About 50 % of drunk street kickflips (started on a random
+  allowed tick; simulated) land still turning: a normal bail (one heart,
+  combo broken, carried item lost) with the popup "Zu wacklig!", also with
+  down still held (no duck landing while drunk).
 - **Brezel / Lebkuchenherz**: eating it gives +1 health ("Lecker! +1"); at
   full health 150 bonus points instead (times the multiplier).
 - **Football**: thrown forward ("Wurf!"). Hitting a person makes them tumble
@@ -189,10 +207,15 @@ empties the hands:
   back over the last ~1 s), jumps are a bit lower (80 % take-off speed), a
   warm hazy tint lies over the screen and the HUD shows a draining timer.
   Score and combo are unaffected.
+- A street kickflip started while chilled turns 1.1x as long (13 instead of
+  12 ticks, no randomness); with the lower chill jumps about 22 % of them
+  (started on a random allowed tick; simulated) land still turning: a
+  normal bail with the popup "Zu entspannt!".
 
 In kid mode (see Settings) the joint is a pink bubble gum ("Kaugummi") with
 exactly the same effect: the skater blows a bubble instead of smoking, the
-tint is a light, sweet pink and the HUD timer shows a gum bubble. Nothing in
+tint is a light, sweet pink and the HUD timer shows a gum bubble. The slower
+kickflip and its "Zu entspannt!" bail apply with the gum too. Nothing in
 kid mode refers to drugs.
 
 ## Settings (hidden)

@@ -260,7 +260,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
-| `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu spät geflippt!" popup) / whether the air trick hint wants to show now |
+| `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu wacklig!" popup while drunk, "Zu entspannt!" while chilled, else "Zu spät geflippt!") / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
@@ -446,8 +446,8 @@ npm run playtest -- --headed
   desktop a 100 s ride with no input but a Space press on each kicker's
   ramp checks that the spawner brings >= 2 lines (launches and `stuntEnd`s)
   and that no `kicker` / `ledge` crash happens.
-- `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37, and its
-  spam rules, ROADMAP 41; run it on `desktop,phone-landscape,phone-portrait`,
+- `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37, its
+  spam rules, ROADMAP 41, and the drunk / chilled flip, ROADMAP 42; run it on `desktop,phone-landscape,phone-portrait`,
   `--name kickflip`): a run at a pinned 120 px/s on an empty street (cleared
   while the zone banner fades and before every jump), full jumps with real
   input: keyboard Space held + ArrowDown tapped (every viewport), and on
@@ -460,11 +460,27 @@ npm run playtest -- --headed
   `full` false, each paying less than the one before, the first less than
   the full one); a kickflip started `LATE_AIR_LEFT` (5) ticks before the
   touchdown (`land.flipLeft` > 0, one `crash` kind `'bail'` with `entityId`
-  -1, one health lost, no `airTrick`). Every flight: `player.airTrick` a
-  tick after the gesture while airborne, exactly one `jump`. Shots (4 and
-  16 ticks after the landing, plus a page shot on touch): `full popup`
-  (the "Kickflip!" callout), `reduced popup` (the plain "Kickflip +…"),
-  `bail` (the "Zu spät geflippt!" popup); plus the board spin mid-trick.
+  -1, one health lost, no `airTrick`); then, after riding out the crash and
+  refilling the hearts, the same late bail drunk (adult mode,
+  `window.__player.drunk(6)`) and chilled (`window.__player.chill(6)`): the
+  flip starts with one tick too little air for its longer length to land
+  within `KICKFLIP_BAIL_GRACE_TICKS` (from `airTrickTicks(false, mood)`;
+  checked to be enough air for a sober flip), and lands still turning with
+  the effect running, one `crash` kind `'bail'`, one health lost, no
+  `airTrick`, and `bailCause(state)` of the ui picks "Zu wacklig!" /
+  "Zu entspannt!". While drunk every input edge is made with the drunk
+  timer at 0 for that instant, so core's random input delay cannot move
+  the flip; the flip itself starts drunk, and down is held through the
+  touchdown (ArrowDown kept down; on touch a second finger swipes down,
+  which holds duck `SWIPE_DUCK_TICKS`, checked to outlast the flight), as
+  core's delayed release nearly always does: no duck landing while drunk,
+  so it still bails with "Zu wacklig!". Every flight: `player.airTrick` on the tick
+  of the gesture while airborne, exactly one `jump`. Shots (4 and 16 ticks
+  after the landing, plus a page shot on touch): `full popup` (the
+  "Kickflip!" callout), `reduced popup` (the plain "Kickflip +…"), `bail`
+  (the "Zu spät geflippt!" popup), `drunk bail` ("Zu wacklig!") and
+  `chill bail` ("Zu entspannt!"); plus the board spin mid-trick, sober and
+  drunk (the wobbling board).
 - `scripts/scenarios/combos.ts` (combo patterns, ROADMAP 33; run it on
   `desktop,phone-landscape`, `--name combos`): each combo of `COMBO_NAMES`
   laid right ahead with `window.__gameplay.pattern(name)` at a pinned 130

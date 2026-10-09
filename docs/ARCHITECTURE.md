@@ -63,7 +63,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/stunt-line.ts  designed stunt lines (kickers, ledges, gaps, star trail) checked with stunt-sim.ts
   gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS launch / STREET_AIR_TRICK_POINTS street kickflip over an obstacle / EMPTY_AIR_TRICK_POINTS into empty air), emits airTrick
   gameplay/flip-fade.ts KickflipFade: the repetition fade of kickflips in a row (KICKFLIP_FADE, KICKFLIP_REFRESH_SECONDS, see Air trick)
-  gameplay/bail.ts      landedLate() / bail(): a kickflip still turning on the landing is a crash (KICKFLIP_BAIL_GRACE_TICKS, see Air trick)
+  gameplay/bail.ts      landedLate() / duckLanding() / bail(): a kickflip still turning on the landing is a crash unless down is held, never excused while drunk (KICKFLIP_BAIL_GRACE_TICKS, see Air trick)
   player/air-trick.ts   canStartAirTrick(), airTrickTicks(), airTicksLeft(): the kickflip start rule and length (see Air trick, src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
   gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
@@ -323,7 +323,7 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `grindEnd` | `{entityId, ticks}` | gameplay |
 | `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
-| `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
+| `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu wacklig!" (drunk), "Zu entspannt!" (chilled) or "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
@@ -436,7 +436,8 @@ no beer), pure functions of the run time so replays look the same:
   `lean` = -2..2 px over the board, swaying slowly (one sway per 1.6 s);
   every 2.9 s a `stagger` lurches for 0.35 s to the full lean against the
   sway with a flailing arm; an arm flails up now and then and a hiccup
-  bubble rises from the mouth.
+  bubble rises from the mouth. A drunk kickflip's board shakes 1-2 px as it
+  spins (`drunkPoseAt`, see [Air trick](#air-trick)).
 - **UI** (`ui/drunk-look.ts`, drawn in `screens.ts`): strength eases in over
   `DRUNK_EASE_IN` (0.5 s) and out over the last `DRUNK_EASE_OUT` (1 s). Two
   faint double images of the frame sway against each other: one up to 6 px
@@ -1479,6 +1480,29 @@ makes spamming it not pay and a late flip a risk.
   `player.airTrick` is true while it runs; a rail or ledge catch or a crash
   cuts it short. Physics and hitbox are unchanged; down in the air never
   ducks. A `crash` of kind `'bail'` throws the skater off like any crash.
+- **Drunk or chilled flip** (ROADMAP 42, player only, no contract change):
+  the street kickflip's length depends on the mood when it starts,
+  `flipMood(state)` (`player/air-trick.ts`): `'drunk'` while
+  `state.drunkTimer > 0` (wins over chill), `'chill'` while
+  `state.chillTimer > 0` (the joint, or the kid-mode bubble gum), else
+  `'sober'`. `airTrickTicks(launched, mood, jitter)` gives
+  `round(STREET_AIR_TRICK_TICKS * DRUNK_FLIP_SCALE) + jitter` drunk
+  (12 * 1.5 = 18 plus 0..`DRUNK_FLIP_JITTER` 6 ticks) and
+  `round(STREET_AIR_TRICK_TICKS * CHILL_FLIP_SCALE)` chilled (12 * 1.1 = 13,
+  no randomness), `player/tuning.ts`; the launch kickflip never changes. The
+  length is fixed at the start, so a timer running out mid-flip changes
+  nothing. The drunk jitter comes from the player's own rng
+  (`SkaterController.flipRng`), re-seeded at every `runStarted` with
+  `seed ^ FLIP_SEED_SALT`, so it shares no sequence with `ctx.rng` or
+  core's drunk-input rng and runs replay deterministically; only a drunk
+  street flip draws from it. Gameplay's bail judge stays as it is: the
+  longer flip simply lands with a larger `flipLeft`. Of street flips
+  started on a random allowed tick (`canStartAirTrick`) sober about 14 %
+  bail, drunk about 50 % and chilled about 22 % (`CHILL_FLIP_SCALE` 1.1;
+  the numbers of `player/flip-fail-rate.test.ts`, which simulates them
+  exactly; a drunk flip pressed at the first chance of a full jump about
+  23 %). Look: while drunk the
+  spinning board shakes by 1-2 px (`drunkPoseAt`, `player/wobble.ts`).
 - **Gameplay** (`gameplay/air-trick.ts` `AirTrickScore`) only reads
   `player.airTrick` (it never gates the trick): an ended trick waits for the
   next clean touchdown (`land` or `grindStart`) and then emits `airTrick
@@ -1505,13 +1529,22 @@ makes spamming it not pay and a late flip a risk.
     crash like on any obstacle (`health.ts` `hurt`: one health, combo broken,
     carried item lost; ignored while invulnerable): `crash {entityId: -1,
     kind: 'bail', health}`. A rail or ledge catch is no `land` and never
-    bails. Any other crash drops the waiting trick too.
+    bails. Any other crash drops the waiting trick too. A **duck landing**
+    (`duckLanding(ctx)`): down still held on the touchdown tick (down
+    pressed late in a jump to duck under a banner ahead starts a kickflip
+    too) drops the trick without a bail. Not while `drunkTimer > 0`: core
+    delays every release of down then (`core/drunk.ts`), so it would almost
+    never bail, and the drunk spawner lays nothing overhead; chilled and
+    sober it applies.
   Kid mode follows the same rules. Points only go down, so the server's
   plausibility check needs no change.
 - **UI**: a full kickflip shows the big "Kickflip! +N" callout with a
   sparkle (`ui/stunt-callout.ts`, top strip); a reduced one (`full` false)
-  only the plain popup "Kickflip +N" (`ui/popup-feed.ts`); a bail the popup
-  "Zu spät geflippt!" instead of "Autsch!". Until the first kickflip ever
+  only the plain popup "Kickflip +N" (`ui/popup-feed.ts`); a bail a popup
+  instead of "Autsch!", chosen by `bailCause(state)` from the state when the
+  `crash` arrives: "Zu wacklig!" while `drunkTimer > 0`, else "Zu
+  entspannt!" while `chillTimer > 0` (kid-safe, also for the gum), else "Zu
+  spät geflippt!". Until the first kickflip ever
   (storage key `airTrickSeen`) a hint "In der Luft [↓] = Kickflip!" / "In
   der Luft runterwischen = Kickflip!" shows in the air after every kicker
   launch and once per run on the first full street jump
@@ -1522,7 +1555,8 @@ makes spamming it not pay and a late flip a risk.
   (`clatter`).
 - **Playtest**: `scripts/scenarios/kickflip.ts` (street kickflips with real
   keys and the one-finger drag: full over an obstacle, fading into empty
-  air, the late bail); `scripts/scenarios/stunts.ts` (a full kickflip after
+  air, the late bail, and the drunk and chilled bails with their callouts
+  and the wobbling drunk board); `scripts/scenarios/stunts.ts` (a full kickflip after
   a kicker launch).
 
 ## NorDIY skatepark (ROADMAP 36)
