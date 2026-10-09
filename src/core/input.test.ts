@@ -370,3 +370,116 @@ describe('user gestures for audio unlock', () => {
     expect(USER_GESTURE_EVENTS).toEqual(expect.arrayContaining(['keydown', 'pointerdown', 'pointerup', 'touchend']));
   });
 });
+
+describe('kickflip drag: the held jump finger moves down in the air', () => {
+  /** A touch held past the swipe window (a decided, held jump), then the skater is airborne. */
+  function heldJump(airborne = true) {
+    const s = setup();
+    s.pointers.down(1, 100, 100, true);
+    s.tick(SWIPE_WINDOW + 1);
+    s.game.state.player.grounded = !airborne;
+    return s;
+  }
+  const duckPresses = (frames: InputFrame[]) => frames.filter((f) => f.duck.pressed).length;
+
+  it('presses duck exactly once while the jump stays held; further dragging does not repeat', () => {
+    const { pointers, tick, frames } = heldJump();
+    const dragStart = frames.length;
+    pointers.move(1, 101, 100 + SWIPE_DISTANCE);
+    const f = tick();
+    expect(f.duck.pressed).toBe(true);
+    expect(f.action.held).toBe(true);
+    pointers.move(1, 101, 100 + SWIPE_DISTANCE * 3);
+    pointers.move(1, 102, 100 + SWIPE_DISTANCE * 6);
+    tick(10);
+    expect(duckPresses(frames)).toBe(1);
+    expect(frames.slice(dragStart).every((x) => x.action.held)).toBe(true);
+    pointers.up(1);
+    tick(SWIPE_WINDOW); // the late press releases as late as it started
+    expect(tick().action.released).toBe(true);
+  });
+
+  it('re-arms after the finger moves back up, or with a new touch', () => {
+    const { game, pointers, tick, frames } = heldJump();
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE);
+    tick(5);
+    pointers.move(1, 100, 100); // back up
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE);
+    tick(5);
+    expect(duckPresses(frames)).toBe(2);
+    pointers.up(1);
+    tick(SWIPE_WINDOW + 2);
+    game.state.player.grounded = true;
+    pointers.down(2, 100, 100, true);
+    tick(SWIPE_WINDOW + 1);
+    game.state.player.grounded = false;
+    pointers.move(2, 100, 100 + SWIPE_DISTANCE);
+    tick();
+    expect(duckPresses(frames)).toBe(3);
+  });
+
+  it('a sideways drag in the air is no trick', () => {
+    const { pointers, tick, frames } = heldJump();
+    pointers.move(1, 100 + SWIPE_DISTANCE * 2, 102);
+    tick(3);
+    expect(duckPresses(frames)).toBe(0);
+  });
+
+  it('the trick press releases within a few ticks, so there is no duck after landing', () => {
+    const { game, pointers, tick, frames } = heldJump();
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE);
+    tick(4);
+    const start = frames.length;
+    game.state.player.grounded = true;
+    tick(SWIPE_DUCK_TICKS);
+    expect(frames.slice(start).some((f) => f.duck.held)).toBe(false);
+    expect(frames.filter((f) => f.duck.held).length).toBeLessThanOrEqual(4);
+  });
+
+  it('the same drag on the ground does nothing (no duck while the jump finger is held)', () => {
+    const { pointers, tick, frames } = heldJump(false);
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE * 3);
+    tick(5);
+    expect(frames.some((f) => f.duck.held)).toBe(false);
+  });
+
+  it('a downward drift on the ground does not count once airborne; only a new drag in the air does', () => {
+    const { game, pointers, tick, frames } = heldJump(false);
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE - 1);
+    game.state.player.grounded = false;
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE);
+    tick();
+    expect(duckPresses(frames)).toBe(0);
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE * 2);
+    tick();
+    expect(duckPresses(frames)).toBe(1);
+  });
+
+  it('a second-finger swipe in the air still ducks like before', () => {
+    const { pointers, tick } = heldJump();
+    pointers.down(2, 200, 100, true);
+    pointers.move(2, 200, 100 + SWIPE_DISTANCE);
+    const f = tick();
+    expect(f.duck).toMatchObject({ pressed: true, held: true });
+    expect(f.action.held).toBe(true);
+  });
+
+  it('a fresh swipe down on the ground still ducks for SWIPE_DUCK_TICKS', () => {
+    const { pointers, tick } = setup();
+    pointers.down(1, 100, 100, true);
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE);
+    pointers.up(1);
+    expect(tick(SWIPE_DUCK_TICKS - 1).duck.held).toBe(true);
+    expect(tick(2).duck.held).toBe(false);
+  });
+
+  it('a mouse drag in the air is no trick (touch only)', () => {
+    const { game, pointers, tick, frames } = setup();
+    pointers.down(1, 100, 100, false);
+    tick();
+    game.state.player.grounded = false;
+    pointers.move(1, 100, 100 + SWIPE_DISTANCE * 2);
+    tick(3);
+    expect(duckPresses(frames)).toBe(0);
+  });
+});
