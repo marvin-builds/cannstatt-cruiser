@@ -21,6 +21,8 @@ export const UI = {
   /** Sweet pink tint while the bubble gum works (kid mode). */
   gumTint: '255, 140, 205',
   pink: '#ff7eb6',
+  /** A reduced kickflip's plain popup (ROADMAP 41): the kickflip pink, washed out. */
+  palePink: '#e8b9cf',
   /** Deeper edge haze of the chill tints (adult, kid mode), so the tint shows even on a warm sky. */
   chillEdge: '200, 70, 30',
   gumEdge: '220, 50, 160',

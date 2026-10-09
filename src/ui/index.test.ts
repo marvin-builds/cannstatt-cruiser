@@ -337,7 +337,15 @@ describe('stunt lines', () => {
     game.bus.emit('launch', { entityId: 1, velocity: 300 });
     game.tick();
     expect(store.get('airTrickSeen', false)).toBe(false);
-    game.bus.emit('airTrick', { ticks: 20, points: 500 });
+    game.bus.emit('airTrick', { ticks: 20, points: 500, full: true });
+    expect(store.get('airTrickSeen', false)).toBe(true);
+  });
+
+  it('a reduced kickflip (ROADMAP 41) also counts as the learned air trick', () => {
+    const { game, store } = setup();
+    game.commands.startRun();
+    game.tick();
+    game.bus.emit('airTrick', { ticks: 20, points: 20, full: false });
     expect(store.get('airTrickSeen', false)).toBe(true);
   });
 
