@@ -95,7 +95,8 @@ export const HARD_LANDING_IMPACT = 280;
  * Kicker look: the board rides up the ramp on its front wheel, this many px
  * ahead of the contact point (the rear wheel is still on the street). The
  * drawn skater is lifted to the ramp surface under it, minus the 1 px the
- * nose-up board tilt already raises that wheel. Looks only.
+ * nose-up board tilt already raises that wheel. The rear wheel is as far
+ * behind it (the board leaves the lip with it). Looks only.
  */
 export const KICKER_WHEEL_REACH = 8;
 

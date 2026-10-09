@@ -115,8 +115,8 @@ in any slice's Vitest tests.
 
 ## Kicker launch (stunt lines)
 
-- Gameplay emits `launch { entityId, velocity }` when the skater rides onto
-  a kicker. Like the stomp bounce, the player applies it at the start of its
+- Gameplay emits `launch { entityId, velocity }` when the skater presses
+  jump in a kicker's launch window (ROADMAP 40; never automatically). Like the stomp bounce, the player applies it at the start of its
   **next** update, before the jump check and the physics: `grounded = false`,
   `vy = -velocity`, hold boost off, coyote time and jump buffer cleared. That
   tick integrates normal `GRAVITY`: `vy = -velocity + GRAVITY * dt`,
@@ -126,7 +126,12 @@ in any slice's Vitest tests.
   apex is about `velocity² / (2 * GRAVITY)` above the take-off (360 px/s ->
   ~49 px; the discrete ticks land up to ~2 px lower).
 - A press in the take-off tick does not jump on top of the launch; a launch
-  mid-jump replaces that jump (and ends its hold boost). The chill jump scale
+  mid-jump replaces that jump (and ends its hold boost). Taking off from the
+  air (the ollie the same press started in the window), the player uses
+  `v' = max(sqrt(velocity² - 2 * GRAVITY * (GROUND_Y - y)), -vy)` instead of
+  `velocity`: the arc tops out where a launch from the street would (no
+  double jump, no lost height). From the street `v' = velocity`. The ollie
+  pose ends there: the launch looks like one from the street (grab pose). The chill jump scale
   does not apply (no stunt lines while chilled anyway).
 - No `jump` event (audio can listen to `launch`); afterwards the normal air,
   rail and landing rules apply: gameplay can `grindStart` a ledge from the
@@ -141,6 +146,13 @@ in any slice's Vitest tests.
   wheel reaches the ramp): the entity rect is read as a straight ramp rising
   from the street at `e.x` to `e.h` at `e.x + e.w`, minus 1 px for the board
   tilt. Hitbox and physics are unchanged.
+- Without a launch the skater rolls over the kicker: the board rests on the
+  lip (lift `e.h - 1`, still crouched) until the rear wheel
+  (`KICKER_WHEEL_REACH` behind `x`) passes it, then the drawn skater drops
+  off like off a curb, `kickerLift = round(e.h - 1 - GRAVITY * t² / 2)` with
+  `t = (x - KICKER_WHEEL_REACH - (e.x + e.w)) / state.speed`, down to 0 (a
+  few ticks). Still look only: `y` stays `GROUND_Y`, no `land` event, no
+  crash, no air trick.
 - Covered in `launch.test.ts`.
 
 ## Big air, upper level and hard landings (looks only)
@@ -287,7 +299,8 @@ jumpApex(game, 2);        // tap from the current support, returns apex height
 
 In the browser (dev, or `?test=1`) `window.__player` offers `grind(height,
 length, kind)` (`kind` `'ledge'` for a high ledge), `kicker(length)` (a static
-kicker under the player), `launch(velocity)` (emits `launch`), `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the bin dive), `chill(seconds)` (sets
+kicker under the player), `rollingKicker(ahead)` (a street kicker that
+scrolls but never launches: the roll-over look), `launch(velocity)` (emits `launch`), `removeRail(id)`, `crash(kind)` (default `'barrier'`, `'bin'` for the bin dive), `chill(seconds)` (sets
 `state.chillTimer`), `kidMode(on)` (sets `state.kidMode`), `carry(item)` (sets
 `state.carriedItem`, `null` drops it), `stomp(item)` (emits `stomp`),
 `catchItem(item)` (sets the item and emits `itemCaught`) and

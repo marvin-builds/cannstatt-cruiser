@@ -75,15 +75,34 @@ describe('kicker launch', () => {
     expect(flight(held).ys).toEqual(released);
   });
 
-  it('a launch mid-jump replaces the jump and ends its hold boost', () => {
+  it('a launch mid-jump replaces the jump and ends its hold boost (normal gravity from then on)', () => {
     const game = createPlayerTestGame();
     game.buttons.action.press('test');
     tick(game, 3);
     launch(game);
     tick(game);
-    expect(game.state.player.vy).toBeCloseTo(-VELOCITY + GRAVITY * TICK_DT, 9);
+    const vy = game.state.player.vy;
+    expect(vy).toBeLessThan(-VELOCITY / 2);
     tick(game);
-    expect(game.state.player.vy).toBeCloseTo(-VELOCITY + 2 * GRAVITY * TICK_DT, 9);
+    expect(game.state.player.vy).toBeCloseTo(vy + GRAVITY * TICK_DT, 9);
+  });
+
+  it('a launch onto the ollie of the same press (0-4 ticks old) flies as high as one from the street', () => {
+    const ground = createPlayerTestGame();
+    launch(ground);
+    const groundApex = flight(ground).apex;
+    for (let k = 0; k <= 4; k++) {
+      const game = createPlayerTestGame();
+      game.buttons.action.press('test'); // held through the flight: no hold boost either
+      tick(game, 1 + k); // the ollie takes off in the first tick, gameplay sees the press in the window
+      expect(game.state.player.grounded).toBe(false);
+      launch(game);
+      const { ys } = flight(game);
+      const apex = GROUND_Y - Math.min(...ys);
+      expect(apex, `ollie ${k} ticks old`).toBeGreaterThanOrEqual(groundApex - 1);
+      expect(apex, `ollie ${k} ticks old`).toBeLessThanOrEqual(groundApex + 1);
+      expect(view(game).grab || game.state.player.grounded).toBe(true);
+    }
   });
 
   it('a press in the take-off tick does not jump on top of the launch', () => {
@@ -141,6 +160,25 @@ describe('kicker launch', () => {
 });
 
 describe('grab pose (big air)', () => {
+  it('a launch onto an ollie looks like one from the street: the grab timeline starts at the take-off', () => {
+    const poses = (ollieTicks: number) => {
+      const game = createPlayerTestGame();
+      if (ollieTicks > 0) {
+        game.buttons.action.press('test');
+        tick(game, ollieTicks);
+      }
+      launch(game);
+      const seen: string[] = [];
+      for (let i = 0; i < 20; i++) {
+        tick(game);
+        const v = view(game);
+        seen.push(`${timelineFor(v, game.state.player.vy)} ${v.anim} ${v.time.toFixed(3)}`);
+      }
+      return seen;
+    };
+    expect(poses(3)).toEqual(poses(0));
+  });
+
   it('grabs the board after a launch and lets go before touching down', () => {
     const game = createPlayerTestGame();
     launch(game);
@@ -268,6 +306,54 @@ describe('high ledge (upper level)', () => {
     expect(lands[0]!.impact).toBeLessThan(HARD_LANDING_IMPACT);
     expect(view(game).hardLanding).toBe(false);
     expect(timelineFor(view(game), 0)).toBe('land');
+  });
+});
+
+/** Scrolls `kicker` left at the run speed, tick by tick, until it is far behind; returns the lift and the y per tick. */
+function rollOver(game: Game, kicker: { x: number }): { lifts: number[]; ys: number[] } {
+  const lifts: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < 120 && kicker.x > -40; i++) {
+    tick(game);
+    kicker.x -= game.state.speed * TICK_DT;
+    lifts.push(view(game).kickerLift);
+    ys.push(game.state.player.y);
+  }
+  return { lifts, ys };
+}
+
+describe('rolling over a kicker without a launch', () => {
+  it('stays on the street: grounded, no crash, no landing, no jump and no air trick', () => {
+    const game = createPlayerTestGame();
+    const events: string[] = [];
+    for (const name of ['crash', 'land', 'jump'] as const) game.bus.on(name, () => events.push(name));
+    tick(game, 2);
+    const kicker = addRail(game, { x: game.state.player.x + 20, y: GROUND_Y - 7, w: 18, h: 7 }, 'kicker');
+    game.buttons.duck.press('test');
+    const { ys } = rollOver(game, kicker);
+    game.buttons.duck.release('test');
+    expect(events).toEqual([]);
+    expect(ys.every((y) => y === GROUND_Y)).toBe(true);
+    expect(game.state.player.grounded).toBe(true);
+    expect(game.state.player.airTrick).toBe(false);
+  });
+
+  it('the wheels ride up the slope to the lip and drop off it like off a curb (a few ticks, no hop)', () => {
+    const game = createPlayerTestGame();
+    tick(game, 2);
+    const kicker = addRail(game, { x: game.state.player.x + 20, y: GROUND_Y - 7, w: 18, h: 7 }, 'kicker');
+    const { lifts } = rollOver(game, kicker);
+    const top = lifts.indexOf(Math.max(...lifts));
+    expect(lifts[top]).toBeGreaterThanOrEqual(6);
+    expect(lifts[top]).toBeLessThanOrEqual(7);
+    for (let i = 1; i <= top; i++) expect(lifts[i]!).toBeGreaterThanOrEqual(lifts[i - 1]!);
+    const drop = lifts.slice(top);
+    for (let i = 1; i < drop.length; i++) expect(drop[i]!).toBeLessThanOrEqual(drop[i - 1]!);
+    // Falls off the lip with gravity: not in one step, but within a few ticks.
+    const falling = drop.filter((l) => l > 0 && l < lifts[top]!).length;
+    expect(falling).toBeGreaterThanOrEqual(2);
+    expect(falling).toBeLessThanOrEqual(8);
+    expect(lifts.at(-1)).toBe(0);
   });
 });
 

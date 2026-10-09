@@ -25,6 +25,12 @@ export interface PlayerDebugHook {
   launch(velocity?: number): void;
   /** Adds a static kicker under the player (the board tilts up it); remove it with removeRail(id). */
   kicker(length?: number): number;
+  /**
+   * Adds a street kicker (18 x 7, like gameplay's) `ahead` px in front of the
+   * skater that scrolls with the street but never launches (marked done): the
+   * roll-over without a launch (ROADMAP 40). Gameplay despawns it.
+   */
+  rollingKicker(ahead?: number): number;
   /** Removes a rail added by grind() (the player then falls off). */
   removeRail(id: number): void;
   /** Emits a crash into `kind` like gameplay would (`bin`: head first into the bin). */
@@ -90,6 +96,12 @@ export function installPlayerDebug(ctx: GameContext): void {
     kicker(length = 24) {
       const p = ctx.state.player;
       const kicker: Entity = { id: nextId++, kind: 'kicker', x: p.x - 8, y: GROUND_Y - 8, w: length, h: 8, done: false, data: { [DEBUG_RAIL]: true } };
+      ctx.state.entities.push(kicker);
+      return kicker.id;
+    },
+    rollingKicker(ahead = 40) {
+      const p = ctx.state.player;
+      const kicker: Entity = { id: nextId++, kind: 'kicker', x: p.x + ahead, y: GROUND_Y - 7, w: 18, h: 7, done: true };
       ctx.state.entities.push(kicker);
       return kicker.id;
     },
