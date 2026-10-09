@@ -11,7 +11,8 @@
  * item (use.ts: drink, eat, throw the ball, ball.ts; a Maßkrug kept too
  * long is drunk by itself, auto-drink.ts), the item a person hit by the
  * ball drops onto the street for the skater to pick up (drop.ts), grind tricks
- * (grind-trick.ts) and air tricks (air-trick.ts), the human margins for every take-off, around people and
+ * (grind-trick.ts) and air tricks (air-trick.ts, with the repetition fade,
+ * flip-fade.ts, and the late-flip bail, bail.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts), score/combo (scoring.ts) and the stunt lines:
  * kickers, ledges of the upper level and their combo (stunt-line.ts plans
  * them, stunts.ts launches and scores, stunt-art.ts draws them), and the
@@ -28,6 +29,7 @@ import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
 import { AirTrickScore } from './air-trick';
 import { AutoDrink } from './auto-drink';
+import { bail, landedLate } from './bail';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
@@ -198,7 +200,12 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('zoneChanged', (e) => {
         if (route.zoneAt(ctx.state.distance) !== e.index) route.snap(e.index, ctx.state.distance);
       });
-      ctx.bus.on('land', () => {
+      ctx.bus.on('land', (e) => {
+        // A kickflip still turning on the touchdown (bail.ts): no points, and a bail unless down is still held (a duck landing).
+        if (landedLate(e.flipLeft)) {
+          airTrick.drop();
+          if (!ctx.input.duck.held) bail(ctx);
+        }
         breakCombo(ctx.state);
         stunts.landed(ctx);
         airTrick.touchedDown();
@@ -207,11 +214,15 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         trick.grindStarted(ctx, e.entityId);
         if (!ctx.state.player.grinding) return;
         airTrick.touchedDown();
+        airTrick.refresh();
         const ledge = ctx.state.entities.find((s) => s.id === e.entityId);
         if (ledge && isLedge(ledge.kind)) stunts.made(ctx, ledge);
       });
       ctx.bus.on('grindEnd', (e) => stunts.grindEnded(e.entityId));
-      ctx.bus.on('jump', () => stunts.jumped(ctx.state));
+      ctx.bus.on('jump', () => {
+        stunts.jumped(ctx.state);
+        airTrick.tookOff();
+      });
       ctx.bus.on('launch', () => airTrick.launched());
       const sparkleAt = (id: number) => {
         const e = ctx.state.entities.find((s) => s.id === id);
@@ -221,6 +232,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('chillStart', (e) => sparkleAt(e.entityId));
       ctx.bus.on('stomp', (e) => {
         const person = ctx.state.entities.find((s) => s.id === e.entityId);
+        airTrick.cleared();
         if (person) toss.launch(e.item, { x: person.x + person.w / 2, y: person.y + 2 }, handsOf(ctx));
       });
       // The person hit by the ball lets go of their item: it falls onto free street ahead.
@@ -233,8 +245,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('crash', () => {
         toss.cancel();
         stunts.crashed(ctx);
-        airTrick.crashedNow();
+        airTrick.drop();
       });
+      ctx.bus.on('obstacleCleared', () => airTrick.cleared());
+      ctx.bus.on('highFive', () => airTrick.refresh());
       ctx.bus.on('itemCaught', () => autoDrink.reset());
       const cheer = () => session.trick(ctx);
       ctx.bus.on('grindTrick', cheer);
@@ -253,7 +267,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       scroll(ctx, dx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
       trick.update(ctx);
-      airTrick.update(ctx);
+      airTrick.update(ctx, dt);
       useCarriedItem(ctx, ballThrower, autoDrink.due(state));
       updateBalls(ctx, dt, freeStreet);
       drops.update(dx, dt);

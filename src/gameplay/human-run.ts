@@ -7,7 +7,7 @@ import { MAX_HEALTH, PLAYER_X, TICK_DT } from '../core/config';
 import { Game } from '../core/game';
 import { Rng } from '../core/rng';
 import { createPlayerSystem } from '../player';
-import type { EntityKind, GameState } from '../types';
+import type { EntityKind, GameEvents, GameState } from '../types';
 import { isPerson } from './catalogue';
 import { createGameplaySystem } from './index';
 import { anchorOf } from './motion';
@@ -20,7 +20,8 @@ export interface CrashReport {
   seed: number;
   /** Seconds into the run. */
   time: number;
-  kind: EntityKind;
+  /** What the skater crashed into, or 'bail' for a kickflip landed too late. */
+  kind: GameEvents['crash']['kind'];
   personRelated: boolean;
   /** Entities within PERSON_NEAR_SECONDS of the player: kind and street offset (anchor - player x). */
   near: { kind: EntityKind; dx: number }[];
@@ -73,7 +74,7 @@ export function rideHuman(seed: number, seconds: number, from = 0, health = Numb
       seed,
       time: Math.round(game.state.time * 10) / 10,
       kind: e.kind,
-      personRelated: isPerson(e.kind) || near.some((n) => isPerson(n.kind)),
+      personRelated: (e.kind !== 'bail' && isPerson(e.kind)) || near.some((n) => isPerson(n.kind)),
       near,
     });
   });

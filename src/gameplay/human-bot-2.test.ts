@@ -9,6 +9,9 @@ describe('human bot rides 3 min without a person-related crash', () => {
     it(`seed ${seed}`, () => {
       const run = rideHuman(seed, 180);
       expect(run.crashes.filter((c) => c.personRelated)).toEqual([]);
+      // ROADMAP 41: a down press in the air to duck under a banner starts a kickflip, but the bot holds down
+      // to the landing (a duck landing), so it never bails.
+      expect(run.crashes.filter((c) => c.kind === 'bail')).toEqual([]);
     }, 120_000);
   }
 });

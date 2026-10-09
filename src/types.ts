@@ -225,11 +225,21 @@ type Empty = Record<never, never>;
 /** Event names and payloads on the shared bus. */
 export interface GameEvents {
   jump: { velocity: number };
-  land: { impact: number };
+  /**
+   * Player: the wheels touched the street. `flipLeft` (ROADMAP 41) is how many
+   * ticks the running kickflip still needed on that tick (absent or 0: no flip
+   * running); gameplay judges a bail from it.
+   */
+  land: { impact: number; flipLeft?: number };
   grindStart: { entityId: number };
   grindEnd: { entityId: number; ticks: number };
   obstacleCleared: { entityId: number; kind: EntityKind; points: number };
-  crash: { entityId: number; kind: EntityKind; health: number };
+  /**
+   * Gameplay: the skater crashed and lost one health. A kickflip bail
+   * (ROADMAP 41: the flip still turning when the wheels touched the street)
+   * has `entityId` -1 and `kind` 'bail'.
+   */
+  crash: { entityId: number; kind: EntityKind | 'bail'; health: number };
   starCollected: { entityId: number; stars: number };
   chillStart: { entityId: number; duration: number };
   /**
@@ -283,8 +293,13 @@ export interface GameEvents {
   sessionCheer: { level: number };
   /** Gameplay: the skater left the park; `points` is the "Session!" bonus scaled by the cheering (0 if none). */
   sessionEnd: { level: number; points: number };
-  /** Gameplay: an air trick (player.airTrick) was completed and the skater landed or caught a ledge, scoring points. */
-  airTrick: { ticks: number; points: number };
+  /**
+   * Gameplay: an air trick (player.airTrick) was completed and the skater
+   * landed or caught a ledge, scoring points. `full` (ROADMAP 41) is false
+   * when the points were cut: a repeated kickflip or a street flip into empty
+   * air; the ui and audio then give the plainer feedback.
+   */
+  airTrick: { ticks: number; points: number; full: boolean };
   /** Gameplay: a grind trick (player.grindTrick) ended while still on the rail or bench, scoring points. */
   grindTrick: { entityId: number; ticks: number; points: number };
   /** Gameplay: the skater used the carried item (use button); state.carriedItem is cleared. */

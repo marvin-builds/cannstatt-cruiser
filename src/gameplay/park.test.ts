@@ -25,7 +25,7 @@ function rideTo(game: Game, d: number): void {
   game.tick();
 }
 
-const trick = (game: Game) => game.bus.emit('airTrick', { ticks: 10, points: 50 });
+const trick = (game: Game) => game.bus.emit('airTrick', { ticks: 10, points: 50, full: true });
 
 describe('NorDIY session cheers', () => {
   it('tricks inside the park cheer with a rising level, capped at 1; outside they do not', () => {
