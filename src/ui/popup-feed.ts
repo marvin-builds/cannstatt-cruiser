@@ -7,7 +7,7 @@
  * A full kickflip gets the big stunt callout instead (stunt-callout.ts); a
  * reduced one (ROADMAP 41) only a plain popup here.
  */
-import type { ItemAction } from '../types';
+import type { GameState, ItemAction } from '../types';
 import { UI } from './art';
 import { plusPoints } from './layout';
 
@@ -18,13 +18,27 @@ export interface PopupSpec {
   icon: 'heart' | null;
 }
 
+/**
+ * What a kickflip bail (crash kind 'bail') is blamed on: a plain late flip (ROADMAP 41), or the
+ * drunk or chill effect that made it more likely (ROADMAP 42). Kid-safe words either way.
+ */
+export type BailCause = 'late' | 'wobbly' | 'relaxed';
+
+const BAIL_TEXT: Record<BailCause, string> = { late: 'Zu spät geflippt!', wobbly: 'Zu wacklig!', relaxed: 'Zu entspannt!' };
+
+/** The cause of a bail from the state at the moment it happens: drunk before chilled before late. */
+export function bailCause(state: Pick<GameState, 'drunkTimer' | 'chillTimer'>): BailCause {
+  if (state.drunkTimer > 0) return 'wobbly';
+  return state.chillTimer > 0 ? 'relaxed' : 'late';
+}
+
 type Entry =
   | { kind: 'cleared'; entityId: number; points: number }
   | { kind: 'stomp' | 'ballHit'; entityId: number }
   | { kind: 'used'; action: ItemAction }
   | { kind: 'score'; delta: number }
   | { kind: 'healthGained' | 'ballBack' }
-  | { kind: 'crash'; bail: boolean }
+  | { kind: 'crash'; bail: BailCause | null }
   | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number };
 
 /** Events that take the points of a clear of the same entity into their own popup. */
@@ -68,8 +82,8 @@ export class PopupFeed {
     this.entries.push({ kind: 'ballBack' });
   }
 
-  /** The skater crashed; `bail` when a kickflip was still turning on the landing (ROADMAP 41). */
-  crash(bail = false): void {
+  /** The skater crashed; `bail` names the cause when a kickflip was still turning on the landing (ROADMAP 41/42). */
+  crash(bail: BailCause | null = null): void {
     this.entries.push({ kind: 'crash', bail });
   }
 
@@ -118,7 +132,7 @@ export class PopupFeed {
           add('Achtung, der Ball!', UI.red);
           break;
         case 'crash':
-          add(e.bail ? 'Zu spät geflippt!' : 'Autsch!', UI.red);
+          add(e.bail ? BAIL_TEXT[e.bail] : 'Autsch!', UI.red);
           break;
         case 'grindTrick':
           add(`Grind-Trick! ${plusPoints(e.points)}`, UI.teal);

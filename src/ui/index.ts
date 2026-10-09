@@ -44,7 +44,7 @@ import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu, gameOverReady, menuScreen, portraitHintShown } from './menu-state';
-import { PopupFeed } from './popup-feed';
+import { bailCause, PopupFeed } from './popup-feed';
 import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { createDomNameField, type NameField } from './name-field';
@@ -176,7 +176,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     });
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
     bus.on('stomp', (e) => feed.stomp(e.entityId));
-    bus.on('crash', (e) => feed.crash(e.kind === 'bail'));
+    bus.on('crash', (e) => feed.crash(e.kind === 'bail' ? bailCause(state) : null));
     bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta));
     bus.on('itemUsed', (e) => {
       feed.itemUsed(e.action);
