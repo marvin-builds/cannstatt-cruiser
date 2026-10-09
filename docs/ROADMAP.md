@@ -199,4 +199,6 @@ Wave 5b additionally covers 9 (player) and 10 (player + gameplay + ui popup + au
 
 ## Status checkpoint 2026-10-09
 - Stunt Wave B committed locally (4bbc825, 1031bb4, 70752ba, fbe4d4f), not pushed; live is 2026-10-08.8.
-- NorDIY wave running: world-nordiy, gameplay-nordiy, ui-nordiy, audio-nordiy, docs-nordiy. Next: item 33, final playtest + fix round, highscore (34), one push at the end.
+- NorDIY wave done (e77775e gameplay, ee5b007 world, f5efcdc ui, 7481db6 audio, 1ccd00f docs); deployed as 2026-10-09.1 together with Stunt Wave B. USER 2026-10-09: push whenever a verified state makes sense.
+- Backlog minors: spawner hangs if speed is pinned to 0 from the first tick (test-only); concrete bank art mostly hidden behind the kicker wedge; UI duplicates the high five reach constant.
+- Next: item 33, final playtest + fix round, highscore (34).
