@@ -11,6 +11,7 @@ export type Cue =
   | 'star'
   | 'cleared'
   | 'crash'
+  | 'clatter'
   | 'gameOver'
   | 'chill'
   | 'bubble'

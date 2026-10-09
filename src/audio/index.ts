@@ -6,7 +6,7 @@
  * park.ts, WebAudio in webaudio.ts.
  */
 import { store as defaultStore, type Store } from '../core/storage';
-import type { EntityKind, GameContext, System } from '../types';
+import type { GameContext, GameEvents, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
@@ -41,9 +41,10 @@ const BIG_DROP = 380;
 const HUGE_DROP = 520;
 /** How far a huge drop lowers the landing thud (pitch factor 1 - this). */
 const BIG_DROP_PITCH_DROP = 0.2;
+type CrashKind = GameEvents['crash']['kind'];
 /** Crash kinds that are people: they get a soft 'oof' on top of the crash. */
-const PEOPLE: ReadonlySet<EntityKind> = new Set<EntityKind>(['vfbFan', 'wasenGuest']);
-/** Grind trick points that play the trick sting at full volume. */
+const PEOPLE: ReadonlySet<CrashKind> = new Set<CrashKind>(['vfbFan', 'wasenGuest']);
+/** Trick points that play the plain trick sting at full volume. */
 const TRICK_FULL_POINTS = 100;
 /** Grind trick points from which a sparkle follows the sting. */
 const TRICK_BIG_POINTS = 100;
@@ -83,6 +84,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
     if (!isTrafficCue(cue) && !isParkCue(cue)) traffic.duck();
     safely(() => backend.play(cue, intensity, delay, pitch));
   };
+  /** The plain trick sting, louder for more points (grind tricks, reduced kickflips). */
+  const playTrick = (points: number) => play('trick', 0.5 + 0.5 * Math.min(1, Math.max(0, points) / TRICK_FULL_POINTS));
   /** One tick of the traffic rumble, horns and trucks: silent unless playing and unmuted. */
   const updateTraffic = (ctx: GameContext) => {
     const { state } = ctx;
@@ -161,6 +164,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('crash');
         if (PEOPLE.has(kind)) play('oof');
         if (kind === 'ball') play('thud');
+        // A kickflip bail (ROADMAP 41): the loose board clatters away.
+        if (kind === 'bail') play('clatter');
         // The skater's bubble gum bubble pops (see player/bubble.ts).
         if (ctx.state.kidMode && ctx.state.chillTimer > 0) play('pop');
       });
@@ -189,7 +194,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       });
       bus.on('ballBack', () => play('whistle'));
       bus.on('grindTrick', ({ points }) => {
-        play('trick', 0.5 + 0.5 * Math.min(1, Math.max(0, points) / TRICK_FULL_POINTS));
+        playTrick(points);
         if (points >= TRICK_BIG_POINTS) play('trickBig');
       });
       bus.on('gameOver', () => {
@@ -211,8 +216,12 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       bus.on('stuntStep', ({ step }) => play('stuntStep', 1, 0, stuntStepPitch(step)));
       bus.on('stuntEnd', ({ completed }) => play(completed ? 'stuntFanfare' : 'stuntFizzle'));
       // Kickflip (air trick): a quick spin as it starts (update); once landed a flip whoosh,
-      // a catch click and a bright sting, bigger for a launch kickflip.
-      bus.on('airTrick', ({ points }) => play(points >= KICKFLIP_BIG_POINTS ? 'airTrickBig' : 'airTrick'));
+      // a catch click and a bright sting, bigger for a launch kickflip. A reduced kickflip
+      // (repeated or into empty air, ROADMAP 41) only gets the plain trick sting.
+      bus.on('airTrick', ({ points, full }) => {
+        if (!full) playTrick(points);
+        else play(points >= KICKFLIP_BIG_POINTS ? 'airTrickBig' : 'airTrick');
+      });
       // NorDIY park: the crowd cheers each trick (bigger with the session), roars and
       // whistles for a "Session!" bonus, and a crisp clap for a high five. Same in kid mode.
       bus.on('sessionCheer', ({ level }) => play(cheerCue(level), cheerIntensity(level)));
