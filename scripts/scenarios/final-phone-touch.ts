@@ -4,7 +4,6 @@
  * logo long press) on a frozen clock, plus HumanBot rides with real touches.
  *   npm run playtest -- --scenario scripts/scenarios/final-phone-touch.ts --viewports phone-landscape --name final-phone-touch
  */
-import type { CDPSession } from 'playwright';
 import { PLAYER_X, TICK_DT } from '../../src/core/config';
 import { SWIPE_WINDOW } from '../../src/core/input';
 import { Rng } from '../../src/core/rng';
@@ -13,7 +12,7 @@ import { HumanBot, planStomp } from '../../src/gameplay/testing';
 import type {} from '../../src/player/debug';
 import type { GameState, Rect } from '../../src/types';
 import type { UiDebugHook } from '../../src/ui/debug';
-import { cssPerViewPixel, dismissRotateHint, holdViewWhile, type PlaytestContext, stepWhile, viewToClient } from '../playtest-lib';
+import { cssPerViewPixel, dismissRotateHint, Fingers, holdViewWhile, type PlaytestContext, stepWhile } from '../playtest-lib';
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());
@@ -25,50 +24,6 @@ function place(t: PlaytestContext, kind: PlaceableKind, x: number, variant = 0, 
     ([k, px, v, p]) => window.__gameplay!.place(k as PlaceableKind, px as number, v as number, p as number),
     [kind, x, variant, prop] as const,
   );
-}
-
-/** Multi-finger touch driver over CDP, positions in view px. */
-class Fingers {
-  private readonly active = new Map<number, { x: number; y: number }>();
-  constructor(
-    private readonly t: PlaytestContext,
-    private readonly cdp: CDPSession,
-  ) {}
-  private points() {
-    return [...this.active.entries()].map(([id, p]) => ({ id, ...p }));
-  }
-  async down(id: number, vx: number, vy: number) {
-    this.active.set(id, await viewToClient(this.t.page, vx, vy));
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: this.points() });
-  }
-  async move(id: number, vx: number, vy: number) {
-    this.active.set(id, await viewToClient(this.t.page, vx, vy));
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.points() });
-  }
-  async up(id: number) {
-    if (!this.active.has(id)) return;
-    this.active.delete(id);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: this.points() });
-  }
-  async upAll() {
-    for (const id of [...this.active.keys()]) await this.up(id);
-  }
-  /** Tap and step `frames` ticks while the finger is down. */
-  async tap(vx: number, vy: number, frames = 3) {
-    await this.down(9, vx, vy);
-    await this.t.game.step(frames);
-    await this.up(9);
-    await this.t.game.step(1);
-  }
-  /** Swipe down with a separate finger (id 2), finger lifted after 3 ticks. */
-  async swipeDown(vx: number, vy: number, dy = 12) {
-    await this.down(2, vx, vy);
-    await this.t.game.step(1);
-    await this.move(2, vx + 2, vy + dy / 2);
-    await this.move(2, vx + 3, vy + dy);
-    await this.t.game.step(1);
-    await this.up(2);
-  }
 }
 
 const PLAY = { x: 150, y: 120 };
