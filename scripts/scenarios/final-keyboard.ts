@@ -72,6 +72,12 @@ export default async function (t: PlaytestContext) {
   const { game } = t;
   const kb = t.page.keyboard;
   await game.pause();
+  // A keyboard persona: phones (touch viewports) have no keyboard, and in portrait the rotate hint holds every run paused.
+  if (t.viewport.touch) {
+    await t.log('skipped: keyboard persona on a touch viewport', { viewport: t.viewport });
+    return;
+  }
+  t.check('a fresh player starts in kid mode (no stored choice)', (await game.state()).kidMode);
   await t.canvasShot('title');
   await t.screenshot('title page');
 
@@ -175,7 +181,7 @@ export default async function (t: PlaytestContext) {
   await game.step(30);
   await t.canvasShot('run3 game over');
 
-  // Specials: stomp, joint, overhead duck, rail grind in zone 1 at real speed.
+  // Specials: stomp, bubble gum (kid mode is the default), overhead duck, rail grind in zone 1 at real speed.
   await game.step(60);
   await game.seed(3);
   await game.startRun();
@@ -201,9 +207,9 @@ export default async function (t: PlaytestContext) {
   await t.page.evaluate(() => window.__gameplay!.clear());
   await place(t, 'joint', PLAYER_X + 80);
   await game.step(50);
-  await t.canvasShot('joint pickup');
+  await t.canvasShot('gum pickup');
   await game.step(120);
-  await t.canvasShot('chill running');
+  await t.canvasShot('kid chill running');
   await t.page.evaluate(() => window.__gameplay!.clear());
   for (const kind of ['banner', 'bench', 'stopSign'] as PlaceableKind[]) {
     await t.page.evaluate(() => window.__gameplay!.clear());
@@ -237,7 +243,7 @@ export default async function (t: PlaytestContext) {
   await game.endRun();
   await game.step(60);
 
-  // Kid mode via K held on title.
+  // Hidden settings via K held on title (kid mode is on by default).
   await kb.press('Escape');
   await game.step(10);
   await t.canvasShot('title after escape');
@@ -248,13 +254,14 @@ export default async function (t: PlaytestContext) {
   await t.canvasShot('settings menu');
   await t.log('settings', await t.page.evaluate(() => (window as unknown as { __ui: { settings(): unknown } }).__ui.settings()));
 
-  // Enter toggles kid mode on, Esc closes, kid run with gum, then K again: Enter turns it off at once.
+  // Enter toggles kid mode off, Esc closes, adult run with the joint, then K again: Enter turns it on at once.
   await kb.press('Enter');
   await game.step(3);
-  await t.canvasShot('kid mode on');
+  await t.canvasShot('kid mode off');
+  t.check('Enter turns kid mode off at once', !(await game.state()).kidMode);
   await kb.press('Escape');
   await game.step(3);
-  await t.canvasShot('title kid mode');
+  await t.canvasShot('title adult mode');
   await game.seed(5);
   await kb.press('Space');
   await game.step(30);
@@ -264,12 +271,12 @@ export default async function (t: PlaytestContext) {
   await place(t, 'joint', PLAYER_X + 60);
   await place(t, 'wasenGuest', PLAYER_X + 250, 1, 0);
   await game.step(30);
-  await t.canvasShot('kid gum and guest');
+  await t.canvasShot('adult joint and guest');
   await game.step(40);
-  await t.canvasShot('kid chill');
+  await t.canvasShot('adult chill');
   await game.endRun();
   await game.step(80);
-  await t.canvasShot('kid game over');
+  await t.canvasShot('adult game over');
   await kb.press('Escape');
   await game.step(5);
   await kb.down('KeyK');
@@ -279,9 +286,9 @@ export default async function (t: PlaytestContext) {
   await kb.press('Enter');
   await game.step(3);
   const st = await t.page.evaluate(() => (window as unknown as { __ui: { settings(): { screen: string } } }).__ui.settings());
-  await t.canvasShot('kid mode off');
+  await t.canvasShot('kid mode on again');
   await t.log('settings after Enter', st);
-  t.check('Enter turns kid mode off at once', !(await game.state()).kidMode);
+  t.check('Enter turns kid mode on again at once', (await game.state()).kidMode);
   // Highscore survives a reload.
   const hsBefore = await t.page.evaluate(() => JSON.stringify(localStorage));
   await t.page.reload();

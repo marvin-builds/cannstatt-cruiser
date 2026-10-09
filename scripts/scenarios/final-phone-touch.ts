@@ -12,7 +12,7 @@ import { HumanBot, planStomp } from '../../src/gameplay/testing';
 import type {} from '../../src/player/debug';
 import type { GameState, Rect } from '../../src/types';
 import type { UiDebugHook } from '../../src/ui/debug';
-import { cssPerViewPixel, dismissRotateHint, Fingers, holdViewWhile, type PlaytestContext, stepWhile } from '../playtest-lib';
+import { cssPerViewPixel, dismissRotateHint, Fingers, freeTapSpot, holdViewWhile, type PlaytestContext, stepWhile } from '../playtest-lib';
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());
@@ -223,7 +223,10 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await game.step(60);
   await t.screenshot('game over page');
   await t.canvasShot('game over');
-  await f.tap(PLAY.x, PLAY.y);
+  // Beside the buttons: in portrait "Eintragen" (offered while the run makes the online list) covers PLAY.
+  const spot = await freeTapSpot(t);
+  await t.log('game over tap', { spot, buttons: (await layout(t)).screen });
+  await f.tap(spot.x, spot.y);
   s = await game.step(2);
   t.check('tap after delay restarts', s.mode === 'playing', { mode: s.mode });
 
@@ -352,7 +355,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
     }
   }
 
-  // --- Joint pickup + chill via natural ride over it
+  // --- Chill pickup via natural ride over it (bubble gum: kid mode is the default)
   await freshRun(t, 0);
   await place(t, 'joint', PLAYER_X + 60);
   await game.step(40);
@@ -440,10 +443,11 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   const lay2 = await layout(t);
   await f.tap(centre(lay2.menu.toggle).x, centre(lay2.menu.toggle).y);
   await game.step(2);
-  await t.screenshot('settings kid on page');
+  await t.screenshot('settings kid off page');
+  t.check('the toggle turns the default kid mode off', !(await game.state()).kidMode);
   await f.tap(centre(lay2.menu.back).x, centre(lay2.menu.back).y);
   await game.step(2);
-  await t.screenshot('title kid page');
+  await t.screenshot('title adult page');
   await game.seed(5);
   await f.tap(PLAY.x, PLAY.y);
   await game.step(2);
@@ -454,10 +458,10 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await place(t, 'wasenGuest', PLAYER_X + 130, 0, 0);
   await place(t, 'joint', PLAYER_X + 60);
   await game.step(40);
-  await t.screenshot('kid run page');
-  await t.canvasShot('kid run');
+  await t.screenshot('adult run page');
+  await t.canvasShot('adult run');
   await game.setSpeed(null);
-  const r3 = await touchRide(t, f, 'kid ride', 40, { keepAlive: true, seed: 5 });
+  const r3 = await touchRide(t, f, 'adult ride', 40, { keepAlive: true, seed: 5 });
   void r3;
   await game.endRun();
   await game.step(60);
@@ -466,6 +470,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await game.pause();
   await game.step(2);
   await dismissRotateHint(t);
+  t.check('the explicit kid mode off survives a reload', !(await game.state()).kidMode);
   const logo2 = centre((await layout(t)).logo);
   await holdViewWhile(t, logo2.x, logo2.y, async () => {
     await game.step(185);
@@ -474,9 +479,10 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   const lay3 = await layout(t);
   await f.tap(centre(lay3.menu.toggle).x, centre(lay3.menu.toggle).y);
   await game.step(2);
-  await t.screenshot('kid mode off page');
-  await t.canvasShot('kid mode off');
-  await t.log('kid mode off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
+  await t.screenshot('kid mode on again page');
+  await t.canvasShot('kid mode on again');
+  t.check('the toggle turns kid mode on again', (await game.state()).kidMode);
+  await t.log('kid mode on again', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await t.log('summary', { r1: { crashes: r1.crashes, ended: r1.ended, frames: r1.frames }, compare });
   await cdp.detach();
 }

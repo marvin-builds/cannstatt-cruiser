@@ -12,7 +12,7 @@ import type { Page, Route } from 'playwright';
 import type {} from '../../src/player/debug';
 import type { Rect } from '../../src/types';
 import type { HighscoresDebug, UiDebugHook } from '../../src/ui/debug';
-import { dismissRotateHint, Fingers, type PlaytestContext } from '../playtest-lib';
+import { adultMode, dismissRotateHint, Fingers, type PlaytestContext } from '../playtest-lib';
 
 const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
 type UiWindow = Window & { __ui?: UiDebugHook };
@@ -112,6 +112,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   await reloadGame(t.page);
   await t.game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // the free-text name entry is adult mode only; kid mode is the default
   const tag = t.viewport.name;
 
   // Title: the trophy in the button row opens the list.

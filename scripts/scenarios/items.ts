@@ -13,7 +13,7 @@ import { SolverBot } from '../../src/gameplay/testing';
 import { DRUNK_DURATION } from '../../src/gameplay/use';
 import type {} from '../../src/player/debug'; // window.__player
 import type { CarriedItem, EntityKind, GameEvents, GameState } from '../../src/types';
-import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 function place(t: PlaytestContext, kind: PlaceableKind, x: number, variant = 0, prop = 0): Promise<number> {
   return t.page.evaluate(
@@ -50,6 +50,7 @@ async function until(t: PlaytestContext, name: keyof GameEvents, max = 200): Pro
 export default async function items(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // adult content below; kid mode is the default
   await throwAndHit(t);
   await ricochet(t);
   await eat(t);

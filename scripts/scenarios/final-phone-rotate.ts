@@ -7,15 +7,38 @@ import { PLAYER_X } from '../../src/core/config';
 import { Rng } from '../../src/core/rng';
 import type { PlaceableKind } from '../../src/gameplay/debug';
 import { HumanBot, planStomp } from '../../src/gameplay/testing';
+import { SCORES_URL } from '../../src/net/api';
 import type {} from '../../src/player/debug';
 import type { Rect } from '../../src/types';
 import type { UiDebugHook } from '../../src/ui/debug';
-import { cssPerViewPixel, holdViewWhile, type PlaytestContext, stepWhile } from '../playtest-lib';
+import { cssPerViewPixel, freeTapSpot, holdViewWhile, type PlaytestContext, stepWhile } from '../playtest-lib';
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());
 const settings = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.settings());
 const centre = (r: Rect) => ({ x: r.x + Math.floor(r.w / 2), y: r.y + Math.floor(r.h / 2) });
+
+/**
+ * Fakes the online list (nothing reaches the live worker): an empty list, so
+ * every run qualifies and game over always offers "Eintragen", the case where
+ * a restart tap has the least free space. Reloads so the startup GET hits it.
+ */
+async function fakeEmptyScoreList(t: PlaytestContext): Promise<{ posts: number }> {
+  const seen = { posts: 0 };
+  await t.page.route(`${SCORES_URL}/**`, (route) => {
+    const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
+    const method = route.request().method();
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    if (method === 'POST') {
+      seen.posts++;
+      return route.fulfill({ status: 503, headers });
+    }
+    return route.fulfill({ headers, json: { entries: [] } });
+  });
+  await t.page.reload();
+  await t.page.waitForFunction(() => Boolean(window.__game));
+  return seen;
+}
 
 function place(t: PlaytestContext, kind: PlaceableKind, x: number, variant = 0, prop = 0): Promise<number> {
   return t.page.evaluate(
@@ -93,17 +116,19 @@ async function portraitStart(t: PlaytestContext): Promise<void> {
   await t.screenshot('portrait title after dismiss');
   await t.canvasShot('portrait title after dismiss');
 
-  // Hidden settings in portrait: long press logo, kid mode on.
+  // Hidden settings in portrait: long press logo, kid mode (the default) off and on again.
   const logo = centre((await layout(t)).logo);
   await holdViewWhile(t, logo.x, logo.y, () => game.step(185).then(() => undefined));
   await game.step(1);
   await t.screenshot('portrait settings menu');
   const l = await layout(t);
-  await tapRect(t, l.menu.toggle);
-  await t.screenshot('portrait kid mode on');
+  t.check('kid mode is on by default', (await game.state()).kidMode);
   await tapRect(t, l.menu.toggle);
   await t.screenshot('portrait kid mode off');
-  await t.log('after switching off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
+  t.check('the toggle turns kid mode off', !(await game.state()).kidMode);
+  await tapRect(t, l.menu.toggle);
+  await t.screenshot('portrait kid mode on');
+  await t.log('after switching back on', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await tapRect(t, l.menu.back);
 
   // Start a run with a real tap in portrait.
@@ -154,7 +179,7 @@ async function portraitStart(t: PlaytestContext): Promise<void> {
 
 async function features(t: PlaytestContext, tag: string): Promise<void> {
   const { game } = t;
-  // Fresh run, joint pickup and stomp at a pinned speed.
+  // Fresh run, chill pickup (the gum: kid mode is on) and stomp at a pinned speed.
   if ((await game.state()).mode === 'playing') await game.endRun();
   await game.seed(3);
   await game.startRun();
@@ -200,7 +225,13 @@ async function features(t: PlaytestContext, tag: string): Promise<void> {
   await game.step(30);
   await t.screenshot(`${tag} game over`);
   await game.step(60);
-  await t.realTapView(150, 150);
+  await t.screenshot(`${tag} game over ready`);
+  // A tap beside the buttons ("Eintragen", the corner buttons) restarts; one on them uses the button.
+  const buttons = (await layout(t)).screen;
+  t.check(`${tag}: game over offers Eintragen (fake empty list)`, !!buttons?.submit, buttons);
+  const spot = await freeTapSpot(t);
+  await t.log(`${tag} game over tap`, { spot, buttons });
+  await t.realTapView(spot.x, spot.y);
   await game.step(5);
   s = await game.state();
   t.check(`${tag}: tap on game over restarts`, s.mode === 'playing', s.mode);
@@ -208,6 +239,7 @@ async function features(t: PlaytestContext, tag: string): Promise<void> {
 }
 
 export default async function finalPhoneRotate(t: PlaytestContext): Promise<void> {
+  const scores = await fakeEmptyScoreList(t);
   await t.wait(300);
   await t.game.pause();
   const d = await t.game.display();
@@ -225,7 +257,11 @@ export default async function finalPhoneRotate(t: PlaytestContext): Promise<void
     await ride(t, 5, 45, 'landscape ride', 15, true);
     await rotate(t, 'landscape->portrait');
     await t.screenshot('landscape to portrait hint');
-    t.check('landscape->portrait pauses', (await t.game.state()).mode !== 'playing', (await t.game.state()).mode);
+    // The rotate hint (and its pause) is for phones only (SPEC: "On phones ..."; portraitHintShown needs touch):
+    // a desktop window made tall just rides on.
+    const mode = (await t.game.state()).mode;
+    if (t.viewport.touch) t.check('landscape->portrait pauses', mode !== 'playing', mode);
+    else t.check('landscape->portrait on desktop keeps riding (no rotate hint)', mode === 'playing', mode);
     await rotate(t, 'back to landscape');
     await t.screenshot('back to landscape');
     await features(t, 'landscape');
@@ -236,4 +272,5 @@ export default async function finalPhoneRotate(t: PlaytestContext): Promise<void
   await t.wait(200);
   t.check('blur pauses', (await t.game.state()).mode !== 'playing', (await t.game.state()).mode);
   await t.screenshot('after blur');
+  t.check('no score was posted', scores.posts === 0, scores);
 }

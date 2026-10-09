@@ -9,7 +9,7 @@
  */
 import type { AudioDebug } from '../../src/audio/debug';
 import type { GameEvents } from '../../src/types';
-import type { PlaytestContext } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 type AudioWindow = Window & { __audio?: AudioDebug };
 
@@ -18,7 +18,6 @@ const EXPECTED_SOUND: Partial<Record<keyof GameEvents, string>> = {
   jump: 'jump',
   land: 'land',
   starCollected: 'star',
-  obstacleCleared: 'cleared',
   crash: 'crash',
   gameOver: 'gameOver',
   grindStart: 'grind:start',
@@ -92,6 +91,7 @@ async function waitForServiceWorker(t: PlaytestContext): Promise<void> {
 /** Scripted run: real first input (unlock), seeded jumps, a held jump, live play, game over. */
 async function scriptedRun(t: PlaytestContext): Promise<void> {
   const { game } = t;
+  await adultMode(t); // EXPECTED_SOUND maps the adult sounds; kid mode is the default
   t.check('audio locked before the first input', (await audioStatus(t)) === 'locked', await audioStatus(t));
   await t.realPress(80); // also starts the run from the title
   await t.wait(100);
@@ -127,10 +127,20 @@ async function scriptedRun(t: PlaytestContext): Promise<void> {
   const counts = (list: string[]) => list.reduce<Record<string, number>>((acc, s) => ({ ...acc, [s]: (acc[s] ?? 0) + 1 }), {});
   const eventCounts = counts(events.map((e) => e.name));
   const soundCounts = counts(sounds);
-  const mismatched = Object.entries(EXPECTED_SOUND).filter(
-    ([event, sound]) => (eventCounts[event] ?? 0) !== (soundCounts[sound!] ?? 0),
+  // As audio/cleared.ts: a clear of the person a stomp or ball hit voiced in the same tick stays silent.
+  const voiced = new Set(
+    events
+      .filter((e) => e.name === 'stomp' || e.name === 'ballHit')
+      .map((e) => `${e.frame}:${(e.payload as GameEvents['ballHit']).entityId}`),
   );
-  t.check('every gameplay event triggered its sound', mismatched.length === 0, { mismatched, eventCounts, soundCounts });
+  const loudClears = events.filter(
+    (e) => e.name === 'obstacleCleared' && !voiced.has(`${e.frame}:${(e.payload as GameEvents['obstacleCleared']).entityId}`),
+  ).length;
+  const mismatched: [string, string][] = Object.entries(EXPECTED_SOUND).filter(
+    ([event, sound]) => (eventCounts[event] ?? 0) !== (soundCounts[sound!] ?? 0),
+  ) as [string, string][];
+  if (loudClears !== (soundCounts['cleared'] ?? 0)) mismatched.push(['obstacleCleared (not stomped / hit)', 'cleared']);
+  t.check('every gameplay event triggered its sound', mismatched.length === 0, { mismatched, loudClears, eventCounts, soundCounts });
   t.check('jump, boost, land and game-over sounds fired', ['jump', 'boost', 'land', 'gameOver'].every((s) => soundCounts[s]), soundCounts);
   t.check('grind loop is stopped after the run', (soundCounts['grind:start'] ?? 0) === (soundCounts['grind:stop'] ?? 0), soundCounts);
   await t.log('sfx fired', { sounds, soundCounts, eventCounts });
@@ -215,11 +225,13 @@ async function checkOfflineReload(t: PlaytestContext): Promise<void> {
     if (loaded) {
       await t.wait(300);
       await t.game.pause();
+      await dismissRotateHint(t); // in portrait it would hold the run paused
       await t.game.seed(2);
       await t.game.startRun();
       await t.game.step(90);
       await t.canvasShot('offline run');
-      t.check('offline run plays', (await t.game.state()).distance > 0);
+      const s = await t.game.state();
+      t.check('offline run plays', s.distance > 0, { mode: s.mode, distance: s.distance });
     }
   } finally {
     await context.setOffline(false);

@@ -14,7 +14,7 @@ import type {} from '../../src/ui/debug'; // window.__ui
 import { TICK_DT } from '../../src/core/config';
 import { BANNER_TIME } from '../../src/ui/banner';
 import { itemButtonRect } from '../../src/ui/item-button';
-import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 /** Drunk timer values (of DRUNK_DURATION 6 s) and what they show. */
 const DRUNK_STAGES = [
@@ -28,6 +28,7 @@ export default async function itemsUi(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
   await game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // adult content below; kid mode is the default
   const display = await game.display();
   await game.step(2);
   await t.canvasShot('title hints');

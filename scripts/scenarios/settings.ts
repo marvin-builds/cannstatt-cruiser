@@ -2,8 +2,9 @@
  * Hidden settings menu and kid mode: the title shows no settings button; a
  * 3 s long press on the logo (touch / mouse) or holding K (keyboard) opens
  * "Einstellungen" without starting a run (progress only after ~1 s); kid mode
- * turns on and off at once (the long press is the only guard); the flag
- * survives a reload; a kid-mode run shows the
+ * is on by default with nothing stored (ROADMAP 39) and turns off and on at
+ * once (the long press is the only guard); an explicit choice (off as well
+ * as on) survives a reload; a kid-mode run shows the
  * bubble gum, the pink tint and the gum HUD icon. Also checks that every
  * button's tap area is >= 44 CSS px on touch viewports.
  *   npm run playtest -- --scenario scripts/scenarios/settings.ts --viewports desktop,phone-landscape,phone-portrait --name settings
@@ -94,45 +95,60 @@ async function titleAndLongPress(t: PlaytestContext): Promise<void> {
   t.check('the long press does not start a run', s.mode === 'title' && (await game.eventsSince(before, 'runStarted')).length === 0, { mode: s.mode });
 }
 
+/** Closes the menu with Zurück (touch) or Escape (desktop). */
+async function closeMenu(t: PlaytestContext): Promise<void> {
+  if (t.viewport.touch) await tap(t, (await layout(t)).menu.back);
+  else {
+    await t.page.keyboard.press('Escape');
+    await t.game.step(1);
+  }
+  t.check('menu closes, still on the title', (await settings(t)).screen === 'closed' && (await t.game.state()).mode === 'title');
+}
+
 async function toggleKidMode(t: PlaytestContext): Promise<void> {
   const { game } = t;
   const l = await layout(t);
-  await t.canvasShot('settings menu adult');
+  t.check('kid mode is on by default, nothing stored', (await game.state()).kidMode && (await storedKidMode(t)) === null, await storedKidMode(t));
+  await t.canvasShot('settings menu kid mode default');
   await t.screenshot('settings menu page');
   await checkTapSizes(t, 'settings menu', [l.menu.toggle, l.menu.back]);
 
-  await tap(t, l.menu.toggle);
-  t.check('Kindermodus turns on at once', (await game.state()).kidMode && (await storedKidMode(t)) === 'true', await storedKidMode(t));
-  await t.canvasShot('settings menu kid mode on');
-
-  // Off again at once: no question, the menu stays open.
+  // Off at once: no question, the menu stays open.
   await tap(t, l.menu.toggle);
   const menu = await settings(t);
   t.check('Kindermodus turns off at once, no question', menu.screen === 'menu' && !(await game.state()).kidMode && (await storedKidMode(t)) === 'false', menu);
   await t.canvasShot('settings menu kid mode off');
   await t.screenshot('settings menu kid mode off page');
 
-  // The menu still opens again the same way.
+  // On again at once.
+  await tap(t, l.menu.toggle);
+  t.check('Kindermodus turns on at once', (await game.state()).kidMode && (await storedKidMode(t)) === 'true', await storedKidMode(t));
+  await t.canvasShot('settings menu kid mode on');
+
+  // The menu still opens again the same way; switch off for the reload check.
   await tap(t, l.menu.back);
   await openMenu(t);
   t.check(`reopened (${t.viewport.touch ? 'long press' : 'K held'})`, (await settings(t)).screen === 'menu');
-
-  // On again for the run, then close.
   await tap(t, l.menu.toggle);
-  if (t.viewport.touch) await tap(t, l.menu.back);
-  else {
-    await t.page.keyboard.press('Escape');
-    await game.step(1);
-  }
-  t.check('menu closes, still on the title', (await settings(t)).screen === 'closed' && (await game.state()).mode === 'title');
+  await closeMenu(t);
 }
 
-async function persists(t: PlaytestContext): Promise<void> {
+async function reload(t: PlaytestContext): Promise<void> {
   await t.page.reload();
   await t.page.waitForFunction(() => Boolean(window.__game));
   await t.game.pause();
   await dismissRotateHint(t);
-  t.check('kid mode is loaded after a reload', (await t.game.state()).kidMode);
+}
+
+/** An explicit off survives a reload (the default does not override it); on again, which survives too. */
+async function persists(t: PlaytestContext): Promise<void> {
+  await reload(t);
+  t.check('an explicit kid mode off is kept after a reload', !(await t.game.state()).kidMode, await storedKidMode(t));
+  await openMenu(t);
+  await tap(t, (await layout(t)).menu.toggle);
+  await closeMenu(t);
+  await reload(t);
+  t.check('kid mode (on) is loaded after a reload', (await t.game.state()).kidMode);
 }
 
 async function kidRun(t: PlaytestContext): Promise<void> {

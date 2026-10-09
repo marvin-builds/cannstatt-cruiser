@@ -10,7 +10,7 @@ import { PLAYER_X } from '../../src/core/config';
 import type { PlaceableKind } from '../../src/gameplay/debug';
 import { SolverBot } from '../../src/gameplay/testing';
 import type { GameState } from '../../src/types';
-import { dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
 
 function place(t: PlaytestContext, kind: PlaceableKind, x: number, variant = 0): Promise<number> {
   return t.page.evaluate(([k, px, v]) => window.__gameplay!.place(k as PlaceableKind, px as number, v as number), [kind, x, variant] as const);
@@ -144,6 +144,7 @@ async function gameOver(t: PlaytestContext): Promise<void> {
 export default async function chillScenario(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // adult content below; kid mode is the default
   await benchGrind(t);
   await people(t);
   await chill(t);

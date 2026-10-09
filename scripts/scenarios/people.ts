@@ -13,7 +13,7 @@ import type { PlaceableKind } from '../../src/gameplay/debug';
 import { type HumanRun, rideHuman } from '../../src/gameplay/human-run';
 import { HumanBot, planStomp } from '../../src/gameplay/testing';
 import type {} from '../../src/player/debug'; // window.__player
-import { dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
 
 const SEEDS = 20;
 const SECONDS = 180;
@@ -155,6 +155,7 @@ async function humanRide(t: PlaytestContext): Promise<void> {
 export default async function peopleScenario(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // adult content below; kid mode is the default
   await humanStats(t);
   await carriedItems(t);
   await stomp(t, 'vfbFan', 1, false, 'fan');
