@@ -33,6 +33,12 @@ export const SWIPE_SLOPE = 1.2;
 export const SWIPE_WINDOW = 5;
 /** A swipe down holds duck this long (1.2 s), or until the next tap jumps. */
 export const SWIPE_DUCK_TICKS = 72;
+/**
+ * Kickflip drag: the held jump finger moving SWIPE_DISTANCE down (within
+ * SWIPE_SLOPE) while airborne taps duck for this many ticks, enough for the
+ * player to see the press but over long before the landing.
+ */
+export const TRICK_TAP_TICKS = 3;
 
 const SWIPE_SOURCE = 'swipe';
 
@@ -57,11 +63,24 @@ interface PendingTouch {
   frame: number;
 }
 
+/**
+ * Kickflip drag tracking of a held jump touch: where the next downward drag
+ * is measured from, and whether one may press the trick (re-armed by moving
+ * back up).
+ */
+interface TrickDrag {
+  x: number;
+  y: number;
+  armed: boolean;
+}
+
 /** A pointer whose action press is down. */
 interface ActivePress {
   source: string;
   /** Ticks the press reached the action late (an undecided touch); its release is delayed as long. */
   lag: number;
+  /** Set for touches only: a downward drag in the air is the trick press. */
+  drag: TrickDrag | null;
 }
 
 /**
@@ -72,7 +91,8 @@ interface ActivePress {
  * another way or the window running out presses the action. Such a late
  * press releases as late as it started, so the action is held exactly as long
  * as the finger was down and a touch jumps as high as an equally long key
- * press. A hotspot that took a press hears its release
+ * press. A held jump touch that moves down while airborne taps duck once for
+ * the air trick (see dragTrick). A hotspot that took a press hears its release
  * (InputHotspot.onRelease). DOM-free so it can be unit tested.
  */
 export class PointerControls {
@@ -92,24 +112,28 @@ export class PointerControls {
       return;
     }
     if (!touch || this.game.state.mode !== 'playing') {
-      this.press(id);
+      this.press(id, touch ? { x, y } : null);
       return;
     }
     const token = this.nextToken++;
     this.pending.set(id, { x, y, token, frame: this.game.state.frame });
     this.game.after(SWIPE_WINDOW, () => {
-      if (this.pending.get(id)?.token === token) this.press(id);
+      const start = this.pending.get(id);
+      if (start?.token === token) this.press(id, start);
     });
   }
 
   move(id: number, x: number, y: number): void {
     const start = this.pending.get(id);
-    if (!start) return;
+    if (!start) {
+      this.dragTrick(id, x, y);
+      return;
+    }
     const dx = x - start.x;
     const dy = y - start.y;
     if (Math.hypot(dx, dy) < SWIPE_DISTANCE) return;
-    if (dy > 0 && Math.abs(dx) <= dy * SWIPE_SLOPE) this.duck(id);
-    else this.press(id);
+    if (isSwipeDown(dx, dy)) this.duck(id);
+    else this.press(id, { x, y });
   }
 
   up(id: number): void {
@@ -119,7 +143,8 @@ export class PointerControls {
       hotspot?.onRelease?.();
       return;
     }
-    if (this.pending.has(id)) this.press(id);
+    const pending = this.pending.get(id);
+    if (pending) this.press(id, pending);
     const press = this.active.get(id);
     if (!press) return;
     this.active.delete(id);
@@ -146,14 +171,47 @@ export class PointerControls {
     for (const button of Object.values(this.game.buttons)) button.releaseAll();
   }
 
-  private press(id: number): void {
+  /** Presses the action for pointer `id`; a touch passes its finger position (`at`) for the kickflip drag. */
+  private press(id: number, at: { x: number; y: number } | null): void {
     const pending = this.pending.get(id);
     this.pending.delete(id);
     this.endSwipeDuck();
     const token = pending?.token ?? this.nextToken++;
     const source = `pointer:${id}:${token}`;
-    this.active.set(id, { source, lag: pending ? this.game.state.frame - pending.frame : 0 });
+    const lag = pending ? this.game.state.frame - pending.frame : 0;
+    const drag = at ? { x: at.x, y: at.y, armed: true } : null;
+    this.active.set(id, { source, lag, drag });
     this.game.buttons.action.press(source);
+  }
+
+  /**
+   * Kickflip drag: a held jump touch moving SWIPE_DISTANCE down (as steep as
+   * a swipe down) while airborne taps duck for TRICK_TAP_TICKS, without
+   * releasing the jump. On the ground (or a rail) the drag is measured afresh
+   * and does nothing; after a trick the finger must move back up
+   * SWIPE_DISTANCE to re-arm.
+   */
+  private dragTrick(id: number, x: number, y: number): void {
+    const drag = this.active.get(id)?.drag;
+    if (!drag) return;
+    const { grounded, grinding } = this.game.state.player;
+    const dx = x - drag.x;
+    const dy = y - drag.y;
+    if (!drag.armed) {
+      if (dy > 0) Object.assign(drag, { x, y });
+      else if (-dy >= SWIPE_DISTANCE) Object.assign(drag, { x, y, armed: true });
+      return;
+    }
+    if (grounded || grinding || dy < 0) {
+      Object.assign(drag, { x, y });
+      return;
+    }
+    if (Math.hypot(dx, dy) < SWIPE_DISTANCE || !isSwipeDown(dx, dy)) return;
+    Object.assign(drag, { x, y, armed: false });
+    const source = `trick:${id}:${this.nextToken++}`;
+    const duck = this.game.buttons.duck;
+    duck.press(source);
+    this.game.after(TRICK_TAP_TICKS, () => duck.release(source));
   }
 
   private duck(id: number): void {
@@ -171,6 +229,11 @@ export class PointerControls {
     this.swipeDuck++;
     this.game.buttons.duck.release(SWIPE_SOURCE);
   }
+}
+
+/** A move of (dx, dy) view px points down steeply enough to be a swipe down (see SWIPE_SLOPE). */
+function isSwipeDown(dx: number, dy: number): boolean {
+  return dy > 0 && Math.abs(dx) <= dy * SWIPE_SLOPE;
 }
 
 /**
