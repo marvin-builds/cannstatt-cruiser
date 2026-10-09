@@ -4,7 +4,8 @@
  * A line is a run of stunt pieces (kickers on the street, ledges of the upper
  * level) whose entities carry `data.line` (the line's id), `data.step`
  * (1..steps) and `data.steps`. A piece is *made* when a kicker launches the
- * skater or a ledge is ground (grindStart).
+ * skater (on a jump press in its window, kicker-launch.ts) or a ledge is
+ * ground (grindStart).
  *
  * Lifecycle (one attempt at a line at a time):
  *
@@ -35,10 +36,12 @@
  * street landing breaks the combo), so a line pays both. An air trick in a
  * line uses the line multiplier when it is higher (air-trick.ts).
  */
-import type { Entity, GameContext, StuntKind } from '../types';
+import type { Entity, GameContext, GameState, StuntKind } from '../types';
 import { isKicker, isLedge } from './catalogue';
-import { feetOf, hitsKicker, launchVelocityFor } from './rules';
+import { KickerLaunch } from './kicker-launch';
 import { addBonus } from './scoring';
+
+export { DEFAULT_LEDGE_HEIGHT } from './kicker-launch';
 
 /** Base points per made piece (times the line multiplier). */
 export const STUNT_POINTS: Record<StuntKind, number> = { kicker: 50, ledge: 100 };
@@ -46,8 +49,6 @@ export const STUNT_POINTS: Record<StuntKind, number> = { kicker: 50, ledge: 100 
 export const STUNT_MAX_MULTIPLIER = 6;
 /** Bonus per made piece of a completed line. */
 export const STUNT_LINE_BONUS = 150;
-/** Ledge height a kicker without line data launches for (debug-placed pieces). */
-export const DEFAULT_LEDGE_HEIGHT = 48;
 
 /** The running line as the debug hook shows it. */
 export interface StuntLineView {
@@ -62,12 +63,6 @@ export interface StuntLineView {
   points: number;
 }
 
-/** Launch speed of a kicker entity (its `data.velocity`, else the default ledge height's). */
-function kickerVelocity(e: Entity): number {
-  const v = e.data?.velocity;
-  return typeof v === 'number' ? v : launchVelocityFor(DEFAULT_LEDGE_HEIGHT);
-}
-
 const num = (e: Entity, key: string): number => {
   const v = e.data?.[key];
   return typeof v === 'number' ? v : 0;
@@ -79,8 +74,10 @@ export class StuntLines {
   private lastPiece = -1;
   /** The skater left the line's last ledge: the line completes in the next update. */
   private leftLast = false;
+  private readonly launches = new KickerLaunch();
 
   reset(): void {
+    this.launches.reset();
     this.line = null;
     this.lastPiece = -1;
     this.leftLast = false;
@@ -96,9 +93,19 @@ export class StuntLines {
     return this.line?.multiplier ?? 1;
   }
 
+  /** The player's `jump` event (an ollie may arm a kicker). */
+  jumped(state: GameState): void {
+    this.launches.jumped(state);
+  }
+
   /** Every playing tick after the contacts: launches from kickers, and whether the next piece was passed by. */
   update(ctx: GameContext): void {
-    this.launchFromKickers(ctx);
+    const launch = this.launches.update(ctx);
+    if (launch) {
+      launch.kicker.done = true;
+      ctx.bus.emit('launch', { entityId: launch.kicker.id, velocity: launch.velocity });
+      this.made(ctx, launch.kicker);
+    }
     if (this.leftLast && this.line) this.end(ctx);
     else if (this.line && !this.atLastPiece()) this.checkNext(ctx);
   }
@@ -144,21 +151,6 @@ export class StuntLines {
 
   private atLastPiece(): boolean {
     return this.line!.step === this.line!.steps;
-  }
-
-  private launchFromKickers(ctx: GameContext): void {
-    const p = ctx.state.player;
-    if (p.state === 'crash') return;
-    const feet = feetOf(p);
-    const entities = ctx.state.entities;
-    for (let i = 0; i < entities.length; i++) {
-      const e = entities[i]!;
-      if (!isKicker(e.kind) || e.done || !hitsKicker(feet, e)) continue;
-      e.done = true;
-      ctx.bus.emit('launch', { entityId: e.id, velocity: kickerVelocity(e) });
-      this.made(ctx, e);
-      return;
-    }
   }
 
   /** The next piece of the running line on the street, or null when it is gone. */

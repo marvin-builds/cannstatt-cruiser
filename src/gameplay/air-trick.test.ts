@@ -35,11 +35,19 @@ function until(game: Game, done: () => boolean, max = 400): void {
   for (let i = 0; i < max && !done(); i++) tick(game);
 }
 
+/** Rides onto `kicker` and taps jump on its ramp (ramps need a press, ROADMAP 40) until it launches. */
+function pressOnRamp(game: Game, kicker: Entity): void {
+  const launches = record(game, 'launch');
+  until(game, () => kicker.x + 2 <= PLAYER_X, 120);
+  game.buttons.action.press('test');
+  tick(game, 2);
+  game.buttons.action.release('test');
+  until(game, () => launches.length > 0, 30);
+}
+
 /** A lone kicker (no line) just ahead: the skater is launched high and lands on the street again. */
 function launchOff(game: Game): void {
-  const launches = record(game, 'launch');
-  place(game, 'kicker', kickerRect(PLAYER_X + 20));
-  until(game, () => launches.length > 0, 120);
+  pressOnRamp(game, place(game, 'kicker', kickerRect(PLAYER_X + 20)));
   tick(game, 2);
 }
 
@@ -114,7 +122,8 @@ describe('air trick scoring', () => {
     kicker.data = { ...data, step: 1, velocity: launchVelocityFor(48) };
     const ledge = place(game, 'ledge', ledgeRect(PLAYER_X + 70, 48, 90));
     ledge.data = { ...data, step: 2, zone: 0 };
-    until(game, () => launches.length > 0, 120);
+    pressOnRamp(game, kicker);
+    expect(launches).toHaveLength(1);
     tick(game, 2);
     doTrick(game, trick, 21);
     until(game, () => grinds.length > 0, 200);

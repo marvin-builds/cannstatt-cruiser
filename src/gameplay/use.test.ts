@@ -6,9 +6,10 @@ import type { CarriedItem } from '../types';
 import { obstacle, quietGame, record } from './test-kit';
 import { DRUNK_DURATION, EAT_BONUS_POINTS } from './use';
 
-/** A quiet game with `item` under the arm. */
+/** A quiet game in adult mode (kid mode, the default, is tested on its own) with `item` under the arm. */
 function carrying(item: CarriedItem): Game {
   const game = quietGame();
+  game.state.kidMode = false;
   game.state.carriedItem = item;
   return game;
 }

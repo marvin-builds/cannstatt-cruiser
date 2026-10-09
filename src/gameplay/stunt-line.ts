@@ -10,13 +10,19 @@
  *
  * Generous by construction, checked with the flight simulation (stunt-sim.ts):
  * - each kicker's launch (velocity for the next ledge's height) comes down
- *   onto that ledge at every speed of the range and any tick phase;
+ *   onto that ledge at every speed of the range and any tick phase; ramps
+ *   need a jump press (ROADMAP 40), and a press on any tick of the kicker's
+ *   launch window (rules.ts kickerWindow, >= 20 ticks) lands there too, as
+ *   kicker-launch.ts aims each launch at this designed landing
+ *   (stunt-sim.ts kickerLaunchSpeed);
  * - each gap needs a jump (it climbs to a higher ledge, or rolling off the
  *   end falls past the lower next one), only with human holds whose arc stays
  *   on screen (gapHolds), and has a human take-off window of >= STUNT_TAKEOFF_WINDOW ticks with one
  *   of the human holds, from 40 % into the ledge on, at the slowest, middle
  *   and fastest speed (else the line drops to the street there instead);
- * - a drop rolls off the ledge end onto the street well before the kicker.
+ * - a drop rolls off the ledge end onto the street well before the kicker,
+ *   leaving more than STUNT_TAKEOFF_WINDOW ticks of its launch window for
+ *   the press (KICKER_RUNUP_*). A missed press just rolls over the kicker.
  *
  * planStuntLine is a resumable generator like patterns.ts planSteps: with a
  * work budget it yields when the simulated ticks used it up.

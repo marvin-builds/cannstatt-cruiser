@@ -164,9 +164,21 @@ export function stompInto(b: MutableBody): MutableBody {
   return b;
 }
 
-/** What the launch event does to the player: it takes off with `velocity` on the next step, like a stomp bounce. */
+/**
+ * What the launch event does to the player: it takes off on the next step,
+ * like a stomp bounce. `velocity` is the launch speed from the street; from
+ * an ollie already in the air (the press that launched) the player takes off
+ * so that the arc tops out where a street launch would, never slower than
+ * the ollie still rises (src/player/CONTRACT.md "Kicker launch").
+ */
 export function launchBody(b: Body, velocity: number): Body {
   const out = copyBody(b);
-  out.bounce = velocity;
+  out.bounce = launchSpeedFrom(b, velocity);
   return out;
+}
+
+/** The take-off speed of a launch with street speed `velocity` from body `b` (its height and rise). */
+function launchSpeedFrom(b: Body, velocity: number): number {
+  const height = Math.max(0, GROUND_Y - b.y);
+  return Math.max(Math.sqrt(Math.max(0, velocity * velocity - 2 * T.GRAVITY * height)), -b.vy);
 }

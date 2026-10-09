@@ -112,6 +112,8 @@ export function rideDrunk(seed: number, from: number): DrunkRun {
   game.commands.startRun();
   game.state.health = MAX_HEALTH * 1000;
   game.state.distance = from;
+  // Adult mode: only there the Maßkrug is drunk (kid mode, the default, eats a gingerbread heart instead).
+  game.state.kidMode = false;
   game.state.carriedItem = 'beer';
   const bot = new HumanBot(new Rng(seed * 7919 + 1));
   const run: DrunkRun = { seed, drunkSeconds: 0, crashes: [], cleared: 0 };
@@ -127,6 +129,7 @@ export function rideDrunk(seed: number, from: number): DrunkRun {
   let soberAt = -1;
   while (game.state.mode === 'playing' && (soberAt < 0 || game.state.time < soberAt + SOBER_UP)) {
     if (drankAt < 0 && game.state.time >= DRINK_AFTER) game.commands.useItem();
+    if (drankAt < 0 && game.state.time > DRINK_AFTER + 1) throw new Error(`seed ${seed}: the Maßkrug was not drunk`);
     stepBot(game, bot);
     if (drankAt >= 0 && soberAt < 0 && game.state.drunkTimer <= 0) soberAt = game.state.time;
   }

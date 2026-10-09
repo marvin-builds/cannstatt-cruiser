@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y } from '../core/config';
 import { Rng } from '../core/rng';
 import type { Rect } from '../types';
-import { isObstacle, isRail, KICKER, LEDGE } from './catalogue';
+import { isObstacle, isRail, KICKER, LEDGE, ledgeRect } from './catalogue';
 import { HUMAN_HOLDS } from './fairness';
 import { HITBOX_H } from '../player/tuning';
 import { groundBody, stepBody } from './jumpsim';
 import type { Pattern, Piece } from './patterns';
-import { KICKER_LIP, launchVelocityFor } from './rules';
+import { kickerWindow, KICKER_LIP, launchVelocityFor } from './rules';
 import { drawShape, gapHolds, planStuntLine, shapeOf, STUNT_APEX_MAX, STUNT_SHAPES, STUNT_TAKEOFF_WINDOW, stuntWorstLanding, type StuntShape } from './stunt-line';
-import { fly, jumpWindow, launched, onLedge, stepOf, windowTicks } from './stunt-sim';
+import { fly, jumpWindow, launchWindow, onLedge, stepOf, windowTicks } from './stunt-sim';
 
 /** Speed ranges a line is planned for: early ramp, mid, top speed, and pinned speeds. */
 const RANGES = [[90, 99], [140, 152], [181, 190], [190], [120], [90]];
@@ -38,13 +38,9 @@ const SEEDS = Array.from({ length: 24 }, (_, i) => i + 1);
 const stuntPieces = (p: Pattern) => p.pieces.filter((x) => x.kind === 'kicker' || x.kind === 'ledge');
 const speedsOf = (range: number[]) => [range[0]!, (range[0]! + range[range.length - 1]!) / 2, range[range.length - 1]!];
 
-/** Where the skater riding on the street at `speed` (phase 0..1 of a tick) is launched by `kicker`, and where that launch comes down. */
-function launchFrom(kicker: Piece, speed: number, phase: number, ledges: Rect[]) {
-  const step = stepOf(speed);
-  let x = kicker.x - 40 + phase * step;
-  while (x < kicker.x + kicker.w * KICKER_LIP) x += step;
-  return fly(launched(Number(kicker.data!.velocity)), x, step, ledges);
-}
+/** The jump presses in `kicker`'s launch window at `speed` (phase 0..1 of a tick) with `hold`, and how many land on `ledge`. */
+const launchesOf = (kicker: Piece, ledge: Rect, speed: number, phase: number, hold: number) =>
+  launchWindow(kicker, Number(kicker.data!.velocity), ledge, stepOf(speed), hold, phase);
 
 describe('stunt line planner', { timeout: 60_000 }, () => {
   it('lays 3-6 stunt pieces in order: a kicker first, ledges 40-60 px up, 40-120 px long, themed by the zone, never an obstacle or rail', () => {
@@ -82,7 +78,7 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
     expect([...lengths].sort()).toEqual([3, 4, 5, 6]);
   });
 
-  it('every kicker launches the skater onto its ledge at every speed of the range and any tick phase', () => {
+  it('every kicker launches the skater onto its ledge from a jump press on any tick of its launch window (>= 16 ticks), with every human hold, at every speed and tick phase', () => {
     for (const seed of SEEDS) {
       for (const range of RANGES) {
         const pieces = stuntPieces(plan(seed, range));
@@ -90,8 +86,12 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
           if (k.kind !== 'kicker') return;
           const ledge = pieces[i + 1]!;
           for (const speed of speedsOf(range)) {
-            for (const phase of [0, 0.25, 0.5, 0.75]) {
-              expect(launchFrom(k, speed, phase, [ledge]).ledge, `seed ${seed} ${speed} px/s`).toBe(0);
+            for (const phase of [0, 0.5]) {
+              for (const hold of HUMAN_HOLDS) {
+                const { presses, landed } = launchesOf(k, ledge, speed, phase, hold);
+                expect(presses, `seed ${seed} ${speed} px/s`).toBeGreaterThanOrEqual(STUNT_TAKEOFF_WINDOW);
+                expect(landed, `seed ${seed} ${speed} px/s hold ${hold}`).toBe(presses);
+              }
             }
           }
         });
@@ -167,6 +167,8 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
             const landing = fly(onLedge(a), a.x + a.w - 1, stepOf(speed), []);
             expect(landing.ledge).toBe(-1);
             expect(landing.x).toBeLessThan(k.x + k.w * KICKER_LIP - 8);
+            // Back on the street for a human press window before the kicker's launch window closes.
+            expect((kickerWindow(k, speed).end - landing.x) / stepOf(speed)).toBeGreaterThanOrEqual(STUNT_TAKEOFF_WINDOW);
           }
         });
       }
@@ -267,10 +269,11 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
     expect(yields).toBeGreaterThan(0);
   });
 
-  it('a launch with no ledge comes back to the street (missing never crashes, there is nothing else)', () => {
+  it('a launch that misses its ledge comes back to the street (missing never crashes, there is nothing else)', () => {
     const p = plan(3, [150]);
     const k = stuntPieces(p)[0]!;
-    expect(launchFrom(k, 150, 0, []).ledge).toBe(-1);
+    const far = ledgeRect(k.x + 2000, 48, 80);
+    expect(launchesOf(k, far, 150, 0, HUMAN_HOLDS[0]).landed).toBe(0);
     expect(fly(groundBody(), 0, 2, []).ledge).toBe(-1);
   });
 });

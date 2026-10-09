@@ -9,11 +9,11 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Rng } from '../core/rng';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { chillSpeedFactor } from './chill';
-import { hitBox, isGrindable, isObstacle, isOverhead } from './catalogue';
+import { hitBox, isGrindable, isKicker, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
 import { drunkFairness, HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
-import { LEDGE_FRONT_REACH } from './rules';
+import { kickerWindow, LEDGE_FRONT_REACH } from './rules';
 import { type Course, HOLDS, type Jump, type Pace, Solver } from './solver';
 
 /** Room after the last entity the plan may use for landing. */
@@ -195,11 +195,15 @@ export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, d
  * ducks with jittered timing. While drunk it presses DRUNK_LAG ticks early
  * (it feels the mean input delay, core/drunk.ts), aims where the window
  * also absorbs the delay's spread and holds on for a sure full jump
- * (fairness.ts drunkFairness). The jitter comes from its own `rng`, so
- * runs replay per seed. Same driving protocol as SolverBot.
+ * (fairness.ts drunkFairness). On a stunt line's kicker it presses once, on
+ * a random tick of the launch window with a random hold (ramps need a press,
+ * ROADMAP 40). The jitter comes from its own `rng`, so runs replay per seed.
+ * Same driving protocol as SolverBot.
  */
 export class HumanBot {
   private wait = -1;
+  /** The kicker a press was planned for. */
+  private pressedKicker = -1;
   /** planKey of the last plan that found nothing to jump. */
   private idle: string | null = null;
   private hold = 0;
@@ -227,6 +231,7 @@ export class HumanBot {
       this.wait = -1;
       this.idle = null;
     }
+    if (this.wait < 0 && p.grounded && p.state !== 'crash') this.planKickerPress(state);
     if (this.wait < 0) {
       if (!(p.grounded || p.grinding) || p.state === 'crash' || planKey(state) === this.idle) return null;
       // Aims where its jitter (and the drunk delay's spread) still lands somewhere fair, and grinds only when that window absorbs it.
@@ -246,6 +251,17 @@ export class HumanBot {
     this.wait = -1;
     this.holding = this.hold;
     return 'press';
+  }
+
+  /** Plans a press on a random tick of what is left of the launch window of a kicker the skater rolls in (once per kicker). */
+  private planKickerPress(state: GameState): void {
+    const x = state.player.x;
+    const kicker = state.entities.find((e) => isKicker(e.kind) && !e.done && e.id !== this.pressedKicker && kickerWindow(e, state.speed).start <= x && x <= kickerWindow(e, state.speed).end);
+    if (!kicker) return;
+    this.pressedKicker = kicker.id;
+    const ticksLeft = Math.floor((kickerWindow(kicker, state.speed).end - x) / (state.speed * TICK_DT)) - 1;
+    this.wait = this.rng.int(0, Math.max(0, ticksLeft));
+    this.hold = this.style.holds[this.rng.int(0, this.style.holds.length - 1)]!;
   }
 
   duck(state: GameState): boolean {

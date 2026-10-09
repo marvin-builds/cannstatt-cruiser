@@ -3,7 +3,7 @@ import { GROUND_Y, TICK_DT } from '../core/config';
 import { GRAVITY } from '../player/tuning';
 import { isGrindable, isKicker, isLedge, isObstacle, isRail, KICKER, kickerRect, LEDGE, ledgeRect } from './catalogue';
 import { groundBody, launchBody, stepBody } from './jumpsim';
-import { hitsKicker, landsOnHighLedge, landsOnRail, launchVelocityFor, STUNT_MAGNET_DEPTH, STUNT_MAGNET_FRONT } from './rules';
+import { landsOnHighLedge, landsOnRail, launchVelocityFor, STUNT_MAGNET_DEPTH, STUNT_MAGNET_FRONT } from './rules';
 
 const feet = (x: number, y: number, vy: number, supported = false) => ({ x, y, vy, supported });
 
@@ -31,23 +31,6 @@ describe('stunt pieces in the catalogue', () => {
     expect(LEDGE.maxHeight).toBeLessThanOrEqual(60);
     expect(LEDGE.minLength).toBeGreaterThanOrEqual(40);
     expect(LEDGE.maxLength).toBeLessThanOrEqual(120);
-  });
-});
-
-describe('kicker contact (hitsKicker)', () => {
-  const k = kickerRect(100);
-
-  it('launches a rider on the street once the wheels reach the middle of the ramp', () => {
-    expect(hitsKicker(feet(100 + KICKER.w / 2 - 1, GROUND_Y, 0, true), k)).toBe(false);
-    expect(hitsKicker(feet(100 + KICKER.w / 2, GROUND_Y, 0, true), k)).toBe(true);
-    expect(hitsKicker(feet(100 + KICKER.w, GROUND_Y, 0, true), k)).toBe(true);
-    expect(hitsKicker(feet(100 + KICKER.w + 1, GROUND_Y, 0, true), k)).toBe(false);
-  });
-
-  it('launches a skater coming down onto it, not one flying over or still rising', () => {
-    expect(hitsKicker(feet(112, k.y + 1, 200), k)).toBe(true);
-    expect(hitsKicker(feet(112, k.y - 2, 200), k)).toBe(false);
-    expect(hitsKicker(feet(112, GROUND_Y - 2, -150), k)).toBe(false);
   });
 });
 
