@@ -15,7 +15,7 @@ import type { PlaceableKind } from '../../src/gameplay/debug';
 import { DROP_TIME, ITEM_BOX } from '../../src/gameplay/drop';
 import type {} from '../../src/player/debug'; // window.__player
 import type { CarriedItem, GameEvents } from '../../src/types';
-import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
+import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 const FALL_TICKS = Math.round(DROP_TIME / TICK_DT);
 /** Pinned speed: the item reaches the skater about a second after the hit. */
@@ -38,6 +38,7 @@ const kidMode = (t: PlaytestContext, on: boolean) => t.page.evaluate((k) => wind
 export default async function drop(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
+  await adultMode(t); // adult content below; kid mode is the default
   await rideOver(t);
   await kidModeNeverBeer(t);
   await beerStartsAutoDrink(t);

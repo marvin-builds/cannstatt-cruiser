@@ -24,7 +24,7 @@ import type {} from '../../src/player/debug'; // window.__player
 import type { CarriedItem, GameState } from '../../src/types';
 import { CHILL_DURATION } from '../../src/core/chill';
 import { bubbleFrame, bubbleTime, F } from '../../src/player/bubble';
-import type { PlaytestContext } from '../playtest-lib';
+import { adultMode, type PlaytestContext } from '../playtest-lib';
 
 /** Steps until `done(state)` holds (at most `max` ticks); returns the last state. */
 async function stepUntil(t: PlaytestContext, done: (s: GameState) => boolean, max = 240): Promise<GameState> {
@@ -68,6 +68,7 @@ async function skaterCrop(t: PlaytestContext, name: string, zoom = 4): Promise<v
 
 export default async function skater(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
+  await adultMode(t); // adult content below; kid mode is the default
 
   await writeDataUrl(t, '00-pose-lineup.png', await page.evaluate(() => window.__player!.lineup(6)));
   await writeDataUrl(t, '00-pose-lineup-chill.png', await page.evaluate(() => window.__player!.lineup(6, 'chill')));

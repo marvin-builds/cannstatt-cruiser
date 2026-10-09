@@ -1,18 +1,22 @@
 /**
  * Stunt lines (ROADMAP 27, Stunt Wave A): kicker ramps, the upper level
- * (ledges) and combo lines. First a kicker without a ledge: the skater just
- * lands on the street, the line ends, nothing is lost; that ride also
- * measures where he comes down to ledge height. Then per zone (Bad Cannstatt,
- * Neckar, Mitte) a kicker and a ledge there are placed together as one line
- * on an empty street: riding over the kicker launches the skater (`launch`),
+ * (ledges) and combo lines. Kickers launch only on a jump press on the ramp
+ * (ROADMAP 40), pressed here with the viewport's real input (Space on
+ * desktop, a one-finger tap on touch). First a kicker ridden over without a
+ * press: no launch, no crash, the skater just rolls over it. Then a kicker
+ * without a ledge: the skater just lands on the street, the line ends,
+ * nothing is lost; that ride also measures where he comes down to ledge
+ * height. Then per zone (Bad Cannstatt, Neckar, Mitte) a kicker and a ledge
+ * there are placed together as one line on an empty street: the press on the
+ * kicker launches the skater (`launch`),
  * the ledge is ground (`grindStart` on the ledge), and the line reports its
  * pieces (`stuntStep`: the first piece starts the line quietly, so the ledge
  * is step 2 at x2) and its end (`stuntEnd`), never with a crash or lost
  * health. An air trick (Stunt Wave B): down pressed in the air after a
  * kicker launch sets `player.airTrick` and scores `airTrick` on the street
- * landing. On desktop a 100 s ride without input checks that the spawner
- * brings stunt lines by itself (about one per 30-45 s of riding) and that no
- * stunt piece ever crashes the skater.
+ * landing. On desktop a 100 s ride, with no input but the press on each
+ * kicker's ramp, checks that the spawner brings stunt lines by itself (about
+ * one per 30-45 s of riding) and that no stunt piece ever crashes the skater.
  *
  * Uses `window.__gameplay.place('kicker' | 'ledge', x)` (src/gameplay/debug.ts):
  * a kicker starts a line, a ledge joins it, a ledge's `y` is its grind surface.
@@ -22,7 +26,24 @@ import { GROUND_Y, PLAYER_X } from '../../src/core/config';
 import { DEFAULT_LEDGE_HEIGHT } from '../../src/gameplay/stunts';
 import type { Entity, EntityKind, GameEvents, GameState, StuntKind } from '../../src/types';
 import { ZoneRoute } from '../../src/world/zones';
-import { dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
+import {
+  dismissRotateHint,
+  Fingers,
+  jumpOnRamp,
+  type JumpInput,
+  nextKicker,
+  onRamp,
+  type PlaytestContext,
+  realJumpInput,
+  stepWhile,
+  tapJump,
+} from '../playtest-lib';
+
+/** The jump input of this viewport (Space or a touch tap) and its touch driver. */
+interface Rider {
+  input: JumpInput;
+  fingers?: Fingers;
+}
 
 /** Pinned speed for the placed lines (a mid-run speed). */
 const SPEED = 120;
@@ -91,13 +112,15 @@ async function noStuntHarm(t: PlaytestContext, frame: number, health: number): P
  * nothing is lost. Returns where a ledge must start relative to the kicker
  * so the skater comes down onto it (null if the kicker could not be placed).
  */
-async function missedLedge(t: PlaytestContext): Promise<number | null> {
+async function missedLedge(t: PlaytestContext, rider: Rider): Promise<number | null> {
   await freshRun(t, 2);
   const start = await t.game.state();
   const kicker = await placeStunt(t, 'kicker', PLAYER_X + KICKER_AHEAD);
   t.check('hook places a kicker', kicker !== null);
   if (kicker === null) return null;
-  await until(t, start.frame, 'launch', 120);
+  const pressed = await jumpOnRamp(t, kicker, rider.input, rider.fingers);
+  const launches = await until(t, start.frame, 'launch', 30);
+  t.check(`a ${rider.input} press on the ramp launches`, pressed !== null && launches.length === 1 && launches[0]!.entityId === kicker, { pressed, launches });
   await t.game.step(6);
   await t.canvasShot('missed ledge launched');
   const ledgeTop = GROUND_Y - DEFAULT_LEDGE_HEIGHT;
@@ -126,13 +149,14 @@ async function duckFor(t: PlaytestContext, ticks: number): Promise<GameState> {
 const AIR_TRICK_PRESS_DELAY = 4;
 
 /** A kicker alone, down pressed in the air: the kickflip runs (player.airTrick) and scores `airTrick` on the landing. */
-async function airTrick(t: PlaytestContext): Promise<void> {
+async function airTrick(t: PlaytestContext, rider: Rider): Promise<void> {
   await freshRun(t, 2);
   const start = await t.game.state();
   const kicker = await placeStunt(t, 'kicker', PLAYER_X + KICKER_AHEAD);
   t.check('air trick: hook places a kicker', kicker !== null);
   if (kicker === null) return;
-  await until(t, start.frame, 'launch', 120);
+  await jumpOnRamp(t, kicker, rider.input, rider.fingers);
+  await until(t, start.frame, 'launch', 30);
   await t.game.step(AIR_TRICK_PRESS_DELAY);
   const tricking = await duckFor(t, 2);
   t.check('air trick: down in the air starts the kickflip (player.airTrick)', tricking.player.airTrick && !tricking.player.grounded, tricking.player);
@@ -147,7 +171,7 @@ async function airTrick(t: PlaytestContext): Promise<void> {
 }
 
 /** A kicker and its ledge `ledgeOffset` px after it, placed as one line: launch, ledge grind, stuntStep, stuntEnd. */
-async function placedLine(t: PlaytestContext, zone: number, ledgeOffset: number): Promise<void> {
+async function placedLine(t: PlaytestContext, rider: Rider, zone: number, ledgeOffset: number): Promise<void> {
   const label = `zone ${zone}`;
   await freshRun(t, zone);
   const start = await t.game.state();
@@ -159,8 +183,9 @@ async function placedLine(t: PlaytestContext, zone: number, ledgeOffset: number)
   await t.game.step(10);
   await t.canvasShot(`${label} kicker ahead`);
 
-  const launches = await until(t, start.frame, 'launch', 120);
-  t.check(`${label}: riding over the kicker launches`, launches.length === 1 && launches[0]!.entityId === kicker && launches[0]!.velocity > 0, launches);
+  await jumpOnRamp(t, kicker, rider.input, rider.fingers);
+  const launches = await until(t, start.frame, 'launch', 30);
+  t.check(`${label}: jumping on the kicker launches`, launches.length === 1 && launches[0]!.entityId === kicker && launches[0]!.velocity > 0, launches);
   await t.game.step(6);
   await t.canvasShot(`${label} launched`);
 
@@ -185,7 +210,15 @@ async function placedLine(t: PlaytestContext, zone: number, ledgeOffset: number)
   await t.canvasShot(`${label} line end`);
 }
 
-/** Rides without input with the real spawner: lines come by themselves and never crash the skater. */
+/** Ticks stepped at once on the spawned ride while no kicker is near. */
+const RIDE_CHUNK = 30;
+/** A kicker this close ahead of the feet: step tick by tick to press on its ramp. */
+const KICKER_NEAR = 120;
+
+/**
+ * Rides with the real spawner and no input but a Space press on each kicker's
+ * ramp: lines come by themselves and never crash the skater.
+ */
 async function spawnedLines(t: PlaytestContext): Promise<void> {
   const { game } = t;
   if ((await game.state()).mode === 'playing') await game.endRun();
@@ -193,10 +226,20 @@ async function spawnedLines(t: PlaytestContext): Promise<void> {
   await game.seed(11);
   await game.startRun();
   const start = await game.state();
+  const pressed = new Set<number>();
   let shot = false;
-  for (let tick = 0; tick < RIDE_SECONDS * 60; tick += 30) {
+  let s = start;
+  for (let tick = 0; tick < RIDE_SECONDS * 60; ) {
     await game.setHealth(start.maxHealth);
-    const s = await game.step(30);
+    const kicker = nextKicker(s);
+    const near = kicker !== undefined && !pressed.has(kicker.id) && kicker.x - PLAYER_X < KICKER_NEAR;
+    if (near && onRamp(s, kicker)) {
+      pressed.add(kicker.id);
+      await tapJump(t, 'key');
+    }
+    const frames = near ? 1 : RIDE_CHUNK;
+    s = await game.step(frames);
+    tick += frames;
     if (!shot && s.entities.some((e) => STUNT_KINDS.includes(e.kind) && e.x < 300)) {
       shot = true;
       await t.canvasShot(`spawned line zone ${s.zoneIndex}`);
@@ -206,7 +249,7 @@ async function spawnedLines(t: PlaytestContext): Promise<void> {
   const launches = await payloads(t, start.frame, 'launch');
   const ends = await payloads(t, start.frame, 'stuntEnd');
   const stuntCrashes = (await payloads(t, start.frame, 'crash')).filter((c) => STUNT_KINDS.includes(c.kind));
-  await t.log('spawned lines', { launches: launches.length, ends });
+  await t.log('spawned lines', { presses: pressed.size, launches: launches.length, ends });
   t.check(`spawner: stunt lines come by themselves (>= 2 in ${RIDE_SECONDS} s)`, launches.length >= 2 && ends.length >= 2, {
     launches: launches.length,
     ends: ends.length,
@@ -215,15 +258,51 @@ async function spawnedLines(t: PlaytestContext): Promise<void> {
   await game.endRun();
 }
 
+/** The roll-over check rides on until the kicker's rear end is this far behind the feet. */
+const ROLL_OVER_AFTER = 40;
+
+/**
+ * A kicker ridden over without a press (ROADMAP 40): no launch, no crash, no
+ * health lost; the skater stays on the street and rides on.
+ */
+async function rollOver(t: PlaytestContext): Promise<void> {
+  await freshRun(t, 2);
+  const start = await t.game.state();
+  const kicker = await placeStunt(t, 'kicker', PLAYER_X + KICKER_AHEAD);
+  t.check('roll over: hook places a kicker', kicker !== null);
+  if (kicker === null) return;
+  let highest = start.player.y;
+  /** Rides until the kicker's rear end is `behind` px behind the feet, noting the highest feet. */
+  const behindBy = (behind: number) => (s: GameState) => {
+    highest = Math.min(highest, s.player.y);
+    const e = entity(s, kicker);
+    return e !== undefined && e.x + e.w >= PLAYER_X - behind;
+  };
+  await stepWhile(t, behindBy(0), { max: 240 });
+  await t.canvasShot('rolling over the kicker without a press');
+  const passed = await stepWhile(t, behindBy(ROLL_OVER_AFTER), { max: 240 });
+  const launches = await payloads(t, start.frame, 'launch');
+  t.check('roll over: no press, no launch', launches.length === 0, launches);
+  t.check('roll over: the skater stays near the street (no flight)', GROUND_Y - highest < DEFAULT_LEDGE_HEIGHT / 2, { highest, GROUND_Y });
+  t.check('roll over: still riding', passed.mode === 'playing' && passed.player.state !== 'crash', passed.player);
+  const harm = await noStuntHarm(t, start.frame, start.health);
+  t.check('roll over: no crash, no health lost', harm.ok, harm.crashes);
+}
+
 export default async function stunts(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
+  const input = realJumpInput(t);
+  const cdp = input === 'touch' ? await t.page.context().newCDPSession(t.page) : null;
+  const rider: Rider = { input, fingers: cdp ? new Fingers(t, cdp) : undefined };
   // Every zone once, in route order from the start zone.
   const route = new ZoneRoute();
   const zones = [route.zoneOf(0), route.zoneOf(1), route.zoneOf(2)];
-  const ledgeOffset = await missedLedge(t);
-  await airTrick(t);
-  if (ledgeOffset !== null) for (const zone of zones) await placedLine(t, zone, ledgeOffset);
+  await rollOver(t);
+  const ledgeOffset = await missedLedge(t, rider);
+  await airTrick(t, rider);
+  if (ledgeOffset !== null) for (const zone of zones) await placedLine(t, rider, zone, ledgeOffset);
   if (!t.viewport.touch) await spawnedLines(t);
   await t.game.setSpeed(null);
+  await cdp?.detach();
 }

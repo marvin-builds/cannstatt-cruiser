@@ -3,9 +3,12 @@
  * right ahead (`window.__gameplay.park()`), shot at the approach, the wooden
  * "NorDIY" sign on a container, the line over the banks, container roofs
  * and crane boom (gap jumps at the middle of their take-off window), the
- * crowd by the crane also in kid mode (lemonade, no beer), a high five (the use
+ * crowd by the crane (adult mode, switched off explicitly since kid mode is
+ * the default) and also in kid mode (lemonade, no beer), a high five (the use
  * press: real key E on desktop, `input.use()` on touch) and the "Session!"
- * callout at the end. Checks: a park is planned with its pieces, the high
+ * callout at the end. The banks are kickers: they launch only on a jump
+ * press on their ramp (ROADMAP 40), pressed with the viewport's real input
+ * (Space on desktop, a one-finger tap on touch). Checks: a park is planned with its pieces, the high
  * fiver takes the use press (`highFive`, no item used), the tricks raise the
  * cheering (`sessionCheer`), the park ends with one `sessionEnd`, and the
  * park never crashes the skater or costs health.
@@ -27,7 +30,18 @@ import { gapHolds } from '../../src/gameplay/stunt-line';
 import { jumpWindow, stepOf, windowMiddle } from '../../src/gameplay/stunt-sim';
 import type { Entity, GameEvents, GameState, ParkPiece, ParkPlan } from '../../src/types';
 import { START_ZONE, ZONE_LENGTH } from '../../src/world/zones';
-import { dismissRotateHint, type PlaytestContext, stepWhile } from '../playtest-lib';
+import {
+  adultMode,
+  dismissRotateHint,
+  Fingers,
+  type JumpInput,
+  nextKicker,
+  onRamp,
+  type PlaytestContext,
+  realJumpInput,
+  stepWhile,
+  tapJump,
+} from '../playtest-lib';
 
 /** Pinned speed (mid-run), so the park line is ridden as planned. */
 const SPEED = 120;
@@ -159,16 +173,20 @@ interface Ride {
   highFives: GameEvents['highFive'][];
   /** Most vehicles at once over the park's screen span (vehicles leaving the screen elsewhere don't count). */
   vehiclesInPark: number;
+  /** Banks (kickers) the skater pressed jump on. */
+  bankPresses: number;
 }
 
 /**
  * Rides through the park, one tick at a time: shots of the sign, each
- * container / crane grind and the high five; an air trick after the first
- * bank launch; the use press at the high fiver.
+ * container / crane grind and the high five; a jump press on every bank's
+ * ramp; an air trick after the first bank launch; the use press at the high
+ * fiver.
  */
-async function ridePark(t: PlaytestContext, park: ParkPlan, viewWidth: number): Promise<Ride> {
+async function ridePark(t: PlaytestContext, park: ParkPlan, viewWidth: number, input: JumpInput, fingers?: Fingers): Promise<Ride> {
   const start = await t.game.state();
-  const ride: Ride = { entered: null, highFiver: null, pressedAt: null, highFives: [], vehiclesInPark: 0 };
+  const ride: Ride = { entered: null, highFiver: null, pressedAt: null, highFives: [], vehiclesInPark: 0, bankPresses: 0 };
+  const pressedBanks = new Set<number>();
   const sign = park.pieces.find((p) => p.kind === 'container');
   const shotPieces = new Set<ParkPiece>();
   let signShot = false;
@@ -179,6 +197,11 @@ async function ridePark(t: PlaytestContext, park: ParkPlan, viewWidth: number): 
     if (!signShot && sign && screenX(s, (sign.from + sign.to) / 2) <= viewWidth / 2) {
       signShot = true;
       await t.canvasShot('sign on the container');
+    }
+    const bank = nextKicker(s);
+    if (bank && !pressedBanks.has(bank.id) && onRamp(s, bank)) {
+      pressedBanks.add(bank.id);
+      await tapJump(t, input, fingers);
     }
     if (!airTricked && (await payloads(t, start.frame, 'launch')).length > 0) {
       airTricked = true;
@@ -209,6 +232,7 @@ async function ridePark(t: PlaytestContext, park: ParkPlan, viewWidth: number): 
     }
     s = await t.game.step(1);
   }
+  ride.bankPresses = pressedBanks.size;
   t.check('the sign container came on screen', signShot, { sign });
   const ledges = park.pieces.filter((p) => p.kind !== 'bank');
   t.check('the line grinds every container and the crane', ledges.every((p) => shotPieces.has(p)), { grinded: [...shotPieces], ledges });
@@ -219,6 +243,9 @@ export default async function nordiy(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
   await freshRun(t);
+  await adultMode(t);
+  const input = realJumpInput(t);
+  const cdp = input === 'touch' ? await t.page.context().newCDPSession(t.page) : null;
   const { viewWidth } = await t.game.display();
   const park = await planPark(t);
   t.check('a NorDIY park is planned (state.park)', park !== null, 'needs gameplay: window.__gameplay.park() or a park in Bad Cannstatt');
@@ -230,7 +257,10 @@ export default async function nordiy(t: PlaytestContext): Promise<void> {
   await stepWhile(t, (s) => screenX(s, park.start) > viewWidth - APPROACH_INSET, { max: 60 * 60 });
   await t.canvasShot('approach');
 
-  const ride = await ridePark(t, park, viewWidth);
+  const ride = await ridePark(t, park, viewWidth, input, cdp ? new Fingers(t, cdp) : undefined);
+  const banks = park.pieces.filter((p) => p.kind === 'bank').length;
+  const launches = await payloads(t, before.frame, 'launch');
+  t.check(`a ${input} press on every bank launches`, ride.bankPresses === banks && launches.length === banks, { banks, presses: ride.bankPresses, launches });
   const ends = await payloads(t, before.frame, 'sessionEnd');
   if (ends.length > 0) {
     await t.game.step(SESSION_SHOT_DELAY);
@@ -254,4 +284,5 @@ export default async function nordiy(t: PlaytestContext): Promise<void> {
   t.check('the park never crashes the skater or costs health', crashes.length === 0 && after.health === ride.entered?.health, crashes);
   t.check('no vehicle over the park while riding it', ride.vehiclesInPark === 0, ride.vehiclesInPark);
   await t.game.setSpeed(null);
+  await cdp?.detach();
 }

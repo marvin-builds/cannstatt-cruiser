@@ -181,8 +181,12 @@ kid mode refers to drugs.
 
 ## Settings (hidden)
 
-- A settings menu "Einstellungen" with one setting, "Kindermodus" (off by
-  default = adult mode, stored in localStorage).
+- A settings menu "Einstellungen" with one setting, "Kindermodus", **on by
+  default** (ROADMAP 39): a player who never chose plays in kid mode; an
+  explicit choice in the menu (off or on) is stored in localStorage and
+  kept.
+- Kid mode is invisible (ROADMAP 38): no "Kindermodus" badge or sign on the
+  title or anywhere else; only the hidden menu shows the switch.
 - It has no visible button, so kids don't find it by accident: it opens on
   the title screen and on the pause screen by holding the "Cannstatt
   Cruiser" logo for 3 s (touch or mouse) or holding K for 3 s. A subtle
@@ -225,14 +229,21 @@ kid mode refers to drugs.
 ROADMAP 27 (Stunt Waves A and B): epic stunt lines that make runs more fun,
 not harder.
 
-- Kicker ramps on the street launch the skater high (no button needed);
+- Kicker ramps on the street launch the skater high when the player
+  presses jump on the ramp (ROADMAP 40; never automatically). The window is
+  generous: a press shortly before the ramp, on it, or right after its lip
+  counts, and an ollie that press already started turns into the launch.
+  Without a press the skater simply rolls over the ramp (no launch, never a
+  crash). A hint near each ramp says "Auf der Rampe springen! (Leertaste)"
+  (keyboard) or "Auf der Rampe tippen!" (touch) until the player has
+  launched a few times;
   slim ledges, railings and roof edges of an upper level 40-60 px above the
   street can be ground; a line chains kicker air, ledge grinds and gap jumps
   for a growing combo ("Combo x2!", "Combo x3!" ...; the first piece starts
   the line without a callout) and a line bonus ("Stunt-Linie! +…").
 - Air trick: down (↓ / S, a swipe down) in the air after a launch or a high
   jump does a kickflip, scored on a clean landing ("Air-Trick! +…"). It
-  never changes the jump. First-time hints explain the ramp and the trick.
+  never changes the jump. Hints explain the ramp jump and the trick.
 - The camera never moves; the upper level is slim and covers little of the
   background.
 - Falling off or missing a stunt piece never costs health or crashes: the
@@ -250,7 +261,8 @@ self-built but well built DIY skatepark about one screen wide.
   ramp under construction, people chilling on the containers and a pallet
   sofa, string lights, graffiti, some green. A wooden plank sign "NorDIY"
   hangs on a container ("Nor" white, "DIY" yellow, hand-painted).
-- A guaranteed, optional stunt line: banks as kickers, container roofs as
+- A guaranteed, optional stunt line: banks as kickers (jump on them like on
+  every ramp), container roofs as
   ledges, the crane boom as the highest ledge with a bonus star.
 - The crowd cheers for grind tricks, air tricks and combo steps; leaving the
   park gives a "Session! +…" bonus scaled by the cheering.

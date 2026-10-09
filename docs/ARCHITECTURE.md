@@ -334,7 +334,7 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 | `ballBack` | `{entityId}` | gameplay (a missed ball ricochets back towards the skater; the ball's id) |
 | `scoreChanged` | `{score, delta, combo, multiplier}` | gameplay |
 | `vehiclePassed` | `{kind, front, light}` | world, only while the mode is `playing` (a foreground vehicle's centre crossed `PLAYER_X`, once per vehicle, in every zone; `kind` car / van / bus / truck, `front` = front lane, `light` = set off as light traffic, density below 0.5). Audio plays the pass-by and, for light traffic, the swell (see [Light traffic](#light-traffic)) |
-| `launch` | `{entityId, velocity}` | gameplay (the skater rode onto a kicker; the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce; jumpsim mirrors it) |
+| `launch` | `{entityId, velocity}` | gameplay (the skater pressed jump in a kicker's launch window, never automatically, see [Manual ramp jump](#manual-ramp-jump-roadmap-40); the player takes off with `velocity` px/s upwards on the next tick, no hold, like the stomp bounce, replacing an ollie the same press started; jumpsim mirrors it) |
 | `stuntStep` | `{step, steps, multiplier, points}` | gameplay (a further piece of a running stunt line was made: kicker air or ledge grind; the first piece made starts the line quietly, so the first `stuntStep` is the second piece at x2; `step` = the piece's place 2..`steps`, `multiplier` = pieces made in the attempt; the ui shows "Combo xN!", audio a rising sound) |
 | `stuntEnd` | `{steps, made, completed, points}` | gameplay (a started attempt ended, exactly once: `completed` when the skater left the line's last piece with at least 2 pieces made, else he dropped out, never with a crash or lost health; `points` = line bonus, 0 if none; the ui shows "Stunt-Linie! +…" only when completed) |
 | `airTrick` | `{ticks, points}` | gameplay (an [air trick](#air-trick) ended and the skater touched down cleanly: street landing or a grind start; `ticks` it ran; the ui shows "Air-Trick! +…", audio a sound) |
@@ -821,10 +821,16 @@ picks one (null while riding or while the settings menu covers it):
 
 ## Settings menu and kid mode
 
-- `state.kidMode` (default false = adult mode) is kept across runs by
-  `resetRun`. The ui loads it in `init` (`store` key `kidMode`, junk or
-  missing storage = false) and saves it on every change. Other slices only
-  read it.
+- `state.kidMode` is **on by default** (ROADMAP 39): `createInitialState`
+  sets it true, and it is kept across runs by `resetRun`. The ui loads it in
+  `init` (`store` key `kidMode`, `loadKidMode`): only a stored `false`, an
+  explicit choice in the hidden settings, turns it off; missing or junk
+  storage means kid mode. Every change in the menu is saved at once, so an
+  explicit choice (off or on) is kept across reloads. Other slices only read
+  it.
+- Kid mode is invisible to players (ROADMAP 38): the title and the HUD show
+  no "Kindermodus" badge or chip; only the hidden settings menu shows the
+  switch.
 - The menu "Einstellungen" has no visible button. It opens on the title
   and on the pause screen after holding the logo (`logoRect` on the title,
   `MenuButtons.logo` on the pause screen; touch or mouse) or K for
@@ -948,8 +954,7 @@ Placement approved by the user (ROADMAP 34):
   stored and sent later. It takes `fetch` and the store as parameters so unit
   tests use a fake fetch and a memory store.
 
-Modules (as built by the ui slice; the screens were still being polished
-when this was written, so check names against the code):
+Modules:
 
 | Module | Content |
 |---|---|
@@ -966,13 +971,44 @@ when this was written, so check names against the code):
 | `ui/name-field.ts` | the native `<input>` over the drawn field in adult mode, so phones open their own keyboard; its key and touch events stop there and never reach the game |
 | `ui/list-scroll.ts` | drag and wheel scrolling of the list (arrow keys scroll in `index.ts`) |
 
-- `createUiSystem({scores, nameField})`: `scores` defaults to the browser
-  service in a browser and to `null` elsewhere (no trophy, no "Eintragen");
-  tests pass a fake `ScoreServiceLike`, never the real network. The returned
-  system exposes `highscores` (the flow).
-- Keys: B opens / closes the list on the title, Esc closes; "Eintragen" on
-  game over is E or Enter; in the entry Enter sends, Esc goes back, N picks a
-  new nickname in kid mode.
+- **Options** (`UiSystemOptions` in `ui/index.ts`): `createUiSystem({store,
+  scores, nameField})`. `scores` defaults to the browser service
+  (`createBrowserScoreService`) in a browser and to `null` elsewhere;
+  `nameField` defaults to the DOM input (`createDomNameField`) in a browser
+  when there is an online list. Passing `null` turns the part off: `scores:
+  null` means no trophy, no "Eintragen", no network at all; `nameField: null`
+  means no native input (typing then goes nowhere; kid mode never needs it).
+  Tests pass a fake `ScoreServiceLike` and a fake `NameField`, never the
+  real network. The returned `UiSystem` exposes `highscores` (the
+  `HighscoreFlow`, null without an online list).
+- **Store keys** (the game's `Store`, namespace `cannstatt-cruiser:`):
+  | Key | Owner | Content |
+  |---|---|---|
+  | `deviceId` | `net/device.ts` | the random install id sent as `device` |
+  | `pendingScore` | `net/queue.ts` | the best run waiting to be sent (`null` when empty) |
+  | `scoreName` | `ui/score-rules.ts` | the remembered free-text name (adult mode) |
+  | `scoreKidName` | `ui/score-rules.ts` | the remembered nickname (kid mode), kept apart so no free text shows in kid mode |
+  | `scoreLastEntry` | `ui/score-rules.ts` | `{name, score}` of the last entry sent, for the highlighted own row (`ownRank`) |
+- **Keys** (a highscore screen takes every key but M, so nothing starts a
+  run behind it): B opens the list on the title; on the list B or Esc
+  closes it, ↑ / ↓ (and W / S) scroll one row per press and keep scrolling
+  while held (`LIST_KEY_ROWS_PER_SECOND` = 10 rows per second), PageUp / PageDown scroll a page;
+  "Eintragen" on game over is E or Enter; in the entry Enter sends, Esc goes
+  back, N picks a new nickname in kid mode, and in adult mode any other key
+  focuses the native input.
+- **Native input overlay** (`ui/name-field.ts`, adult mode only): an HTML
+  `<input>` (max `NAME_MAX` chars, `enterkeyhint="send"`, no autocorrect)
+  that `index.ts` places every tick over the drawn name field
+  (`scoreEntryLayout(...).field`, scaled from view px to the canvas' CSS
+  box; font >= 16 CSS px so iOS does not zoom) and hides and blurs as soon
+  as the entry closes, kid mode is on or the portrait rotate hint covers the
+  game. Its keydown, pointer and touch events stop at the input, so letters
+  such as E, W, S, P, M or Space never reach the game; key releases still
+  bubble, so no game key stays held. Enter in it sends, Esc closes the
+  entry, every input event calls `flow.setName`. "Eintragen" focuses it
+  inside the tap or key press (so phones open their keyboard): on desktop
+  always, on a phone only without a remembered name (with one, "Als <Name>
+  eintragen" is a single tap); tapping the drawn field focuses it too.
 - Kid mode never shows a text input: the entry offers the remembered or a
   generated nickname and "Neuer Name".
 - `window.__ui.highscores()` reports the flow's state and tap areas for
@@ -1333,7 +1369,8 @@ ROADMAP 27 (Stunt Waves A and B): optional bonus lines that make runs more
 fun, **not harder**.
 
 - **Kinds** (`StuntKind`, part of `EntityKind`): `kicker`, a small ramp on
-  the street that launches the skater high (no button); `ledge`, a slim
+  the street that launches the skater high when the player presses jump on it (see
+  [Manual ramp jump](#manual-ramp-jump-roadmap-40)); `ledge`, a slim
   grindable structure of the upper level 40-60 px above the street (railing,
   ledge, thin roof edge), drawn per zone (`gameplay/stunt-art.ts`). A
   ledge's entity `y` is its grind surface (like the bench, see
@@ -1351,7 +1388,8 @@ fun, **not harder**.
   `STUNT_LINE_INTERVAL` (30-45) s of riding, the first after
   `STUNT_FIRST_SECONDS` (25), none while drunk or chilled.
 - **Runtime** (`gameplay/stunts.ts` `StuntLines`): a piece is *made* when a
-  kicker launches the skater or a ledge is ground. The first piece made
+  kicker launches the skater (after a press in its window) or a ledge is
+  ground. The first piece made
   starts an attempt quietly (its points, no `stuntStep`, so there is never a
   "Combo x1!"); every further piece in order emits `stuntStep` with the line
   multiplier = pieces made (x2, x3 ..., up to `STUNT_MAX_MULTIPLIER` 6) and
@@ -1362,9 +1400,9 @@ fun, **not harder**.
   before a ledge, a kicker jumped over, a piece out of order, a crash).
   Stunt points are not multiplied by `state.multiplier`; the normal combo
   goes on around the line.
-- **Events**: `launch {entityId, velocity}` (the player takes off on the
-  next tick with `velocity`, no hold, like the stomp bounce; jumpsim mirrors
-  it), `stuntStep {step, steps, multiplier, points}`, `stuntEnd {steps,
+- **Events**: `launch {entityId, velocity}` (only after a jump press in the
+  kicker's window; the player takes off on the next tick with `velocity`, no
+  hold, like the stomp bounce; jumpsim mirrors it), `stuntStep {step, steps, multiplier, points}`, `stuntEnd {steps,
   made, completed, points}`. See [Events](#events-gameevents).
 - **Design rules**: the camera never moves; the upper level is slim and
   covers little background; falling off or missing a piece never crashes or
@@ -1376,11 +1414,44 @@ fun, **not harder**.
   and hard landing (`GRAB_HEIGHT`, `HARD_LANDING_IMPACT` in
   `player/tuning.ts`); the ui shows "Combo xN!" and "Stunt-Linie! +…"
   (`ui/stunt-callout.ts`, top strip between the HUD plate and the buttons)
-  and the first-time kicker hint "Ab über die Rampe!" (`ui/kicker-hint.ts`,
-  storage key `stuntLineSeen`); audio plays `launch`, a rising `stuntStep`
+  and the ramp hint "Auf der Rampe springen! (Leertaste)" / "Auf der Rampe
+  tippen!" around each kicker until a few ramp launches were done
+  (`ui/kicker-hint.ts`, storage key `rampLaunches`); audio plays `launch`, a rising `stuntStep`
   and `stuntFanfare` / `stuntFizzle`. Debug hook
   `window.__gameplay.place('kicker' | 'ledge', x)`, `stuntLine(x)`,
   `stunts()`; playtest `scripts/scenarios/stunts.ts`.
+
+### Manual ramp jump (ROADMAP 40)
+
+Kickers never launch by themselves: the player presses jump on the ramp.
+
+- **Launch window** (gameplay, per kicker): a jump press counts from
+  shortly before the ramp's foot, while the feet are on the ramp, until
+  shortly after its lip. Generous on purpose: a press a little early or
+  late still launches. Gameplay then emits `launch {entityId, velocity}`
+  with the kicker's launch speed (`data.velocity`, `launchVelocityFor`).
+- **The replaced ollie**: the press that lands in the window usually starts
+  a normal ollie first (the player jumps on every press). That ollie is
+  replaced by the launch on the next tick: from the street the player takes
+  off with `velocity`; already in the air it uses the speed that tops out
+  where a launch from the street would (no double jump, no lost height; see
+  "Kicker launch" in `src/player/CONTRACT.md`). The ollie's hold boost ends.
+- **No press: roll over.** Without a press in the window the skater just
+  rolls over the kicker: no `launch`, never a crash, no health lost. The
+  board rests on the lip and drops off like off a curb (looks only, `y`
+  stays `GROUND_Y`, no `land` event). A rolled-over first kicker starts no
+  line; a running line whose next kicker passes without a launch ends
+  incomplete (as for a kicker jumped over).
+- **Fairness and bots**: the line checks (`stunt-sim.ts`) and the gameplay
+  bots (`gameplay/testing.ts`, `stunt-bot.ts`) account for the press: they
+  press in the window, and a launch still comes down onto its ledge at every
+  speed and tick phase.
+- **Hint**: the ramp hint (`ui/kicker-hint.ts`) tells the player to jump on
+  the ramp ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!").
+- **Playtest**: `scripts/scenarios/stunts.ts` presses with the real input of
+  the viewport (`jumpOnRamp` / `tapJump` in `scripts/playtest-lib.ts`, Space
+  or a one-finger tap) and checks that a kicker ridden over without a press
+  does not launch; `scripts/scenarios/nordiy.ts` presses on every bank.
 
 ### Air trick
 
@@ -1440,7 +1511,8 @@ events below).
   Each `ParkPiece {kind, from, to, height}` is one structure of the line, in
   order:
   - `bank`: a concrete bank or quarter; gameplay lays a `kicker` over
-    `[from, to)`, `height` its lip;
+    `[from, to)`, `height` its lip (like every kicker it launches only on a
+    jump press in its window, ROADMAP 40);
   - `container`: a shipping container whose roof edge is a `ledge`
     `height` px above the street;
   - `crane`: the self-built crane whose boom is the highest `ledge` (with a

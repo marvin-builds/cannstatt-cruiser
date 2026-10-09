@@ -61,7 +61,14 @@ Real input without a DOM: `keyDown(game, 'ArrowDown')` / `keyUp` and
 presses the topmost hotspot at a view pixel; `keyDown(game, 'KeyK')` offers
 the key to active `InputHotspot`s first. `src/ui/index.test.ts` opens the
 hidden settings menu this way (3 s long press on the logo, or K held) and
-toggles kid mode on and off.
+toggles kid mode off and on.
+
+Kid mode is on in `createInitialState` (ROADMAP 39). A unit test of adult
+content (joint, beer, drunk look, chill sounds, the HUD's drunk row, free
+name entry) sets `state.kidMode = false` explicitly; kid-mode coverage stays
+next to it. Ramps launch only on a jump press in the kicker's window
+(ROADMAP 40): tests that want a launch press jump on the ramp, and a test
+without a press expects the skater to roll over (no `launch`, no crash).
 
 ## Highscore server tests (`server/`)
 
@@ -121,12 +128,8 @@ await t.page.route(`${API}/**`, async (route) => {
   default is no online list at all. `src/net/*.test.ts` drive `ScoresApi` with
   a fake `fetch` and `ScoreService` with a fake api, clock, `online()` and
   timer.
-- Highscore playtest scenario: not written yet at the time of this note
-  (ROADMAP 34). It should route the worker as above and cover the title
-  trophy (B) and the list (scrolling on phones, offline note), "Eintragen" on
-  game over only for a top-20 score, the name entry (native input in adult
-  mode, nicknames only in kid mode), the queued entry while offline and the
-  highlighted own entry; list it under the playtest scenarios once it exists.
+- Highscore playtest scenario: `scripts/scenarios/highscores.ts` routes the
+  worker to a fake server as above (see the playtest scenarios below).
 
 ## Test hook: `window.__game`
 
@@ -258,7 +261,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
 | `window.__ui.airTrick(points)` / `airHintVisible()` | emits `airTrick` ("Kickflip! +…" callout and sparkle; the first-time air trick hint is never shown again) / whether the air trick hint wants to show now |
-| `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether "Ab über die Rampe!" shows |
+| `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
@@ -334,9 +337,10 @@ npm run playtest -- --headed
 - `scripts/scenarios/settings.ts`: the hidden settings menu on desktop and
   both phone viewports: title without a settings button, a short logo hold
   (no progress, starts the run like a tap), the 3 s long press with its
-  progress bar (no run start), turning kid mode on and off at once (no
-  parent check since Wave 9), reopening with K (desktop) or
-  the long press (touch), persistence across a reload, and a kid-mode run
+  progress bar (no run start), kid mode on by default with nothing stored
+  (ROADMAP 39), turning it off and on at once (no parent check since Wave 9),
+  reopening with K (desktop) or the long press (touch), an explicit off and
+  an explicit on each kept across a reload, and a kid-mode run
   with the bubble gum, pink tint and gum HUD icon. On touch viewports it
   checks every menu and HUD tap area is >= 44 CSS px (rect x
   `cssPerViewPixel`).
@@ -422,19 +426,25 @@ npm run playtest -- --headed
   the mode, so a stopped run fails with a message instead of hanging.
 
 - `scripts/scenarios/stunts.ts` (stunt lines; run it on
-  `desktop,phone-landscape,phone-portrait`): first a kicker without a ledge
-  (`launch`, the skater lands on the street, the line ends incomplete, no
-  crash and no health lost); that ride also measures where the skater comes
-  down to ledge height. An air trick (Stunt Wave B): a kicker alone, down
+  `desktop,phone-landscape,phone-portrait`): kickers launch only on a jump
+  press on the ramp (ROADMAP 40), pressed with the viewport's real input
+  (`jumpOnRamp`: Space on desktop, a one-finger `Fingers` tap on touch) as
+  the feet roll onto the ramp. First a kicker ridden over without a press:
+  no `launch`, the feet stay near the street, no crash and no health lost.
+  Then a kicker without a ledge (the press launches, the skater lands on
+  the street, the line ends incomplete, no crash and no health lost); that
+  ride also measures where the skater comes down to ledge height. An air
+  trick (Stunt Wave B): a kicker alone, down
   held for 2 ticks (`input.duck`) 4 ticks after `launch`, sets
   `player.airTrick`, and the street landing scores one `airTrick` (ticks and
   points > 0, the kickflip callout), no crash. Then in each zone a kicker and a ledge there are
-  placed together as one line: `launch` from the kicker, `grindStart` on the
+  placed together as one line: the press on the kicker launches, `grindStart` on the
   ledge, one `stuntStep` (step 2 of 2 at x2: the first piece made starts the
   line quietly, there is no "Combo x1!") and a completed
   `stuntEnd` (made 2, line bonus > 0), with no crash and no health lost. On
-  desktop a 100 s ride without input checks that the spawner brings >= 2
-  lines and that no `kicker` / `ledge` crash happens.
+  desktop a 100 s ride with no input but a Space press on each kicker's
+  ramp checks that the spawner brings >= 2 lines (launches and `stuntEnd`s)
+  and that no `kicker` / `ledge` crash happens.
 - `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37; run it on
   `desktop,phone-landscape,phone-portrait`, `--name kickflip`): a run at a
   pinned 120 px/s on an empty street (cleared while the zone banner fades),
@@ -459,6 +469,10 @@ npm run playtest -- --headed
   in Bad Cannstatt at a pinned 120 px/s, the street cleared, a park planned
   with `window.__gameplay.park()` (without the hook it logs that and rides
   until the spawner plans one, else fails "a NorDIY park is planned").
+  Adult mode is switched on explicitly (`adultMode`), so the crowd shows its
+  beer. Every bank is a kicker: the scenario presses jump on each bank's
+  ramp with the viewport's real input (Space / a one-finger tap) and checks
+  one `launch` per bank.
   Shots: the approach (park start just inside the right edge), the "NorDIY"
   sign container at the view centre, the first bank launch with an air
   trick, a grind on each container and the crane, the crowd by the crane
@@ -476,6 +490,25 @@ npm run playtest -- --headed
   screen span while in it (`__world.traffic()`; a vehicle leaving the
   screen elsewhere is fine). The log `park ride` lists the events and the
   audio cues heard (for the boombox and cheers).
+- `scripts/scenarios/highscores.ts` (online Bestenliste, ROADMAP 34; run it
+  on `desktop,phone-landscape,phone-portrait`, `--name highscores`): routes
+  the worker to a fake server (`FakeServer`, a full list of 20 runs from
+  20.000 down to 1.000 points; nothing reaches the live list), reloads and
+  switches kid mode off (`adultMode`; the free-text entry is adult mode
+  only). Checks through `window.__ui.highscores()`: the title trophy opens
+  the list from the fake GET, the list scrolls (drag on phones, wheel on
+  desktop) without starting a run, × closes it; game over with a low score
+  offers no "Eintragen", a top-20 score does (E on desktop, a tap on
+  phones); the native input is visible over the field and takes the typed
+  name; the POST body (name, integer score, metres, seconds, version,
+  device); the input hides after sending, the list shows the own entry
+  highlighted, and game over offers no second "Eintragen"; a new run starts
+  as before; the remembered name is prefilled next time; kid mode
+  (`__player.kidMode(true)`) offers a generated nickname, no text input,
+  and "Neuer Name" rerolls it; offline (`setOffline`) the list shows the
+  offline note, the entry is still offered, is queued with "Wird gesendet,
+  sobald du online bist" and waits in `pendingScore`; on desktop, back
+  online, the queued run is sent within ~20 s and the queue empties.
 - `scripts/scenarios/update-hint.ts` (production build, run it with
   `--viewports desktop`; any viewport works): the service worker controls the
   page, a reload of an unchanged deploy leaves `state.updateReady` off, then a
@@ -514,6 +547,11 @@ The context provides:
 - `page` (the Playwright Page) and `viewport`;
 - `game`, a driver for the test hook;
 - (as functions from `playtest-lib.ts`) `dismissRotateHint(t)`, `stepWhile(t, more, {max, frames})`,
+  `adultMode(t)` (kid mode off, stored like an explicit choice in the hidden settings),
+  `tapJump(t, input, fingers?)` (a short jump tap: `'hook'`, real `'key'` Space or real `'touch'`;
+  `realJumpInput(t)` picks the viewport's real one), `nextKicker(s)` / `onRamp(s, kicker)` and
+  `jumpOnRamp(t, kickerId, input, fingers?)` (rides to a kicker and presses jump as the feet roll
+  onto its ramp, ROADMAP 40),
   `holdViewWhile(t, x, y, during)` (a real touch / mouse press held while `during` steps the frozen
   clock, e.g. a long press), `cssPerViewPixel(page)` (tap sizes in CSS px) and `Fingers`, a
   multi-finger CDP touch driver in view px (`new Fingers(t, cdp)`: `down/move/up(id, ...)`,
@@ -521,6 +559,18 @@ The context provides:
   `touchEnd` only the lifted one (sending the remaining fingers there lifts those instead), which
   `Fingers.up` does; used by `final-phone-touch.ts` and `kickflip.ts`;
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
+
+**Kid mode is the default** (ROADMAP 39): a fresh browser profile plays in
+kid mode (gum instead of the joint, no beer, no drunk look, kid sounds and
+nicknames). A scenario that checks adult content calls `adultMode(t)` at its
+start (as `chill.ts`, `items.ts`, `items-ui.ts`, `drop.ts`, `people.ts`,
+`skater.ts`, `audio-pwa.ts`, `nordiy.ts` and `highscores.ts` do); the final
+persona scenarios check that a first-timer starts in kid mode and switch it
+off through the hidden settings.
+
+**Ramps need a press** (ROADMAP 40): a scenario that wants a kicker launch
+presses jump on the ramp (`jumpOnRamp`); riding over a kicker without input
+never launches.
 
 The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,
 `endRun`, `eventsSince`, `display`, `simulateInstall` and `promptsShown`.

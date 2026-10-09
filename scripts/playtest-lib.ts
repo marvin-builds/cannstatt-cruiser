@@ -6,8 +6,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BrowserContextOptions, CDPSession, Page } from 'playwright';
 import { build, preview, type PreviewServer } from 'vite';
-import type { DisplayInfo, GameEvents, GameState, InstallState } from '../src/types';
+import { PLAYER_X } from '../src/core/config';
 import type { LoggedEvent } from '../src/core/testhook';
+import { KICKER_LIP } from '../src/gameplay/rules';
+import type {} from '../src/player/debug'; // window.__player
+import type { DisplayInfo, Entity, GameEvents, GameState, InstallState, Rect } from '../src/types';
+import type { UiDebugHook } from '../src/ui/debug';
 
 export interface ViewportSpec {
   name: string;
@@ -290,6 +294,26 @@ export async function dismissRotateHint(t: PlaytestContext): Promise<void> {
 }
 
 /**
+ * A view point on the current screen that no menu button (e.g. "Eintragen" on
+ * game over, "Startbildschirm") or HUD button covers: a real tap there is a
+ * plain tap (start, restart, resume). Throws if the candidates are all covered.
+ */
+export async function freeTapSpot(t: PlaytestContext): Promise<{ x: number; y: number }> {
+  const l = await t.page.evaluate(() => (window as Window & { __ui?: UiDebugHook }).__ui!.layout());
+  const { viewWidth, viewHeight } = await t.game.display();
+  const rects = [...Object.values(l.screen ?? {}), ...Object.values(l.hud)].filter((r): r is Rect => !!r);
+  const inside = (r: Rect, x: number, y: number) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  const candidates = [
+    { x: 24, y: viewHeight - 16 },
+    { x: Math.floor(viewWidth / 2), y: viewHeight - 16 },
+    { x: 24, y: Math.floor(viewHeight / 2) },
+  ];
+  const spot = candidates.find((p) => !rects.some((r) => inside(r, p.x, p.y)));
+  if (!spot) throw new Error(`no free tap spot on this screen: ${JSON.stringify(rects)}`);
+  return spot;
+}
+
+/**
  * Steps until `done(state)` or `max` ticks, and throws instead of looping on
  * when the run stops (paused, game over): scenarios then fail with a clear
  * message instead of hanging.
@@ -307,6 +331,78 @@ export async function stepWhile(
     s = await t.game.step(frames);
   }
   return s;
+}
+
+/**
+ * Turns kid mode off for scenarios that check adult content (kid mode is the
+ * default, ROADMAP 39): stored like an explicit choice in the hidden settings
+ * (so it survives reloads) and set on the running state.
+ */
+export async function adultMode(t: PlaytestContext): Promise<void> {
+  await t.page.evaluate(() => {
+    localStorage.setItem('cannstatt-cruiser:kidMode', 'false');
+    window.__player!.kidMode(false);
+  });
+}
+
+/** How a scenario presses jump: the test hook, a real key (Space) or a real one-finger touch tap. */
+export type JumpInput = 'hook' | 'key' | 'touch';
+
+/** The real jump input of this viewport: a touch tap on touch viewports, Space elsewhere. */
+export const realJumpInput = (t: PlaytestContext): JumpInput => (t.viewport.touch ? 'touch' : 'key');
+
+/**
+ * A short jump tap on the frozen clock. `touch` needs `fingers` and taps the
+ * view's middle; the touch press lands when the finger lifts, 2 ticks after
+ * it came down (see "Touch: tap vs swipe down" in docs/ARCHITECTURE.md).
+ */
+export async function tapJump(t: PlaytestContext, input: JumpInput, fingers?: Fingers): Promise<void> {
+  if (input === 'touch') {
+    if (!fingers) throw new Error('tapJump: a touch tap needs Fingers');
+    const { viewWidth } = await t.game.display();
+    await fingers.tap(Math.floor(viewWidth / 2), 100, 2);
+    return;
+  }
+  if (input === 'key') {
+    await t.page.keyboard.down('Space');
+    await t.game.step(2);
+    await t.page.keyboard.up('Space');
+    await t.game.step(1);
+    return;
+  }
+  await t.game.tap(2);
+  await t.game.step(3);
+}
+
+/** The nearest kicker in `s` whose rear end the skater's feet (PLAYER_X) have not passed yet. */
+export function nextKicker(s: GameState): Entity | undefined {
+  return s.entities.filter((e) => e.kind === 'kicker' && e.x + e.w >= PLAYER_X).sort((a, b) => a.x - b.x)[0];
+}
+
+/** Whether the feet in `s` are on the ramp of `kicker` and the skater can press there (riding, or past the lip). */
+export function onRamp(s: GameState, kicker: Entity): boolean {
+  if (PLAYER_X < kicker.x) return false;
+  return s.player.grounded || PLAYER_X >= kicker.x + kicker.w * KICKER_LIP;
+}
+
+/**
+ * Rides to kicker `id` and presses jump on its ramp (ROADMAP 40: a kicker
+ * launches only on a press in its window): the press starts as soon as the
+ * feet roll onto the ramp. Returns the frame the press started at, or null
+ * when the kicker never came under the skater within `max` ticks.
+ */
+export async function jumpOnRamp(t: PlaytestContext, id: number, input: JumpInput, fingers?: Fingers, max = 600): Promise<number | null> {
+  let s = await t.game.state();
+  for (let n = 0; n < max; n++) {
+    const kicker = s.entities.find((e) => e.id === id);
+    if (!kicker || kicker.x + kicker.w < PLAYER_X) return null;
+    if (onRamp(s, kicker)) {
+      await tapJump(t, input, fingers);
+      return s.frame;
+    }
+    s = await t.game.step(1);
+  }
+  return null;
 }
 
 export function slug(label: string): string {
