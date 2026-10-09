@@ -44,6 +44,7 @@ export type Cue =
   | 'stuntFizzle'
   | 'airSpin'
   | 'airTrick'
+  | 'airTrickBig'
   | 'landHeavy'
   | 'parkRoll'
   | 'parkClack'
