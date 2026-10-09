@@ -175,6 +175,7 @@ g.endRun();                                     // game-over screen now
 | `window.__gameplay.stuntLine(x, seed?)` | places a whole designed stunt line (`stunt-line.ts`) for the current speed and zone with its first kicker at screen x; returns the entity ids (stars included) |
 | `window.__gameplay.stunts()` | the running stunt line `{line, steps, made, multiplier, points}` (points so far, without the line bonus) or null (read-only) |
 | `window.__gameplay.park(offset?, seed?)` / `parkPlan()` | plans the NorDIY park for the current speed with its start `offset` run distance ahead of the skater (default: just beyond the widest view's right edge; `seed` default 1), puts it into `state.park` and lays its kickers, ledges and the `highFiver`, removing what stood there; returns the plan. The speed ramp does not pause for it (pin the speed with `setSpeed`). `parkPlan()` reads `state.park`. Used by `scripts/scenarios/nordiy.ts`, which falls back to riding Bad Cannstatt until the spawner plans a park if the hook is missing |
+| `window.__gameplay.pattern(name, x?, seed?)` | plans the spawn template `name` (`patterns.ts` `PlanOptions.template`, e.g. a combo from `COMBO_NAMES` in `combos.ts`) for the current speed and zone with its origin (where the skater is when it starts, before its run-up; default `PLAYER_X`) at screen x, removes whatever stood right of x, keeps that street free of spawned patterns and returns the entity ids (stars included). `seed` (default 1) picks the layout; throws when nothing fair fits the speed. Used by `scripts/scenarios/combos.ts` |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__gameplay.drops()` | snapshot of the [dropped items](ARCHITECTURE.md#dropped-items) (no entities, so `state()` misses them): `[{item, x, y, w, h, lying}]`, the pickup box in screen space and whether it already lies on the street |
 | `window.__world.trafficDensity()` | traffic density as drawn: `LIGHT_TRAFFIC` 0.05 outside Mitte (light traffic, one vehicle at a time), ramping to 1 in Mitte; also on the title and game over (where `state.trafficDensity` is 0) |
@@ -191,7 +192,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
 | `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
 | `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
-| `window.__ui.airTrick(points)` / `airHintVisible()` | emits `airTrick` ("Air-Trick! +…" popup; the first-time air trick hint is never shown again) / whether the air trick hint wants to show now |
+| `window.__ui.airTrick(points)` / `airHintVisible()` | emits `airTrick` ("Kickflip! +…" callout and sparkle; the first-time air trick hint is never shown again) / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether "Ab über die Rampe!" shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
@@ -361,13 +362,32 @@ npm run playtest -- --headed
   down to ledge height. An air trick (Stunt Wave B): a kicker alone, down
   held for 2 ticks (`input.duck`) 4 ticks after `launch`, sets
   `player.airTrick`, and the street landing scores one `airTrick` (ticks and
-  points > 0, "Air-Trick! +…" popup), no crash. Then in each zone a kicker and a ledge there are
+  points > 0, the kickflip callout), no crash. Then in each zone a kicker and a ledge there are
   placed together as one line: `launch` from the kicker, `grindStart` on the
   ledge, one `stuntStep` (step 2 of 2 at x2: the first piece made starts the
   line quietly, there is no "Combo x1!") and a completed
   `stuntEnd` (made 2, line bonus > 0), with no crash and no health lost. On
   desktop a 100 s ride without input checks that the spawner brings >= 2
   lines and that no `kicker` / `ledge` crash happens.
+- `scripts/scenarios/kickflip.ts` (street kickflip, ROADMAP 37; run it on
+  `desktop,phone-landscape,phone-portrait`, `--name kickflip`): a run at a
+  pinned 120 px/s on an empty street (cleared while the zone banner fades),
+  a full jump with real input and the trick gesture at the apex: keyboard
+  Space held + ArrowDown tapped (every viewport), and on touch viewports
+  one finger held for the jump and then dragged down 14 view px
+  ([kickflip drag](ARCHITECTURE.md#kickflip-drag), `Fingers`). Checks per
+  input: `player.airTrick` a tick after the gesture while airborne, exactly
+  one `jump`, one `airTrick` with points > 0 on the landing, no crash.
+  Shots: the board spin mid-trick, the "Kickflip!" callout 4 and 16 ticks
+  after the landing (plus a page shot on touch).
+- `scripts/scenarios/combos.ts` (combo patterns, ROADMAP 33; run it on
+  `desktop,phone-landscape`, `--name combos`): each combo of `COMBO_NAMES`
+  laid right ahead with `window.__gameplay.pattern(name)` at a pinned 130
+  px/s, an overview shot (are the stars a readable line?), then ridden by
+  the `HumanBot` (take-off +-4 ticks, three holds) with a shot after every
+  grind and at the end. Checks per combo: placed with >= 2 pieces and >= 3
+  stars, no crash, at least one grind on its pieces, at least half its
+  stars collected.
 - `scripts/scenarios/nordiy.ts` (NorDIY skatepark, ROADMAP 36; run it on
   `desktop,phone-landscape,phone-portrait`, `--name nordiy`): a frozen run
   in Bad Cannstatt at a pinned 120 px/s, the street cleared, a park planned
@@ -429,7 +449,11 @@ The context provides:
 - `game`, a driver for the test hook;
 - (as functions from `playtest-lib.ts`) `dismissRotateHint(t)`, `stepWhile(t, more, {max, frames})`,
   `holdViewWhile(t, x, y, during)` (a real touch / mouse press held while `during` steps the frozen
-  clock, e.g. a long press) and `cssPerViewPixel(page)` (tap sizes in CSS px);
+  clock, e.g. a long press), `cssPerViewPixel(page)` (tap sizes in CSS px) and `Fingers`, a
+  multi-finger CDP touch driver in view px (`new Fingers(t, cdp)`: `down/move/up(id, ...)`,
+  `upAll`, `tap`, `swipeDown`). CDP's `touchStart` / `touchMove` carry every finger still down,
+  `touchEnd` only the lifted one (sending the remaining fingers there lifts those instead), which
+  `Fingers.up` does; used by `final-phone-touch.ts` and `kickflip.ts`;
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
 
 The driver mirrors the hook, including `setHealth`, `setScore`, `setSpeed`,

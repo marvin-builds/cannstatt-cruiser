@@ -61,10 +61,12 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
   gameplay/stunts.ts    StuntLines: kicker launches and the line tracker (stuntStep / stuntEnd, STUNT_POINTS, STUNT_LINE_BONUS, DEFAULT_LEDGE_HEIGHT)
   gameplay/stunt-line.ts  designed stunt lines (kickers, ledges, gaps, star trail) checked with stunt-sim.ts
-  gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS), emits airTrick
-  player/air-trick.ts   canStartAirTrick(), airTicksLeft(): the air trick start rule (see src/player/CONTRACT.md)
+  gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS launch / STREET_AIR_TRICK_POINTS street kickflip), emits airTrick
+  player/air-trick.ts   canStartAirTrick(), airTrickTicks(), airTicksLeft(): the kickflip start rule and length (see Air trick, src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
-  gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK
+  gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
+  gameplay/combos.ts    combo templates (COMBO_TEMPLATES, COMBO_NAMES): grind lines of rails, benches and low obstacles (see Combo patterns)
+  gameplay/line-guide.ts  lineGuide() / spreadStars(): the guide stars along a combo's human line (see Combo patterns)
   gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
@@ -346,7 +348,7 @@ Emitting is synchronous.
 | Button | Sources |
 |---|---|
 | `action` | Space, ArrowUp, W, mouse button, touch tap / hold anywhere |
-| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); test hook `input.duck`. Held while grinding it is the [grind trick](#grind-trick) |
+| `duck` | ArrowDown, S (held while the key is down); a swipe down on touch (held for `SWIPE_DUCK_TICKS` = 72 ticks, 1.2 s, or until the next tap turns into a jump; another swipe restarts it); the held jump finger dragged down in the air (a `TRICK_TAP_TICKS` tap, see [Kickflip drag](#kickflip-drag)); test hook `input.duck`. Held while grinding it is the [grind trick](#grind-trick); pressed in the air it is the [kickflip](#air-trick) |
 | `use` | E (held while the key is down); `commands.useItem()`; test hook `input.use()` |
 
 Inside a NorDIY high fiver's window the use press gives the high five
@@ -459,6 +461,24 @@ lands (a quick tap: when the finger lifts, which is usually sooner), and a
 held touch counts its hold time from the decision. Keyboard and mouse presses,
 and touches on the title, pause and game-over screens, are not delayed at all.
 Hotspots still take presses first.
+
+### Kickflip drag
+
+On touch the kickflip (the [air trick](#air-trick)) needs no second finger:
+the finger that holds the jump is dragged down while the skater is airborne
+(`PointerControls`, private `dragTrick`):
+
+- a touch whose action press is down remembers its finger position; a move
+  of `SWIPE_DISTANCE` (4 view px) as steep as a swipe down (`SWIPE_SLOPE`)
+  while `!player.grounded && !player.grinding` presses `duck` for
+  `TRICK_TAP_TICKS` (3) ticks under its own source, without releasing the
+  action, so the jump keeps its full height;
+- on the ground or a rail, and on any upward move, the drag is measured
+  afresh (no duck: a held finger that slides down on the street does
+  nothing); after a trick the finger must move back up `SWIPE_DISTANCE` to
+  re-arm;
+- a separate swipe down (another finger, or a new touch) still works as
+  before. Keyboard is unchanged: ↓ / S in the air.
 
 ## Frame loop and smooth scrolling
 
@@ -1092,6 +1112,42 @@ milliseconds, so the live game never plans a whole pattern in one tick:
   ducking +-4 ticks) rides 20 seeds x 3 min (`human-bot-*.test.ts`,
   `human-run.ts`) without a crash into or within 1 s of a person.
 
+## Combo patterns
+
+ROADMAP 33: spawn templates that chain pieces the street already has into a
+grind line, with guide stars. The line is optional: rails never crash, so
+the street path only jumps the ground obstacles.
+
+- **Templates** (`gameplay/combos.ts` `COMBO_TEMPLATES`, names in
+  `COMBO_NAMES`): `pipeUp` (low pipe, hop up onto a long high handrail) and
+  `pipeStairs` (three short rails rising like a staircase), tier 2;
+  `railBenchRail` (grind, hop down onto the bench, hop up onto the next
+  rail) and `benchHopRail` (bench grind, jump over a low obstacle onto a
+  rail), tier 3. A template builds through the small `PieceBuilder`
+  interface (`rng`, `lead`, `end`, `rail`, `obstacle`, `openGap`) that
+  `patterns.ts`'s `Builder` implements; ground obstacles stand like an open
+  pair (`openGap`), so a grind that rolls off early lands in between.
+- **Planning** (`patterns.ts`): combos are templates marked `line`; they get
+  the normal checks (solver, human take-off window, across the boundary)
+  and in addition a grind on any of their pieces must lead on fairly
+  (`grindsFair`). Never while chilled (tier 2 and up) or drunk
+  (`fairness.ts` `DRUNK_TEMPLATES`).
+- **Guide stars** (`gameplay/line-guide.ts`): `lineGuide(pieces, solverOn,
+  step, margin)` follows the solver's human line jump by jump
+  (`Solver.bestJump` with the human margin, up to 4 jumps): from the street
+  onto a rail, from that rail onto the next; it collects the hitbox centres
+  of the airborne arcs and a row on top of every ridden rail.
+  `spreadStars(points, spacing, max)` spreads at most `max` stars over them
+  (never at street level). Follow the stars and you ride the combo; ignore
+  them and you ride the street.
+- **`PlanOptions.template`**: `planPattern(rng, tier, paces, {template:
+  name})` plans only that template, whatever the tier, zone and effect
+  (unit tests and the debug hook; throws when the name is unknown).
+- **Debug hook**: `window.__gameplay.pattern(name, x?, seed?)` lays a planned
+  template (e.g. a combo) with its origin at screen x, see
+  [docs/TESTING.md](TESTING.md). Tests: `gameplay/combos.test.ts`; playtest
+  `scripts/scenarios/combos.ts`.
+
 ## Bench (ledge contract)
 
 The bench is a ledge: its entity `y` (the backrest's top edge) is the grind
@@ -1228,25 +1284,44 @@ fun, **not harder**.
 
 Stunt Wave B: a kickflip in the air, never harder.
 
-- **Player** (`player/air-trick.ts`, `src/player/CONTRACT.md` "Air trick"):
-  a duck **press** in the air (↓ / S, a swipe down) starts the trick when
-  the skater has big air (any kicker launch, or a jump `GRAB_HEIGHT` above
-  its take-off) or is `AIR_TRICK_HEIGHT` (20 px) up, and the remaining air
-  time (`airTicksLeft`) lets the `AIR_TRICK_TICKS` (21) ticks finish before
-  the landing tick. `player.airTrick` is true while it runs; a rail or ledge
-  catch or a crash cuts it short. Physics and hitbox are unchanged; down in
-  the air never ducks.
+- **Input**: a duck **press** in the air: ↓ / S on the keyboard; on touch
+  a swipe down or, with one finger, the held jump finger dragged down (see
+  [Kickflip drag](#kickflip-drag)).
+- **Player** (`player/air-trick.ts`, `src/player/CONTRACT.md` "Air trick"),
+  two kinds by the flight (`canStartAirTrick(y, vy, launched)`,
+  `airTrickTicks(launched)`):
+  - **launch kickflip** (in the air after a kicker launch): starts when the
+    remaining air time (`airTicksLeft`) lets the `AIR_TRICK_TICKS` (21)
+    ticks finish before the landing tick;
+  - **street kickflip** (any other jump): starts from `AIR_TRICK_HEIGHT`
+    (20 px) above the street (a tap hop never gets there) with at least
+    `STREET_AIR_TRICK_MIN_AIR` (8) ticks of air left and runs the quicker
+    `STREET_AIR_TRICK_TICKS` (12); one still running at touch-down ends on
+    the landing tick (looks only, the landing is the same). So a full jump
+    and a medium one leave a comfortable window, e.g. at the apex.
+  `player.airTrick` is true while it runs; a rail or ledge catch or a crash
+  cuts it short. Physics and hitbox are unchanged; down in the air never
+  ducks.
 - **Gameplay** (`gameplay/air-trick.ts` `AirTrickScore`) only reads
-  `player.airTrick`: an ended trick waits for the next clean touchdown
-  (`land` or `grindStart`) and then emits `airTrick {ticks, points}` once,
-  `AIR_TRICK_POINTS` (150) times the best multiplier seen (the combo, or a
-  running line's multiplier when higher). A crash drops it. It is no line
+  `player.airTrick` (it never gates the trick): an ended trick waits for the
+  next clean touchdown (`land` or `grindStart`) and then emits `airTrick
+  {ticks, points}` once, its base times the best multiplier seen (the
+  combo, or a running line's multiplier when higher). The base is
+  `AIR_TRICK_POINTS` (150) when a `launch` came since the last touchdown,
+  else `STREET_AIR_TRICK_POINTS` (100). A crash drops it. It is no line
   piece: no `stuntStep`, never ends a line.
-- **UI**: "Air-Trick! +…" popup (`ui/popup-feed.ts`) and the first-time hint
-  after a launch, "In der Luft [↓] = Trick!" / "In der Luft runterwischen =
-  Trick!" (`ui/air-trick-hint.ts`, `AIR_HINT_LAUNCHES` 3, storage key
-  `airTrickSeen`). **Audio**: `airSpin` while it runs, `airTrick` on the
-  score.
+- **UI**: a landed kickflip shows the big "Kickflip! +N" callout with a
+  sparkle (`ui/stunt-callout.ts`, top strip, instead of the small
+  "Air-Trick" popup). Until the first kickflip ever (storage key
+  `airTrickSeen`) a hint "In der Luft [↓] = Kickflip!" / "In der Luft
+  runterwischen = Kickflip!" shows in the air after every kicker launch and
+  once per run on the first full street jump (`STREET_HINT_HEIGHT` 24 px
+  up), `ui/air-trick-hint.ts`. **Audio**: `airSpin` as it starts; on the score
+  `airTrick` (street) or the bigger `airTrickBig` (`points >=` 150, a
+  launch kickflip).
+- **Playtest**: `scripts/scenarios/kickflip.ts` (street kickflip with real
+  keys and the one-finger drag); `scripts/scenarios/stunts.ts` (after a
+  kicker launch).
 
 ## NorDIY skatepark (ROADMAP 36)
 

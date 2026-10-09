@@ -198,6 +198,56 @@ export async function touchHold(cdp: CDPSession, x: number, y: number, ms: numbe
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+/**
+ * Multi-finger touch driver over CDP, positions in view px. Each call sends
+ * only the finger that changed: CDP's touchStart/touchMove carry every finger
+ * still down, touchEnd only the lifted one (sending the remaining fingers
+ * there would lift those instead).
+ */
+export class Fingers {
+  private readonly active = new Map<number, { x: number; y: number }>();
+  constructor(
+    private readonly t: PlaytestContext,
+    private readonly cdp: CDPSession,
+  ) {}
+  private points() {
+    return [...this.active.entries()].map(([id, p]) => ({ id, ...p }));
+  }
+  async down(id: number, vx: number, vy: number) {
+    this.active.set(id, await viewToClient(this.t.page, vx, vy));
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: this.points() });
+  }
+  async move(id: number, vx: number, vy: number) {
+    this.active.set(id, await viewToClient(this.t.page, vx, vy));
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.points() });
+  }
+  async up(id: number) {
+    const p = this.active.get(id);
+    if (!p) return;
+    this.active.delete(id);
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ id, ...p }] });
+  }
+  async upAll() {
+    for (const id of [...this.active.keys()]) await this.up(id);
+  }
+  /** Tap and step `frames` ticks while the finger is down. */
+  async tap(vx: number, vy: number, frames = 3) {
+    await this.down(9, vx, vy);
+    await this.t.game.step(frames);
+    await this.up(9);
+    await this.t.game.step(1);
+  }
+  /** Swipe down with a separate finger (id 2), finger lifted after 3 ticks. */
+  async swipeDown(vx: number, vy: number, dy = 12) {
+    await this.down(2, vx, vy);
+    await this.t.game.step(1);
+    await this.move(2, vx + 2, vy + dy / 2);
+    await this.move(2, vx + 3, vy + dy);
+    await this.t.game.step(1);
+    await this.up(2);
+  }
+}
+
 /** CSS pixels per view pixel of the canvas as shown (tap sizes: a tap area should be >= ~44 CSS px). */
 export async function cssPerViewPixel(page: Page): Promise<number> {
   return page.evaluate(() => {
