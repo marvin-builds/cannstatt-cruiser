@@ -211,6 +211,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         if (ledge && isLedge(ledge.kind)) stunts.made(ctx, ledge);
       });
       ctx.bus.on('grindEnd', (e) => stunts.grindEnded(e.entityId));
+      ctx.bus.on('launch', () => airTrick.launched());
       const sparkleAt = (id: number) => {
         const e = ctx.state.entities.find((s) => s.id === id);
         if (e) sparkles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, age: 0 });

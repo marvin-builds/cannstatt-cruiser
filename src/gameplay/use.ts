@@ -6,8 +6,8 @@
  * points at full health), the football is thrown (ball.ts). Kid mode never
  * yields a Maßkrug (items.ts); should one be carried anyway, it is eaten,
  * never drunk. A Maßkrug kept too long is drunk by itself (auto-drink.ts).
- * Next to a NorDIY high fiver the press is his (high-five.ts): it gives the
- * high five and never uses the item.
+ * Next to (or just before) a NorDIY high fiver the press is his
+ * (high-five.ts): it gives the high five and never uses the item.
  */
 import type { CarriedItem, GameContext, ItemAction } from '../types';
 import { highFive } from './high-five';
@@ -34,7 +34,8 @@ export function countDownDrunk(ctx: GameContext, dt: number): void {
  */
 export function useCarriedItem(ctx: GameContext, throwBall: () => void, auto = false): void {
   const { state } = ctx;
-  const pressed = ctx.input.use.pressed && !highFive(ctx);
+  const press = ctx.input.use.pressed;
+  const pressed = !highFive(ctx, press) && press;
   const item = state.carriedItem;
   if (!(pressed || auto) || !item) return;
   state.carriedItem = null;
