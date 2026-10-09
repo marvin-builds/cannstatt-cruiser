@@ -63,6 +63,71 @@ the key to active `InputHotspot`s first. `src/ui/index.test.ts` opens the
 hidden settings menu this way (3 s long press on the logo, or K held) and
 toggles kid mode on and off.
 
+## Highscore server tests (`server/`)
+
+```
+cd server
+npm install              # once; server/ has its own package.json
+npx vitest run           # unit + handler tests, no network
+npm run typecheck
+```
+
+- The root `npm test` only runs `src/**/*.test.ts` and never the server
+  tests; run both when touching `server/`.
+- `server/test/d1-fake.ts` runs the real `schema.sql` on Node's in-memory
+  SQLite, so the store and handler tests exercise real queries without
+  Cloudflare. `npm run dev` there starts `wrangler dev --local` on
+  `http://localhost:8787` for a manual end-to-end check against a local D1.
+- `server/test/plausibility.test.ts` holds runs at the game's real limits;
+  update it together with `plausibility.ts` when `TOP_SPEED`,
+  `PX_PER_METRE` or point values change (see ARCHITECTURE, Online
+  highscores).
+
+## Never POST to the live highscore list
+
+The worker at `https://cannstatt-cruiser-scores.marvinmai.workers.dev` is
+public: every accepted `POST /score` lands on the list everyone sees.
+
+- **Unit tests** (`src/net/`, `src/ui/`) pass a fake `fetch` (and a memory
+  store for the offline queue and the remembered name) instead of the real
+  one, and never reach the network.
+- **Playtests** intercept the worker with a Playwright route and answer from
+  a fake server. Register the route before the game first talks to the
+  worker (at the start of the scenario; reload the page if it may already
+  have fetched), for example:
+
+```ts
+const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const entries: unknown[] = [];
+await t.page.route(`${API}/**`, async (route) => {
+  const req = route.request();
+  const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
+  if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+  if (req.method() === 'POST') {
+    const body = req.postDataJSON();
+    entries.push({ rank: 1, name: body.name, score: body.score, distance: body.distance, date: new Date().toISOString() });
+    return route.fulfill({ headers, json: { ok: true, rank: 1, entries } });
+  }
+  return route.fulfill({ headers, json: { entries } });
+});
+```
+
+  The CORS headers are needed: the game's page and the worker are different
+  origins. Offline is simulated with `route.abort()` (or
+  `t.page.context().setOffline(true)`).
+- A manual `GET /top` (`curl .../top`) against the live worker is fine.
+- Without a browser, `createUiSystem({ store, scores: fake, nameField: fake })`
+  takes a fake `ScoreServiceLike` (`src/ui/highscores.test.ts`); in Node the
+  default is no online list at all. `src/net/*.test.ts` drive `ScoresApi` with
+  a fake `fetch` and `ScoreService` with a fake api, clock, `online()` and
+  timer.
+- Highscore playtest scenario: not written yet at the time of this note
+  (ROADMAP 34). It should route the worker as above and cover the title
+  trophy (B) and the list (scrolling on phones, offline note), "Eintragen" on
+  game over only for a top-20 score, the name entry (native input in adult
+  mode, nicknames only in kid mode), the queued entry while offline and the
+  highlighted own entry; list it under the playtest scenarios once it exists.
+
 ## Test hook: `window.__game`
 
 The hook is always available under `npm run dev`. In a production build it is
@@ -197,6 +262,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, kid, message, topState, entries, highlight, scroll, maxScroll}` plus the tap areas `trophy`, `close`, `field`, `submit`, `reroll` (view px; `reroll` only in kid mode). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
 | `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares

@@ -10,6 +10,8 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 - `npm run build`: type-check (app + scripts) and production build into `dist/` (base `./`)
 - `npm run preview`: serve the build
 - `npm run playtest`: Playwright screenshots + state log in `playtest-output/<name>/` (see docs/TESTING.md)
+- `cd server && npx vitest run`: tests of the highscore worker (`server/` has its own `package.json`;
+  run `npm install` there once; deploy steps in server/README.md)
 
 ## Read first
 
@@ -21,8 +23,12 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 ## Rules
 
 - **Ownership:** each slice edits only its own directory (`src/player`, `src/world`,
-  `src/gameplay`, `src/ui`, `src/audio` + `public/` + `.github/`). Never touch `src/main.ts`,
-  `src/core/` or `src/types.ts` from a slice; report needed contract changes instead.
+  `src/gameplay`, `src/ui` + `src/net`, `src/audio` + `public/` + `.github/`, `server/`). Never touch
+  `src/main.ts`, `src/core/` or `src/types.ts` from a slice; report needed contract changes instead.
+- **Online highscores:** tests and playtests never POST to the live worker (it would pollute the
+  public list): unit tests use a fake `fetch`, playtests intercept the network with a Playwright
+  route. Changing `TOP_SPEED`, `PX_PER_METRE` or point values means updating
+  `server/src/plausibility.ts` too (see "Online highscores" in docs/ARCHITECTURE.md).
 - **TDD:** for logic (physics, rules, state, parsing) write the failing Vitest test first.
   Check visual changes with `npm run playtest` and look at the PNGs.
 - **No commits by agents:** do not run `git add/commit/stash/reset` or anything that rewrites
