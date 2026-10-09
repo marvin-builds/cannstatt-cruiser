@@ -18,6 +18,7 @@ import {
   titleHelp,
   titleLayout,
   toTitleLabel,
+  toTitlePlate,
   whatsNewLayout,
 } from './menu-layout';
 import type { InstallHintKind } from './notices';
@@ -209,6 +210,40 @@ describe('menu screen layouts', () => {
         expect(b.y + b.h, `${at}: in the upper part`).toBeLessThanOrEqual(VIEW_H * 0.62);
         expect(b.h, at).toBe(m.menuButtonH);
       }
+    }
+  });
+
+  it('portrait: "Startbildschirm" is a compact corner button: a 44 px tap area, a small plate, well under a third of the view wide', () => {
+    const tallest = statsLayout(0, true, true).plate;
+    for (const input of inputs()) {
+      if (!input.portrait) continue;
+      const screens = [
+        ['pause', pauseLayout({ ...input, install: null, plate: tallest })],
+        ['game over', gameOverLayout({ ...input, newRecord: true })],
+      ] as const;
+      for (const [name, l] of screens) {
+        const b = l.buttons.toTitle!;
+        const at = `${input.label} ${name}: ${JSON.stringify(b)}`;
+        expect(b.h, at).toBeGreaterThanOrEqual(44);
+        expect(b.h, at).toBeLessThanOrEqual(66);
+        expect(b.w, at).toBeLessThanOrEqual(input.viewWidth / 4);
+        const plate = toTitlePlate(b);
+        expect(plate.h, `${at}: plate`).toBeLessThanOrEqual(24);
+        expect(plate.y >= b.y && plate.y + plate.h <= b.y + b.h, `${at}: plate in the tap area`).toBe(true);
+        if (name === 'pause') expect(overlap(b, tallest), `${at}: clear of the stats plate`).toBe(false);
+        for (const id of ['prompt', 'title', 'pause']) {
+          const r = l.blocks.get(id);
+          if (r) expect(overlap(b, r), `${at}: clear of ${id}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('the "Startbildschirm" plate fills its tap area outside portrait', () => {
+    for (const input of inputs()) {
+      if (input.portrait) continue;
+      const b = gameOverLayout({ ...input, newRecord: false }).buttons.toTitle!;
+      expect(toTitlePlate(b), input.label).toEqual(b);
     }
   });
 

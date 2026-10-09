@@ -14,7 +14,6 @@ import { drawLogo, logoRect } from './logo';
 import {
   BULLET_W,
   controlsLine,
-  cornerLabelScale,
   gameOverPrompt,
   installParts,
   KID_CHIP_GAP,
@@ -33,6 +32,7 @@ import {
   startPrompt,
   titleHelp,
   toTitleLabel,
+  toTitlePlate,
   trickKeysHint,
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
@@ -123,7 +123,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   const { display, state } = r;
   if (l.buttons.toTitle) {
     const label = toTitleLabel(display.touch, state.mode === 'gameover');
-    menuButton(r, l.buttons.toTitle, label, UI.white, cornerLabelScale(display.portrait));
+    menuButton(r, toTitlePlate(l.buttons.toTitle), label, UI.white, 1);
   }
 }
 
@@ -203,7 +203,10 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
     drawHoldProgress(r, view.logoHold.progress, logo);
   }
   const pause = l.blocks.get('pause');
-  if (pause) centredIn(r, MENU_TEXT.pause, pause, { scale: 2 });
+  if (pause) {
+    textPlate(r, pause);
+    centredIn(r, MENU_TEXT.pause, pause, { scale: 2 });
+  }
   const scale = l.textScale;
   const prompt = l.blocks.get('prompt');
   if (prompt) {
