@@ -33,12 +33,13 @@ export const ROW_GAP = 2;
 const BELOW_GROUND = 4;
 
 /**
- * The hint spot: a plate `w` x `h` centred under the skater just below the
- * riding line, clear of the skater, rails, obstacles (all above the line),
- * the rising popups and the zone banner, and kept off the view edges like a popup.
+ * The hint spot: a plate `w` x `h` centred under the skater (or `cx`) just
+ * below the riding line, clear of the skater, rails, obstacles (all above
+ * the line), the rising popups and the zone banner, and kept off the view
+ * edges like a popup.
  */
-export function hintSpotRect(w: number, h: number, viewWidth: number): Rect {
-  return { x: popupLeft(PLAYER_X, w, viewWidth), y: GROUND_Y + BELOW_GROUND, w, h };
+export function hintSpotRect(w: number, h: number, viewWidth: number, cx = PLAYER_X): Rect {
+  return { x: popupLeft(cx, w, viewWidth), y: GROUND_Y + BELOW_GROUND, w, h };
 }
 
 export function hintRowWidth(row: HintRow, scale: number): number {
@@ -68,10 +69,10 @@ export function hintPlateSize(rows: readonly HintRow[], scale: number): { w: num
   return { w: w + 2 * HINT_PAD_X, h };
 }
 
-/** The plate for `rows` at the hint spot under the skater. */
-export function hintPlateRect(rows: readonly HintRow[], scale: number, viewWidth: number): Rect {
+/** The plate for `rows` at the hint spot under the skater (or centred on `cx`). */
+export function hintPlateRect(rows: readonly HintRow[], scale: number, viewWidth: number, cx = PLAYER_X): Rect {
   const { w, h } = hintPlateSize(rows, scale);
-  return hintSpotRect(w, h, viewWidth);
+  return hintSpotRect(w, h, viewWidth, cx);
 }
 
 /**
@@ -89,10 +90,11 @@ export function fitHintRows(variants: readonly (readonly HintRow[])[], scale: nu
 export type HintKind = 'highFive' | 'trick' | 'air' | 'kicker';
 
 /**
- * The riding hint that shows at the hint spot when several want to: the
- * one-time high five hint (keyboard; its window is short), then the grind
- * trick hint (on a rail), then the air trick hint (after a launch), then the
- * kicker hint (before it), so two never overlap.
+ * The riding hint that wants the hint spot most when several do: the high
+ * five hint (keyboard; its window is short), then the grind trick hint (on a
+ * rail), then the air trick hint (after a launch), then the kicker hint
+ * (before it), so two never overlap. The hint slot (hint-slot.ts) keeps a
+ * shown hint long enough to read.
  */
 export function shownHint(wants: { highFive: boolean; trick: boolean; air: boolean; kicker: boolean }): HintKind | null {
   if (wants.highFive) return 'highFive';

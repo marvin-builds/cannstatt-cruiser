@@ -38,14 +38,8 @@ export function ribbon(r: RenderContext, x: number, y: number, w: number, h: num
   g.fillRect(x, y + h - 1, w, 1);
 }
 
-/** Opaque plate behind a block of centred text, `w` wide. */
-export function panel(r: RenderContext, w: number, y: number, h: number): void {
-  r.g.fillStyle = UI.panel;
-  r.g.fillRect(centreX(r.display.viewWidth) - Math.floor(w / 2), y, w, h);
-}
-
-/** A menu button: rounded face with an edge and a centred label (scale 2 once touch-sized). */
-export function menuButton(r: RenderContext, rect: Rect, label: string, color: string = UI.white): void {
+/** A menu button: rounded face with an edge and a centred label (by default scale 2 once touch-sized). */
+export function menuButton(r: RenderContext, rect: Rect, label: string, color: string = UI.white, scale = rect.h >= 24 ? 2 : 1): void {
   const { g } = r;
   const { x, y, w, h } = rect;
   g.fillStyle = UI.buttonEdge;
@@ -53,6 +47,5 @@ export function menuButton(r: RenderContext, rect: Rect, label: string, color: s
   g.fillRect(x, y + 1, w, h - 2);
   g.fillStyle = UI.buttonFace;
   g.fillRect(x + 1, y + 1, w - 2, h - 2);
-  const scale = h >= 24 ? 2 : 1;
   text(r, label, x + Math.floor(w / 2), y + Math.floor((h - 7 * scale) / 2), { align: 'center', scale, color });
 }

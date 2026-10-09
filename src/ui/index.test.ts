@@ -115,7 +115,7 @@ describe('ui system', () => {
     expect(game.state.player.grounded).toBe(true);
   });
 
-  it('during a high five window the touch item button is pressable with empty hands, outside it is not', () => {
+  it('during a high five window the touch item button is pressable with empty hands; from the hint distance it shows, a tap does nothing', () => {
     for (const portrait of [false, true]) {
       const { game, uses } = setup();
       game.display.touch = true;
@@ -130,7 +130,14 @@ describe('ui system', () => {
       game.tick();
       expect(uses()).toBe(1);
       expect(game.state.player.grounded).toBe(true);
-      fiver.x = PLAYER_X + 80;
+      fiver.x = PLAYER_X + 80; // approaching: the hand shows, but the tap must not use a carried item
+      game.state.carriedItem = 'pretzel';
+      expect(game.hitHotspot(x, y)).toBe(true);
+      game.tick();
+      expect(uses()).toBe(1);
+      expect(game.state.carriedItem).toBe('pretzel');
+      game.state.carriedItem = null;
+      fiver.x = PLAYER_X + 200;
       expect(game.hitHotspot(x, y)).toBe(false);
     }
   });
@@ -493,7 +500,7 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(desk.press(rect)).toBe(false);
   });
 
-  it('pause: Zum Startbildschirm ends the run (its stars still count) and shows the title', () => {
+  it('pause: Startbildschirm ends the run (its stars still count) and shows the title', () => {
     const t = app();
     t.game.commands.startRun();
     t.game.state.stars = 3;
@@ -508,7 +515,7 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(t.game.state.mode).toBe('title');
   });
 
-  it('game over: Zum Startbildschirm only after the input delay', () => {
+  it('game over: Startbildschirm only after the input delay', () => {
     const t = app({ touch: true });
     t.game.commands.startRun();
     t.game.commands.gameOver();
@@ -516,6 +523,85 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(t.press(button)).toBe(false);
     t.ticks(60);
     expect(t.press(button)).toBe(true);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  const variants = [
+    { name: 'desktop', touch: false, portrait: false },
+    { name: 'phone landscape', touch: true, portrait: false },
+    { name: 'phone portrait', touch: true, portrait: true },
+  ];
+  /** Where the big "Zum Startbildschirm" button used to be: centre-lower, where a thumb taps to go on. */
+  const formerButton = (viewWidth: number): [number, number] => [Math.floor(viewWidth / 2), 140];
+
+  for (const v of variants) {
+    it(`${v.name}: a tap where the old button was resumes the pause and starts a new run on game over`, () => {
+      const t = app(v);
+      t.game.display.viewWidth = 384;
+      const tap = (x: number, y: number) => {
+        t.pointers.down(1, x, y, v.touch);
+        t.pointers.up(1);
+        t.ticks(1);
+      };
+      t.game.commands.startRun();
+      if (v.portrait) t.game.hitHotspot(160, 90); // dismiss the portrait hint
+      t.game.commands.resume();
+      t.game.commands.pause();
+      tap(...formerButton(384));
+      expect(t.game.state.mode).toBe('playing');
+
+      const starts = t.runStarts();
+      t.game.commands.gameOver();
+      t.ticks(60);
+      tap(...formerButton(384));
+      expect(t.game.state.mode).toBe('playing');
+      expect(starts()).toBe(1);
+    });
+
+    it(`${v.name}: Startbildschirm works only in its own corner area`, () => {
+      const t = app(v);
+      t.game.commands.startRun();
+      if (v.portrait) t.game.hitHotspot(160, 90);
+      t.game.commands.resume();
+      t.game.commands.pause();
+      const corner = pauseLayout(t.input({ plate: null })).buttons.toTitle!;
+      // Just outside its right and bottom edge: the tap resumes instead.
+      expect(t.game.hitHotspot(corner.x + corner.w + 2, corner.y + corner.h / 2)).toBe(true);
+      expect(t.game.state.mode).toBe('playing');
+      t.game.commands.pause();
+      expect(t.game.hitHotspot(corner.x + corner.w / 2, corner.y + corner.h + 2)).toBe(true);
+      expect(t.game.state.mode).toBe('playing');
+      t.game.commands.pause();
+      expect(t.press(corner)).toBe(true);
+      expect(t.game.state.mode).toBe('title');
+
+      t.game.commands.startRun();
+      t.game.commands.gameOver();
+      t.ticks(60);
+      const over = gameOverLayout({ ...t.input(), newRecord: false }).buttons.toTitle!;
+      expect(t.press(over)).toBe(true);
+      expect(t.game.state.mode).toBe('title');
+    });
+  }
+
+  it('keys match the labels: T leaves pause and game over, Esc resumes the pause and leaves game over', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.key('Escape');
+    expect(t.game.state.mode).toBe('playing');
+    t.game.commands.pause();
+    t.key('KeyT');
+    expect(t.game.state.mode).toBe('title');
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    t.ticks(60);
+    t.key('Escape');
+    expect(t.game.state.mode).toBe('title');
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    t.ticks(60);
+    t.key('KeyT');
     expect(t.game.state.mode).toBe('title');
   });
 

@@ -242,7 +242,7 @@ export const ARROW_DOWN = sprite({ k: UI.ink }, [`
   ..k..
 `]);
 
-/** Yellow down arrow in the touch hints ("Wisch ↓ = Trick!"), at the hint's font scale (hint-plate SWIPE_DOWN_W wide). */
+/** Yellow down arrow in the touch hints ("↓ wischen = Trick!"), at the hint's font scale (hint-plate SWIPE_DOWN_W wide). */
 export const SWIPE_ARROW = new PixelIcon({ y: UI.yellow }, [`
   ..y..
   ..y..

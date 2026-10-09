@@ -78,18 +78,18 @@ describe('grind trick hint', () => {
   });
 
   describe('plate', () => {
-    it('desktop: a ↓ key cap and "= Trick!"; touch landscape: "Wisch runter = Trick!"', () => {
+    it('desktop: a ↓ key cap and "= Trick!"; touch landscape: "Runterwischen = Trick!"', () => {
       const desk = trickHintPlate({ touch: false, portrait: false, viewWidth: 320 });
       expect(desk.rows).toEqual([[KEY_DOWN, '= Trick!']]);
       expect(desk.scale).toBe(1);
-      expect(trickHintPlate({ touch: true, portrait: false, viewWidth: 384 }).rows).toEqual([['Wisch runter = Trick!']]);
+      expect(trickHintPlate({ touch: true, portrait: false, viewWidth: 384 }).rows).toEqual([['Runterwischen = Trick!']]);
     });
 
-    it('touch portrait (big font): compact "Wisch ↓ = Trick!", no larger than the kicker and air trick hints', () => {
+    it('touch portrait (big font): compact "↓ wischen = Trick!", no larger than the kicker and air trick hints', () => {
       for (const viewWidth of [320, 390, 427]) {
         const display = { touch: true, portrait: true, viewWidth };
         const p = trickHintPlate(display);
-        expect(p.rows).toEqual([['Wisch', SWIPE_DOWN, '= Trick!']]);
+        expect(p.rows).toEqual([[SWIPE_DOWN, 'wischen = Trick!']]);
         expect(p.scale).toBe(popupScale(display, false));
         const kicker = kickerHintRect(p.scale, viewWidth);
         const air = airTrickHintPlate(display).rect;

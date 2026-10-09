@@ -8,9 +8,12 @@ import {
   HIGH_FIVE_REACH,
   HIGH_FIVE_TOUCH_LABEL,
   HighFiveHint,
+  HIGH_FIVE_HINT_SHOWS,
+  handShown,
+  highFiveHand,
   highFiveHintPlate,
-  highFiveOpen,
 } from './high-five';
+import { HIGH_FIVE_APPROACH } from '../gameplay/high-five';
 import { itemButtonRect, itemHintPlace } from './item-button';
 import { POPUP_MARGIN } from './layout';
 
@@ -36,19 +39,33 @@ const fiver = (ahead: number, id = 1): Entity => ({
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-describe('high five window (same rule as gameplay)', () => {
-  it('is open while a high-fiver is within reach of the skater, on both sides', () => {
-    expect(highFiveOpen([fiver(0)])).toBe(true);
-    expect(highFiveOpen([fiver(HIGH_FIVE_REACH)])).toBe(true);
-    expect(highFiveOpen([fiver(-HIGH_FIVE_REACH)])).toBe(true);
-    expect(highFiveOpen([fiver(HIGH_FIVE_REACH + 2)])).toBe(false);
-    expect(highFiveOpen([fiver(-HIGH_FIVE_REACH - 2)])).toBe(false);
+describe('high five hand (gameplay window)', () => {
+  it("is pressable in gameplay's window: within reach on both sides and in the approach just before", () => {
+    expect(highFiveHand([fiver(0)])).toBe('press');
+    expect(highFiveHand([fiver(HIGH_FIVE_REACH)])).toBe('press');
+    expect(highFiveHand([fiver(-HIGH_FIVE_REACH)])).toBe('press');
+    expect(highFiveHand([fiver(HIGH_FIVE_APPROACH)])).toBe('press');
+    expect(highFiveHand([fiver(-HIGH_FIVE_REACH - 2)])).toBeNull();
   });
 
-  it('stays open after the high five (gameplay keeps those presses off the item) and ignores everything else', () => {
-    expect(highFiveOpen([{ ...fiver(0), data: { slapped: 100 } }])).toBe(true);
-    expect(highFiveOpen([])).toBe(false);
-    expect(highFiveOpen([{ ...fiver(0), kind: 'kicker' }])).toBe(false);
+  it('shows (not yet pressable) from the hint distance on', () => {
+    expect(highFiveHand([fiver(HIGH_FIVE_APPROACH + 2)])).toBe('show');
+    expect(highFiveHand([fiver(HIGH_FIVE_HINT_AHEAD)])).toBe('show');
+    expect(highFiveHand([fiver(HIGH_FIVE_HINT_AHEAD + 2)])).toBeNull();
+  });
+
+  it('the hand shows on touch from the hint distance on, on the desktop chip (E) only in the window', () => {
+    expect(handShown('show', true)).toBe(true);
+    expect(handShown('press', true)).toBe(true);
+    expect(handShown('show', false)).toBe(false);
+    expect(handShown('press', false)).toBe(true);
+    expect(handShown(null, true)).toBe(false);
+  });
+
+  it('stays pressable after the high five (gameplay keeps those presses off the item) and ignores everything else', () => {
+    expect(highFiveHand([{ ...fiver(0), data: { slapped: 100 } }])).toBe('press');
+    expect(highFiveHand([])).toBeNull();
+    expect(highFiveHand([{ ...fiver(0), kind: 'kicker' }])).toBeNull();
   });
 });
 
@@ -65,15 +82,29 @@ describe('high five hint', () => {
     expect(hint.visible).toBe(false);
   });
 
-  it('shows once ever (persisted): not for the next high-fiver, not after a reload', () => {
+  it(`repeats for the next high-fiver until ${HIGH_FIVE_HINT_SHOWS} appearances (persisted)`, () => {
+    const store = memoryStore();
+    let hint = new HighFiveHint(store);
+    for (let i = 1; i <= HIGH_FIVE_HINT_SHOWS; i++) {
+      hint.runStarted();
+      hint.update([fiver(50, i)]);
+      expect(hint.visible, `appearance ${i}`).toBe(true);
+      hint.update([]);
+      hint = new HighFiveHint(store); // counted across reloads
+    }
+    hint.update([fiver(50, 99)]);
+    expect(hint.visible).toBe(false);
+  });
+
+  it('a real high five ends it for good (persisted); a missed one does not', () => {
     const store = memoryStore();
     const hint = new HighFiveHint(store);
-    hint.update([fiver(50)]);
-    expect(hint.visible).toBe(true);
-    hint.update([]);
-    hint.runStarted();
+    hint.update([fiver(50, 1)]);
+    hint.update([fiver(-HIGH_FIVE_REACH - 2, 1)]); // passed without a high five
     hint.update([fiver(50, 2)]);
-    expect(hint.visible).toBe(false);
+    expect(hint.visible).toBe(true);
+    hint.highFived();
+    expect(new HighFiveHint(store).visible).toBe(false);
     const reloaded = new HighFiveHint(store);
     reloaded.update([fiver(50, 3)]);
     expect(reloaded.visible).toBe(false);

@@ -93,6 +93,33 @@ describe('kicker hint', () => {
     });
   }
 
+  it('anchors at the ramp: its anchor follows the kicker it is about, also while it lingers after passing', () => {
+    const hint = new KickerHint(memoryStore());
+    expect(hint.anchorX).toBe(PLAYER_X);
+    hint.update([kicker(1, PLAYER_X + 100)]);
+    expect(hint.anchorX).toBe(PLAYER_X + 100 + 12);
+    hint.update([kicker(1, PLAYER_X + 50)]);
+    expect(hint.anchorX).toBe(PLAYER_X + 50 + 12);
+    hint.update([kicker(1, PLAYER_X - 40)]);
+    expect(hint.visible).toBe(false);
+    expect(hint.anchorX).toBe(PLAYER_X - 40 + 12);
+    hint.update([]);
+    expect(hint.anchorX).toBe(PLAYER_X - 40 + 12); // gone: stays where it was last
+  });
+
+  it('the plate centres on its anchor, kept on screen, the street level under the ramp', () => {
+    for (const viewWidth of [320, 427]) {
+      for (const anchor of [PLAYER_X, PLAYER_X + 100, viewWidth + 50, -30]) {
+        const r = kickerHintRect(1, viewWidth, anchor);
+        expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
+        expect(r.x + r.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
+        expect(r.y).toBe(kickerHintRect(1, viewWidth).y);
+      }
+      const mid = kickerHintRect(1, viewWidth, PLAYER_X + 100);
+      expect(mid.x + Math.floor(mid.w / 2)).toBeGreaterThanOrEqual(PLAYER_X + 99);
+    }
+  });
+
   describe('placement', () => {
     const skater = (feetY: number): Rect => ({ x: PLAYER_X - 12, y: feetY - 32, w: 24, h: 32 });
     for (const [scale, viewWidth] of [

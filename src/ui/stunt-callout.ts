@@ -1,8 +1,10 @@
 /**
- * The stunt line callout (ROADMAP 27): "Combo xN!" on every `stuntStep`
+ * The stunt line callout (ROADMAP 27): "Linie xN!" on every `stuntStep`
  * (punching in a size bigger for a moment), "Stunt-Linie!" and the points on
  * a completed line, "Session!" and the bonus when the skater leaves the
- * NorDIY park with points. A missed line says nothing: falling off stays quiet.
+ * NorDIY park with points, and the big "Kickflip! +N" on every `airTrick`
+ * (ROADMAP 37c; a stunt step of the same tick joins it as a second line).
+ * A missed line says nothing: falling off stays quiet.
  *
  * It lives in the top strip of the view, between the HUD stats plate (and
  * the desktop item chip) and the HUD buttons, right of the skater and above
@@ -16,8 +18,10 @@ import type { Rect } from '../types';
 import { UI } from './art';
 import { centreX, type HudButtons, plusPoints, POPUP_MARGIN } from './layout';
 
-/** Seconds a "Combo xN!" stays (the next step replaces it). */
+/** Seconds a "Linie xN!" stays (the next step replaces it). */
 export const COMBO_TIME = 1;
+/** Seconds "Kickflip! +N" stays. */
+export const KICKFLIP_TIME = 1.4;
 /** Seconds "Stunt-Linie! +…" stays. */
 export const LINE_DONE_TIME = 1.6;
 /** Seconds a fresh combo is drawn one scale bigger. */
@@ -36,14 +40,20 @@ const CALLOUT_TOP = 4;
 /** Least gap between the callout and anything it keeps clear of. */
 const GAP = 2;
 
+type CalloutKind = 'step' | 'kickflip' | 'done';
+
 export class StuntCallout {
-  lines: readonly string[] = [];
-  color: string = UI.orange;
+  lines: string[] = [];
+  /** Colour of each line. */
+  colors: string[] = [];
   /** A line has started (first step) and not ended yet. */
   lineActive = false;
   private time = 0;
   private life = 0;
-  /** Showing a combo (punches in), not the completed line. */
+  /** What shows now; `fresh` while it was shown in this tick (before the next update). */
+  private kind: CalloutKind = 'done';
+  private fresh = false;
+  /** Showing a combo or kickflip (punches in), not the completed line. */
   combo = false;
 
   get visible(): boolean {
@@ -67,7 +77,16 @@ export class StuntCallout {
 
   step(multiplier: number): void {
     this.lineActive = true;
-    this.show([`Combo x${multiplier}!`], UI.orange, COMBO_TIME, true);
+    const text = `Linie x${multiplier}!`;
+    if (this.fresh && this.kind === 'kickflip') this.add(text, UI.orange, COMBO_TIME);
+    else this.show([text], UI.orange, COMBO_TIME, 'step');
+  }
+
+  /** An air trick (kickflip) was landed (airTrick): the big callout with its points. */
+  kickflip(points: number): void {
+    const text = `Kickflip! ${plusPoints(points)}`;
+    if (this.fresh && this.kind === 'step') this.add(text, UI.pink, KICKFLIP_TIME);
+    else this.show([text], UI.pink, KICKFLIP_TIME, 'kickflip');
   }
 
   end(completed: boolean, points: number): void {
@@ -76,21 +95,29 @@ export class StuntCallout {
       this.hide();
       return;
     }
-    this.show(points > 0 ? ['Stunt-Linie!', plusPoints(points)] : ['Stunt-Linie!'], UI.yellow, LINE_DONE_TIME, false);
+    this.show(points > 0 ? ['Stunt-Linie!', plusPoints(points)] : ['Stunt-Linie!'], UI.yellow, LINE_DONE_TIME, 'done');
   }
 
   /** The NorDIY park session ended (sessionEnd): "Session!" and its bonus; nothing without points. */
   session(points: number): void {
-    if (points > 0) this.show(['Session!', plusPoints(points)], UI.yellow, LINE_DONE_TIME, false);
+    if (points > 0) this.show(['Session!', plusPoints(points)], UI.yellow, LINE_DONE_TIME, 'done');
   }
 
   /** Advances its time while `shown`; while it cannot be shown (zone banner) it waits. */
   update(dt: number, shown = true): void {
+    this.fresh = false;
     if (this.visible && shown) this.time += dt;
   }
 
-  private show(lines: readonly string[], color: string, life: number, combo: boolean): void {
-    Object.assign(this, { lines, color, life, time: 0, combo });
+  private show(lines: string[], color: string, life: number, kind: CalloutKind): void {
+    Object.assign(this, { lines, colors: lines.map(() => color), life, time: 0, kind, fresh: true, combo: kind !== 'done' });
+  }
+
+  /** A second line joining the callout shown in this tick. */
+  private add(text: string, color: string, life: number): void {
+    this.lines = [...this.lines, text];
+    this.colors = [...this.colors, color];
+    this.life = Math.max(this.life, life);
   }
 
   private hide(): void {

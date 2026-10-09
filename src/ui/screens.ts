@@ -32,7 +32,7 @@ import { type Banner, BANNER_H, BANNER_Y } from './banner';
 import { chillLook } from './chill-look';
 import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
-import { COMBO_GAP, HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
+import { HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
 import { type AirTrickHint, airTrickHintPlate } from './air-trick-hint';
 import {
@@ -45,10 +45,10 @@ import {
   KEYCAP_W,
   PIECE_GAP,
   ROW_GAP,
-  shownHint,
   SWIPE_DOWN_W,
 } from './hint-plate';
-import { type HighFiveHint, highFiveHintPlate, highFiveOpen } from './high-five';
+import type { HintSlot } from './hint-slot';
+import { handShown, type HighFiveHint, highFiveHand, highFiveHintPlate } from './high-five';
 import { KICKER_HINT_ROWS, type KickerHint, kickerHintRect } from './kicker-hint';
 import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
@@ -68,6 +68,7 @@ import { currentMenu, portraitHintShown } from './menu-state';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
 import type { LongPress, SettingsMenu } from './settings';
+import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
 import { type TrickHint, trickHintPlate } from './trick-hint';
@@ -95,10 +96,14 @@ export interface UiView {
   kickerHint: KickerHint;
   /** "In der Luft ↓ = Trick!" in the air after a launch, until an air trick was done once. */
   airHint: AirTrickHint;
-  /** "[E] = High Five!" / "Knopf: High Five!" the first time a NorDIY high-fiver approaches. */
+  /** "[E] = High Five!" / "Knopf: High Five!" while a NorDIY high-fiver approaches, until the first high five. */
   highFiveHint: HighFiveHint;
-  /** "Combo xN!" and "Stunt-Linie! +…" in the top strip between the HUD plate and the buttons. */
+  /** Which riding hint has the hint spot under the skater (shown long enough to read). */
+  hints: HintSlot;
+  /** "Linie xN!", "Kickflip! +…", "Stunt-Linie! +…" in the top strip between the HUD plate and the buttons. */
   stunt: StuntCallout;
+  /** The sparkle burst around the skater on a landed kickflip. */
+  sparkle: Sparkle;
   /** Where the stunt callout is drawn this tick (set in update), null while hidden. */
   stuntRect: CalloutRect | null;
   /** The hidden settings menu and the long press on the title logo that opens it. */
@@ -176,7 +181,7 @@ function drawStats(r: RenderContext, view: UiView): void {
   text(r, 'Punkte', l.x, l.label, MUTED);
   text(r, hud.score.text, l.x, l.score, SCORE);
   if (hud.combo) {
-    const x = l.x + hud.score.width + COMBO_GAP;
+    const x = l.x + hud.comboX;
     text(r, hud.multiplier.text, x, l.score, MULTIPLIER);
     if (hud.showComboLabel) text(r, hud.comboLabel.text, x, l.label, COMBO_LABEL);
   }
@@ -287,26 +292,17 @@ function drunkVignette(g: CanvasRenderingContext2D, w: number): CanvasGradient {
   return gradient;
 }
 
-/** Alpha of the hand button shown ahead of the high five window, while its touch hint points at it (not pressable yet). */
-const HAND_PREVIEW_ALPHA = 0.5;
-
 /**
  * The touch item button (big, under the HUD buttons) or the desktop chip with
- * the "E" key cap; a raised hand instead of the item during a high five window.
+ * the "E" key cap; a raised hand instead of the item while a high-fiver is
+ * near (on touch from the hint distance on, see high-five.ts).
  */
 function drawItemControl(r: RenderContext, view: UiView): void {
   const { state, display, g } = r;
-  const highFive = highFiveOpen(state.entities);
-  const control = itemControl(display, state.mode, state.carriedItem, highFive);
-  if (!control) {
-    // The touch hint points at the button before the window opens: show where the hand will be.
-    if (!display.touch || state.mode !== 'playing' || !view.highFiveHint.visible) return;
-    g.globalAlpha = HAND_PREVIEW_ALPHA;
-    drawItemButton(r, HAND_ICON);
-    g.globalAlpha = 1;
-    return;
-  }
-  const icon = highFive || !state.carriedItem ? HAND_ICON : ITEM_ICONS[state.carriedItem];
+  const hand = handShown(highFiveHand(state.entities), display.touch);
+  const control = itemControl(display, state.mode, state.carriedItem, hand);
+  if (!control) return;
+  const icon = hand || !state.carriedItem ? HAND_ICON : ITEM_ICONS[state.carriedItem];
   if (control === 'button') {
     drawItemButton(r, icon);
     return;
@@ -357,12 +353,12 @@ function drawItemHint(r: RenderContext, view: UiView): void {
   drawButtonHint(r, ITEM_HINT_LABEL, scale, itemHintRect(display.viewWidth, display, scale));
 }
 
-/** A hint plate at the hint spot: the plate, a caret up at the skater and its rows (texts, key caps, arrows). */
-function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number, p: Rect): void {
+/** A hint plate at the hint spot: the plate, a caret up at the skater (or `tipX`) and its rows (texts, key caps, arrows). */
+function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number, p: Rect, tipX = PLAYER_X): void {
   const { g } = r;
   ribbon(r, p.x, p.y, p.w, p.h);
   g.fillStyle = UI.yellow;
-  const tip = Math.min(Math.max(PLAYER_X, p.x + 4), p.x + p.w - 4);
+  const tip = Math.min(Math.max(Math.round(tipX), p.x + 4), p.x + p.w - 4);
   for (let i = 0; i < 3; i++) g.fillRect(tip - i, p.y - 3 + i, 1 + 2 * i, 1);
   const options = scale === 1 ? HINT_TEXT : HINT_TEXT_BIG;
   let y = p.y + HINT_PAD_Y;
@@ -388,14 +384,13 @@ function drawHintPlate(r: RenderContext, rows: readonly HintRow[], scale: number
 }
 
 /**
- * The riding hint at the hint spot, one at a time (shownHint): the keyboard
- * high five hint, the grind trick hint, the air trick hint (after a launch)
- * or the kicker hint (before it).
+ * The riding hint at the hint spot, one at a time (the hint slot): the
+ * keyboard high five hint, the grind trick hint, the air trick hint or the
+ * kicker hint (anchored at its ramp).
  */
 function drawRidingHints(r: RenderContext, view: UiView): void {
   const { display } = r;
-  const highFive = view.highFiveHint.visible && !display.touch;
-  const shown = shownHint({ highFive, trick: view.trickHint.visible, air: view.airHint.visible, kicker: view.kickerHint.visible });
+  const shown = view.hints.kind;
   if (shown === 'highFive') {
     const p = highFiveHintPlate(display);
     if (p.kind === 'spot') drawHintPlate(r, p.rows, p.scale, p.rect);
@@ -404,22 +399,49 @@ function drawRidingHints(r: RenderContext, view: UiView): void {
     drawHintPlate(r, plate.rows, plate.scale, plate.rect);
   } else if (shown === 'kicker') {
     const scale = popupScale(display, false);
-    drawHintPlate(r, KICKER_HINT_ROWS, scale, kickerHintRect(scale, display.viewWidth));
+    const anchor = view.kickerHint.anchorX;
+    drawHintPlate(r, KICKER_HINT_ROWS, scale, kickerHintRect(scale, display.viewWidth, anchor), anchor);
   } else if (shown === 'air') {
     const plate = airTrickHintPlate(display);
     drawHintPlate(r, plate.rows, plate.scale, plate.rect);
   }
 }
 
-/** "Combo xN!" / "Stunt-Linie! +…": outlined lines centred in their box, fading out at the end. */
+/** "Linie xN!" / "Kickflip! +…" / "Stunt-Linie! +…": outlined lines centred in their box, fading out at the end. */
 function drawStunt(r: RenderContext, view: UiView): void {
   const box = view.stuntRect;
   if (!box) return;
   const { stunt } = view;
   r.g.globalAlpha = stunt.age > 0.75 ? (1 - stunt.age) / 0.25 : 1;
   const cx = box.x + (box.w >> 1);
-  for (let i = 0; i < stunt.lines.length; i++) outlined(r, stunt.lines[i]!, cx, calloutLineY(box, i), stunt.color, box.scale);
+  for (let i = 0; i < stunt.lines.length; i++) outlined(r, stunt.lines[i]!, cx, calloutLineY(box, i), stunt.colors[i]!, box.scale);
   r.g.globalAlpha = 1;
+}
+
+/** Where the current sparkle dot is drawn (reused, no allocation). */
+const dot = { x: 0, y: 0 };
+/** The sparkle's centre above the skater's feet: his middle. */
+const SPARKLE_RISE = 16;
+
+/** The kickflip sparkle: little yellow and white stars flying out from the skater, fading. */
+function drawSparkle(r: RenderContext, view: UiView): void {
+  const { sparkle } = view;
+  if (!sparkle.visible) return;
+  const { g } = r;
+  const age = sparkle.age;
+  const cy = Math.round(r.state.player.y) - SPARKLE_RISE;
+  g.globalAlpha = age > 0.6 ? (1 - age) / 0.4 : 1;
+  for (let i = 0; i < SPARKLE_RAYS; i++) {
+    sparkleDot(i, age, dot);
+    const x = PLAYER_X + dot.x;
+    const y = cy + dot.y;
+    // A little plus, every other one bigger and yellow.
+    const arm = i % 2 ? 1 : 2;
+    g.fillStyle = i % 2 ? UI.white : UI.yellow;
+    g.fillRect(x - arm, y, 2 * arm + 1, 1);
+    g.fillRect(x, y - arm, 1, 2 * arm + 1);
+  }
+  g.globalAlpha = 1;
 }
 
 const HINT_TEXT: TextOptions = { color: UI.yellow };
@@ -488,6 +510,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawChillTint(r);
       drawStats(r, view);
       drawItemControl(r, view);
+      drawSparkle(r, view);
       drawLive(r, view);
       drawStunt(r, view);
       drawItemHint(r, view);

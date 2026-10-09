@@ -2,8 +2,8 @@
  * A centred column of screen blocks (text rows, button cards) that drops the
  * least important blocks until the rest fits between `top` and `bottom`, so
  * every menu screen works on desktop, phone landscape and portrait
- * (where buttons are 44 view px tall). An optional clear zone (the skater)
- * stays uncovered: lines that would cover it move to its right.
+ * (where buttons are 44 view px tall). Optional clear zones (the skater, a
+ * corner button) stay uncovered: lines that would cover one move to its right.
  */
 import type { Rect } from '../types';
 
@@ -27,8 +27,8 @@ export interface ColumnBounds {
   centre: number;
   /** Widest a line of inline blocks may get. */
   maxWidth: number;
-  /** A region no block may cover (e.g. the skater): such lines move right of it, else optional blocks give way. */
-  clear?: Rect;
+  /** Regions no block may cover (the skater, a corner button): such lines move right of them, else optional blocks give way. */
+  clear?: readonly Rect[];
 }
 
 /** Horizontal space between blocks that share a line. */
@@ -45,14 +45,22 @@ interface Line {
 
 /**
  * Left x of a line `w` wide whose top is at `y`: centred, or right of the
- * clear zone when centred it would cover it; null when it cannot keep clear.
+ * clear zones it would cover centred; null when it cannot keep clear.
  */
 function lineX(w: number, h: number, y: number, bounds: ColumnBounds): number | null {
-  const x = bounds.centre - Math.floor(w / 2);
-  const c = bounds.clear;
-  if (!c || y >= c.y + c.h || c.y >= y + h || x >= c.x + c.w || c.x >= x + w) return x;
-  const right = c.x + c.w + CLEAR_GAP;
-  return right + w <= bounds.centre + Math.floor(bounds.maxWidth / 2) ? right : null;
+  const centred = bounds.centre - Math.floor(w / 2);
+  let x = centred;
+  const covers = (c: Rect) => y < c.y + c.h && c.y < y + h && x < c.x + c.w && c.x < x + w;
+  // Moving right of one zone can run into the next one: repeat until no zone is covered.
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const c of bounds.clear ?? []) {
+      if (!covers(c)) continue;
+      x = c.x + c.w + CLEAR_GAP;
+      moved = true;
+    }
+  }
+  return x === centred || x + w <= bounds.centre + Math.floor(bounds.maxWidth / 2) ? x : null;
 }
 
 interface Laid {

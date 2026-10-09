@@ -3,7 +3,7 @@
  * view: shared by the hotspots (index.ts) and the drawing (menu-screens.ts).
  */
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
-import type { DisplayInfo, GameState } from '../types';
+import type { DisplayInfo, GameState, Rect } from '../types';
 import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
 import { installHintKind, reloadOffered, whatsNewLines } from './notices';
 import type { RunResult } from './records';
@@ -14,6 +14,8 @@ export interface MenuView {
   lastRun: RunResult | null;
   settings: { open: boolean };
   portraitDismissed: boolean;
+  /** The HUD stats plate as drawn now (the pause logo keeps clear of it). */
+  hud: { layout: { plate: Rect } };
 }
 
 export type MenuScreen = 'whatsNew' | 'title' | 'pause' | 'gameOver';
@@ -62,9 +64,11 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     fullscreenAvailable: view.fullscreenAvailable,
     reload: screen !== 'whatsNew' && reloadOffered(state),
     install,
+    plate: screen === 'pause' ? view.hud.layout.plate : null,
   };
+  const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
-  const key = `${screen}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${
+  const key = `${screen}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

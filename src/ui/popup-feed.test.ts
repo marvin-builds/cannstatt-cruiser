@@ -35,10 +35,10 @@ describe('PopupFeed', () => {
     expect(feed.flush(false)).toHaveLength(0);
   });
 
-  it('drinking: "Prost! Gluck gluck gluck"', () => {
+  it('drinking: "Gluck gluck gluck!" (the catch already said "Prost!", once is enough)', () => {
     const feed = new PopupFeed();
     feed.itemUsed('drink');
-    expect(texts(feed)).toEqual(['Prost! Gluck gluck gluck']);
+    expect(texts(feed)).toEqual(['Gluck gluck gluck!']);
   });
 
   it('kid mode never cheers with beer', () => {
@@ -102,14 +102,6 @@ describe('PopupFeed', () => {
     expect(texts(feed)).toEqual(['Grind-Trick! +1.500']);
   });
 
-  it('an air trick: "Air-Trick! +N", the same in kid mode', () => {
-    const feed = new PopupFeed();
-    feed.airTrick(1250);
-    expect(texts(feed)).toEqual(['Air-Trick! +1.250']);
-    feed.airTrick(300);
-    expect(texts(feed, true)).toEqual(['Air-Trick! +300']);
-  });
-
   it('a high five: "High Five! +N", the same in kid mode', () => {
     const feed = new PopupFeed();
     feed.highFive(250);
@@ -123,7 +115,6 @@ describe('PopupFeed', () => {
     feed.itemUsed('drink');
     feed.ballBack();
     feed.grindTrick(10);
-    feed.airTrick(10);
     feed.highFive(10);
     for (const p of feed.flush(false)) expect(p.color).toMatch(/^#/);
   });

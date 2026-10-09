@@ -9,6 +9,7 @@ import {
   calloutBlockers,
   type CalloutScene,
   COMBO_TIME,
+  KICKFLIP_TIME,
   fitCallout,
   LINE_DONE_TIME,
   placeCallout,
@@ -19,15 +20,40 @@ import {
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 describe('stunt callout', () => {
-  it('shows "Combo xN!" on every stunt step, replacing the last one', () => {
+  it('shows "Linie xN!" (the stunt line multiplier, not the HUD combo) on every stunt step, replacing the last one', () => {
     const c = new StuntCallout();
     expect(c.visible).toBe(false);
     c.step(2);
     expect(c.visible).toBe(true);
-    expect(c.lines).toEqual(['Combo x2!']);
+    expect(c.lines).toEqual(['Linie x2!']);
     c.update(0.3);
     c.step(3);
-    expect(c.lines).toEqual(['Combo x3!']);
+    expect(c.lines).toEqual(['Linie x3!']);
+  });
+
+  it('a kickflip (airTrick) shows the big "Kickflip! +N" callout, punching in', () => {
+    const c = new StuntCallout();
+    c.kickflip(250);
+    expect(c.lines).toEqual(['Kickflip! +250']);
+    expect(c.punch).toBe(true);
+    c.update(KICKFLIP_TIME - 0.01);
+    expect(c.visible).toBe(true);
+    c.update(0.02);
+    expect(c.visible).toBe(false);
+  });
+
+  it('a kickflip and a stunt step in the same tick both show, one line each in its colour', () => {
+    const c = new StuntCallout();
+    c.step(2);
+    c.kickflip(250);
+    expect(c.lines).toEqual(['Linie x2!', 'Kickflip! +250']);
+    expect(c.colors.length).toBe(2);
+    expect(c.colors[0]).not.toBe(c.colors[1]);
+    c.update(COMBO_TIME + 0.01);
+    expect(c.visible, 'stays as long as the longer one').toBe(true);
+    c.update(1 / 60);
+    c.step(3);
+    expect(c.lines).toEqual(['Linie x3!']);
   });
 
   it('a combo fades after COMBO_TIME', () => {
@@ -77,7 +103,7 @@ describe('stunt callout', () => {
     expect(c.visible).toBe(false);
     c.step(3);
     c.session(0);
-    expect(c.lines).toEqual(['Combo x3!']);
+    expect(c.lines).toEqual(['Linie x3!']);
     expect(c.visible).toBe(true);
   });
 
@@ -192,8 +218,8 @@ describe('stunt callout', () => {
     it('smaller than before: the settled combo is drawn at scale 2 and punches in at 3 where there is room', () => {
       for (const d of displays) {
         const scene = sceneFor(d, 390, plates[0]!, false, false);
-        const settled = fitCallout(['Combo x2!'], false, 390, calloutBlockers(scene))!;
-        const punched = fitCallout(['Combo x2!'], true, 390, calloutBlockers(scene))!;
+        const settled = fitCallout(['Linie x2!'], false, 390, calloutBlockers(scene))!;
+        const punched = fitCallout(['Linie x2!'], true, 390, calloutBlockers(scene))!;
         expect(settled.scale).toBe(2);
         expect(punched.scale).toBe(3);
         expect(punched.w).toBeGreaterThan(settled.w);
