@@ -54,8 +54,9 @@ export class LongPress {
 
 const KID_MODE_KEY = 'kidMode';
 
+/** Kid mode unless an explicit choice turned it off (ROADMAP 39): no, unreadable or junk storage is kid mode. */
 export function loadKidMode(store: Store): boolean {
-  return store.get<unknown>(KID_MODE_KEY, false) === true;
+  return store.get<unknown>(KID_MODE_KEY, true) !== false;
 }
 
 export function saveKidMode(store: Store, on: boolean): void {

@@ -13,7 +13,7 @@
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { ARROW_RIGHT, HEART_ICON, SHARE_ICON } from './art';
+import { ARROW_RIGHT, SHARE_ICON } from './art';
 import { type Block, type ColumnBounds, fitColumn } from './column';
 import { centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
@@ -112,17 +112,6 @@ export function titleHelp(touch: boolean): string[] {
     touch ? 'In der Luft runterwischen = Kickflip' : 'In der Luft Pfeil runter = Kickflip',
     touch ? 'Knopf antippen = Gegenstand benutzen' : 'E = Gegenstand benutzen',
   ];
-}
-
-/** The chip in the title's top-left corner while kid mode is on. */
-export const KID_CHIP_LABEL = 'Kindermodus';
-const KID_CHIP_PAD = 3;
-/** Space between the chip's heart and its label. */
-export const KID_CHIP_GAP = 3;
-
-/** The kid mode chip: a heart and "Kindermodus" on a plate in the top-left corner (the HUD buttons are top right). */
-export function kidChipRect(): Rect {
-  return { x: 2, y: 2, w: 2 * KID_CHIP_PAD + HEART_ICON.width + KID_CHIP_GAP + measureText(KID_CHIP_LABEL), h: 11 };
 }
 
 /** Rows of the game-over results table (labels; values come from the run). */

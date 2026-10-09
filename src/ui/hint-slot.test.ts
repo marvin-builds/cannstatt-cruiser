@@ -62,6 +62,15 @@ describe('hint slot: one riding hint at a time, long enough to read', () => {
     expect(shown.every((k) => k === 'highFive')).toBe(true);
   });
 
+  it('the ramp hint never cuts a showing high five hint short: it waits until the high five hint had its minimum time', () => {
+    const slot = new HintSlot();
+    run(slot, 0.1, want('highFive'));
+    const early = run(slot, HINT_MIN_TIME - 0.1 - 2 * TICK, want('kicker'));
+    expect(early.every((k) => k === 'highFive')).toBe(true);
+    run(slot, 4 * TICK, want('kicker'));
+    expect(slot.kind).toBe('kicker');
+  });
+
   it('dismiss hides a hint whose job is done at once (trick started, launched off the kicker)', () => {
     const slot = new HintSlot();
     run(slot, 0.1, want('kicker'));

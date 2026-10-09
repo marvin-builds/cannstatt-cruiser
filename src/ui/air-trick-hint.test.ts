@@ -4,7 +4,7 @@ import { createStore, type Store } from '../core/storage';
 import type { Rect } from '../types';
 import { AirTrickHint, airTrickHintPlate, STREET_HINT_HEIGHT } from './air-trick-hint';
 import { KEY_DOWN, SWIPE_DOWN } from './hint-plate';
-import { kickerHintRect } from './kicker-hint';
+import { kickerHintPlate } from './kicker-hint';
 import { POPUP_MARGIN, popupScale } from './layout';
 
 function memoryStore(): Store {
@@ -147,7 +147,7 @@ describe('air trick hint', () => {
             expect(overlaps(r, { x: PLAYER_X - 12, y: feet - 32, w: 24, h: 32 })).toBe(false);
           }
           // Same spot as the kicker hint: hints are found in one place.
-          expect(r.y).toBe(kickerHintRect(popupScale(d, false), viewWidth).y);
+          expect(r.y).toBe(kickerHintPlate({ ...d, viewWidth }).rect.y);
         });
       }
     }

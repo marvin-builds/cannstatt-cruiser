@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import type { Rect } from '../types';
-import { measureText } from '../core/font';
 import { centreX, hudButtons, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { statsLayout } from './stats';
 import {
   gameOverLayout,
   installParts,
-  kidChipRect,
   type MenuInput,
   type MenuLayout,
   PANEL_PAD,
@@ -309,19 +307,6 @@ describe('menu screen layouts', () => {
     expect(titleHelp(false)).toContain('In der Luft Pfeil runter = Kickflip');
     expect(titleHelp(true)).toContain('Knopf antippen = Gegenstand benutzen');
     for (const touch of [true, false]) for (const line of titleHelp(touch)) expect(line).not.toMatch(/Wisch runter|nach unten wischen/i);
-  });
-
-  it('title: the kid mode chip sits in the top-left corner, clear of the logo, the HUD buttons and the panel', () => {
-    for (const input of inputs()) {
-      const chip = kidChipRect();
-      const l = titleLayout(input);
-      const at = `${input.label}: ${JSON.stringify(chip)}`;
-      expect(inside(chip, input.viewWidth), at).toBe(true);
-      expect(overlap(chip, logoRect(input.viewWidth)), at).toBe(false);
-      expect(overlap(chip, l.panel!), at).toBe(false);
-      for (const b of hud(input, false)) expect(overlap(chip, b), at).toBe(false);
-      expect(chip.w).toBeGreaterThan(measureText('Kindermodus'));
-    }
   });
 
   it('game over keeps the score and highscore rows outside portrait, notices give way first', () => {

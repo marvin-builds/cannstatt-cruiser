@@ -10,6 +10,7 @@ import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { gameOverLayout, type MenuInput, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
+import { KICKER_HINT_LAUNCHES, KickerHint } from './kicker-hint';
 import { loadKidMode, saveKidMode } from './settings';
 
 function memoryStore(): Store & { raw: Map<string, string> } {
@@ -195,14 +196,15 @@ describe('hidden settings menu', () => {
     return { ...t, pointers, ticks, logo, menu, press, longPress };
   }
 
-  it('loads kid mode at startup (adult mode by default)', () => {
-    expect(setup().game.state.kidMode).toBe(false);
+  it('loads kid mode at startup (kid mode by default, an explicit adult choice is kept)', () => {
+    expect(setup().game.state.kidMode).toBe(true);
+    expect(title(false).game.state.kidMode).toBe(false);
     expect(title(true).game.state.kidMode).toBe(true);
   });
 
   it('a 3 s long press on the logo opens it without starting a run', () => {
     for (const touch of [true, false]) {
-      const t = title();
+      const t = title(false);
       t.longPress(180, touch);
       expect(t.game.state.mode).toBe('title');
       expect(t.press(t.menu().toggle)).toBe(true);
@@ -247,7 +249,7 @@ describe('hidden settings menu', () => {
     keyUp(t.game, 'KeyK');
     t.game.commands.pause();
     expect(t.press(t.menu().toggle)).toBe(true); // the pause screen's tap-to-resume, not the menu
-    expect(t.game.state.kidMode).toBe(false);
+    expect(t.game.state.kidMode).toBe(true); // still the default: nothing toggled
   });
 
   it('while open, Space and taps do not start a run; Escape closes it', () => {
@@ -275,7 +277,7 @@ describe('hidden settings menu', () => {
   });
 
   it('turning kid mode on is immediate and persisted', () => {
-    const t = title();
+    const t = title(false);
     t.longPress();
     t.press(t.menu().toggle);
     expect(t.game.state.kidMode).toBe(true);
@@ -339,15 +341,12 @@ describe('stunt lines', () => {
     expect(store.get('airTrickSeen', false)).toBe(true);
   });
 
-  it('persists a completed stunt line so the kicker hint never shows again; a missed line does not', () => {
+  it('counts ramp launches persistently, so the ramp hint stops after a few of them (ROADMAP 40)', () => {
     const { game, store } = setup();
     game.commands.startRun();
     game.tick();
-    game.bus.emit('stuntStep', { step: 1, steps: 3, multiplier: 2, points: 50 });
-    game.bus.emit('stuntEnd', { steps: 3, made: 1, completed: false, points: 0 });
-    expect(store.get('stuntLineSeen', false)).toBe(false);
-    game.bus.emit('stuntEnd', { steps: 3, made: 3, completed: true, points: 600 });
-    expect(store.get('stuntLineSeen', false)).toBe(true);
+    for (let i = 1; i <= KICKER_HINT_LAUNCHES; i++) game.bus.emit('launch', { entityId: i, velocity: 300 });
+    expect(new KickerHint(store).done).toBe(true);
   });
 });
 
@@ -631,7 +630,7 @@ describe('update, what is new, install hint and pause navigation', () => {
     keyUp(t.game, 'KeyK');
     t.ticks(1);
     expect(t.press(menu.toggle)).toBe(true);
-    expect(t.game.state.kidMode).toBe(true);
+    expect(t.game.state.kidMode).toBe(false); // toggled off from the kid mode default
   });
 
   it('switching kid mode from pause restarts the run when the menu closes; no switch keeps the pause', () => {
@@ -653,17 +652,17 @@ describe('update, what is new, install hint and pause navigation', () => {
 
     openMenu();
     t.press(menu.toggle);
-    expect(t.game.state.kidMode).toBe(true);
+    expect(t.game.state.kidMode).toBe(false); // off from the kid mode default
     expect(t.game.state.mode).toBe('paused'); // the note shows until the menu closes
     t.press(menu.back);
     expect(starts()).toBe(2);
     expect(t.game.state.mode).toBe('playing');
 
-    // And off again without any question: another restart.
+    // And on again without any question: another restart.
     t.game.commands.pause();
     openMenu();
     t.press(menu.toggle);
-    expect(t.game.state.kidMode).toBe(false);
+    expect(t.game.state.kidMode).toBe(true);
     t.press(menu.back);
     expect(starts()).toBe(3);
     expect(t.game.state.mode).toBe('playing');

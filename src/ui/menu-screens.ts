@@ -7,7 +7,7 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { ARROW_RIGHT, DISMISS_ICON, HEART_ICON, SHARE_ICON, STAR, UI } from './art';
+import { ARROW_RIGHT, DISMISS_ICON, SHARE_ICON, STAR, UI } from './art';
 import { centred, fill, menuButton, ribbon, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
@@ -16,9 +16,6 @@ import {
   controlsLine,
   gameOverPrompt,
   installParts,
-  KID_CHIP_GAP,
-  KID_CHIP_LABEL,
-  kidChipRect,
   LINE,
   MENU_TEXT,
   type InstallCard,
@@ -129,16 +126,6 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   if (l.buttons.submit) menuButton(r, l.buttons.submit, submitLabel(display.touch), UI.yellow);
 }
 
-/** The kid mode chip in the title's top-left corner: a heart and "Kindermodus" on a plate. */
-function drawKidChip(r: RenderContext): void {
-  const chip = kidChipRect();
-  r.g.fillStyle = UI.panel;
-  r.g.fillRect(chip.x, chip.y, chip.w, chip.h);
-  const x = chip.x + 3;
-  HEART_ICON.draw(r.g, 0, x, chip.y + Math.floor((chip.h - HEART_ICON.height) / 2), 1);
-  text(r, KID_CHIP_LABEL, x + HEART_ICON.width + KID_CHIP_GAP, chip.y + 2, { color: UI.pink });
-}
-
 export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {
   const logo = logoRect(r.display.viewWidth);
   drawLogo(r.g, logo.x, logo.y);
@@ -147,7 +134,6 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
     r.g.fillRect(l.panel.x, l.panel.y, l.panel.w, l.panel.h);
   }
   drawHoldProgress(r, view.logoHold.progress, logo);
-  if (r.state.kidMode) drawKidChip(r);
   const y = (id: string) => l.blocks.get(id)?.y;
   const tagline = y('tagline');
   if (tagline !== undefined) centred(r, 'Mit dem Longboard durch Stuttgart', tagline, { color: UI.muted });

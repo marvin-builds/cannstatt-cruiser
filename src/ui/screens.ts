@@ -50,7 +50,7 @@ import {
 } from './hint-plate';
 import type { HintSlot } from './hint-slot';
 import { handShown, type HighFiveHint, highFiveHand, highFiveHintPlate } from './high-five';
-import { KICKER_HINT_ROWS, type KickerHint, kickerHintRect } from './kicker-hint';
+import { type KickerHint, kickerHintPlate } from './kicker-hint';
 import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
   centreX,
@@ -96,7 +96,7 @@ export interface UiView {
   itemHint: ItemHint;
   /** "↓ = Trick!" under the skater on the first grinds, until a grind trick was done once. */
   trickHint: TrickHint;
-  /** "Ab über die Rampe!" while a kicker approaches, until a stunt line was completed once. */
+  /** "Auf der Rampe springen!" / "tippen!" around each kicker, until a few ramp launches were done. */
   kickerHint: KickerHint;
   /** "In der Luft ↓ = Trick!" in the air after a launch, until an air trick was done once. */
   airHint: AirTrickHint;
@@ -413,9 +413,9 @@ function drawRidingHints(r: RenderContext, view: UiView): void {
     const plate = trickHintPlate(display);
     drawHintPlate(r, plate.rows, plate.scale, plate.rect);
   } else if (shown === 'kicker') {
-    const scale = popupScale(display, false);
     const anchor = view.kickerHint.anchorX;
-    drawHintPlate(r, KICKER_HINT_ROWS, scale, kickerHintRect(scale, display.viewWidth, anchor), anchor);
+    const plate = kickerHintPlate(display, anchor);
+    drawHintPlate(r, plate.rows, plate.scale, plate.rect, anchor);
   } else if (shown === 'air') {
     const plate = airTrickHintPlate(display);
     drawHintPlate(r, plate.rows, plate.scale, plate.rect);

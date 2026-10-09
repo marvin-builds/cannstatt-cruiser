@@ -1,135 +1,169 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
-import { createStore, type Store } from '../core/storage';
+import { createMemoryStore, type Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
-import { KICKER_HINT_AHEAD, KICKER_HINT_RUNS, KickerHint, kickerHintRect, KICKER_HINT_LABEL } from './kicker-hint';
 import { hintSpotRect } from './hint-plate';
+import {
+  inKickerHintRange,
+  KICKER_HINT_AFTER,
+  KICKER_HINT_LAUNCHES,
+  KICKER_HINT_LEAD,
+  KickerHint,
+  kickerHintPlate,
+} from './kicker-hint';
 import { POPUP_MARGIN } from './layout';
 
-function memoryStore(): Store {
-  const raw = new Map<string, string>();
-  return createStore({
-    getItem: (k: string) => raw.get(k) ?? null,
-    setItem: (k: string, v: string) => void raw.set(k, v),
-  } as unknown as Storage);
-}
-
-const kicker = (id: number, x: number): Entity => ({ id, kind: 'kicker', x, y: GROUND_Y - 8, w: 24, h: 8, done: false });
+const KICKER_W = 24;
+const kicker = (id: number, x: number): Entity => ({ id, kind: 'kicker', x, y: GROUND_Y - 8, w: KICKER_W, h: 8, done: false });
 const cone = (id: number, x: number): Entity => ({ id, kind: 'cone' as Entity['kind'], x, y: GROUND_Y - 10, w: 8, h: 10, done: false });
+const SPEED = 120;
 
 /** One kicker `id` rolling from far ahead past the skater; the hint's visibility per step. */
-function approach(hint: KickerHint, id: number): boolean[] {
+function approach(hint: KickerHint, id: number, speed = SPEED): boolean[] {
   const seen: boolean[] = [];
-  for (let x = PLAYER_X + KICKER_HINT_AHEAD + 40; x > PLAYER_X - 60; x -= 10) {
-    hint.update([kicker(id, x)]);
+  for (let x = PLAYER_X + speed * KICKER_HINT_LEAD + 60; x > PLAYER_X - 100; x -= 4) {
+    hint.update([kicker(id, x)], speed);
     seen.push(hint.visible);
   }
-  hint.update([]);
+  hint.update([], speed);
   seen.push(hint.visible);
   return seen;
 }
 
-describe('kicker hint', () => {
-  it('shows while a kicker approaches and hides once it is passed', () => {
-    const hint = new KickerHint(memoryStore());
+const display = (touch: boolean, portrait: boolean, viewWidth = 320) => ({ touch, portrait, viewWidth });
+const texts = (rows: readonly (readonly unknown[])[]) => rows.flat().filter((p) => typeof p === 'string').join(' ');
+
+describe('ramp hint: when it shows (ROADMAP 40)', () => {
+  it('is in range from KICKER_HINT_LEAD seconds before the ramp through the ramp to just after its lip, scaled by speed', () => {
+    for (const speed of [90, 190]) {
+      const lead = speed * KICKER_HINT_LEAD;
+      expect(inKickerHintRange(kicker(1, PLAYER_X + lead + 2), speed)).toBe(false);
+      expect(inKickerHintRange(kicker(1, PLAYER_X + lead - 2), speed)).toBe(true);
+      expect(inKickerHintRange(kicker(1, PLAYER_X), speed)).toBe(true); // feet at the ramp's foot
+      expect(inKickerHintRange(kicker(1, PLAYER_X - KICKER_W / 2), speed)).toBe(true); // feet at the lip
+      expect(inKickerHintRange(kicker(1, PLAYER_X - KICKER_W), speed)).toBe(true); // right after the lip
+      const after = speed * KICKER_HINT_AFTER;
+      expect(inKickerHintRange(kicker(1, PLAYER_X - KICKER_W - after + 2), speed)).toBe(true);
+      expect(inKickerHintRange(kicker(1, PLAYER_X - KICKER_W - after - 2), speed)).toBe(false);
+    }
+  });
+
+  it('gives at least about a second to read before the ramp, but stays short after the lip', () => {
+    expect(KICKER_HINT_LEAD).toBeGreaterThanOrEqual(1);
+    expect(KICKER_HINT_AFTER).toBeLessThanOrEqual(0.3);
+  });
+
+  it('shows while a kicker approaches and while the skater is on it, and hides once it is passed', () => {
+    const hint = new KickerHint(createMemoryStore());
     const seen = approach(hint, 1);
     expect(seen[0]).toBe(false);
     expect(seen.some(Boolean)).toBe(true);
     expect(seen.at(-1)).toBe(false);
+    hint.update([kicker(2, PLAYER_X - 4)], SPEED); // feet on the ramp
+    expect(hint.visible).toBe(true);
   });
 
   it('ignores everything that is not a kicker', () => {
-    const hint = new KickerHint(memoryStore());
-    hint.update([cone(1, PLAYER_X + 40)]);
+    const hint = new KickerHint(createMemoryStore());
+    hint.update([cone(1, PLAYER_X + 40)], SPEED);
     expect(hint.visible).toBe(false);
   });
 
   it('disappears on launch and stays away for that kicker', () => {
-    const hint = new KickerHint(memoryStore());
-    hint.update([kicker(1, PLAYER_X + 30)]);
+    const hint = new KickerHint(createMemoryStore());
+    hint.update([kicker(1, PLAYER_X + 30)], SPEED);
     expect(hint.visible).toBe(true);
     hint.launched();
     expect(hint.visible).toBe(false);
-    hint.update([kicker(1, PLAYER_X + 20)]);
+    hint.update([kicker(1, PLAYER_X + 20)], SPEED);
     expect(hint.visible).toBe(false);
   });
 
-  it('shows for the first few kickers of a run only, and again in the next run', () => {
-    const hint = new KickerHint(memoryStore());
-    hint.runStarted();
-    for (let id = 1; id <= KICKER_HINT_RUNS; id++) expect(approach(hint, id).some(Boolean)).toBe(true);
-    expect(approach(hint, 99).some(Boolean)).toBe(false);
-    hint.runStarted();
-    expect(approach(hint, 100).some(Boolean)).toBe(true);
-  });
-
-  it('never shows again once a stunt line was completed, also after a reload', () => {
-    const store = memoryStore();
+  it('repeats for every kicker (also within one run) until the player launched KICKER_HINT_LAUNCHES times, persisted', () => {
+    expect(KICKER_HINT_LAUNCHES).toBeGreaterThanOrEqual(3);
+    const store: Store = createMemoryStore();
     const hint = new KickerHint(store);
-    hint.update([kicker(1, PLAYER_X + 30)]);
-    hint.lineCompleted();
-    expect(hint.visible).toBe(false);
     hint.runStarted();
-    expect(approach(hint, 2).some(Boolean)).toBe(false);
+    for (let id = 1; id <= 8; id++) expect(approach(hint, id).some(Boolean), `kicker ${id} without a launch`).toBe(true);
+    for (let i = 1; i < KICKER_HINT_LAUNCHES; i++) {
+      hint.update([kicker(100 + i, PLAYER_X)], SPEED);
+      hint.launched();
+    }
+    expect(approach(hint, 200).some(Boolean), 'one launch short').toBe(true);
     const reloaded = new KickerHint(store);
+    expect(approach(reloaded, 201).some(Boolean), 'reloaded, one launch short').toBe(true);
+    reloaded.launched();
+    expect(approach(reloaded, 202).some(Boolean)).toBe(false);
     reloaded.runStarted();
-    expect(approach(reloaded, 3).some(Boolean)).toBe(false);
+    expect(approach(reloaded, 203).some(Boolean)).toBe(false);
+    expect(approach(new KickerHint(store), 204).some(Boolean), 'after a reload').toBe(false);
   });
 
   it('a new run hides a hint still showing', () => {
-    const hint = new KickerHint(memoryStore());
-    hint.update([kicker(1, PLAYER_X + 30)]);
+    const hint = new KickerHint(createMemoryStore());
+    hint.update([kicker(1, PLAYER_X + 30)], SPEED);
     hint.runStarted();
     expect(hint.visible).toBe(false);
   });
 
-  it('says the same on touch and keyboard: the ramp needs no button', () => {
-    expect(KICKER_HINT_LABEL).toBe('Ab über die Rampe!');
+  it('anchors at the ramp: its anchor follows the kicker it is about, also while it lingers after passing', () => {
+    const hint = new KickerHint(createMemoryStore());
+    expect(hint.anchorX).toBe(PLAYER_X);
+    hint.update([kicker(1, PLAYER_X + 100)], SPEED);
+    expect(hint.anchorX).toBe(PLAYER_X + 100 + 12);
+    hint.update([kicker(1, PLAYER_X + 50)], SPEED);
+    expect(hint.anchorX).toBe(PLAYER_X + 50 + 12);
+    hint.update([kicker(1, PLAYER_X - 80)], SPEED);
+    expect(hint.visible).toBe(false);
+    expect(hint.anchorX).toBe(PLAYER_X - 80 + 12);
+    hint.update([], SPEED);
+    expect(hint.anchorX).toBe(PLAYER_X - 80 + 12); // gone: stays where it was last
+  });
+});
+
+describe('ramp hint: what it says', () => {
+  it('keyboard: "Auf der Rampe springen!" with the jump key', () => {
+    const t = texts(kickerHintPlate(display(false, false)).rows);
+    expect(t).toContain('Auf der Rampe springen!');
+    expect(t).toContain('Leertaste');
+  });
+
+  it('touch (landscape and portrait): "Auf der Rampe tippen!"', () => {
+    for (const portrait of [false, true]) expect(texts(kickerHintPlate(display(true, portrait)).rows)).toBe('Auf der Rampe tippen!');
   });
 
   for (const viewWidth of [320, 384, 427]) {
     it(`stays compact in portrait (big font), ${viewWidth} wide: at most 60 % of the view`, () => {
-      expect(kickerHintRect(2, viewWidth).w).toBeLessThanOrEqual(Math.round(viewWidth * 0.6));
+      expect(kickerHintPlate(display(true, true, viewWidth)).rect.w).toBeLessThanOrEqual(Math.round(viewWidth * 0.6));
     });
   }
 
-  it('anchors at the ramp: its anchor follows the kicker it is about, also while it lingers after passing', () => {
-    const hint = new KickerHint(memoryStore());
-    expect(hint.anchorX).toBe(PLAYER_X);
-    hint.update([kicker(1, PLAYER_X + 100)]);
-    expect(hint.anchorX).toBe(PLAYER_X + 100 + 12);
-    hint.update([kicker(1, PLAYER_X + 50)]);
-    expect(hint.anchorX).toBe(PLAYER_X + 50 + 12);
-    hint.update([kicker(1, PLAYER_X - 40)]);
-    expect(hint.visible).toBe(false);
-    expect(hint.anchorX).toBe(PLAYER_X - 40 + 12);
-    hint.update([]);
-    expect(hint.anchorX).toBe(PLAYER_X - 40 + 12); // gone: stays where it was last
-  });
-
   it('the plate centres on its anchor, kept on screen, the street level under the ramp', () => {
     for (const viewWidth of [320, 427]) {
-      for (const anchor of [PLAYER_X, PLAYER_X + 100, viewWidth + 50, -30]) {
-        const r = kickerHintRect(1, viewWidth, anchor);
-        expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
-        expect(r.x + r.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
-        expect(r.y).toBe(kickerHintRect(1, viewWidth).y);
+      for (const touch of [false, true]) {
+        for (const anchor of [PLAYER_X, PLAYER_X + 100, viewWidth + 50, -30]) {
+          const r = kickerHintPlate(display(touch, false, viewWidth), anchor).rect;
+          expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
+          expect(r.x + r.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
+          expect(r.y).toBe(kickerHintPlate(display(touch, false, viewWidth)).rect.y);
+        }
+        const mid = kickerHintPlate(display(touch, false, viewWidth), PLAYER_X + 100).rect;
+        expect(mid.x + Math.floor(mid.w / 2)).toBeGreaterThanOrEqual(PLAYER_X + 99);
       }
-      const mid = kickerHintRect(1, viewWidth, PLAYER_X + 100);
-      expect(mid.x + Math.floor(mid.w / 2)).toBeGreaterThanOrEqual(PLAYER_X + 99);
     }
   });
 
   describe('placement', () => {
     const skater = (feetY: number): Rect => ({ x: PLAYER_X - 12, y: feetY - 32, w: 24, h: 32 });
-    for (const [scale, viewWidth] of [
-      [1, 320],
-      [1, 427],
-      [2, 320],
-      [2, 384],
+    for (const [touch, portrait, viewWidth] of [
+      [false, false, 320],
+      [false, false, 427],
+      [true, false, 427],
+      [true, true, 320],
+      [true, true, 384],
     ] as const) {
-      it(`scale ${scale} in a ${viewWidth} wide view: under the riding line, on screen, clear of the skater`, () => {
-        const r = kickerHintRect(scale, viewWidth);
+      it(`touch ${touch}, portrait ${portrait}, ${viewWidth} wide: under the riding line, on screen, clear of the skater`, () => {
+        const r = kickerHintPlate(display(touch, portrait, viewWidth)).rect;
         expect(r.y).toBeGreaterThan(GROUND_Y);
         expect(r.y + r.h).toBeLessThanOrEqual(VIEW_H);
         expect(r.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
