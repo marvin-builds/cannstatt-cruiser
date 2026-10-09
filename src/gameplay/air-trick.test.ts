@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Game } from '../core/game';
 import { createPlayerTestGame, crash, tick } from '../player/testing';
+import { canStartAirTrick } from '../player/air-trick';
 import type { Entity, System } from '../types';
-import { AIR_TRICK_POINTS } from './air-trick';
+import { AIR_TRICK_POINTS, STREET_AIR_TRICK_POINTS } from './air-trick';
 import { kickerRect, ledgeRect, obstacleRect, railRect } from './catalogue';
 import { createGameplaySystem } from './index';
 import { launchVelocityFor } from './rules';
@@ -191,5 +192,72 @@ describe('air trick scoring', () => {
     game.setSpeedOverride(SPEED);
     tick(game, 60);
     expect(tricks).toEqual([]);
+  });
+
+  it('a street kickflip (no kicker launch in the flight) scores STREET_AIR_TRICK_POINTS, less than a launch kickflip', () => {
+    expect(STREET_AIR_TRICK_POINTS).toBe(100);
+    expect(STREET_AIR_TRICK_POINTS).toBeLessThan(AIR_TRICK_POINTS);
+    const { game, trick } = trickGame();
+    const tricks = record(game, 'airTrick');
+    game.buttons.action.press('test');
+    tick(game, 3);
+    doTrick(game, trick, 10);
+    game.buttons.action.release('test');
+    until(game, () => game.state.player.grounded);
+    tick(game);
+    expect(tricks).toEqual([{ ticks: 10, points: STREET_AIR_TRICK_POINTS }]);
+    // The next flight off a kicker is a launch kickflip again.
+    launchOff(game);
+    doTrick(game, trick, 21);
+    until(game, () => game.state.player.grounded);
+    tick(game);
+    expect(tricks[1]).toEqual({ ticks: 21, points: AIR_TRICK_POINTS });
+  });
+});
+
+/** Player + gameplay with the real kickflip (down pressed in the air, player/air-trick.ts). */
+describe('air trick scoring agrees with the player rule', () => {
+  /** Down pressed (one-tick taps) every tick of the flight from `from` on, until the trick starts; returns whether the rule allowed it. */
+  function tapDownWhileAirborne(game: Game, from: number): boolean {
+    let allowed = false;
+    for (let i = 0; i < 120 && !game.state.player.airTrick; i++) {
+      const p = game.state.player;
+      if (i >= from && !p.grounded) {
+        allowed ||= canStartAirTrick(p.y, p.vy, false);
+        game.buttons.duck.press('test');
+      }
+      tick(game);
+      game.buttons.duck.release('test');
+      if (i > 2 && game.state.player.grounded) break;
+    }
+    return allowed || game.state.player.airTrick;
+  }
+
+  it('a kickflip on a full street jump scores the street points once', () => {
+    const game = createPlayerTestGame([createGameplaySystem({ spawning: false })]);
+    game.setSpeedOverride(SPEED);
+    tick(game, 2);
+    const tricks = record(game, 'airTrick');
+    game.buttons.action.press('test');
+    const started = tapDownWhileAirborne(game, 2);
+    until(game, () => game.state.player.grounded);
+    game.buttons.action.release('test');
+    tick(game, 30);
+    expect(started).toBe(true);
+    expect(tricks).toHaveLength(1);
+    expect(tricks[0]!.points).toBe(STREET_AIR_TRICK_POINTS);
+  });
+
+  it('a kickflip after a kicker launch scores the launch points', () => {
+    const game = createPlayerTestGame([createGameplaySystem({ spawning: false })]);
+    game.setSpeedOverride(SPEED);
+    tick(game, 2);
+    const tricks = record(game, 'airTrick');
+    launchOff(game);
+    tapDownWhileAirborne(game, 0);
+    until(game, () => game.state.player.grounded);
+    tick(game, 30);
+    expect(tricks).toHaveLength(1);
+    expect(tricks[0]!.points).toBe(AIR_TRICK_POINTS);
   });
 });

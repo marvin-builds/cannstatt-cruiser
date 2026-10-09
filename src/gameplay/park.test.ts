@@ -5,7 +5,7 @@ import { createPlayerTestGame, tick } from '../player/testing';
 import type { CarriedItem, ParkPlan } from '../types';
 import { highFiverRect } from './catalogue';
 import { speedAt } from './difficulty';
-import { HIGH_FIVE_POINTS, HIGH_FIVE_REACH } from './high-five';
+import { HIGH_FIVE_APPROACH, HIGH_FIVE_POINTS, HIGH_FIVE_REACH, highFiveWindow, highFiverAhead } from './high-five';
 import { createGameplaySystem } from './index';
 import { CHEER_STEP, PARK_CLEAR_AFTER, SESSION_MAX_POINTS } from './park';
 import { PARK_ANNOUNCE } from './spawner';
@@ -86,6 +86,23 @@ describe('NorDIY session cheers', () => {
   });
 });
 
+describe('highFiveWindow (where a use press goes)', () => {
+  it('reach within HIGH_FIVE_REACH on both sides, approach up to HIGH_FIVE_APPROACH ahead, else none', () => {
+    expect(highFiveWindow(0)).toBe('reach');
+    expect(highFiveWindow(HIGH_FIVE_REACH)).toBe('reach');
+    expect(highFiveWindow(-HIGH_FIVE_REACH)).toBe('reach');
+    expect(highFiveWindow(HIGH_FIVE_REACH + 0.5)).toBe('approach');
+    expect(highFiveWindow(HIGH_FIVE_APPROACH)).toBe('approach');
+    expect(highFiveWindow(HIGH_FIVE_APPROACH + 0.5)).toBe('none');
+    expect(highFiveWindow(-HIGH_FIVE_REACH - 0.5)).toBe('none');
+  });
+
+  it('highFiverAhead is the signed distance of his hand (middle) ahead of the skater', () => {
+    const e = { id: 1, kind: 'highFiver' as const, x: 100, y: 0, w: 15, h: 27, done: false };
+    expect(highFiverAhead(e, 64)).toBe(43.5);
+  });
+});
+
 describe('the high five', () => {
   function withFiver(dx: number, item: CarriedItem | null = 'pretzel') {
     const game = quietGame(0);
@@ -117,8 +134,30 @@ describe('the high five', () => {
     }
   });
 
+  it('a use press while he approaches (up to HIGH_FIVE_APPROACH ahead) keeps the item and gives the high five once he is in reach', () => {
+    expect(HIGH_FIVE_APPROACH).toBe(48);
+    for (const dx of [HIGH_FIVE_REACH + 1, 31, 40, HIGH_FIVE_APPROACH]) {
+      const game = quietGame(120);
+      game.state.carriedItem = 'pretzel';
+      const fiver = place(game, 'highFiver', highFiverRect(0));
+      fiver.x = PLAYER_X + dx - fiver.w / 2;
+      const fives = record(game, 'highFive');
+      const used = record(game, 'itemUsed');
+      use(game);
+      expect(used).toEqual([]);
+      expect(game.state.carriedItem).toBe('pretzel');
+      for (let i = 0; i < 60 && fives.length === 0; i++) game.tick();
+      expect(fives).toEqual([{ entityId: fiver.id, points: HIGH_FIVE_POINTS }]);
+      expect(highFiveWindow(highFiverAhead(fiver, PLAYER_X))).toBe('reach');
+      expect(game.state.carriedItem).toBe('pretzel');
+      expect(used).toEqual([]);
+      tick(game, 60);
+      expect(fives.length).toBe(1);
+    }
+  });
+
   it('outside the window the use press uses the item as before', () => {
-    for (const dx of [-HIGH_FIVE_REACH - 4, HIGH_FIVE_REACH + 4, 120]) {
+    for (const dx of [-HIGH_FIVE_REACH - 4, HIGH_FIVE_APPROACH + 2, 120]) {
       const { game, fives, used } = withFiver(dx);
       use(game);
       expect(fives).toEqual([]);
