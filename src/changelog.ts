@@ -20,6 +20,18 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-09.3',
+    date: '2026-10-09',
+    items: [
+      'Kickflip: in der Luft runterziehen',
+      'Kickflip mit großer Anzeige und Sound',
+      'Startbildschirm-Knopf in der Ecke',
+      'Hinweise bleiben länger stehen',
+      'High Five behält deinen Gegenstand',
+      'Kindermodus-Anzeige im Titel',
+    ],
+  },
+  {
     version: '2026-10-09.2',
     date: '2026-10-09',
     items: ['Neue Grind-Kombis mit Sternen'],
