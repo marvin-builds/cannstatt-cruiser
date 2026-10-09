@@ -18,7 +18,7 @@ import {
 import type { BinCrash, BinTumble } from './bin';
 import { BIN_ANCHOR_X, BIN_FRAMES, BIN_PALETTES, BIN_SIZE } from './bin-art';
 import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
-import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw } from './carry';
+import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw, kidSafeItem } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView, SkaterController } from './controller';
 import { type Pose, poseAt, type TimelineName, timelineFor } from './poses';
@@ -234,9 +234,9 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   // The bubble loop starts at the pickup, so it opens with a readable bubble.
   const time = style?.mouth === 'bubble' ? bubbleTime(state.chillTimer) : state.time;
   const chill = style ? { style, timeline, time, animTime } : null;
-  const carry = state.carriedItem ? { item: state.carriedItem, timeline, catching: view.catching } : null;
+  const carry = state.carriedItem ? { item: kidSafeItem(state.carriedItem, state.kidMode), timeline, catching: view.catching } : null;
   const frame = view.use && itemUseFrame(view.use.action, view.use.time);
-  const use = view.use && frame ? { item: view.use.item, frame, timeline } : null;
+  const use = view.use && frame ? { item: kidSafeItem(view.use.item, state.kidMode), frame, timeline } : null;
   const drunk = drunkLook(state.drunkTimer, state.time);
   // On a kicker the wheels ride up the ramp surface (look only, y stays GROUND_Y).
   drawPose(g, poseAt(timeline, animTime), p.x, p.y - view.kickerLift, { chill, carry, use, drunk, binLid: skater.bin.lid });

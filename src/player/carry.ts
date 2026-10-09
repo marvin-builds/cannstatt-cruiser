@@ -65,6 +65,14 @@ export const ITEM_ART: Record<CarriedItem, string> = {
   `,
 };
 
+/**
+ * The item as drawn: kid mode never shows a beer mug (gameplay never hands
+ * one out there, but a debug hook or old state may), the Brezel stands in.
+ */
+export function kidSafeItem(item: CarriedItem, kidMode: boolean): CarriedItem {
+  return kidMode && item === 'beer' ? 'pretzel' : item;
+}
+
 export function itemSize(item: CarriedItem): { w: number; h: number } {
   const rows = rowsFromString(ITEM_ART[item]);
   return { w: rows[0]!.length, h: rows.length };

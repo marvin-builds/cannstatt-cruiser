@@ -125,6 +125,8 @@ export function useDraw(item: CarriedItem, frame: UseFrame, timeline: TimelineNa
   const draw: UseDraw = { shoulder, hand, behind: BEHIND.has(frame.arm), sprite: null, x: 0, y: 0, crumbs: crumbsAt(mouth, frame.crumbs) };
   if (!frame.item || item === 'football') return draw;
   const sprite = itemSprite(item, frame);
+  // An item/action mix the game never plays (e.g. eating the mug, drinking the Brezel): only the arm.
+  if (!USE_ITEM_ART.has(sprite)) return draw;
   const { w, h } = size(sprite);
   draw.sprite = sprite;
   if (frame.arm === 'lift' || frame.arm === 'chew') {

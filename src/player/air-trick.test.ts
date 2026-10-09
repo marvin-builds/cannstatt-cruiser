@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { GROUND_Y, PLAYER_X, TICK_DT } from '../core/config';
 import type { Game } from '../core/game';
-import { airTicksLeft } from './air-trick';
-import { timelineFor } from './poses';
+import { airTicksLeft, airTrickTicks, canStartAirTrick } from './air-trick';
+import { BD } from './art';
+import { poseAt, timelineFor } from './poses';
 import { addRail, crash, createPlayerTestGame, playerController, startGrind, tick } from './testing';
-import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, HITBOX_H } from './tuning';
+import { AIR_TRICK_HEIGHT, AIR_TRICK_TICKS, HITBOX_H, STREET_AIR_TRICK_MIN_AIR, STREET_AIR_TRICK_TICKS } from './tuning';
 
 /** Launch speeds gameplay uses (debug default 360, ledges 42..58 px up -> ~382..433). */
 const LAUNCHES = [330, 360, 382, 433];
@@ -167,6 +168,82 @@ describe('air trick start rule', () => {
   });
 });
 
+/** Street jump: action held `hold` ticks (Infinity: the whole jump), down pressed before tick `pressAt` of the flight. */
+function streetJump(hold: number, pressAt: number | null): { flight: Sample[]; lands: number[] } {
+  const game = createPlayerTestGame();
+  const lands: number[] = [];
+  game.bus.on('land', (e) => lands.push(e.impact));
+  tick(game, 3);
+  game.buttons.action.press('test');
+  const flight = fly(game, (i) => {
+    if (i === hold) game.buttons.action.release('test');
+    if (i === pressAt) game.buttons.duck.press('test');
+    if (pressAt !== null && i === pressAt + 1) game.buttons.duck.release('test');
+  });
+  return { flight, lands };
+}
+
+/** Flight ticks at which a down press starts the trick on a street jump with `hold`. */
+function streetStarts(hold: number): number[] {
+  const starts: number[] = [];
+  for (let k = 0; k < 60; k++) if (streetJump(hold, k).flight[k]?.airTrick) starts.push(k);
+  return starts;
+}
+
+describe('street kickflip window', () => {
+  it('a full-hold street jump allows the start over most of the flight (>= 25 ticks)', () => {
+    const starts = streetStarts(Infinity);
+    expect(starts.length).toBeGreaterThanOrEqual(25);
+    // One contiguous window, ending a few ticks before the landing.
+    expect(starts.at(-1)! - starts[0]! + 1).toBe(starts.length);
+    expect(streetJump(Infinity, null).flight.length - starts.at(-1)!).toBeLessThanOrEqual(10);
+  });
+
+  it('medium street jumps (10- and 15-tick hold) leave a fair window (>= 10 ticks)', () => {
+    expect(streetStarts(10).length).toBeGreaterThanOrEqual(10);
+    expect(streetStarts(15).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('is shorter than the launch kickflip', () => {
+    expect(STREET_AIR_TRICK_TICKS).toBeLessThan(AIR_TRICK_TICKS);
+    const first = streetStarts(Infinity)[0]!;
+    const flight = streetJump(Infinity, first).flight;
+    const on = flight.flatMap((s, i) => (s.airTrick ? [i] : []));
+    expect(on).toEqual(Array.from({ length: STREET_AIR_TRICK_TICKS }, (_, k) => first + k));
+  });
+
+  it('a trick started late ends on the landing tick with the same flight and landing as without it', () => {
+    const plain = streetJump(Infinity, null);
+    const last = streetStarts(Infinity).at(-1)!;
+    const late = streetJump(Infinity, last);
+    // Still running the tick before touching down: the landing cuts it short.
+    expect(late.flight.at(-2)!.airTrick).toBe(true);
+    const landing = late.flight.at(-1)!;
+    expect(landing.grounded).toBe(true);
+    expect(landing.airTrick).toBe(false);
+    expect(landing.state).not.toBe('crash');
+    const physics = (f: Sample[]) => f.map(({ y, vy, grounded, state }) => ({ y, vy, grounded, crash: state === 'crash' }));
+    expect(physics(late.flight)).toEqual(physics(plain.flight));
+    expect(late.lands).toEqual(plain.lands);
+  });
+});
+
+describe('canStartAirTrick (pure rule)', () => {
+  it('a launch needs the full trick air time, a street jump only the height and STREET_AIR_TRICK_MIN_AIR', () => {
+    const y = GROUND_Y - 30;
+    // Falling from rest 30 px up: about 13 ticks of air left.
+    const left = airTicksLeft(y, 0);
+    expect(left).toBeGreaterThanOrEqual(STREET_AIR_TRICK_MIN_AIR);
+    expect(left).toBeLessThan(AIR_TRICK_TICKS);
+    expect(canStartAirTrick(y, 0, false)).toBe(true);
+    expect(canStartAirTrick(y, 0, true)).toBe(false);
+    expect(canStartAirTrick(GROUND_Y - AIR_TRICK_HEIGHT + 1, -200, false)).toBe(false);
+    expect(canStartAirTrick(GROUND_Y - 10, -400, true)).toBe(true);
+    expect(airTrickTicks(true)).toBe(AIR_TRICK_TICKS);
+    expect(airTrickTicks(false)).toBe(STREET_AIR_TRICK_TICKS);
+  });
+});
+
 describe('air trick never changes the physics', () => {
   it('the flight and the landing are identical with and without the trick', () => {
     for (const v of LAUNCHES) {
@@ -229,6 +306,23 @@ describe('air trick look', () => {
     expect(view.airTrick).toBe(0);
     expect(timelineFor(view, game.state.player.vy)).toBe('kickflip');
     tick(game, 3);
-    expect(playerController(game).view(game.state.player).airTrick).toBeCloseTo(3 * TICK_DT, 9);
+    // The launch kickflip plays the street flip timeline slower, over its longer run.
+    expect(playerController(game).view(game.state.player).airTrick).toBeCloseTo((3 * TICK_DT * STREET_AIR_TRICK_TICKS) / AIR_TRICK_TICKS, 9);
+  });
+
+  it('flips the board through every flip frame within the first STREET_AIR_TRICK_MIN_AIR + 1 ticks of a street kickflip', () => {
+    const game = createPlayerTestGame();
+    tick(game, 3);
+    game.buttons.action.press('test');
+    while (!playerController(game).view(game.state.player).airTrick && !game.state.player.airTrick) pressDown(game);
+    const boards = new Set<number>();
+    for (let i = 0; i <= STREET_AIR_TRICK_MIN_AIR; i++) {
+      const view = playerController(game).view(game.state.player);
+      boards.add(poseAt('kickflip', view.airTrick!).board);
+      tick(game);
+    }
+    for (const frame of [BD.edgeGrip, BD.upsideDown, BD.edgeBottom]) expect(boards.has(frame), `board ${frame}`).toBe(true);
+    // Over the whole trick it ends caught flat under the feet.
+    expect(poseAt('kickflip', (STREET_AIR_TRICK_TICKS - 1) * TICK_DT).board).toBe(BD.flat);
   });
 });
