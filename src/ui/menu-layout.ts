@@ -172,8 +172,8 @@ export function buttonLabelScale(m: UiMetrics): number {
   return m.menuButtonH >= 24 ? 2 : 1;
 }
 
-/** Label scale of the small "Startbildschirm" corner button: the big font only in portrait (~1 CSS px per view px). */
-export const cornerLabelScale = (portrait: boolean) => (portrait ? 2 : 1);
+/** Visible height of the "Startbildschirm" plate at most: in portrait it sits centred in its taller (44 px) tap area. */
+const CORNER_PLATE_H = 24;
 
 function buttonWidth(label: string, m: UiMetrics, scale = buttonLabelScale(m)): number {
   return Math.max(m.menuButtonH, measureText(label, scale) + 2 * BUTTON_PAD);
@@ -183,12 +183,19 @@ function buttonWidth(label: string, m: UiMetrics, scale = buttonLabelScale(m)): 
  * "Startbildschirm" on pause and game over: a small button in the top-left
  * corner, where the stats plate is during a run (pause: under the plate at
  * its tallest), as tall as a menu button (a 44 CSS px tap area on phones),
- * away from where a thumb taps to go on.
+ * with the small label font everywhere, away from where a thumb taps to go on.
+ * This is its tap area; toTitlePlate is what is drawn.
  */
 export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 'gameOver'): Rect {
-  const w = buttonWidth(toTitleLabel(input.touch, screen === 'gameOver'), m, cornerLabelScale(input.portrait));
+  const w = buttonWidth(toTitleLabel(input.touch, screen === 'gameOver'), m, 1);
   const y = screen === 'pause' ? TALLEST_PLATE.y + TALLEST_PLATE.h + CORNER_GAP : TALLEST_PLATE.y;
   return { x: TALLEST_PLATE.x, y, w, h: m.menuButtonH };
+}
+
+/** The visible "Startbildschirm" plate: its tap area, at most CORNER_PLATE_H high and vertically centred in it. */
+export function toTitlePlate(tap: Rect): Rect {
+  const h = Math.min(tap.h, CORNER_PLATE_H);
+  return { ...tap, y: tap.y + Math.floor((tap.h - h) / 2), h };
 }
 
 const IOS_STEPS_W = measureText(MENU_TEXT.iosShare) + SHARE_ICON.width + ARROW_RIGHT.width + measureText(MENU_TEXT.iosHome) + 3 * STEP_GAP;
