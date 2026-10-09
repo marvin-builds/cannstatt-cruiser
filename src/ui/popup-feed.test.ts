@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import { UI } from './art';
 import { POPUP_MARGIN } from './layout';
-import { PopupFeed } from './popup-feed';
+import { bailCause, PopupFeed } from './popup-feed';
 
 const texts = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map((p) => p.text);
 
@@ -101,18 +101,31 @@ describe('PopupFeed', () => {
 
   it('a kickflip bail (ROADMAP 41) says it came too late instead of "Autsch!"', () => {
     const feed = new PopupFeed();
-    feed.crash(true);
+    feed.crash('late');
     const [p] = feed.flush(false);
     expect(p).toMatchObject({ text: 'Zu spät geflippt!', color: UI.red, icon: null });
-    feed.crash(true);
+    feed.crash('late');
     expect(texts(feed, true)).toEqual(['Zu spät geflippt!']);
   });
 
-  it('the bail text fits between the popup margins of the narrowest view, even at the big portrait scale', () => {
+  it('a bail while tipsy or chilled (ROADMAP 42) blames that instead, in the same red, kid-safe in kid mode', () => {
     const feed = new PopupFeed();
-    feed.crash(true);
-    const [p] = feed.flush(false);
-    expect(measureText(p!.text, 2) + 2).toBeLessThanOrEqual(320 - 2 * POPUP_MARGIN);
+    feed.crash('wobbly');
+    expect(feed.flush(false)).toEqual([{ text: 'Zu wacklig!', color: UI.red, icon: null }]);
+    feed.crash('relaxed');
+    expect(feed.flush(false)).toEqual([{ text: 'Zu entspannt!', color: UI.red, icon: null }]);
+    feed.crash('relaxed');
+    const [kid] = texts(feed, true);
+    expect(kid).toBe('Zu entspannt!');
+    expect(kid).not.toMatch(/bier|maß|prost|joint|kiff|high|rausch|betrunken/i);
+  });
+
+  it.each([320, 427])('every bail text fits between the popup margins of a %i px view, even at the big portrait scale', (viewWidth) => {
+    const feed = new PopupFeed();
+    for (const cause of ['late', 'wobbly', 'relaxed'] as const) feed.crash(cause);
+    const out = feed.flush(false);
+    expect(out).toHaveLength(3);
+    for (const p of out) expect(measureText(p.text, 2) + 2).toBeLessThanOrEqual(viewWidth - 2 * POPUP_MARGIN);
   });
 
   it('a reduced kickflip (ROADMAP 41) is a plain "Kickflip +N" popup in a paler colour, not the pink callout', () => {
@@ -143,8 +156,16 @@ describe('PopupFeed', () => {
     feed.ballBack();
     feed.grindTrick(10);
     feed.highFive(10);
-    feed.crash(true);
+    feed.crash('late');
     feed.reducedKickflip(10);
     for (const p of feed.flush(false)) expect(p.color).toMatch(/^#/);
+  });
+});
+
+describe('bailCause (ROADMAP 42)', () => {
+  it('drunk wins over chilled, chilled over a plain late flip', () => {
+    expect(bailCause({ drunkTimer: 2, chillTimer: 3 })).toBe('wobbly');
+    expect(bailCause({ drunkTimer: 0, chillTimer: 3 })).toBe('relaxed');
+    expect(bailCause({ drunkTimer: 0, chillTimer: 0 })).toBe('late');
   });
 });

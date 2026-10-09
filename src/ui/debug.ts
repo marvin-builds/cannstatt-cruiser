@@ -40,7 +40,7 @@ export interface UiDebugHook {
    * (`full` false, ROADMAP 41), the plain "Kickflip +points" popup. Either way the air trick hint is never shown again.
    */
   airTrick(points: number, full?: boolean): void;
-  /** Emits a kickflip bail like gameplay (crash kind 'bail', health unchanged): the "Zu spät geflippt!" popup. */
+  /** Emits a kickflip bail like gameplay (crash kind 'bail', health unchanged): the popup blames state.drunkTimer ("Zu wacklig!"), state.chillTimer ("Zu entspannt!") or else the late flip ("Zu spät geflippt!"). */
   bail(): void;
   /** Emits the NorDIY events like gameplay: a high five ("High Five! +points") and the park's session end ("Session! +points"). */
   highFive(points: number): void;
