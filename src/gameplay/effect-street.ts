@@ -49,7 +49,11 @@ export function rideEffect(seed: number, from: number, effect: Effect): EffectSt
   game.commands.startRun();
   game.state.distance = from;
   game.state.player.invulnerableTimer = Infinity;
-  if (effect === 'drunk') game.state.carriedItem = 'beer';
+  if (effect === 'drunk') {
+    // Adult mode: only there the Maßkrug makes drunk (kid mode, the default, has no drunk phase).
+    game.state.kidMode = false;
+    game.state.carriedItem = 'beer';
+  }
   const state = game.state;
   while (timerOf(state, effect) <= 0) {
     if (state.time > START_LIMIT) throw new Error(`seed ${seed}: no ${effect} phase within ${START_LIMIT} s`);

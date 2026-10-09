@@ -40,7 +40,7 @@ export function createInitialState(): GameState {
     trafficDensity: 0,
     park: null,
     muted: false,
-    kidMode: false,
+    kidMode: true,
     updateReady: false,
     whatsNew: [],
     install: createInstallState(),

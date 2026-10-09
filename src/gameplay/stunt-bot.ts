@@ -1,20 +1,23 @@
 /**
  * Test tooling (Vitest): a human-like bot that takes stunt lines, and a ride
  * of one designed line with it in a real game (player + gameplay, the speed
- * pinned, nothing else on the street). The bot never jumps on the street (the
- * kickers launch it), rolls off a ledge before a drop and, on a ledge before
- * a gap, aims at the middle of the gap jump's take-off window (stunt-sim.ts)
- * with up to `jitter` ticks of error, holding its hold. DOM-free; not used by
- * the game itself.
+ * pinned, nothing else on the street). On the street it presses jump once per
+ * kicker, on a random tick of the kicker's launch window with a random human
+ * hold (ramps need a press, ROADMAP 40); it rolls off a ledge before a drop
+ * and, on a ledge before a gap, aims at the middle of the gap jump's take-off
+ * window (stunt-sim.ts) with up to `jitter` ticks of error, holding its hold.
+ * DOM-free; not used by the game itself.
  */
 import { PLAYER_X } from '../core/config';
 import type { Game } from '../core/game';
 import { Rng } from '../core/rng';
 import { createPlayerTestGame, tick } from '../player/testing';
 import type { Entity, GameEvents } from '../types';
-import { isLedge } from './catalogue';
+import { isKicker, isLedge } from './catalogue';
+import { HUMAN_HOLDS } from './fairness';
 import { createGameplaySystem } from './index';
 import type { Pattern } from './patterns';
+import { kickerWindow } from './rules';
 import { gapHolds } from './stunt-line';
 import { HUMAN_STYLE } from './testing';
 import { jumpWindow, stepOf, windowMiddle } from './stunt-sim';
@@ -27,7 +30,7 @@ export class StuntBot {
   private wait = -1;
   private hold = 0;
   private holding = 0;
-  /** The ledge the current plan was made on. */
+  /** The ledge or kicker the current plan was made on. */
   private plannedOn = -1;
 
   constructor(
@@ -43,17 +46,37 @@ export class StuntBot {
     }
     const { state } = game;
     const p = state.player;
-    if (!p.grinding) {
-      this.plannedOn = -1;
-      this.wait = -1;
-      return null;
-    }
+    if (!p.grinding) return this.onStreet(game);
     const ledge = state.entities.find((e) => isLedge(e.kind) && e.y === p.y && e.x - 12 <= p.x && p.x <= e.x + e.w);
     if (!ledge) return null;
     if (this.plannedOn !== ledge.id) {
       this.plannedOn = ledge.id;
       this.wait = this.plan(game, ledge);
     }
+    return this.countDown();
+  }
+
+  /** On the street: once the skater rolls in a kicker's launch window, a press on a random tick of what is left of it. */
+  private onStreet(game: Game): 'press' | null {
+    const { state } = game;
+    const p = state.player;
+    const inWindow = (e: Entity) => isKicker(e.kind) && !e.done && kickerWindow(e, state.speed).start <= p.x && p.x <= kickerWindow(e, state.speed).end;
+    const kicker = state.entities.find(inWindow);
+    if (!kicker) {
+      this.wait = -1;
+      return null;
+    }
+    if (this.plannedOn !== kicker.id && p.grounded) {
+      this.plannedOn = kicker.id;
+      const ticksLeft = Math.floor((kickerWindow(kicker, state.speed).end - p.x) / stepOf(state.speed)) - 1;
+      this.wait = this.rng.int(0, Math.max(0, ticksLeft));
+      this.hold = HUMAN_HOLDS[this.rng.int(0, HUMAN_HOLDS.length - 1)]!;
+    }
+    return this.countDown();
+  }
+
+  /** Counts the planned press down; 'press' when it is due. */
+  private countDown(): 'press' | null {
     if (this.wait < 0) return null;
     if (this.wait > 0) {
       this.wait--;

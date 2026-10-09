@@ -104,15 +104,31 @@ export function landsOnHead(feet: Feet, body: Rect, head: Rect, step: number): b
 
 /** Share of a kicker's length the wheels roll up before it launches (its lip). */
 export const KICKER_LIP = 0.5;
+/** A kicker's launch window opens this many ticks of travel before the ramp's front edge... */
+export const LAUNCH_EARLY_TICKS = 14;
+/** ...and closes this many ticks of travel after its lip. */
+export const LAUNCH_LATE_TICKS = 6;
+
+/** Where a kicker's launch window lies, as the skater's feet x (the kicker's space). */
+export interface KickerWindow {
+  /** A jump press (the ollie it starts) from here on launches... */
+  start: number;
+  /** ...when the feet reach the lip (at once for a press past it)... */
+  lip: number;
+  /** ...up to here. */
+  end: number;
+}
 
 /**
- * The skater takes off from a kicker this tick: not rising, the wheels at or
- * below the ramp's top (riding on the street, or coming down onto it) and
- * between its lip and its rear end.
+ * The launch window of `kicker` at `speed` px/s (ROADMAP 40: ramps need a
+ * jump press): from LAUNCH_EARLY_TICKS of travel before the ramp to
+ * LAUNCH_LATE_TICKS after its lip, so at least 20 ticks at any speed. The ui
+ * shows its ramp hint by it.
  */
-export function hitsKicker(feet: Feet, kicker: Rect): boolean {
-  if (feet.vy < 0 || feet.y < kicker.y) return false;
-  return feet.x >= kicker.x + kicker.w * KICKER_LIP && feet.x <= kicker.x + kicker.w;
+export function kickerWindow(kicker: Rect, speed: number): KickerWindow {
+  const step = speed * TICK_DT;
+  const lip = kicker.x + kicker.w * KICKER_LIP;
+  return { start: kicker.x - LAUNCH_EARLY_TICKS * step, lip, end: lip + LAUNCH_LATE_TICKS * step };
 }
 
 /** How far the feet clear a ledge at the top of a kicker's launch (the arc comes down onto it). */

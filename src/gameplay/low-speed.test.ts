@@ -76,6 +76,8 @@ describe('the live game with the speed pinned at 0', () => {
     for (let i = 0; i < 100; i++) game.tick();
     game.setSpeedOverride(speed);
     for (let i = 0; i < 30; i++) game.tick();
+    // Adult mode: only there the Maßkrug means drunk planning.
+    game.state.kidMode = false;
     game.state.carriedItem = 'beer';
     return game;
   }

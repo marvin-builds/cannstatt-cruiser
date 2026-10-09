@@ -55,7 +55,11 @@ describe('gameplay debug hook (window.__gameplay)', () => {
     const launches = record(game, 'launch');
     expect(window.__gameplay!.stunts()).toBeNull();
     window.__gameplay!.place('kicker', PLAYER_X + 20);
-    for (let i = 0; i < 100 && launches.length === 0; i++) tick(game);
+    // Ramps need a press (ROADMAP 40): jump once the feet are on the ramp (20 px at 2 px per tick).
+    tick(game, 12);
+    game.buttons.action.press('test');
+    for (let i = 0; i < 30 && launches.length === 0; i++) tick(game);
+    game.buttons.action.release('test');
     lines.made(game.ctx, game.state.entities.find((e) => e.id === launches[0]!.entityId)!);
     expect(window.__gameplay!.stunts()).toMatchObject({ steps: 2, made: 1, multiplier: 1 });
   });

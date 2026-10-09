@@ -4,7 +4,7 @@ import type { Game } from '../core/game';
 import { tick } from '../player/testing';
 import type { Entity } from '../types';
 import { kickerRect, ledgeRect } from './catalogue';
-import { launchVelocityFor } from './rules';
+import { kickerWindow, launchVelocityFor } from './rules';
 import { STUNT_LINE_BONUS, STUNT_POINTS, StuntLines } from './stunts';
 import { place, quietGame, record } from './test-kit';
 
@@ -28,9 +28,30 @@ function line(game: Game, pieces: (['kicker', number, number?] | ['ledge', numbe
   });
 }
 
-/** Ticks until `done` (at most `max`). */
+/** Ticks until `done` (at most `max`), tapping jump on every kicker's ramp (ramps need a press, ROADMAP 40). */
 function until(game: Game, done: () => boolean, max = 600): void {
-  for (let i = 0; i < max && !done(); i++) tick(game);
+  let release = -1;
+  for (let i = 0; i < max && !done(); i++) {
+    const p = game.state.player;
+    const onRamp = game.state.entities.some((e) => e.kind === 'kicker' && !e.done && e.x <= p.x && p.x < kickerWindow(e, game.state.speed).lip);
+    if (release < 0 && p.grounded && onRamp) {
+      game.buttons.action.press('test');
+      release = 3;
+    }
+    if (release-- === 0) game.buttons.action.release('test');
+    tick(game);
+  }
+  game.buttons.action.release('test');
+}
+
+/** Rides until `kicker` is `ahead` px in front of the feet, then jumps over it with `hold` (pressed before its launch window: no launch). */
+function jumpOver(game: Game, kicker: Entity, hold = 20, ahead = 40): void {
+  until(game, () => kicker.x - PLAYER_X < ahead, 600);
+  expect(game.state.player.grounded).toBe(true);
+  expect(kickerWindow(kicker, game.state.speed).start).toBeGreaterThan(PLAYER_X);
+  game.buttons.action.press('test');
+  tick(game, hold);
+  game.buttons.action.release('test');
 }
 
 /** The kicker 40 px ahead and a 48 px high ledge where the launch comes down at SPEED. */
@@ -39,7 +60,7 @@ function kickerLedge(game: Game, extra: (['kicker', number, number?] | ['ledge',
 }
 
 describe('kicker', () => {
-  it('launches the skater riding onto it with its velocity, once, and never crashes', () => {
+  it('a jump press on the ramp launches the skater with its velocity, once, and never crashes', () => {
     const game = quietGame(SPEED);
     const launches = record(game, 'launch');
     const crashes = record(game, 'crash');
@@ -58,21 +79,11 @@ describe('kicker', () => {
   it('a skater jumping over it high is not launched', () => {
     const game = quietGame(SPEED);
     const launches = record(game, 'launch');
-    line(game, [['kicker', PLAYER_X + 24]]);
-    game.buttons.action.press('test');
-    tick(game, 30);
-    game.buttons.action.release('test');
+    const [k] = line(game, [['kicker', PLAYER_X + 60]]);
+    jumpOver(game, k!);
     until(game, () => game.state.player.grounded, 200);
     tick(game, 30);
     expect(launches).toEqual([]);
-  });
-
-  it('a kicker placed without line data launches with the default velocity', () => {
-    const game = quietGame(SPEED);
-    const launches = record(game, 'launch');
-    place(game, 'kicker', kickerRect(PLAYER_X + 20));
-    until(game, () => launches.length > 0, 120);
-    expect(launches[0]!.velocity).toBe(launchVelocityFor(48));
   });
 });
 
@@ -184,11 +195,7 @@ describe('stunt line scoring', () => {
       ['kicker', PLAYER_X + 420, 48],
       ['ledge', PLAYER_X + 450, 48, 90],
     ]);
-    until(game, () => k3!.x - PLAYER_X < 16, 600);
-    expect(game.state.player.grounded).toBe(true);
-    game.buttons.action.press('test');
-    tick(game, 20);
-    game.buttons.action.release('test');
+    jumpOver(game, k3!);
     until(game, () => ends.length > 0, 300);
     expect(k3!.done).toBe(false);
     expect(ends).toEqual([{ steps: 4, made: 2, completed: false, points: 0 }]);
@@ -202,10 +209,8 @@ describe('stunt line scoring', () => {
       ['kicker', PLAYER_X + 260, 48],
       ['ledge', PLAYER_X + 290, 48, 90],
     ]);
-    until(game, () => k1!.x - PLAYER_X < 16, 120);
-    game.buttons.action.press('test');
-    tick(game, 6);
-    game.buttons.action.release('test');
+    // A low jump: it comes down on the street under the first ledge.
+    jumpOver(game, k1!, 6);
     until(game, () => ends.length > 0, 900);
     expect(k1!.done).toBe(false);
     expect(steps).toEqual([{ step: 4, steps: 4, multiplier: 2, points: 2 * STUNT_POINTS.ledge }]);
@@ -249,11 +254,8 @@ describe('stunt line scoring', () => {
     const game = quietGame(SPEED);
     const steps = record(game, 'stuntStep');
     const ends = record(game, 'stuntEnd');
-    const [k1] = line(game, [['kicker', PLAYER_X + 40, 48], ['ledge', PLAYER_X + 900, 48, 80]]);
-    until(game, () => k1!.x - PLAYER_X < 16, 120);
-    game.buttons.action.press('test');
-    tick(game, 20);
-    game.buttons.action.release('test');
+    const [k1] = line(game, [['kicker', PLAYER_X + 60, 48], ['ledge', PLAYER_X + 900, 48, 80]]);
+    jumpOver(game, k1!);
     tick(game, 200);
     expect(steps).toEqual([]);
     expect(ends).toEqual([]);

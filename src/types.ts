@@ -191,7 +191,8 @@ export interface GameState {
   /**
    * Kid-friendly mode (hidden settings menu, persisted by the UI): the joint
    * pickup becomes a bubble gum with the same effect and no drug references.
-   * Kept across runs.
+   * Kept across runs. On by default (ROADMAP 39): only an explicit choice in
+   * the hidden settings turns it off.
    */
   kidMode: boolean;
   /**
@@ -238,9 +239,13 @@ export interface GameEvents {
    */
   stomp: { entityId: number; kind: EntityKind; item: CarriedItem };
   /**
-   * Gameplay: the skater rode onto a kicker (entity `entityId`). The player
-   * takes off on the next tick with `velocity` (px/s upwards, no hold needed),
-   * like a stomp bounce; gameplay's jumpsim mirrors it.
+   * Gameplay: the skater pressed jump in a kicker's (entity `entityId`)
+   * launch window (ROADMAP 40: shortly before the ramp, on it, or right after
+   * its lip; never automatic). The player takes off on the next tick with
+   * `velocity` (px/s upwards, no hold needed), like a stomp bounce; when the
+   * same press already started an ollie in the window, the launch replaces
+   * that ollie's velocity. Without a press the skater rolls over the kicker
+   * (no launch, never a crash). Gameplay's jumpsim mirrors it.
    */
   launch: { entityId: number; velocity: number };
   /**

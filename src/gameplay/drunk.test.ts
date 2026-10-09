@@ -96,6 +96,7 @@ describe('the gameplay system plans for a drunk player', () => {
     game.seed(3);
     game.commands.startRun();
     game.state.distance = 30000;
+    game.state.kidMode = false;
     game.state.carriedItem = 'beer';
     // Nobody rides (no player system): never crash, so the Maßkrug stays in hand.
     game.state.player.invulnerableTimer = Infinity;

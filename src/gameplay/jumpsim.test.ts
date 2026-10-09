@@ -166,6 +166,33 @@ describe('kicker launch', () => {
     }
     game.buttons.action.release('test');
   });
+
+  it('matches the real player when the launch replaces an ollie in the air (ROADMAP 40: the press on the ramp)', () => {
+    const velocity = 380;
+    for (const [after, hold] of [
+      [0, 3],
+      [2, 3],
+      [6, 20],
+      [12, 10],
+    ] as const) {
+      const game = createPlayerTestGame();
+      tick(game, 3);
+      let b = groundBody();
+      for (let i = 0; i < 90; i++) {
+        if (i === 0) game.buttons.action.press('test');
+        if (i === hold) game.buttons.action.release('test');
+        game.tick();
+        b = stepBody(b, 0, i === 0, i < hold);
+        // Gameplay emits the launch after the player moved; it takes off on the next tick.
+        if (i === after) {
+          game.bus.emit('launch', { entityId: 1, velocity });
+          b = launchBody(b, velocity);
+        }
+        expect(b.y, `launch ${after} ticks into a ${hold}-tick ollie, tick ${i}`).toBeCloseTo(game.state.player.y, 6);
+        expect(b.grounded).toBe(game.state.player.grounded);
+      }
+    }
+  });
 });
 
 describe('in-place stepping (the solver reuses scratch bodies)', () => {
