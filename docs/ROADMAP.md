@@ -236,3 +236,17 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
     - The item-41 grace and "a rail/ledge catch never bails" still apply; the easy street during these phases stays as is. Verify the fail rates with a bot simulation.
 - Item 41 done: fade KICKFLIP_FADE [1, 0.5, 0.25, 0.1] with KICKFLIP_REFRESH_SECONDS 3; street base 100 only after a clear or stomp in the same flight, else EMPTY_AIR_TRICK_POINTS 20; bail when `land.flipLeft` > KICKFLIP_BAIL_GRACE_TICKS 3 (crash kind 'bail', "Zu spät geflippt!"); STREET_AIR_TRICK_MIN_AIR dropped so late starts are possible. Orchestrator decision: a late flip landed with down still held is a duck landing (no points, no bail), so ducking under a banner right after a jump stays fair.
 - Item 42 done: drunk street flips DRUNK_FLIP_SCALE 1.5 (18 ticks) plus 0..DRUNK_FLIP_JITTER 6 from a run-seeded player rng (gameplay's rng untouched), chilled CHILL_FLIP_SCALE 1.1 (13 ticks; 1.25 would bail about 36% because chill jumps are lower). Simulated bail share of street flips started at a random allowed moment: sober 14.3%, drunk 52.5% (23.1% at the first chance of a full jump), chilled 22.3%. The duck-landing exception is off while drunk (core delays the release of down, and nothing overhead spawns while drunk). Callouts "Zu wacklig!" / "Zu entspannt!".
+
+## User wishes 2026-10-10
+43. **Adult mode by default, kid mode switch on the title (USER, replaces 39, partly 38):** players found the highscore name entry random (kid mode only offers generated nicknames, and nobody knew kid mode was on).
+    - A player without a stored choice plays in adult mode (core initial state and ui `loadKidMode` default false); a stored choice is kept. Accepted: players who only had the old default switch to adult mode (USER: no kids play it currently).
+    - In adult mode the title screen shows a visible "Kindermodus" button (mouse/touch and a key). Title screen only, not on pause (no run restart).
+    - Turning it on saves kid mode and shows a notice like "Kindermodus ist an. Ausschalten: Logo 3 Sekunden halten." with an OK button (USER: fine that it names the gesture; the adult sees it right away and closes it).
+    - In kid mode the button is gone; the only way back is the existing hidden settings menu (3 s logo long press or holding K). Kid mode stays until turned off there.
+44. **One online entry per player, only a new personal best (USER):** today every top-20 run is a new row, so one player can fill the list.
+    - "Player" = device (USER choice): the existing device id, hashed on the server. One row per device; a submission replaces it only with a higher score (the name is updated with it); a lower or equal score is not stored.
+    - Client: "Eintragen" is offered only when the run beats this device's own online entry (and makes the top list); the saved name stays prefilled.
+    - Existing data: a migration keeps only the best row per device. Server tests first; the worker deploy follows server/README.md.
+45. **No online list in kid mode, own kid record (USER):** in kid mode there is no trophy button, no list and no "Eintragen"; game over shows only the local personal best ("Dein Rekord").
+    - Kid mode keeps its own local record, separate from the adult one (kid runs have different content). The existing stored `highscore` stays the adult record; the kid record starts at 0. The star total stays shared (orchestrator default, not a score).
+    - A run cut short by switching mode in the pause menu counts for the mode it was played in.
