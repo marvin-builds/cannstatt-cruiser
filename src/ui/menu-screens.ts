@@ -16,6 +16,7 @@ import {
   controlsLine,
   gameOverPrompt,
   installParts,
+  kidModeLabel,
   LINE,
   MENU_TEXT,
   type InstallCard,
@@ -112,7 +113,7 @@ export function drawDismiss(r: RenderContext, rect: Rect): void {
   DISMISS_ICON.draw(r.g, 0, rect.x + Math.floor((rect.w - size) / 2), rect.y + Math.floor((rect.h - size) / 2), scale);
 }
 
-/** The cards and buttons a screen's layout placed (game over: only once input is accepted). */
+/** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: "Kindermodus"). */
 function drawNotices(r: RenderContext, l: MenuLayout): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
@@ -124,6 +125,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
     menuButton(r, toTitlePlate(l.buttons.toTitle), label, UI.white, 1);
   }
   if (l.buttons.submit) menuButton(r, l.buttons.submit, submitLabel(display.touch), UI.yellow);
+  if (l.buttons.kidMode) menuButton(r, toTitlePlate(l.buttons.kidMode), kidModeLabel(display.touch), UI.green, 1);
 }
 
 export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {

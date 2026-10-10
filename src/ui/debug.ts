@@ -10,6 +10,7 @@ import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, s
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu } from './menu-state';
+import { kidNoticeLayout } from './kid-notice';
 import type { PopupFeed } from './popup-feed';
 import type { HintKind } from './hint-plate';
 import type { UiView } from './screens';
@@ -58,13 +59,14 @@ export interface UiDebugHook {
   previewKickerHint(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over). */
   setRecords(highscore?: number, starsTotal?: number): void;
-  /** The hidden settings menu: screen and the logo hold progress (0..1). */
+  /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen and the logo hold progress (0..1). */
   settings(): { screen: SettingsScreen; holdProgress: number };
   /**
-   * Current tap areas (view px) for this display: HUD buttons, settings buttons, the logo (title, or
-   * the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter), null off menus.
+   * Current tap areas (view px) for this display: HUD buttons, settings buttons, the kid notice's OK, the logo
+   * (title, or the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter,
+   * Kindermodus), null off menus.
    */
-  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; logo: Rect; screen: MenuButtons | null };
+  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; kidNoticeOk: Rect; logo: Rect; screen: MenuButtons | null };
   /**
    * The online list's state and tap areas (view px), or null without an online list: the title's
    * trophy, the open screen's close button, the entry's field, submit and "Neuer Name" buttons.
@@ -179,6 +181,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         metrics,
         hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics, riding(ctx.state.mode)),
         menu: settingsLayout(display.viewWidth, metrics),
+        kidNoticeOk: kidNoticeLayout(display).ok,
         logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
         screen: currentMenu(ctx, view)?.buttons ?? null,
       };

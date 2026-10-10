@@ -3,10 +3,10 @@
  * right ahead (`window.__gameplay.park()`), shot at the approach, the wooden
  * "NorDIY" sign on a container, the line over the banks, container roofs
  * and crane boom (gap jumps at the middle of their take-off window), the
- * crowd by the crane (adult mode, switched off explicitly since kid mode is
- * the default) and also in kid mode (lemonade, no beer), a high five (the use
- * press: real key E on desktop, `input.use()` on touch) and the "Session!"
- * callout at the end. The banks are kickers: they launch only on a jump
+ * crowd by the crane (adult mode, set explicitly whatever the default) and
+ * also in kid mode (lemonade, no beer), a high five (the use press: real
+ * key E on desktop, `input.use()` on touch) and the "Session!" callout at
+ * the end. The banks are kickers: they launch only on a jump
  * press on their ramp (ROADMAP 40), pressed with the viewport's real input
  * (Space on desktop, a one-finger tap on touch). Checks: a park is planned with its pieces, the high
  * fiver takes the use press (`highFive`, no item used), the tricks raise the

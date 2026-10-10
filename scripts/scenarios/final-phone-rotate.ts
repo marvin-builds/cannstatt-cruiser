@@ -116,19 +116,19 @@ async function portraitStart(t: PlaytestContext): Promise<void> {
   await t.screenshot('portrait title after dismiss');
   await t.canvasShot('portrait title after dismiss');
 
-  // Hidden settings in portrait: long press logo, kid mode (the default) off and on again.
+  // Hidden settings in portrait: long press logo, kid mode (adult mode is the default) on and off again.
   const logo = centre((await layout(t)).logo);
   await holdViewWhile(t, logo.x, logo.y, () => game.step(185).then(() => undefined));
   await game.step(1);
   await t.screenshot('portrait settings menu');
   const l = await layout(t);
-  t.check('kid mode is on by default', (await game.state()).kidMode);
-  await tapRect(t, l.menu.toggle);
-  await t.screenshot('portrait kid mode off');
-  t.check('the toggle turns kid mode off', !(await game.state()).kidMode);
+  t.check('adult mode by default', !(await game.state()).kidMode);
   await tapRect(t, l.menu.toggle);
   await t.screenshot('portrait kid mode on');
-  await t.log('after switching back on', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
+  t.check('the toggle turns kid mode on', (await game.state()).kidMode);
+  await tapRect(t, l.menu.toggle);
+  await t.screenshot('portrait kid mode off');
+  await t.log('after switching back off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await tapRect(t, l.menu.back);
 
   // Start a run with a real tap in portrait.

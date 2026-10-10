@@ -4,9 +4,11 @@ import type { Rect } from '../types';
 import { centreX, hudButtons, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { statsLayout } from './stats';
+import { titleTrophy } from './score-layout';
 import {
   gameOverLayout,
   installParts,
+  kidModeLabel,
   type MenuInput,
   type MenuLayout,
   PANEL_PAD,
@@ -56,7 +58,7 @@ const inside = (r: Rect, w: number) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w &&
 /** Every tap area of a screen: the buttons and the pause logo. */
 function buttons(l: MenuLayout): Rect[] {
   const b = l.buttons;
-  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit].filter((r): r is Rect => !!r);
+  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit, b.kidMode].filter((r): r is Rect => !!r);
 }
 
 function hud(input: MenuInput, riding: boolean): Rect[] {
@@ -100,8 +102,30 @@ describe('menu screen layouts', () => {
       expect(!!l.buttons.dismiss, input.label).toBe(!!input.install);
       expect(!!l.buttons.install, input.label).toBe(input.install === 'prompt');
       expect(l.buttons.toTitle).toBeNull();
+      expect(l.buttons.kidMode).toBeNull();
       expect(l.blocks.has('prompt'), input.label).toBe(true);
     }
+  });
+
+  it('title: the Kindermodus button (adult mode) shows only when offered, clear of the logo, the panel, the HUD buttons and the trophy, all variants', () => {
+    for (const base of inputs()) {
+      const input = { ...base, kidButton: true };
+      const l = titleLayout(input);
+      const kid = l.buttons.kidMode!;
+      expect(kid, input.label).not.toBeNull();
+      checkScreen(input, l, false, [logoRect(input.viewWidth)]);
+      for (const other of [logoRect(input.viewWidth), l.panel!, titleTrophy(input.viewWidth, input.fullscreenAvailable, uiMetrics(input)), ...l.blocks.values()]) {
+        expect(overlap(kid, other), `${input.label}: Kindermodus vs ${JSON.stringify(other)}`).toBe(false);
+      }
+      // The same title as without the button: it sits in the free corner.
+      expect([...l.blocks.keys()]).toEqual([...titleLayout(base).blocks.keys()]);
+      expect(kid.h, input.label).toBeGreaterThanOrEqual(uiMetrics(input).menuButtonH);
+    }
+  });
+
+  it('the Kindermodus label shows its key (I) on desktop only', () => {
+    expect(kidModeLabel(true)).toBe('Kindermodus');
+    expect(kidModeLabel(false)).toBe('Kindermodus (I)');
   });
 
   it('title: the panel pads every row and button on all four sides', () => {

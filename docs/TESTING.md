@@ -334,16 +334,21 @@ npm run playtest -- --headed
   ArrowDown (desktop) and a CDP touch swipe down that must duck without
   jumping, still duck after 0.55 s and end by itself (touch viewports), and a
   60 s ducking bot ride on seed 1.
-- `scripts/scenarios/settings.ts`: the hidden settings menu on desktop and
-  both phone viewports: title without a settings button, a short logo hold
+- `scripts/scenarios/settings.ts`: the kid mode switch (ROADMAP 43) and the
+  hidden settings menu on desktop and both phone viewports, with the online
+  list faked by a Playwright route (never a POST): adult mode with nothing
+  stored, the title's "Kindermodus" button and the free-text field in the
+  highscore entry; the title without a settings button, a short logo hold
   (no progress, starts the run like a tap), the 3 s long press with its
-  progress bar (no run start), kid mode on by default with nothing stored
-  (ROADMAP 39), turning it off and on at once (no parent check since Wave 9),
-  reopening with K (desktop) or the long press (touch), an explicit off and
-  an explicit on each kept across a reload, and a kid-mode run
-  with the bubble gum, pink tint and gum HUD icon. On touch viewports it
-  checks every menu and HUD tap area is >= 44 CSS px (rect x
-  `cssPerViewPixel`).
+  progress bar (no run start); the Kindermodus button (tap on touch, I on
+  desktop) turning kid mode on and saving it without a run start, the
+  notice "Kindermodus ist an" and its OK (tap / Enter) back to a title
+  without the button, kid mode kept across a reload; the hidden menu (K on
+  desktop, long press on touch) turning it off at once, which brings the
+  button back, and on again (no parent check since Wave 9); an explicit off
+  kept across a reload; and a kid-mode run with the bubble gum, pink tint
+  and gum HUD icon. On touch viewports it checks every button, menu and HUD
+  tap area is >= 44 CSS px (rect x `cssPerViewPixel`).
 - `scripts/scenarios/people.ts`: human-bot stats (20 seeds x 3 min computed in
   Node, logged as `human bot stats`, no person-related crash allowed), what
   people carry (fan with football, visitors with Maßkrug and Brezel, kid-mode
@@ -585,13 +590,15 @@ The context provides:
   `Fingers.up` does; used by `final-phone-touch.ts` and `kickflip.ts`;
 - `screenshot`, `canvasShot`, `log`, `check`, `realPress`, `realTapView` and `wait`.
 
-**Kid mode is the default** (ROADMAP 39): a fresh browser profile plays in
-kid mode (gum instead of the joint, no beer, no drunk look, kid sounds and
-nicknames). A scenario that checks adult content calls `adultMode(t)` at its
-start (as `chill.ts`, `items.ts`, `items-ui.ts`, `drop.ts`, `people.ts`,
-`skater.ts`, `audio-pwa.ts`, `nordiy.ts` and `highscores.ts` do); the final
-persona scenarios check that a first-timer starts in kid mode and switch it
-off through the hidden settings.
+**Adult mode is the default** (ROADMAP 43, before it kid mode was): a fresh
+browser profile plays in adult mode. Scenarios that check adult content
+still call `adultMode(t)` at their start (as `chill.ts`, `items.ts`,
+`items-ui.ts`, `drop.ts`, `people.ts`, `skater.ts`, `audio-pwa.ts`,
+`nordiy.ts` and `highscores.ts` do), which stores the choice explicitly;
+kid content is switched on explicitly (`window.__player.kidMode(true)`, the
+title's Kindermodus button or the hidden settings). The final persona
+scenarios check that a first-timer starts in adult mode; `final-keyboard.ts`
+and `final-phone-touch.ts` turn kid mode on with the title button.
 
 **Ramps need a press** (ROADMAP 40): a scenario that wants a kicker launch
 presses jump on the ramp (`jumpOnRamp`); riding over a kicker without input

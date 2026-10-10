@@ -240,17 +240,17 @@ async function tricks(t: PlaytestContext): Promise<void> {
   await game.step(30);
   await t.canvasShot('ducking under');
   await duckSet(t, false);
-  // Chill pickup: a first-timer plays in kid mode (the default), so it is the bubble gum.
+  // Chill pickup: a first-timer plays in adult mode (the default, ROADMAP 43), so it is the joint.
   await freshRun(t, 2, null);
-  t.check('a first-timer plays in kid mode (the default)', (await game.state()).kidMode);
+  t.check('a first-timer plays in adult mode (the default)', !(await game.state()).kidMode);
   await place(t, 'joint', PLAYER_X + 70);
   await game.step(8);
-  await t.canvasShot('gum ahead');
+  await t.canvasShot('joint ahead');
   await stepWhile(t, (x) => x.chillTimer <= 0, { max: 240 });
   await game.step(3);
-  await t.canvasShot('gum pickup');
+  await t.canvasShot('joint pickup');
   await game.step(90);
-  await t.canvasShot('kid chill active');
+  await t.canvasShot('chill active');
 }
 
 async function kidMode(t: PlaytestContext): Promise<void> {
@@ -279,11 +279,13 @@ async function kidMode(t: PlaytestContext): Promise<void> {
   await game.step(1);
   t.check('settings opened', (await settings(t)).screen === 'menu');
   await t.screenshot('settings page');
-  // Kid mode is on by default: the toggle turns it off, a second tap on again.
+  // Adult mode is the default: the toggle turns kid mode on, a second tap off, a third on again.
   const m = l.menu.toggle;
   await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
   await game.step(1);
-  t.check('the toggle turns the default kid mode off', !(await game.state()).kidMode);
+  t.check('the toggle turns kid mode on from the adult default', (await game.state()).kidMode);
+  await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
+  await game.step(1);
   await t.canvasShot('kid mode off');
   await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
   await game.step(1);

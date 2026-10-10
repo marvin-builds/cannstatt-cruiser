@@ -155,7 +155,7 @@ async function humanRide(t: PlaytestContext): Promise<void> {
 export default async function peopleScenario(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
   await humanStats(t);
   await carriedItems(t);
   await stomp(t, 'vfbFan', 1, false, 'fan');

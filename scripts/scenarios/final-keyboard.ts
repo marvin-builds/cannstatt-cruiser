@@ -77,9 +77,16 @@ export default async function (t: PlaytestContext) {
     await t.log('skipped: keyboard persona on a touch viewport', { viewport: t.viewport });
     return;
   }
-  t.check('a fresh player starts in kid mode (no stored choice)', (await game.state()).kidMode);
+  t.check('a fresh player starts in adult mode (no stored choice)', !(await game.state()).kidMode);
   await t.canvasShot('title');
   await t.screenshot('title page');
+  // The title's Kindermodus button by key (I): kid mode on, the notice, Enter = OK (the persona plays in kid mode).
+  await kb.press('KeyI');
+  await game.step(2);
+  await t.canvasShot('kid mode notice');
+  await kb.press('Enter');
+  await game.step(2);
+  t.check('I turns kid mode on, Enter closes the notice, still on the title', (await game.state()).kidMode && (await game.state()).mode === 'title');
 
   // Real Space on the title starts.
   await game.seed(11);
@@ -181,7 +188,7 @@ export default async function (t: PlaytestContext) {
   await game.step(30);
   await t.canvasShot('run3 game over');
 
-  // Specials: stomp, bubble gum (kid mode is the default), overhead duck, rail grind in zone 1 at real speed.
+  // Specials: stomp, bubble gum (kid mode from the title button), overhead duck, rail grind in zone 1 at real speed.
   await game.step(60);
   await game.seed(3);
   await game.startRun();
@@ -243,7 +250,7 @@ export default async function (t: PlaytestContext) {
   await game.endRun();
   await game.step(60);
 
-  // Hidden settings via K held on title (kid mode is on by default).
+  // Hidden settings via K held on title (kid mode is on from the title button).
   await kb.press('Escape');
   await game.step(10);
   await t.canvasShot('title after escape');

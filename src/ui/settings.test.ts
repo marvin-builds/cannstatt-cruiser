@@ -69,19 +69,19 @@ describe('LongPress', () => {
 });
 
 describe('kid mode persistence', () => {
-  it('saves and loads the flag, defaulting to kid mode (ROADMAP 39)', () => {
+  it('saves and loads the flag, defaulting to adult mode (ROADMAP 43)', () => {
     const store = memoryStore();
-    expect(loadKidMode(store)).toBe(true);
-    saveKidMode(store, false);
     expect(loadKidMode(store)).toBe(false);
     saveKidMode(store, true);
     expect(loadKidMode(store)).toBe(true);
     saveKidMode(store, false);
     expect(loadKidMode(store)).toBe(false);
+    saveKidMode(store, true);
+    expect(loadKidMode(store)).toBe(true);
   });
 
-  it('falls back to kid mode when storage is unavailable or holds junk: only a stored false is adult mode', () => {
-    expect(loadKidMode(createStore(null))).toBe(true);
+  it('falls back to adult mode when storage is unavailable or holds junk: only a stored true is kid mode', () => {
+    expect(loadKidMode(createStore(null))).toBe(false);
     const broken = createStore({
       getItem: () => {
         throw new Error('denied');
@@ -91,10 +91,10 @@ describe('kid mode persistence', () => {
       },
     } as unknown as Storage);
     expect(() => saveKidMode(broken, true)).not.toThrow();
-    expect(loadKidMode(broken)).toBe(true);
+    expect(loadKidMode(broken)).toBe(false);
     const junk = memoryStore();
-    junk.set('kidMode', 'no');
-    expect(loadKidMode(junk)).toBe(true);
+    junk.set('kidMode', 'yes');
+    expect(loadKidMode(junk)).toBe(false);
   });
 });
 
@@ -163,5 +163,22 @@ describe('SettingsMenu', () => {
     menu.close();
     expect(menu.screen).toBe('closed');
     expect(state.kidMode).toBe(true);
+  });
+
+  it('the title button turns kid mode on, persists it and shows the notice; OK closes it', () => {
+    const store = memoryStore();
+    const state = createInitialState();
+    const closed: boolean[] = [];
+    const menu = new SettingsMenu(store, (switched) => closed.push(switched));
+    menu.turnOnFromTitle(state);
+    expect(state.kidMode).toBe(true);
+    expect(loadKidMode(store)).toBe(true);
+    expect(menu.screen).toBe('kidNotice');
+    expect(menu.open).toBe(true);
+    menu.toggle(state); // the notice has no toggle
+    expect(state.kidMode).toBe(true);
+    menu.close();
+    expect(menu.screen).toBe('closed');
+    expect(closed).toEqual([true]);
   });
 });

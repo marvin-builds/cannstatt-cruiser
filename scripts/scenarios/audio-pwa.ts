@@ -91,7 +91,7 @@ async function waitForServiceWorker(t: PlaytestContext): Promise<void> {
 /** Scripted run: real first input (unlock), seeded jumps, a held jump, live play, game over. */
 async function scriptedRun(t: PlaytestContext): Promise<void> {
   const { game } = t;
-  await adultMode(t); // EXPECTED_SOUND maps the adult sounds; kid mode is the default
+  await adultMode(t); // EXPECTED_SOUND maps the adult sounds; explicit, whatever the default
   t.check('audio locked before the first input', (await audioStatus(t)) === 'locked', await audioStatus(t));
   await t.realPress(80); // also starts the run from the title
   await t.wait(100);

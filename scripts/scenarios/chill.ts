@@ -144,7 +144,7 @@ async function gameOver(t: PlaytestContext): Promise<void> {
 export default async function chillScenario(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
   await benchGrind(t);
   await people(t);
   await chill(t);

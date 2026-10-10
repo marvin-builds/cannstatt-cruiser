@@ -8,7 +8,9 @@
  * overlaps the HUD button row, and pause and game over keep the skater
  * visible outside portrait. "Startbildschirm" ends the run, so it is a small
  * corner button at the left under the stats plate, away from where a thumb
- * taps to ride on or start a new run.
+ * taps to ride on or start a new run. The title's "Kindermodus" button
+ * (adult mode only, ROADMAP 43) sits in the same top-left corner, left of
+ * the logo.
  */
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
@@ -32,6 +34,8 @@ export interface MenuInput {
   install: InstallHintKind | null;
   /** The HUD stats plate as drawn now (pause), which the logo keeps clear of. */
   plate?: Rect | null;
+  /** Offer the "Kindermodus" button (title in adult mode only). */
+  kidButton?: boolean;
 }
 
 export interface MenuButtons {
@@ -47,6 +51,8 @@ export interface MenuButtons {
   logo: Rect | null;
   /** "Eintragen" on game over (the run makes the online list, see highscore-flow.ts). */
   submit: Rect | null;
+  /** "Kindermodus" on the title (adult mode): turns kid mode on and shows its notice. */
+  kidMode: Rect | null;
 }
 
 /**
@@ -84,6 +90,7 @@ export const MENU_TEXT = {
 } as const;
 
 /** Labels that show their key on desktop. */
+export const kidModeLabel = (touch: boolean) => (touch ? 'Kindermodus' : 'Kindermodus (I)');
 export const reloadLabel = (touch: boolean) => (touch ? 'Neu laden' : 'Neu laden (U)');
 /** "Startbildschirm": T on desktop, and Esc where Esc leads there too (game over). */
 export const toTitleLabel = (touch: boolean, escape = false) =>
@@ -187,6 +194,15 @@ export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 
   return { x: TALLEST_PLATE.x, y, w, h: m.menuButtonH };
 }
 
+/**
+ * The title's "Kindermodus" button: in the top-left corner like
+ * "Startbildschirm" on game over (the logo is centred, so the corner is free),
+ * a menu button high with the small label font; drawn with toTitlePlate.
+ */
+export function kidModeButton(input: MenuInput, m: UiMetrics): Rect {
+  return { x: TALLEST_PLATE.x, y: TALLEST_PLATE.y, w: buttonWidth(kidModeLabel(input.touch), m, 1), h: m.menuButtonH };
+}
+
 /** The visible "Startbildschirm" plate: its tap area, at most CORNER_PLATE_H high and vertically centred in it. */
 export function toTitlePlate(tap: Rect): Rect {
   const h = Math.min(tap.h, CORNER_PLATE_H);
@@ -240,7 +256,7 @@ export function installParts(
 }
 
 function noButtons(): MenuButtons {
-  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null };
+  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, kidMode: null };
 }
 
 /** The install card for the input: compacted where asked (only the prompt kind has a short form). */
@@ -321,7 +337,7 @@ function fitBody(input: MenuInput, blocks: (scale: number) => Block[], column: C
   return fits ? { placed: big, scale: 2 } : { placed: small, scale: 1 };
 }
 
-/** The title under the logo: tagline, start prompt, controls help, notices, records. */
+/** The title under the logo: tagline, start prompt, controls help, notices, records; "Kindermodus" in the corner. */
 export function titleLayout(input: MenuInput): MenuLayout {
   const m = uiMetrics(input);
   const row = (id: string, gap: number, drop?: number, lines = 1): Block => ({ id, w: TITLE_PANEL_W - 8, h: lines * LINE, gap, drop });
@@ -334,7 +350,9 @@ export function titleLayout(input: MenuInput): MenuLayout {
   const help = [row('help', 3, 4, titleHelp(input.touch).length), ...(input.touch ? [] : [row('keys', 1, 5)])];
   let placed = fitColumn([tagline, prompt, ...help, ...tail], column);
   if (!placed.has('help')) placed = condensedTitle([tagline, prompt], tail, input, column);
-  return withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
+  const layout = withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
+  if (input.kidButton) layout.buttons.kidMode = kidModeButton(input, m);
+  return layout;
 }
 
 /**

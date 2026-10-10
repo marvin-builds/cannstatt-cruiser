@@ -2,7 +2,7 @@
  * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
  * (pause, mute, fullscreen, the item button), the hidden settings menu
  * (kid mode, opened by a 3 s long press on the title or pause logo or holding
- * K) and the menu notices: "Neu in dieser Version", the reload button, the
+ * K), the title's "Kindermodus" button with its notice (kid-notice.ts) and the menu notices: "Neu in dieser Version", the reload button, the
  * install hint and "Zum Startbildschirm" (rules in notices.ts, layout in
  * menu-layout.ts and menu-state.ts, drawing in menu-screens.ts).
  * Records live in records.ts, popups in popups.ts (which events show which
@@ -36,6 +36,7 @@ import { handShown, highFiveHand, highFiveHintPlate, HighFiveHint } from './high
 import { HintSlot, type HintWants } from './hint-slot';
 import { HudModel } from './hud-model';
 import { KickerHint } from './kicker-hint';
+import { kidNoticeLayout } from './kid-notice';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { HighscoreFlow, type ScoreServiceLike } from './highscore-flow';
@@ -303,7 +304,10 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.commands.toTitle();
   }
 
-  /** The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter", "Eintragen" (E / Enter). */
+  /**
+   * The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter",
+   * "Eintragen" (E / Enter), "Kindermodus" (I, title in adult mode).
+   */
   function addMenuHotspots(ctx: GameContext): void {
     const { state, commands } = ctx;
     const live = () => (state.mode !== 'gameover' || gameOverReady(state)) && !portraitHintShown(ctx, view);
@@ -326,9 +330,10 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.install, () => commands.promptInstall()));
     ctx.addHotspot(button((b) => b.dismiss, () => commands.dismissInstallHint()));
     ctx.addHotspot(button((b) => b.next, () => commands.markVersionSeen()));
+    ctx.addHotspot(button((b) => b.kidMode, () => view.settings.turnOnFromTitle(state), ['KeyI']));
   }
 
-  /** The logo's long press (pointer or K) on the title and pause screens, the menu's modal layer and its buttons. */
+  /** The logo's long press (pointer or K) on the title and pause screens, the menu's (or kid notice's) modal layer and its buttons. */
   function addSettingsHotspots(ctx: GameContext, full: () => Rect): void {
     const { state, display, commands } = ctx;
     const { settings, logoHold } = view;
@@ -356,19 +361,23 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       onKeyUp: () => void logoHold.end('key'),
     };
     // While open, the menu swallows every tap and key (except M = mute), so nothing starts a run behind it.
+    // The kid notice closes with Enter, Space or Escape (its OK).
     const modal: InputHotspot = {
       rect: () => (settings.open ? full() : null),
       onPress: () => {},
       onKeyDown: (code) => {
-        if (code === 'Escape') settings.close();
-        else if (code === 'Enter' || code === 'Space') settings.toggle(state);
+        const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
+        if (code === 'Escape' || (confirm && settings.screen === 'kidNotice')) settings.close();
+        else if (confirm) settings.toggle(state);
         return code !== 'KeyM';
       },
     };
+    const onMenu = () => settings.screen === 'menu';
     ctx.addHotspot(logo);
     ctx.addHotspot(modal);
-    ctx.addHotspot({ rect: () => (settings.open ? menu().toggle : null), onPress: () => settings.toggle(state) });
-    ctx.addHotspot({ rect: () => (settings.open ? menu().back : null), onPress: () => settings.close() });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().toggle : null), onPress: () => settings.toggle(state) });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
+    ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
   }
 
   /** The native name input over the entry's field (adult mode only), else hidden. */

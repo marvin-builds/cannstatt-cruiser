@@ -164,8 +164,7 @@ describe('Eintragen after game over', () => {
   });
 
   it('Enter opens it too, and Enter in the entry sends the remembered name with the play time', async () => {
-    const { game, flow, crash, key, sent, store } = setup();
-    game.state.kidMode = false;
+    const { flow, crash, key, sent, store } = setup();
     store.set('scoreName', 'Max');
     crash(4500, 3);
     key('Enter');
@@ -186,7 +185,6 @@ describe('Eintragen after game over', () => {
 
   it('paused time does not count as play time', () => {
     const { game, sent, key, store } = setup();
-    game.state.kidMode = false;
     store.set('scoreName', 'Max');
     game.commands.startRun();
     for (let i = 0; i < 60; i++) game.tick();
@@ -202,9 +200,9 @@ describe('Eintragen after game over', () => {
     expect(sent[0]!.run.seconds).toBeCloseTo(2, 1);
   });
 
-  it('shows the native name field over the entry field only in adult mode, focused on desktop', () => {
+  it('shows the native name field over the entry field in adult mode (the default with nothing stored), focused on desktop', () => {
     const { game, crash, key, placed, focused } = setup();
-    game.state.kidMode = false;
+    expect(game.state.kidMode).toBe(false);
     crash(4500);
     key('KeyE');
     const field = scoreEntryLayout({ ...game.display }, false).field;
@@ -214,9 +212,9 @@ describe('Eintragen after game over', () => {
     expect(placed[placed.length - 1]).toBeNull();
   });
 
-  it('kid mode (the default): no free text field, a generated nickname, N for a new one', async () => {
+  it('kid mode: no free text field, a generated nickname, N for a new one', async () => {
     const { game, flow, crash, key, placed, sent } = setup();
-    expect(game.state.kidMode).toBe(true);
+    game.state.kidMode = true;
     crash(4500);
     key('KeyE');
     expect(placed[placed.length - 1]).toBeNull();
