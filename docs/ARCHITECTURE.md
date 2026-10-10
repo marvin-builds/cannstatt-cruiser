@@ -78,6 +78,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/menu-layout.ts     one pure layout per menu screen (title, pause, game over, what's new) incl. its buttons, shared by hotspots and drawing
   ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), portrait hint, game-over input delay
   ui/menu-screens.ts    drawing of the menu screens and their notice cards
+  ui/kid-notice.ts      "Kindermodus ist an" notice after the title's Kindermodus button: texts, kidNoticeLayout (see Settings menu and kid mode)
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
   ui/draw-kit.ts        shared drawing primitives: shadowed text, opaque plates and ribbons, menu buttons (allocation-free)
   ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
@@ -824,16 +825,25 @@ picks one (null while riding or while the settings menu covers it):
 
 ## Settings menu and kid mode
 
-- `state.kidMode` is **on by default** (ROADMAP 39): `createInitialState`
-  sets it true, and it is kept across runs by `resetRun`. The ui loads it in
-  `init` (`store` key `kidMode`, `loadKidMode`): only a stored `false`, an
-  explicit choice in the hidden settings, turns it off; missing or junk
-  storage means kid mode. Every change in the menu is saved at once, so an
-  explicit choice (off or on) is kept across reloads. Other slices only read
-  it.
-- Kid mode is invisible to players (ROADMAP 38): the title and the HUD show
-  no "Kindermodus" badge or chip; only the hidden settings menu shows the
-  switch.
+- `state.kidMode` is **off by default** (adult mode, ROADMAP 43, supersedes
+  39): `createInitialState` sets it false, and it is kept across runs by
+  `resetRun`. The ui loads it in `init` (`store` key `kidMode`,
+  `loadKidMode`): only a stored `true`, an explicit choice, turns it on;
+  missing or junk storage means adult mode. Every change is saved at once,
+  so an explicit choice (off or on) is kept across reloads. Other slices
+  only read it.
+- The title's "Kindermodus" button (adult mode only): `MenuInput.kidButton`
+  (set by `currentMenu` for the title while `!state.kidMode`) makes
+  `titleLayout` place `MenuButtons.kidMode` (`kidModeButton`: the top-left
+  corner, left of the centred logo, a menu button high with the small label,
+  drawn like "Startbildschirm" via `toTitlePlate`). Its hotspot (index.ts
+  `addMenuHotspots`, key I) calls `SettingsMenu.turnOnFromTitle(state)`:
+  kid mode on, saved, and the screen `'kidNotice'` ("Kindermodus ist an",
+  the way back, OK; texts and `kidNoticeLayout` in `ui/kid-notice.ts`,
+  drawn in `ui/screens.ts`). The notice is a settings screen, so it covers
+  the title like the menu and swallows taps and keys but M; OK, Enter,
+  Space and Escape close it. In kid mode the button is absent; the hidden
+  menu is the only way back.
 - The menu "Einstellungen" has no visible button. It opens on the title
   and on the pause screen after holding the logo (`logoRect` on the title,
   `MenuButtons.logo` on the pause screen; touch or mouse) or K for
@@ -850,10 +860,10 @@ picks one (null while riding or while the settings menu covers it):
 - The Kindermodus button switches kid mode on **and off at once**; the 3 s
   long press is the only guard (the parent check was removed in Wave 9).
   Zurück and Escape close the menu. Keys: Enter / Space toggles.
-  `SettingsMenu.screen` is `'closed' | 'menu'`.
+  `SettingsMenu.screen` is `'closed' | 'menu' | 'kidNotice'`.
 - Logic in `ui/settings.ts` (DOM-free: `LongPress`, `SettingsMenu`,
   `loadKidMode` / `saveKidMode`), layout in `ui/layout.ts` (`settingsLayout`
-  → `{toggle, back}`), drawing in `ui/screens.ts`; the pause
+  → `{toggle, back}`) and `ui/kid-notice.ts`, drawing in `ui/screens.ts`; the pause
   logo's rect comes from `ui/menu-layout.ts` (`pauseLayout`).
 - What kid mode changes: gameplay draws the joint entity as a pink bubble
   gum (`chillPickupArt`), the ui shows the gum HUD icon, a sweet pink tint and

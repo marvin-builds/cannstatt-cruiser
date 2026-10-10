@@ -1,6 +1,7 @@
 /**
  * The hidden settings menu ("Einstellungen") and its only setting, the kid
- * mode (state.kidMode). DOM-free logic: the long press that opens the menu
+ * mode (state.kidMode), plus the notice the title's "Kindermodus" button
+ * opens (ROADMAP 43). DOM-free logic: the long press that opens the menu
  * (the only guard: 3 s on the logo or K), the toggle and persistence.
  * Hotspots and drawing live in index.ts and screens.ts.
  */
@@ -54,19 +55,20 @@ export class LongPress {
 
 const KID_MODE_KEY = 'kidMode';
 
-/** Kid mode unless an explicit choice turned it off (ROADMAP 39): no, unreadable or junk storage is kid mode. */
+/** Adult mode unless an explicit choice turned kid mode on (ROADMAP 43): no, unreadable or junk storage is adult mode. */
 export function loadKidMode(store: Store): boolean {
-  return store.get<unknown>(KID_MODE_KEY, true) !== false;
+  return store.get<unknown>(KID_MODE_KEY, false) === true;
 }
 
 export function saveKidMode(store: Store, on: boolean): void {
   store.set(KID_MODE_KEY, on);
 }
 
-export type SettingsScreen = 'closed' | 'menu';
+/** 'kidNotice': "Kindermodus ist an" after the title's button, naming the way back. */
+export type SettingsScreen = 'closed' | 'menu' | 'kidNotice';
 
 /**
- * Whether the hidden menu is showing, and its Kindermodus switch.
+ * Whether the hidden menu (or the kid mode notice) is showing, and its Kindermodus switch.
  * `onClose(switched)` runs whenever the menu closes: `switched` tells whether
  * kid mode differs from when it opened (a run in progress restarts then).
  */
@@ -92,7 +94,14 @@ export class SettingsMenu {
     this.screen = 'menu';
   }
 
-  /** Closes the menu ("Zurück", Esc). */
+  /** The title's "Kindermodus" button (adult mode only): kid mode on, saved, and the notice shows. */
+  turnOnFromTitle(state: GameState): void {
+    this.kidModeAtOpen = state.kidMode;
+    this.setKidMode(state, true);
+    this.screen = 'kidNotice';
+  }
+
+  /** Closes the menu ("Zurück", Esc) or the notice ("OK"). */
   close(): void {
     if (!this.open) return;
     this.screen = 'closed';

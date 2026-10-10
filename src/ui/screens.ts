@@ -1,6 +1,7 @@
 /**
- * Drawing of the HUD, the riding overlays, the settings menu and the portrait
- * hint, and the dispatch to the menu screens (menu-screens.ts). Pure
+ * Drawing of the HUD, the riding overlays, the settings menu (and the kid mode
+ * notice) and the portrait hint, and the dispatch to the menu screens
+ * (menu-screens.ts). Pure
  * rendering: all state comes in through `UiView` (records, popups, banner)
  * and the RenderContext.
  */
@@ -68,6 +69,7 @@ import { drawGameOver, drawPause, drawTitle, drawWhatsNew } from './menu-screens
 import { currentMenu, menuScreen, portraitHintShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
+import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
@@ -497,19 +499,29 @@ function drawPortraitHint(r: RenderContext): void {
 
 function drawSettings(r: RenderContext, view: UiView): void {
   const { settings } = view;
-  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
   fill(r, UI.ink);
-  if (settings.open) {
-    const on = r.state.kidMode;
-    centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
-    menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
-    const note = l.toggle.y + l.toggle.h + 6;
-    // Switched during a run: closing the menu restarts it.
-    if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, note, { color: UI.yellow });
-    else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', note, { color: UI.muted });
-    if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
-    menuButton(r, l.back, 'Zurück');
+  if (settings.screen === 'kidNotice') {
+    drawKidNotice(r);
+    return;
   }
+  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
+  const on = r.state.kidMode;
+  centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
+  menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
+  const note = l.toggle.y + l.toggle.h + 6;
+  // Switched during a run: closing the menu restarts it.
+  if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, note, { color: UI.yellow });
+  else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', note, { color: UI.muted });
+  if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
+  menuButton(r, l.back, 'Zurück');
+}
+
+/** "Kindermodus ist an" after the title's button: what it does, the way back, OK. */
+function drawKidNotice(r: RenderContext): void {
+  const l = kidNoticeLayout(r.display);
+  centred(r, KID_NOTICE_TITLE, l.title, { scale: 2, color: UI.green });
+  kidNoticeLines(r.display.touch).forEach((s, i) => centred(r, s, l.lines + i * l.lineH, { scale: l.scale, color: i === 0 ? UI.muted : UI.white }));
+  menuButton(r, l.ok, KID_NOTICE_OK, UI.yellow);
 }
 
 export function drawUi(r: RenderContext, view: UiView): void {

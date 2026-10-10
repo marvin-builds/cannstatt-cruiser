@@ -67,11 +67,12 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     reload: screen !== 'whatsNew' && reloadOffered(state),
     install,
     plate: screen === 'pause' ? view.hud.layout.plate : null,
+    kidButton: screen === 'title' && !state.kidMode,
   };
   const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
   const submit = screen === 'gameOver' && !!view.scores?.offered;
-  const key = `${screen}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
+  const key = `${screen}|${input.kidButton}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

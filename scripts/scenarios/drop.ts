@@ -38,7 +38,7 @@ const kidMode = (t: PlaytestContext, on: boolean) => t.page.evaluate((k) => wind
 export default async function drop(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
   await rideOver(t);
   await kidModeNeverBeer(t);
   await beerStartsAutoDrink(t);

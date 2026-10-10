@@ -355,7 +355,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
     }
   }
 
-  // --- Chill pickup via natural ride over it (bubble gum: kid mode is the default)
+  // --- Chill pickup via natural ride over it (the joint: adult mode is the default)
   await freshRun(t, 0);
   await place(t, 'joint', PLAYER_X + 60);
   await game.step(40);
@@ -432,6 +432,17 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await game.pause();
   await game.step(2);
   await dismissRotateHint(t);
+  // The title's Kindermodus button (adult default): tap, the notice, OK.
+  const kidButton = (await layout(t)).screen?.kidMode;
+  t.check('the adult title shows the Kindermodus button', !!kidButton);
+  if (kidButton) await f.tap(centre(kidButton).x, centre(kidButton).y);
+  await game.step(2);
+  await t.screenshot('kid mode notice page');
+  t.check('the button turns kid mode on and shows the notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
+  const ok = (await layout(t)).kidNoticeOk;
+  await f.tap(centre(ok).x, centre(ok).y);
+  await game.step(2);
+  t.check('OK closes the notice, still on the title', (await settings(t)).screen === 'closed' && (await game.state()).mode === 'title');
   const logo = centre((await layout(t)).logo);
   await holdViewWhile(t, logo.x, logo.y, async () => {
     await game.step(90);
@@ -444,7 +455,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await f.tap(centre(lay2.menu.toggle).x, centre(lay2.menu.toggle).y);
   await game.step(2);
   await t.screenshot('settings kid off page');
-  t.check('the toggle turns the default kid mode off', !(await game.state()).kidMode);
+  t.check('the toggle turns kid mode off', !(await game.state()).kidMode);
   await f.tap(centre(lay2.menu.back).x, centre(lay2.menu.back).y);
   await game.step(2);
   await t.screenshot('title adult page');

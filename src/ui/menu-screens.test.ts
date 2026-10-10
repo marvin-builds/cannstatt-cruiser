@@ -26,18 +26,20 @@ function titleTexts(kidMode: boolean, touch: boolean): string[] {
   const view = { records: loadRecords(createMemoryStore()), lastRun: null, logoHold: { progress: 0 } };
   const { viewWidth, portrait } = game.display;
   drawn.length = 0;
-  drawTitle(r, view, titleLayout({ viewWidth, touch, portrait, fullscreenAvailable: false, reload: false, install: null }));
+  drawTitle(r, view, titleLayout({ viewWidth, touch, portrait, fullscreenAvailable: false, reload: false, install: null, kidButton: !kidMode }));
   return [...drawn];
 }
 
 describe('title screen', () => {
-  for (const kidMode of [true, false]) {
-    for (const touch of [true, false]) {
-      it(`shows no kid mode chip (kidMode ${kidMode}, touch ${touch}): kid mode is invisible on the title`, () => {
-        const texts = titleTexts(kidMode, touch);
-        expect(texts.length).toBeGreaterThan(0);
-        expect(texts.join('|')).not.toMatch(/Kindermodus/i);
-      });
-    }
+  for (const touch of [true, false]) {
+    it(`kid mode shows no "Kindermodus" on the title (touch ${touch}): the way back is hidden`, () => {
+      const texts = titleTexts(true, touch);
+      expect(texts.length).toBeGreaterThan(0);
+      expect(texts.join('|')).not.toMatch(/Kindermodus/i);
+    });
+
+    it(`adult mode shows the Kindermodus button (touch ${touch}, ROADMAP 43)`, () => {
+      expect(titleTexts(false, touch)).toContain(touch ? 'Kindermodus' : 'Kindermodus (I)');
+    });
   }
 });

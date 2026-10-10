@@ -112,7 +112,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   await reloadGame(t.page);
   await t.game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // the free-text name entry is adult mode only; kid mode is the default
+  await adultMode(t); // the free-text name entry is adult mode only; explicit, whatever the default
   const tag = t.viewport.name;
 
   // Title: the trophy in the button row opens the list.

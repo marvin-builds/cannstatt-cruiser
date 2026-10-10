@@ -68,7 +68,7 @@ async function skaterCrop(t: PlaytestContext, name: string, zoom = 4): Promise<v
 
 export default async function skater(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
 
   await writeDataUrl(t, '00-pose-lineup.png', await page.evaluate(() => window.__player!.lineup(6)));
   await writeDataUrl(t, '00-pose-lineup-chill.png', await page.evaluate(() => window.__player!.lineup(6, 'chill')));

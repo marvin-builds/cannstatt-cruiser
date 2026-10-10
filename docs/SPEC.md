@@ -218,25 +218,34 @@ tint is a light, sweet pink and the HUD timer shows a gum bubble. The slower
 kickflip and its "Zu entspannt!" bail apply with the gum too. Nothing in
 kid mode refers to drugs.
 
-## Settings (hidden)
+## Settings (hidden) and the Kindermodus button
 
-- A settings menu "Einstellungen" with one setting, "Kindermodus", **on by
-  default** (ROADMAP 39): a player who never chose plays in kid mode; an
-  explicit choice in the menu (off or on) is stored in localStorage and
-  kept.
-- Kid mode is invisible (ROADMAP 38): no "Kindermodus" badge or sign on the
-  title or anywhere else; only the hidden menu shows the switch.
-- It has no visible button, so kids don't find it by accident: it opens on
-  the title screen and on the pause screen by holding the "Cannstatt
-  Cruiser" logo for 3 s (touch or mouse) or holding K for 3 s. A subtle
-  progress bar appears only after ~1 s of holding. A shorter press on the
-  logo is a normal tap and starts the run (title) or resumes (pause); the
-  long press never does.
+- Adult mode is the **default** (ROADMAP 43, supersedes ROADMAP 39 and the
+  "invisible" part of 38): a player who never chose plays in adult mode; an
+  explicit choice (off or on) is stored in localStorage and kept.
+- In adult mode the title screen shows a visible "Kindermodus" button in its
+  top-left corner (tap or click; key I on desktop, shown as "Kindermodus
+  (I)"). Pressing it never starts a run: it turns kid mode on, saves it and
+  shows a notice "Kindermodus ist an" / "Kindgerechte Bilder und Texte." /
+  "Ausschalten: Logo 3 Sekunden halten" (desktop: "K 3 Sekunden halten")
+  with an "OK" button (tap, Enter, Space or Escape), which returns to the
+  title. The button shows on the title only, never on pause, game over or
+  any other screen.
+- In kid mode the button is gone and no sign of kid mode shows on the
+  title; the only way back is the hidden menu "Einstellungen" with its one
+  setting, "Kindermodus". Turning kid mode off there brings the title button
+  back.
+- The menu has no visible button, so kids don't find it by accident: it
+  opens on the title screen and on the pause screen by holding the
+  "Cannstatt Cruiser" logo for 3 s (touch or mouse) or holding K for 3 s. A
+  subtle progress bar appears only after ~1 s of holding. A shorter press on
+  the logo is a normal tap and starts the run (title) or resumes (pause);
+  the long press never does.
 - Switching kid mode from the pause screen restarts the run (the menu says
   "Lauf wird neu gestartet"); the run so far still counts for the highscore
   and the star total.
-- Kindermodus turns on and off at once; the hidden 3 s long press is the
-  only guard (the earlier parent check was dropped in Wave 9).
+- Kindermodus turns on and off at once in the menu; the hidden 3 s long
+  press is the only guard (the earlier parent check was dropped in Wave 9).
 - "Zurück" and Escape close the menu. All text is German.
 
 ## Difficulty

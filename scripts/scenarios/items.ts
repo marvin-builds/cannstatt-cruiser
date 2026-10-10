@@ -50,7 +50,7 @@ async function until(t: PlaytestContext, name: keyof GameEvents, max = 200): Pro
 export default async function items(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
   await throwAndHit(t);
   await ricochet(t);
   await eat(t);

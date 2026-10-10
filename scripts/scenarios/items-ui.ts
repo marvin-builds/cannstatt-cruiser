@@ -28,7 +28,7 @@ export default async function itemsUi(t: PlaytestContext): Promise<void> {
   const { game, page } = t;
   await game.pause();
   await dismissRotateHint(t);
-  await adultMode(t); // adult content below; kid mode is the default
+  await adultMode(t); // adult content below; explicit, whatever the default
   const display = await game.display();
   await game.step(2);
   await t.canvasShot('title hints');

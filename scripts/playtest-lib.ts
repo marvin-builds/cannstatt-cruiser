@@ -334,8 +334,8 @@ export async function stepWhile(
 }
 
 /**
- * Turns kid mode off for scenarios that check adult content (kid mode is the
- * default, ROADMAP 39): stored like an explicit choice in the hidden settings
+ * Turns kid mode off for scenarios that check adult content (adult mode is the
+ * default since ROADMAP 43; this pins it): stored like an explicit choice in the hidden settings
  * (so it survives reloads) and set on the running state.
  */
 export async function adultMode(t: PlaytestContext): Promise<void> {
