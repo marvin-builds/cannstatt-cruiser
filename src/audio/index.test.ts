@@ -64,7 +64,7 @@ function setup(storage = new MemoryStorage()) {
   return { game, backend, storage, cues: () => backend.played.map((p) => p.cue) };
 }
 
-/** A running game; kid mode is the default, `adult` switches it off for the adult variants. */
+/** A running game in kid mode; `adult` switches it off for the adult variants. */
 function playing({ adult = false } = {}) {
   const s = setup();
   s.game.state.kidMode = !adult;
@@ -226,7 +226,7 @@ describe('audio system: kid mode bubble gum', () => {
     return { game, backend, heard };
   }
 
-  it('plays the bubble sound by default, as kid mode is the default', () => {
+  it('plays the chill sound by default, as adult mode is the default', () => {
     const backend = new FakeBackend();
     const heard: string[] = [];
     const game = new Game({
@@ -234,7 +234,7 @@ describe('audio system: kid mode bubble gum', () => {
     });
     game.commands.startRun();
     game.bus.emit('chillStart', { entityId: 1, duration: 6 });
-    expect(heard).toEqual(['bubble']);
+    expect(heard).toEqual(['chill']);
   });
 
   it('plays the sweet bubble sound instead of the chill sound on chillStart in kid mode', () => {
