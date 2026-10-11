@@ -84,7 +84,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/menu-layout.ts     one pure layout per menu screen (title, pause, game over, what's new) incl. its buttons, shared by hotspots and drawing
   ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), portrait hint, game-over input delay
   ui/menu-screens.ts    drawing of the menu screens and their notice cards
-  ui/kid-notice.ts      "Kindermodus ist an" notice after the title's Kindermodus button: texts, kidNoticeLayout (see Settings menu and kid mode)
+  ui/kid-notice.ts      "Kindermodus ist an" notice after turning kid mode on in the settings: texts, kidNoticeLayout, kidNoticeRestart (see Settings menu and kid mode)
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
   ui/draw-kit.ts        shared drawing primitives: shadowed text, opaque plates and ribbons, menu buttons (allocation-free)
   ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
@@ -793,7 +793,7 @@ picks one (null while riding or while the settings menu covers it):
 | Screen | When | Buttons (key) |
 |---|---|---|
 | "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
-| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)), speech-bubble "Feedback" icon bottom right (F, adult mode only, see [Player feedback](#player-feedback-roadmap-50)); the logo's long press opens the settings |
+| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)), speech-bubble "Feedback" icon bottom right (F, adult mode only, see [Player feedback](#player-feedback-roadmap-50)); the gear top left (G, adult mode only) and the logo's long press open the settings |
 | pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), "Feedback" (F, adult mode only), reload |
 | game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Eintragen" (E / Enter, only when the run makes the online top 20), "Zum Startbildschirm" (T), reload, install hint |
 
@@ -849,39 +849,46 @@ picks one (null while riding or while the settings menu covers it):
   missing or junk storage means adult mode. Every change is saved at once,
   so an explicit choice (off or on) is kept across reloads. Other slices
   only read it.
-- The title's "Kindermodus" button (adult mode only): `MenuInput.kidButton`
-  (set by `currentMenu` for the title while `!state.kidMode`) makes
-  `titleLayout` place `MenuButtons.kidMode` (`kidModeButton`: the top-left
-  corner, left of the centred logo, a menu button high with the small label,
-  drawn like "Startbildschirm" via `toTitlePlate`). Its hotspot (index.ts
-  `addMenuHotspots`, key I) calls `SettingsMenu.turnOnFromTitle(state)`:
-  kid mode on, saved, and the screen `'kidNotice'` ("Kindermodus ist an",
-  the way back, OK; texts and `kidNoticeLayout` in `ui/kid-notice.ts`,
-  drawn in `ui/screens.ts`). The notice is a settings screen, so it covers
-  the title like the menu and swallows taps and keys but M; OK, Enter,
-  Space and Escape close it. In kid mode the button is absent; the hidden
-  menu is the only way back.
-- The menu "Einstellungen" has no visible button. It opens on the title
-  and on the pause screen after holding the logo (`logoRect` on the title,
-  `MenuButtons.logo` on the pause screen; touch or mouse) or K for
-  `LONG_PRESS_TIME` = 3 s; a thin progress bar under the logo shows only
-  after `LONG_PRESS_HINT_DELAY` = 1 s. Letting go of the logo earlier is a
-  normal tap: it starts the run (title) or resumes (pause); K alone never
-  does either. The menu is drawn over the title or pause screen (core modes
-  are unchanged) and swallows all taps and keys but M.
+- **Settings** ("Einstellungen") open from the gear button on the title
+  (ROADMAP 64, adult mode only): `MenuButtons.settings` (`settingsGear`, the
+  top-left corner, an icon button like the trophy, `ICON_GEAR` in `ui/art.ts`;
+  `MenuInput.settingsButton` set by `currentMenu` for the title while
+  `!state.kidMode`), tap, click or key G. In kid mode there is no gear and G
+  does nothing. The hidden way stays: on the title and the pause screen,
+  holding the logo (`logoRect` on the title, `MenuButtons.logo` on the pause
+  screen; touch or mouse) or K for `LONG_PRESS_TIME` = 3 s; a thin progress
+  bar under the logo shows only after `LONG_PRESS_HINT_DELAY` = 1 s. Letting
+  go of the logo earlier is a normal tap: it starts the run (title) or
+  resumes (pause); K alone never does either. The menu is drawn over the
+  title or pause screen (core modes are unchanged) and swallows all taps and
+  keys but M. There is no separate Kindermodus button any more: the settings
+  are the one place to switch it.
+- Turning kid mode **on** in the menu (`SettingsMenu.toggle`) saves it and
+  switches to the screen `'kidNotice'` ("Kindermodus ist an", the way back,
+  OK; texts and `kidNoticeLayout(display, restart)` in `ui/kid-notice.ts`,
+  drawn in `ui/screens.ts`). The notice covers the screen like the menu and
+  swallows taps and keys but M; OK, Enter, Space and Escape close it. Opened
+  from the pause screen it adds "Lauf wird neu gestartet"
+  (`kidNoticeRestart`) and OK restarts the run. Turning kid mode **off**
+  takes effect at once and the menu stays open; the 3 s long press is the
+  only guard in kid mode (the parent check was removed in Wave 9).
 - Switching kid mode from the pause screen restarts the run (once switched,
   the menu notes "Lauf wird neu gestartet"): kid mode changes the art of
   things already on the street, so when the menu closes with kid mode
   switched, the ui ends the paused run like "Zum Startbildschirm" (its score
   and stars count for the highscore and star total) and starts a new run.
-- The Kindermodus button switches kid mode on **and off at once**; the 3 s
-  long press is the only guard (the parent check was removed in Wave 9).
-  Zurück and Escape close the menu. Keys: Enter / Space toggles.
-  `SettingsMenu.screen` is `'closed' | 'menu' | 'kidNotice'`.
+- Zurück and Escape close the menu. Keys: Enter / Space toggles.
+  `SettingsMenu.screen` is `'closed' | 'menu' | 'kidNotice'`; `UiSystem.settings`
+  exposes the menu for tests.
 - Logic in `ui/settings.ts` (DOM-free: `LongPress`, `SettingsMenu`,
   `loadKidMode` / `saveKidMode`), layout in `ui/layout.ts` (`settingsLayout`
-  → `{toggle, back}`) and `ui/kid-notice.ts`, drawing in `ui/screens.ts`; the pause
-  logo's rect comes from `ui/menu-layout.ts` (`pauseLayout`).
+  → `{toggle, back}`), `ui/kid-notice.ts` and `ui/menu-layout.ts`
+  (`settingsGear`, `titleKeys`, `titleLayout`; the pause logo's rect from
+  `pauseLayout`), drawing in `ui/screens.ts`.
+- Crowded title (320 px portrait with the update and install cards): the
+  trophy's rect is passed into `titleLayout` so the panel stays left of it,
+  the install card goes compact, and only there the one-line controls hint
+  is dropped.
 - What kid mode changes: gameplay draws the joint entity as a pink bubble
   gum (`chillPickupArt`), the ui shows the gum HUD icon, a sweet pink tint and
   the popup "Kaugummi!" (`ui/chill-look.ts`); player and audio pick their own
@@ -1621,6 +1628,15 @@ fun, **not harder**.
   [Bench](#bench-ledge-contract)). Line pieces carry `data.line` (the line's
   id), `data.step` (1..steps) and `data.steps`; a kicker carries its launch
   speed in `data.velocity` (`launchVelocityFor(ledge height)`).
+- **Up only via a launch** (ROADMAP 61): ledges, park containers and the
+  crane boom catch the skater only after a kicker or bank `launch` and until
+  he touches the street again, crashes or ollies from the street
+  (`StuntLines.ledgesReachable`, gating `landsOnHighLedge` in
+  `resolveContacts(ctx, ledgesReachable)`). A normal jump or a head jump from
+  the street passes in front of them; gap jumps between ledges and rolling
+  off them still work. Street benches and rails are unaffected. The solver
+  never sees stunt ledges (not in `buildCourse`), so street patterns under a
+  line are planned for the street.
 - **Lines** (`gameplay/stunt-line.ts`): a designed line is one spawn pattern
   of 3-6 pieces: a kicker launches onto a ledge, gap jumps go from ledge to
   ledge, drops roll back onto the street onto the next kicker, with a star
@@ -1873,7 +1889,9 @@ events below).
 - **Line** (`gameplay/park-line.ts`, spawn pattern `park`): high fiver ->
   bank -> container -> (gap jump | drop + bank) -> container -> (gap jump up
   | drop + bank) -> crane boom; `parkPiecesOf` turns the pattern into the
-  plan's pieces.
+  plan's pieces. The crane boom is `CRANE_SCALE` = 0.75 base container
+  lengths (60-75 px, ROADMAP 62; at least the gap jump's landing room); the
+  world draws the boom from the piece's span, so art and ledge match.
 - Playtest: `scripts/scenarios/nordiy.ts` (debug hook
   `window.__gameplay.park(offset?, seed?)` plans a ridable park right ahead;
   `window.__world.planPark(x?)` shows the scenery only; see

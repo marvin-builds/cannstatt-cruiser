@@ -351,19 +351,18 @@ npm run playtest -- --headed
   ArrowDown (desktop) and a CDP touch swipe down that must duck without
   jumping, still duck after 0.55 s and end by itself (touch viewports), and a
   60 s ducking bot ride on seed 1.
-- `scripts/scenarios/settings.ts`: the kid mode switch (ROADMAP 43) and the
-  hidden settings menu on desktop and both phone viewports, with the online
+- `scripts/scenarios/settings.ts`: the kid mode switch (ROADMAP 43, 64) and
+  the settings menu on desktop and both phone viewports, with the online
   list faked by a Playwright route (never a POST): adult mode with nothing
-  stored, the title's "Kindermodus" button and the free-text field in the
-  highscore entry; the title without a settings button, a short logo hold
-  (no progress, starts the run like a tap), the 3 s long press with its
-  progress bar (no run start); the Kindermodus button (tap on touch, I on
-  desktop) turning kid mode on and saving it without a run start, the
-  notice "Kindermodus ist an" and its OK (tap / Enter) back to a title
-  without the button, kid mode kept across a reload; the hidden menu (K on
-  desktop, long press on touch) turning it off at once, which brings the
-  button back, and on again (no parent check since Wave 9); an explicit off
-  kept across a reload; and a kid-mode run with the bubble gum, pink tint
+  stored, the title's gear and the free-text field in the highscore entry; a
+  short logo hold (no progress, starts the run like a tap), the 3 s long
+  press with its progress bar (no run start); the gear (tap on touch, G on
+  desktop) opening the settings, turning kid mode on there saves it without
+  a run start and shows the notice "Kindermodus ist an", whose OK (tap /
+  Enter) goes back to a title without the gear, kid mode kept across a
+  reload; the hidden menu (K on desktop, long press on touch) turning it off
+  at once, which brings the gear back (no parent check since Wave 9); an
+  explicit off kept across a reload; and a kid-mode run with the bubble gum, pink tint
   and gum HUD icon. On touch viewports it checks every button, menu and HUD
   tap area is >= 44 CSS px (rect x `cssPerViewPixel`).
 - `scripts/scenarios/people.ts`: human-bot stats (20 seeds x 3 min computed in
@@ -594,6 +593,14 @@ npm run playtest -- --headed
 - `scripts/scenarios/insights-triage.ts` (ROADMAP 56, `desktop,phone-portrait`):
   the board against a fake worker route: card actions, the issue editor,
   "Todo #N", the delete confirm and the status filter.
+
+- `scripts/scenarios/ramp-only.ts` (ROADMAP 61/62, `desktop,phone-landscape`):
+  a street jump passes in front of a stunt ledge and a park container without
+  landing, a launched line grinds the ledges, and the shorter crane.
+- `scripts/scenarios/title-gear.ts` (ROADMAP 64, all viewports): the gear on
+  the title at the viewport's width and at 320 px, with the update card, the
+  install card and both; the settings opened from the gear; no gear in kid
+  mode.
 
 ### Quiet time (ROADMAP 52)
 
