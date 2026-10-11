@@ -1,9 +1,11 @@
-/** The unlocked dashboard: header with range switch, tiles, charts and lists. */
+/** The unlocked dashboard: header with range switch, tiles, charts, lists and the feedback card at the end. */
 import { type InsightsStats, STATS_RANGES, type StatsRange } from '../net/telemetry-types';
 import { distanceGroups, runLengthGroups, scoreGroups } from './buckets';
 import { CHART_PAD_LEFT, GRAIN_UNIT, histogram, legend, periodBars, rankedList, splitBar } from './charts';
 import type { DaySeries } from './day-chart';
 import { h } from './dom';
+import type { FeedbackFilter } from './feedback';
+import { feedbackCard, type FeedbackView } from './feedback-card';
 import { countryName, formatDecimal, formatDuration, formatNumber } from './format';
 import { chartPeriods } from './periods';
 import { isApproximate, rangeButtonLabel, rangeNote } from './ranges';
@@ -13,6 +15,7 @@ export interface BoardHandlers {
   onRange(days: StatsRange): void;
   onReload(): void;
   onLock(): void;
+  onFeedbackFilter(filter: FeedbackFilter): void;
 }
 
 export interface BoardView {
@@ -22,6 +25,7 @@ export interface BoardView {
   loading: boolean;
   /** A failed reload, shown above the (older) data. */
   error: string | null;
+  feedback: FeedbackView;
 }
 
 const SPLITS: { title: string; field: keyof InsightsStats['split']; keys: SplitKey[] }[] = [
@@ -170,6 +174,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
         ),
         card('Aktuelle Bestenliste', stats.topScores.length ? top : h('p', { class: 'empty-note' }, 'Noch keine Einträge')),
       ),
+      feedbackCard(view.feedback, handlers.onFeedbackFilter),
       h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte ohne Angabe zählen als „Andere“'),
     ),
   );

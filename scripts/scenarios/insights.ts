@@ -5,12 +5,16 @@
  * the board with the bearer header, the range switch incl. 365 T and Alles
  * (500-day fixture; weeks / months, approximate median), readable bars, a
  * failed reload, safe rendering of player names, no token in storage or URL,
- * no horizontal scroll, and light and dark mode. Runs in its own browser context with service workers
+ * no horizontal scroll, and light and dark mode. The Feedback card (ROADMAP 50)
+ * gets a fake GET /feedback: newest first, kind badges, a long wrapping text,
+ * markup shown as text, an expandable error log, the filter, the empty list
+ * and a 404 from an older worker (stats still render). Runs in its own browser context with service workers
  * blocked (the game's worker would otherwise answer navigations).
  *
  *   npm run playtest -- --scenario scripts/scenarios/insights.ts --viewports desktop,phone-portrait --name insights
  */
 import type { Page, Route } from 'playwright';
+import { sampleFeedback } from '../../src/insights/sample-feedback';
 import { sampleStats } from '../../src/insights/sample-stats';
 import { ALL_RANGE, STATS_RANGES, type StatsRange } from '../../src/net/telemetry-types';
 import { join, type PlaytestContext } from '../playtest-lib';
@@ -18,20 +22,30 @@ import { join, type PlaytestContext } from '../playtest-lib';
 const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
 const TOKEN = 'geheim-123';
 
-/** Fake GET /stats: 401 for a wrong token, the fixture for the right one, or a network error. */
+/** Fake GET /stats and /feedback: 401 for a wrong token, the fixtures for the right one, or a network error. */
 class FakeStats {
   offline = false;
+  /** 'list': the sample entries, 'empty': no entries, a number: that status (404 = older worker). */
+  feedback: 'list' | 'empty' | number = 'list';
   requests: { url: string; auth: string | undefined }[] = [];
+
+  lastStats() {
+    return this.requests.filter((r) => r.url.includes('/stats')).at(-1);
+  }
 
   async handle(route: Route): Promise<void> {
     const request = route.request();
     this.requests.push({ url: request.url(), auth: request.headers()['authorization'] });
     if (this.offline) return route.abort('internetdisconnected');
     const url = new URL(request.url());
-    if (url.pathname !== '/stats') return route.fulfill({ status: 404, body: '' });
+    if (url.pathname !== '/stats' && url.pathname !== '/feedback') return route.fulfill({ status: 404, body: '' });
     const headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
     if (request.headers()['authorization'] !== `Bearer ${TOKEN}`) {
       return route.fulfill({ status: 401, headers, body: JSON.stringify({ error: 'unauthorized' }) });
+    }
+    if (url.pathname === '/feedback') {
+      if (typeof this.feedback === 'number') return route.fulfill({ status: this.feedback, headers, body: JSON.stringify({ error: 'not found' }) });
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ entries: this.feedback === 'list' ? sampleFeedback() : [] }) });
     }
     const days = Number(url.searchParams.get('days'));
     const range = (url.searchParams.has('days') && STATS_RANGES.includes(days as StatsRange) ? days : 7) as StatsRange;
@@ -58,6 +72,30 @@ async function pickRange(page: Page, label: string): Promise<void> {
     (text) => document.querySelector('.segmented button[aria-pressed=true]')?.textContent === text && document.querySelector('.board')?.getAttribute('aria-busy') === 'false',
     label,
   );
+}
+
+/** The Feedback card as the owner reads it. */
+async function feedbackState(page: Page) {
+  return page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>('.card.feedback');
+    const items = [...document.querySelectorAll<HTMLElement>('.fb-item')];
+    return {
+      count: card?.querySelector('.fb-count')?.textContent ?? '',
+      note: card?.querySelector('.empty-note')?.textContent ?? '',
+      kinds: items.map((i) => i.querySelector('.fb-kind')?.textContent),
+      days: items.map((i) => i.querySelector('time')?.textContent),
+      texts: items.map((i) => i.querySelector('.fb-text')?.textContent ?? ''),
+      meta: items[0]?.querySelector('.fb-meta')?.textContent ?? '',
+      scripts: card?.querySelectorAll('script').length ?? -1,
+      overflow: items.some((i) => i.scrollWidth > i.clientWidth + 1),
+      logs: [...document.querySelectorAll('.fb-log summary')].map((n) => n.textContent),
+    };
+  });
+}
+
+async function reload(page: Page): Promise<void> {
+  await page.click('button:has-text("Neu laden")');
+  await page.waitForFunction(() => document.querySelector('.board')?.getAttribute('aria-busy') === 'false');
 }
 
 async function noHorizontalScroll(page: Page): Promise<{ scroll: number; client: number }> {
@@ -100,7 +138,7 @@ export default async function (t: PlaytestContext) {
     await page.click('button[type=submit]');
     await page.waitForSelector('.tiles');
     await page.waitForSelector('.chart');
-    const last = fake.requests.at(-1);
+    const last = fake.lastStats();
     t.check('fetches the live worker /stats?days=7 with the bearer header', last?.url === `${API}/stats?days=7` && last.auth === `Bearer ${TOKEN}`, last);
     const leaks = await page.evaluate(
       (tok) => [localStorage, sessionStorage].some((s) => Object.keys(s).some((k) => (s.getItem(k) ?? '').includes(tok))) || location.href.includes(tok),
@@ -118,6 +156,29 @@ export default async function (t: PlaytestContext) {
     t.check('no horizontal scroll on the board', width.scroll <= width.client, width);
     await screenshot('board-7');
 
+    const fb = await feedbackState(page);
+    t.check('feedback asked with the bearer header', fake.requests.some((r) => r.url === `${API}/feedback` && r.auth === `Bearer ${TOKEN}`));
+    t.check('feedback newest first with day and kind badge', fb.days.join() === '11.10.2026,11.10.2026,10.10.2026,8.10.2026' && fb.kinds.join() === 'Idee,Fehler,Fehler,Idee', fb);
+    t.check('feedback meta line and count', fb.meta === 'Version 2026-10-11.4 · Android · Touch · Hoch · 390 px' && fb.count === '4 Einträge', fb);
+    t.check('feedback markup shows as text', fb.texts.some((x) => x.startsWith('<script>')) && fb.scripts === 0, fb.texts);
+    t.check('feedback keeps line breaks and long words wrap', fb.texts[0]!.includes('\n') && !fb.overflow, fb);
+    t.check('a bug with log offers the closed Fehlerprotokoll', fb.logs.join() === 'Fehlerprotokoll (4 Zeilen)' && !(await page.isVisible('.fb-log pre')), fb.logs);
+    await page.click('.fb-log summary');
+    t.check('the log opens in a monospace block', await page.isVisible('.fb-log pre'));
+    const card = page.locator('.card.feedback');
+    await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback.png`) });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback-dark.png`) });
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.click('.card.feedback button:has-text("Fehler")');
+    const bugs = await feedbackState(page);
+    t.check('filter Fehler shows only bug reports', bugs.kinds.join() === 'Fehler,Fehler' && bugs.count === '2 Einträge', bugs);
+    await page.click('.card.feedback button:has-text("Ideen")');
+    const ideas = await feedbackState(page);
+    t.check('filter Ideen shows only ideas', ideas.kinds.join() === 'Idee,Idee' && ideas.count === '2 Einträge', ideas);
+    await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback-ideen.png`) });
+    await page.click('.card.feedback button:has-text("Alle")');
+
     const ranges: { label: string; days: StatsRange; heading: string; approx: boolean }[] = [
       { label: '30 T', days: 30, heading: desktop ? 'pro Tag' : 'pro Woche', approx: false },
       { label: '365 T', days: 365, heading: desktop ? 'pro Woche' : 'pro Monat', approx: true },
@@ -126,7 +187,7 @@ export default async function (t: PlaytestContext) {
     for (const r of ranges) {
       await page.emulateMedia({ colorScheme: 'light' });
       await pickRange(page, r.label);
-      t.check(`range ${r.label} asks for days=${r.days}`, fake.requests.at(-1)?.url === `${API}/stats?days=${r.days}`, fake.requests.at(-1));
+      t.check(`range ${r.label} asks for days=${r.days}`, fake.lastStats()?.url === `${API}/stats?days=${r.days}`, fake.lastStats());
       const state = await chartState(page);
       t.check(`${r.label}: chart groups ${r.heading}`, state.heading.endsWith(r.heading), state.heading);
       t.check(`${r.label}: bars are readable (>= 3 px) with axis labels`, state.minBar >= 3 && state.labels.length >= 3, state);
@@ -151,6 +212,22 @@ export default async function (t: PlaytestContext) {
     await page.waitForSelector('.board .banner');
     t.check('a failed reload keeps the board and shows a retry note', (await page.textContent('.board .banner'))?.includes('Keine Verbindung') === true);
     await screenshot('reload-offline-dark', false);
+    fake.offline = false;
+
+    fake.feedback = 'empty';
+    await reload(page);
+    const empty = await feedbackState(page);
+    t.check('an empty feedback list shows Noch kein Feedback', empty.note === 'Noch kein Feedback' && empty.count === '0 Einträge', empty);
+    await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback-empty-dark.png`) });
+
+    fake.feedback = 404;
+    await reload(page);
+    const missing = await feedbackState(page);
+    const statsShown = (await page.locator('.tile').count()) === 4 && !(await page.isVisible('.board .banner'));
+    t.check('a 404 on /feedback shows a short note and the stats still render', missing.note === 'Feedback gerade nicht abrufbar' && statsShown, missing);
+    await page.emulateMedia({ colorScheme: 'light' });
+    await screenshot('feedback-404');
+    fake.feedback = 'list';
 
     await page.click('button:has-text("Sperren")');
     await page.waitForSelector('form.lock');

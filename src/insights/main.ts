@@ -5,9 +5,11 @@
  */
 import './insights.css';
 import type { FetchLike } from '../net/api';
+import type { FeedbackEntry } from '../net/feedback-types';
 import type { InsightsStats, StatsRange } from '../net/telemetry-types';
 import { drawDayCharts, renderBoard } from './board';
-import { apiBase, fetchStats, type StatsError } from './client';
+import { apiBase, fetchFeedback, fetchStats, type StatsError } from './client';
+import type { FeedbackFilter } from './feedback';
 import { renderLocked } from './locked';
 
 const root = document.getElementById('app')!;
@@ -23,6 +25,9 @@ const ERRORS: Record<StatsError, string> = {
 let token: string | null = null;
 let range: StatsRange = 7;
 let stats: InsightsStats | null = null;
+/** null while GET /feedback fails; the stats still render. */
+let feedback: FeedbackEntry[] | null = null;
+let feedbackFilter: FeedbackFilter = 'all';
 
 function showLocked(message: string | null, busy = false): void {
   stats = null;
@@ -31,7 +36,11 @@ function showLocked(message: string | null, busy = false): void {
 
 function showBoard(loading: boolean, error: string | null = null): void {
   if (!stats) return;
-  renderBoard(root, { stats, range, loading, error }, { onRange: switchRange, onReload: () => void load(), onLock: lock });
+  renderBoard(
+    root,
+    { stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter } },
+    { onRange: switchRange, onReload: () => void load(), onLock: lock, onFeedbackFilter: (filter) => (feedbackFilter = filter) },
+  );
 }
 
 async function load(): Promise<void> {
@@ -39,14 +48,17 @@ async function load(): Promise<void> {
   const asked = range;
   if (stats) showBoard(true);
   else showLocked(null, true);
-  const result = await fetchStats(fetchFn, { base, token, days: asked });
+  const [result, fb] = await Promise.all([fetchStats(fetchFn, { base, token, days: asked }), fetchFeedback(fetchFn, { base, token })]);
   if (asked !== range || !token) return;
+  if ((!result.ok && result.error === 'auth') || (!fb.ok && fb.error === 'auth')) {
+    token = null;
+    showLocked(ERRORS.auth);
+    return;
+  }
+  feedback = fb.ok ? fb.entries : null;
   if (result.ok) {
     stats = result.stats;
     showBoard(false);
-  } else if (result.error === 'auth') {
-    token = null;
-    showLocked(ERRORS.auth);
   } else if (stats) {
     showBoard(false, ERRORS[result.error]);
   } else {
