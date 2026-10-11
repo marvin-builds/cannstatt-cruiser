@@ -6,7 +6,7 @@ import { isObstacle, isRail, KICKER, LEDGE } from './catalogue';
 import type { Pattern, Piece } from './patterns';
 import { HUMAN_HOLDS } from './fairness';
 import { kickerWindow, KICKER_LIP } from './rules';
-import { CONTAINER_LENGTH, HIGH_FIVER_X, PARK_MAX_LENGTH, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
+import { CONTAINER_LENGTH, CRANE_LENGTH, CRANE_SCALE, HIGH_FIVER_X, PARK_MAX_LENGTH, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
 import { LINE_STREET_KINDS } from './line-street';
 import { gapHolds, STUNT_APEX_MAX, STUNT_TAKEOFF_WINDOW, stuntWorstLanding } from './stunt-line';
 import { fly, jumpWindow, launchWindow, onLedge, stepOf, windowTicks } from './stunt-sim';
@@ -72,9 +72,23 @@ describe('NorDIY park line', { timeout: 60_000 }, () => {
         expect(c.w).toBeGreaterThanOrEqual(CONTAINER_LENGTH[0]);
         expect(c.w).toBeLessThanOrEqual(LEDGE.maxLength);
       }
-      expect(crane.w).toBeGreaterThanOrEqual(a.w);
-      expect(crane.w).toBeLessThanOrEqual(LEDGE.maxLength);
+      expect(crane.w).toBeLessThan(a.w);
     });
+  });
+
+  // ROADMAP 62: the boom was always LEDGE.maxLength (1.5 container lengths, clamped); now half of that.
+  it(`the crane boom is about half of the ${LEDGE.maxLength} px boom before: ${CRANE_SCALE} base container lengths (${CRANE_LENGTH.join('-')} px) at every speed`, () => {
+    expect(CRANE_SCALE).toBe(0.75);
+    expect(CRANE_LENGTH).toEqual([CRANE_SCALE * CONTAINER_LENGTH[0], CRANE_SCALE * CONTAINER_LENGTH[1]]);
+    expect(CRANE_LENGTH[0]).toBe(LEDGE.maxLength / 2);
+    const lengths = new Set<number>();
+    each((p, seed, speed) => {
+      const crane = ledges(p).at(-1)!;
+      lengths.add(crane.w);
+      expect(crane.w, `seed ${seed} ${speed}`).toBeGreaterThanOrEqual(CRANE_LENGTH[0]);
+      expect(crane.w, `seed ${seed} ${speed}`).toBeLessThanOrEqual(CRANE_LENGTH[1]);
+    });
+    expect(lengths.size).toBeGreaterThan(3);
   });
 
   it('every bank launches the skater onto its ledge from a jump press on any tick of its launch window (>= 16 ticks), every human hold, any tick phase', () => {
@@ -144,7 +158,8 @@ describe('NorDIY park line', { timeout: 60_000 }, () => {
       expect(parkMaxLength(speed)).toBeLessThanOrEqual(PARK_MAX_LENGTH);
       lengths.push(p.length);
     });
-    expect(Math.min(...lengths)).toBeGreaterThanOrEqual(600);
+    // About one screen wide at least (540: the boom got 60 px shorter, ROADMAP 62).
+    expect(Math.min(...lengths)).toBeGreaterThanOrEqual(540);
   });
 
   it('one high fiver stands on the street before the first bank, under no ledge', () => {

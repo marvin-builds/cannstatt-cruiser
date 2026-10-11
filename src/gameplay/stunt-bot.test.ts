@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Rng } from '../core/rng';
 import type { Pattern } from './patterns';
 import { rideLine } from './stunt-bot';
+import { planParkLine } from './park-line';
 import { planStuntLine } from './stunt-line';
 
 function plan(seed: number, speeds: number[], zone: number): Pattern {
@@ -42,4 +43,31 @@ describe('the human stunt bot', { timeout: 120_000 }, () => {
       expect(completed / rides, missed.join(', ')).toBeGreaterThanOrEqual(0.9);
     });
   }
+});
+
+function planPark(seed: number, speed: number): Pattern {
+  const steps = planParkLine(new Rng(seed), [speed], -seed);
+  for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;
+}
+
+// ROADMAP 61/62: the NorDIY line (banks, containers, the shorter crane boom
+// as its last ledge) is reached only by its banks and stays completable.
+describe('the human stunt bot in the NorDIY park', { timeout: 120_000 }, () => {
+  it('completes >= 90 % of the park lines up to the crane boom at every park speed, without a crash', () => {
+    let rides = 0;
+    let completed = 0;
+    const missed: string[] = [];
+    for (const speed of [90, 120, 160, 190]) {
+      for (let seed = 1; seed <= 8; seed++) {
+        const ride = rideLine(planPark(seed, speed), speed, seed * 17 + speed, 2);
+        rides++;
+        expect(ride.crashes).toBe(0);
+        expect(ride.healthLost).toBe(0);
+        expect(ride.end, `seed ${seed} at ${speed}: the line ends`).not.toBeNull();
+        if (ride.end!.completed && ride.end!.made === ride.end!.steps) completed++;
+        else missed.push(`seed ${seed} at ${speed}: ${ride.end!.made}/${ride.end!.steps}`);
+      }
+    }
+    expect(completed / rides, missed.join(', ')).toBeGreaterThanOrEqual(0.9);
+  });
 });

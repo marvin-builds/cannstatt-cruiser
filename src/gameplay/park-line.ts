@@ -12,8 +12,8 @@
  *   needs the grind room; a level gap that needs a jump (rolling off falls
  *   past the second one), or a drop to the street onto a second bank;
  * - the crane boom is the last and highest ledge (CRANE_STEP_UP above the
- *   containers, within STUNT_APEX_MAX reach), about 1.5 container lengths,
- *   with stars along it;
+ *   containers, within STUNT_APEX_MAX reach), CRANE_SCALE (0.75) base
+ *   container lengths (ROADMAP 62), with stars along it;
  * - the high fiver stands on the street at HIGH_FIVER_X, before the first
  *   bank (PARK_ENTRY), under no ledge;
  * - low obstacles on the street under the containers a bank launches onto
@@ -44,8 +44,10 @@ export const CONTAINER_LENGTH: [number, number] = [80, 100];
 const CONTAINER_HEIGHT: [number, number] = [LEDGE.minHeight, 50];
 /** The crane boom over the containers (px). */
 const CRANE_STEP_UP: [number, number] = [6, 8];
-/** The crane boom is about this many container lengths. */
-const CRANE_SCALE = 1.5;
+/** The crane boom is this many base container lengths (ROADMAP 62: half the old 1.5, which the ledge length cap always cut to 120 px)... */
+export const CRANE_SCALE = 0.75;
+/** ...so it is this long (px); the gap jump's landing room (GAP_LANDING_SECONDS of riding) it keeps at least stays inside up to top speed. */
+export const CRANE_LENGTH: [number, number] = [CRANE_SCALE * CONTAINER_LENGTH[0], CRANE_SCALE * CONTAINER_LENGTH[1]];
 /**
  * The longest a park pattern gets (PARK_ENTRY plus the line and its runout),
  * at any speed up to TOP_SPEED...
@@ -80,7 +82,8 @@ export function* planParkLine(rng: Rng, speeds: number[], line: number, budget?:
   const b = new LineBuilder(rng, speeds.map((speed) => Math.max(PARK_MIN_SPEED, speed)), PARK_ZONE, line);
   const height = rng.int(...CONTAINER_HEIGHT);
   const craneHeight = height + rng.int(...CRANE_STEP_UP);
-  const length = clampLength(Math.max(rng.int(...CONTAINER_LENGTH), (GAP_LANDING_SECONDS + GAP_RUNUP_SECONDS) * b.fast));
+  const base = rng.int(...CONTAINER_LENGTH);
+  const length = clampLength(Math.max(base, (GAP_LANDING_SECONDS + GAP_RUNUP_SECONDS) * b.fast));
 
   const first = mark(b.launchLedge(mark(b.kicker(PARK_ENTRY, height), 'bank'), height, GAP_RUNUP_SECONDS, length), 'container');
   yield* b.spend(budget);
@@ -96,7 +99,7 @@ export function* planParkLine(rng: Rng, speeds: number[], line: number, budget?:
   mark(second, 'container');
   yield* b.spend(budget);
 
-  const craneLength = clampLength(Math.max(CRANE_SCALE * length, (GAP_LANDING_SECONDS + FINAL_GRIND_SECONDS) * b.fast));
+  const craneLength = clampLength(Math.max(CRANE_SCALE * base, GAP_LANDING_SECONDS * b.fast));
   const boom = b.stepUpLedge(second, craneHeight - height, craneLength);
   yield* b.spend(budget);
   if (boom) {

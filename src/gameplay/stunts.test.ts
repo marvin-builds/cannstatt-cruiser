@@ -3,8 +3,10 @@ import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Game } from '../core/game';
 import { tick } from '../player/testing';
 import type { Entity } from '../types';
-import { kickerRect, ledgeRect } from './catalogue';
+import { kickerRect, LEDGE, ledgeRect } from './catalogue';
 import { kickerWindow, launchVelocityFor } from './rules';
+import { gapHolds } from './stunt-line';
+import { jumpWindow, stepOf, windowMiddle } from './stunt-sim';
 import { STUNT_LINE_BONUS, STUNT_POINTS, StuntLines } from './stunts';
 import { place, quietGame, record } from './test-kit';
 
@@ -101,19 +103,6 @@ describe('ledges', () => {
     until(game, () => game.state.player.grounded, 300);
     expect(crashes).toEqual([]);
     expect(game.state.health).toBe(health);
-  });
-
-  it('jumping up through a ledge from the street never crashes; coming down onto it grinds', () => {
-    const game = quietGame(60);
-    const grinds = record(game, 'grindStart');
-    const crashes = record(game, 'crash');
-    const ledge = place(game, 'ledge', ledgeRect(PLAYER_X - 10, 42, 120));
-    game.buttons.action.press('test');
-    tick(game, 25);
-    game.buttons.action.release('test');
-    until(game, () => game.state.player.grounded || game.state.player.grinding, 200);
-    expect(crashes).toEqual([]);
-    expect(grinds).toEqual([{ entityId: ledge.id }]);
   });
 
   it('riding under a ledge on the street touches nothing', () => {
@@ -237,14 +226,13 @@ describe('stunt line scoring', () => {
   });
 
   it('a single made piece is no line: making only the last one ends it incomplete, without a step', () => {
-    const game = quietGame(60);
+    const game = quietGame(SPEED);
     const steps = record(game, 'stuntStep');
     const ends = record(game, 'stuntEnd');
-    const ledge = place(game, 'ledge', ledgeRect(PLAYER_X - 10, 42, 120));
+    // A kicker of no line (debug piece) launches onto the line's last ledge.
+    place(game, 'kicker', kickerRect(PLAYER_X + 40)).data = { velocity: launchVelocityFor(48) };
+    const ledge = place(game, 'ledge', ledgeRect(PLAYER_X + 70, 48, 90));
     ledge.data = { line: nextLine++, step: 2, steps: 2, zone: 0 };
-    game.buttons.action.press('test');
-    tick(game, 25);
-    game.buttons.action.release('test');
     until(game, () => ends.length > 0, 400);
     expect(steps).toEqual([]);
     expect(ends).toEqual([{ steps: 2, made: 1, completed: false, points: 0 }]);
@@ -297,5 +285,109 @@ describe('stunt line scoring', () => {
     expect(lines.view()!.made).toBe(1);
     lines.reset();
     expect(lines.view()).toBeNull();
+  });
+});
+
+/** Holds jump `hold` ticks from the street now, then rides until the skater is supported again. */
+function streetJump(game: Game, hold = 25): void {
+  game.buttons.action.press('test');
+  tick(game, hold);
+  game.buttons.action.release('test');
+  until(game, () => game.state.player.grounded || game.state.player.grinding, 300);
+}
+
+/** A ledge `height` up from behind the skater to far ahead: any arc that gets up there comes down over it. */
+function wideLedge(game: Game, height: number, park?: 'container' | 'crane'): Entity {
+  const ledge = place(game, 'ledge', ledgeRect(PLAYER_X - 30, height, 120));
+  ledge.data = park ? { line: nextLine++, step: 2, steps: 3, zone: 2, park } : { zone: 0 };
+  return ledge;
+}
+
+// ROADMAP 61: the upper level (stunt ledges, the park's containers and crane
+// boom) is reached only by a kicker or bank launch. Without one the skater
+// passes in front of it like background; once up, gap jumps from ledge to
+// ledge keep working until he touches the street again.
+describe('ledges only via the ramp (ROADMAP 61)', () => {
+  for (const park of [undefined, 'container', 'crane'] as const) {
+    it(`a full jump from the street passes in front of ${park ? `a park ${park}` : 'a stunt ledge'}: no grind, no crash`, () => {
+      const game = quietGame(60);
+      const grinds = record(game, 'grindStart');
+      const crashes = record(game, 'crash');
+      const lands = record(game, 'land');
+      wideLedge(game, LEDGE.minHeight, park);
+      streetJump(game);
+      expect(lands).toHaveLength(1);
+      expect(grinds).toEqual([]);
+      expect(crashes).toEqual([]);
+      expect(game.state.player.grounded).toBe(true);
+    });
+  }
+
+  it('the arc would have come down onto it: the same jump falls through the deck height over the ledge', () => {
+    const game = quietGame(60);
+    let crossed = false;
+    const top = GROUND_Y - LEDGE.minHeight;
+    game.buttons.action.press('test');
+    for (let i = 0; i < 200 && !(i > 0 && game.state.player.grounded); i++) {
+      if (i === 25) game.buttons.action.release('test');
+      const before = game.state.player.y;
+      tick(game);
+      if (before <= top && game.state.player.y >= top && game.state.player.vy > 0) crossed = true;
+    }
+    game.buttons.action.release('test');
+    expect(crossed).toBe(true);
+  });
+
+  for (const park of [undefined, 'crane'] as const) {
+    it(`a head jump off a person passes in front of ${park ? 'the crane boom' : 'a stunt ledge'} too`, () => {
+      const game = quietGame(60);
+      const grinds = record(game, 'grindStart');
+      const ledge = wideLedge(game, LEDGE.maxHeight, park);
+      // Up from the street, then a head jump (a stomp with jump held) high above the deck.
+      game.buttons.action.press('test');
+      tick(game, 2);
+      game.buttons.action.release('test');
+      until(game, () => game.state.player.vy > 0, 60);
+      game.bus.emit('stomp', { entityId: 7, kind: 'vfbFan', item: 'pretzel' });
+      game.buttons.action.press('test');
+      tick(game, 20);
+      game.buttons.action.release('test');
+      expect(GROUND_Y - game.state.player.y).toBeGreaterThan(GROUND_Y - ledge.y);
+      until(game, () => game.state.player.grounded || game.state.player.grinding, 300);
+      expect(grinds).toEqual([]);
+      expect(game.state.player.grounded).toBe(true);
+    });
+  }
+
+  it('a gap jump from a launched ledge onto the next one still grinds it', () => {
+    const game = quietGame(SPEED);
+    const grinds = record(game, 'grindStart');
+    const [, first, second] = kickerLedge(game, [['ledge', PLAYER_X + 175, 54, 90]]);
+    until(game, () => grinds.length > 0, 200);
+    expect(grinds).toEqual([{ entityId: first!.id }]);
+    // Aimed like the stunt bot: the middle of the gap jump's take-off window.
+    const w = jumpWindow(first!, PLAYER_X, stepOf(SPEED), second!, gapHolds(first!))!;
+    tick(game, windowMiddle(w));
+    game.buttons.action.press('test');
+    tick(game, w.hold);
+    game.buttons.action.release('test');
+    until(game, () => grinds.length > 1 || game.state.player.grounded, 200);
+    expect(grinds).toEqual([{ entityId: first!.id }, { entityId: second!.id }]);
+  });
+
+  it('back on the street after a launched line, the next street jump passes in front of a ledge again', () => {
+    const game = quietGame(60);
+    const grinds = record(game, 'grindStart');
+    const launches = record(game, 'launch');
+    until(game, () => game.state.player.grounded, 10);
+    place(game, 'kicker', kickerRect(PLAYER_X + 20)).data = { velocity: launchVelocityFor(48) };
+    until(game, () => launches.length > 0, 120);
+    until(game, () => game.state.player.grounded, 300);
+    expect(grinds).toEqual([]);
+    tick(game, 5);
+    wideLedge(game, LEDGE.minHeight);
+    streetJump(game);
+    expect(grinds).toEqual([]);
+    expect(game.state.player.grounded).toBe(true);
   });
 });
