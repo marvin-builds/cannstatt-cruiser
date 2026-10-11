@@ -10,7 +10,7 @@ import type { GameContext, GameEvents, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
-import { cheerCue, cheerIntensity, isParkCue, ParkSound } from './park';
+import { cheerCue, cheerIntensity, CrowdCheers, HIGH_FIVE, isParkCue, ParkSound } from './park';
 import { PASS_BY, PassBy } from './passby';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
@@ -57,6 +57,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   const backend = options.backend ?? createWebAudioBackend();
   const store = options.store ?? defaultStore;
   const park = new ParkSound();
+  const crowd = new CrowdCheers();
   const onSound = options.onSound ?? exposeAudioDebug(backend, park);
   let grinding = false;
   let muted = false;
@@ -223,14 +224,22 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         else play(points >= KICKFLIP_BIG_POINTS ? 'airTrickBig' : 'airTrick');
       });
       // NorDIY park: the crowd cheers each trick (bigger with the session), roars and
-      // whistles for a "Session!" bonus, and a crisp clap for a high five. Same in kid mode.
-      bus.on('sessionCheer', ({ level }) => play(cheerCue(level), cheerIntensity(level)));
+      // whistles for a "Session!" bonus, and for a high five a full clap with a small cheer
+      // after it (skipped while a park cheer just started, so they never pile up). Same in kid mode.
+      bus.on('sessionCheer', ({ level }) => {
+        crowd.cheered(ctx.state.time);
+        play(cheerCue(level), cheerIntensity(level));
+      });
       bus.on('sessionEnd', ({ points }) => {
         if (points <= 0) return;
+        crowd.cheered(ctx.state.time);
         play('sessionRoar');
         play('fingerWhistle', 1, SESSION_WHISTLE_DELAY);
       });
-      bus.on('highFive', () => play('highFive'));
+      bus.on('highFive', () => {
+        play('highFive');
+        if (crowd.highFiveCheer(ctx.state.time)) play('cheerSmall', HIGH_FIVE.cheerIntensity, HIGH_FIVE.cheerDelay);
+      });
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);
@@ -245,6 +254,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         passBy.reset();
         clears.reset();
         park.reset();
+        crowd.reset();
       });
     },
     update(ctx: GameContext) {
