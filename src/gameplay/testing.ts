@@ -5,12 +5,14 @@
  * stomp (planStomp). DOM-free; not used by the game itself.
  */
 import { DRUNK_DELAY_MAX, DRUNK_DELAY_MIN, PLAYER_X, TICK_DT } from '../core/config';
+import { SWIPE_DUCK_TICKS } from '../core/input';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Rng } from '../core/rng';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { chillSpeedFactor } from './chill';
 import { hitBox, isGrindable, isKicker, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
+import { STAND_UP_SECONDS } from './duck-span';
 import { drunkFairness, HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
 import { kickerWindow, LEDGE_FRONT_REACH } from './rules';
@@ -182,12 +184,23 @@ export interface HumanStyle {
   holds: readonly number[];
   /** Ducking starts up to this many ticks earlier or later than the careful bot's. */
   duckJitter: number;
+  /**
+   * Ducks by swiping, like on a phone (ROADMAP 66): each duck lasts
+   * SWIPE_DUCK_TICKS, a jump ends it, and after one ran out it stands
+   * STAND_UP_SECONDS before it swipes again (it never swipes while ducked).
+   */
+  swipeDuck?: boolean;
 }
 
 /** Ticks a drunk human presses early: about the mean drunk input delay. */
 const DRUNK_LAG = Math.round((DRUNK_DELAY_MIN + DRUNK_DELAY_MAX) / 2);
 
 export const HUMAN_STYLE: HumanStyle = { takeoffJitter: 4, holds: HUMAN_HOLDS, duckJitter: 4 };
+/** HUMAN_STYLE on a phone: ducks by swiping. */
+export const HUMAN_TOUCH_STYLE: HumanStyle = { ...HUMAN_STYLE, swipeDuck: true };
+
+/** Ticks the touch human bot stands after a swipe duck ran out before it can swipe again. */
+const STAND_UP_TICKS = Math.round(STAND_UP_SECONDS / TICK_DT);
 
 /**
  * Plays like a real, imperfect human: plans like SolverBot but only with a
@@ -212,6 +225,9 @@ export class HumanBot {
   private readonly duckLead = new Map<number, number>();
   /** Whether the jump it waits for was planned drunk: a plan made sober is dropped when the drink kicks in. */
   private plannedDrunk = false;
+  /** Swipe ducking (style.swipeDuck): ticks left of the running swipe, then ticks left of standing up. */
+  private swipeLeft = 0;
+  private standUpLeft = 0;
 
   constructor(
     private readonly rng: Rng,
@@ -250,6 +266,8 @@ export class HumanBot {
     }
     this.wait = -1;
     this.holding = this.hold;
+    // A tap ends a swipe duck (core/input.ts).
+    this.swipeLeft = 0;
     return 'press';
   }
 
@@ -265,6 +283,22 @@ export class HumanBot {
   }
 
   duck(state: GameState): boolean {
+    if (!this.style.swipeDuck) return this.wantsDuck(state);
+    if (this.swipeLeft > 0) {
+      if (--this.swipeLeft === 0) this.standUpLeft = STAND_UP_TICKS;
+      return true;
+    }
+    if (this.standUpLeft > 0) {
+      this.standUpLeft--;
+      return false;
+    }
+    if (!this.wantsDuck(state)) return false;
+    this.swipeLeft = SWIPE_DUCK_TICKS - 1;
+    return true;
+  }
+
+  /** Whether a held duck would be down for the next tick: an overhead obstacle is about to pass over (jittered look-ahead per obstacle). */
+  private wantsDuck(state: GameState): boolean {
     const step = state.speed * TICK_DT;
     const body = state.player.hitbox;
     const j = this.style.duckJitter;

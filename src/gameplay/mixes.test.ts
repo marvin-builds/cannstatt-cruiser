@@ -138,16 +138,18 @@ describe('combination templates (ROADMAP 52 6a)', () => {
   }, 60_000);
 
   it('come often from tier 2 on, never in tier 0 or 1, never while drunk or chilled', () => {
-    const rng = new Rng(21);
     const names = MIX_TEMPLATES.map((t) => t.name);
-    const at = (tier: number, options: Parameters<typeof planPattern>[3] = {}, count = 240) =>
+    const at = (rng: Rng, tier: number, options: Parameters<typeof planPattern>[3] = {}, count = 240) =>
       Array.from({ length: count }, (_, i) => planPattern(rng, tier, [i % 2 ? BASE_SPEED : TOP_SPEED], { zone: i % 3, ...options }).name);
     const share = (picked: string[]) => picked.filter((n) => names.includes(n)).length / picked.length;
     // By weight about 27 % at tier 2 and 38 % at tier 3 (fewer in Mitte, which has no people); before the
     // waves and moving hazards of ROADMAP 52 Phase 2 (waves.ts, hazards.ts: about 10-14 % of the mix) 30 % and 42 %.
-    expect(share(at(2))).toBeGreaterThanOrEqual(0.24);
-    expect(share(at(3))).toBeGreaterThanOrEqual(0.34);
-    for (const name of [...at(0, {}, 60), ...at(1, {}, 100), ...at(3, { drunk: true, effect: true }, 100)]) expect(names).not.toContain(name);
+    // Over 4 seeds: 240 plans of one seed swing by +-4 % around the weight.
+    const rngs = [21, 22, 23, 24].map((seed) => new Rng(seed));
+    expect(share(rngs.flatMap((rng) => at(rng, 2)))).toBeGreaterThanOrEqual(0.24);
+    expect(share(rngs.flatMap((rng) => at(rng, 3)))).toBeGreaterThanOrEqual(0.34);
+    const rng = rngs[0]!;
+    for (const name of [...at(rng, 0, {}, 60), ...at(rng, 1, {}, 100), ...at(rng, 3, { drunk: true, effect: true }, 100)]) expect(names).not.toContain(name);
   }, 120_000);
 
   it('is deterministic per seed', () => {

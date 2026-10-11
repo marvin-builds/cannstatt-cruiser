@@ -6,7 +6,9 @@
  * chill effect may be active), together with the end of the previous pattern
  * (`before`), and rerolled (finally replaced by a fallback) if it cannot
  * be passed, or if any take-off on the way (also across the boundary) leaves
- * a human less than the take-off window of fairness.ts (`options.window`).
+ * a human less than the take-off window of fairness.ts (`options.window`),
+ * or if a phone player's swipe duck cannot cover its signs (duck-span.ts
+ * touchDuckable, also across the boundary, at every speed incl. chill).
  * Gaps and the runout after the last piece leave room for a human landing a
  * little early or late. People come alone, or inside a combination
  * (mixes.ts) with PERSON_ROOM_SECONDS of free street around them, where
@@ -39,6 +41,7 @@ import { COMBO_TEMPLATES } from './combos';
 import { pigeonsPiece, scooterPiece, solverStandIn } from './hazards';
 import { isGrindable, isObstacle, isPerson, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
+import { touchDuckable } from './duck-span';
 import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
@@ -399,7 +402,10 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   // Chill paces first: the low chill jump rejects the most patterns, so checks fail fast.
   const paces = [...(options.chillSpeeds ?? []).map((v) => constantPace(v, CHILL_JUMP_SCALE)), ...speeds];
   const zone = options.zone ?? 0;
-  const before = lastPieces((options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind)));
+  const beforeAll = (options.before ?? []).filter((p) => isObstacle(p.kind) || isRail(p.kind));
+  const before = lastPieces(beforeAll);
+  /** Every speed the street is ridden at: the touch duck limit holds at all of them (duck-span.ts). */
+  const allSpeeds = [...speeds, ...(options.chillSpeeds ?? [])];
   const drunk = options.drunk ?? false;
   const human = options.window ?? LATE_TAKEOFF_WINDOW;
   const margin = drunk ? drunkFairness(human) : soberFairness(human);
@@ -407,6 +413,8 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   const effect = options.effect ?? false;
   /** The pattern's solvers when it is fair, also across the boundary (unless `alone`); null otherwise. */
   function* fairSolvers(pattern: Pattern, alone = false): Generator<void, Solver[] | null> {
+    // A swipe ducks for a fixed time: the cheap duck check first, together with the previous pattern's signs (unless `alone`).
+    if (!touchDuckable(alone ? pattern.pieces : [...beforeAll, ...pattern.pieces], allSpeeds, 0)) return null;
     const solvers = solversFor(courseOf(pattern), paces, budget);
     if (!(yield* resumable(() => humanFair(solvers, margin)))) return null;
     if (before.length > 0 && !alone) {
