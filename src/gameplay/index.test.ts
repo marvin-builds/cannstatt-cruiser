@@ -6,6 +6,7 @@ import type { Entity, EntityKind, GameEvents, ObstacleKind } from '../types';
 import { GRIND_POINTS, isOverhead, OBSTACLES, obstacleRect, railRect, starRect } from './catalogue';
 import { speedAt } from './difficulty';
 import { createGameplaySystem } from './index';
+import { STAR_POINTS } from './star-arcs';
 import { SolverBot } from './testing';
 
 function record<K extends keyof GameEvents>(game: Game, name: K): GameEvents[K][] {
@@ -137,14 +138,14 @@ describe('scoring', () => {
     expect(game.state.multiplier).toBe(1);
   });
 
-  it('collects stars just for fun (no points)', () => {
+  it('collects stars for STAR_POINTS each (ROADMAP 65, see star-arcs.test.ts)', () => {
     const game = quietGame();
     const events = record(game, 'starCollected');
     const star = place(game, 'star', starRect(PLAYER_X + 12, GROUND_Y - 15));
     tick(game, 20);
     expect(events).toEqual([{ entityId: star.id, stars: 1 }]);
     expect(game.state.stars).toBe(1);
-    expect(game.state.score).toBe(0);
+    expect(game.state.score).toBe(STAR_POINTS);
     expect(game.state.entities).not.toContain(star);
   });
 });

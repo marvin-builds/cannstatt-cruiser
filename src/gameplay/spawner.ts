@@ -76,6 +76,7 @@ import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, jumpArcStars, leadFor, type Pattern, type Piece, planSteps } from './patterns';
 import { HIGH_FIVER_X, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
+import { asArc, linkArcs } from './star-arcs';
 import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
 import { lastThreatEnd } from './street';
 import type { WorkBudget } from './solver';
@@ -353,12 +354,14 @@ export class Spawner {
 
   private materialise(planned: Planned, entities: Entity[]): void {
     this.onSpawn?.(planned.pattern, this.distance + this.nextStart - PLAYER_X);
+    const first = entities.length;
     for (const piece of planned.pattern.pieces) {
       const e: Entity = { ...piece, id: this.nextId++, x: this.nextStart + piece.x, done: false };
       const motion = motionOf(e);
       if (motion) withMotion(e, motion, e.x);
       entities.push(e);
     }
+    linkArcs(entities, first);
     this.nextStart += planned.advance;
     this.delayed = 0;
     this.slack = planned.slack;
@@ -572,6 +575,7 @@ function leadStars(lead: number, speed: number): Piece[] {
   const span = (stars: Piece[]) => [stars[0]!.x, stars[stars.length - 1]!.x + stars[stars.length - 1]!.w] as const;
   const [first, last] = span(jumpArcStars(0, speed));
   const out: Piece[] = [];
+  let arcs = 0;
   // As if a threat had just ended here: the next one is due by the lead the gap before the park left.
   let end = leadFor(speed) - quiet;
   while (fiver - end > quiet) {
@@ -579,7 +583,7 @@ function leadStars(lead: number, speed: number): Piece[] {
     const from = Math.max(0, Math.min(end + Math.round(0.85 * quiet) - first, fiver - FIVER_ROOM - last));
     const arc = jumpArcStars(from, speed);
     if (span(arc)[0] <= end) break;
-    out.push(...arc);
+    out.push(...asArc(arc, `lead${arcs++}`));
     end = span(arc)[1];
   }
   return out;

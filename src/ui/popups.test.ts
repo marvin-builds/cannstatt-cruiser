@@ -67,6 +67,26 @@ describe('PopupPool', () => {
     expect(live[0]!.age).toBe(0);
   });
 
+  it('a popup with points shows them and a repeat adds them up instead of counting ("Stern! +30")', () => {
+    const pool = new PopupPool(4);
+    pool.spawn('Stern!', 50, 100, '#ff0', 1, null, 10);
+    expect(pool.active().map((p) => p.text)).toEqual(['Stern! +10']);
+    pool.update(0.2);
+    pool.spawn('Stern!', 50, 100, '#ff0', 1, null, 20);
+    const live = pool.active();
+    expect(live.map((p) => p.text)).toEqual(['Stern! +30']);
+    expect(live[0]!.age).toBe(0);
+  });
+
+  it('starts the sum again once the popup with points is gone, and keeps it apart from the same text without points', () => {
+    const pool = new PopupPool(4);
+    pool.spawn('Stern!', 50, 100, '#ff0', 1, null, 10);
+    pool.update(POPUP_LIFETIME + 0.01);
+    pool.spawn('Stern!', 50, 100, '#ff0', 1, null, 1200);
+    pool.spawn('Stern!', 50, 100, '#ff0');
+    expect(pool.active().map((p) => p.text).sort()).toEqual(['Stern!', 'Stern! +1.200']);
+  });
+
   it('moves a merged repeat to the newest (bottom) slot and restarts its rise from the new spot', () => {
     const pool = new PopupPool(3);
     pool.ceiling = 20;

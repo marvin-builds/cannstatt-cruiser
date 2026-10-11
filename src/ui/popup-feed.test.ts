@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import { UI } from './art';
 import { POPUP_MARGIN } from './layout';
+import { STAR_ARC_BONUS, STAR_POINTS } from '../gameplay/star-arcs';
 import { bailCause, PopupFeed } from './popup-feed';
 
 const texts = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map((p) => p.text);
@@ -61,7 +62,7 @@ describe('PopupFeed', () => {
 
   it('eating at full health shows the bonus points instead', () => {
     const feed = new PopupFeed();
-    feed.scoreChanged(250);
+    feed.scoreChanged(250, 1);
     feed.itemUsed('eat');
     const [p] = feed.flush(false);
     expect(p).toMatchObject({ text: 'Lecker! +250', icon: null });
@@ -72,9 +73,9 @@ describe('PopupFeed', () => {
   it('eating at full health in gameplay order (itemUsed, then its scoreChanged) shows the real bonus', () => {
     const feed = new PopupFeed();
     feed.cleared(4, 50);
-    feed.scoreChanged(50);
+    feed.scoreChanged(50, 1);
     feed.itemUsed('eat');
-    feed.scoreChanged(450);
+    feed.scoreChanged(450, 1);
     const out = feed.flush(false).map((p) => p.text);
     expect(out).toContain('Lecker! +450');
     expect(out).toContain('+50');
@@ -167,5 +168,54 @@ describe('bailCause (ROADMAP 42)', () => {
     expect(bailCause({ drunkTimer: 2, chillTimer: 3 })).toBe('wobbly');
     expect(bailCause({ drunkTimer: 0, chillTimer: 3 })).toBe('relaxed');
     expect(bailCause({ drunkTimer: 0, chillTimer: 0 })).toBe('late');
+  });
+
+  describe('stars (ROADMAP 65)', () => {
+    const specs = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map(({ text, points }) => ({ text, points }));
+
+    it('a star shows "Stern!" with the points of its score change (summed by the pool, "Stern! +N")', () => {
+      const feed = new PopupFeed();
+      feed.star();
+      feed.scoreChanged(STAR_POINTS * 3, 3);
+      expect(specs(feed)).toEqual([{ text: 'Stern!', points: STAR_POINTS * 3 }]);
+    });
+
+    it('the arc bonus right after a star\'s points gets its own "Sternenbogen!" popup', () => {
+      const feed = new PopupFeed();
+      feed.star();
+      feed.scoreChanged(STAR_POINTS * 2, 2);
+      feed.scoreChanged(STAR_ARC_BONUS * 2, 2);
+      expect(specs(feed)).toEqual([
+        { text: 'Stern!', points: STAR_POINTS * 2 },
+        { text: 'Sternenbogen!', points: STAR_ARC_BONUS * 2 },
+      ]);
+    });
+
+    it('two stars in one tick give two star popups (merged by the pool), other points after a star are no arc', () => {
+      const feed = new PopupFeed();
+      feed.star();
+      feed.scoreChanged(STAR_POINTS, 1);
+      feed.star();
+      feed.scoreChanged(STAR_POINTS, 1);
+      feed.scoreChanged(120, 1);
+      expect(specs(feed)).toEqual([
+        { text: 'Stern!', points: STAR_POINTS },
+        { text: 'Stern!', points: STAR_POINTS },
+      ]);
+    });
+
+    it('kid mode shows the same star popups', () => {
+      const feed = new PopupFeed();
+      feed.star();
+      feed.scoreChanged(STAR_POINTS, 1);
+      feed.scoreChanged(STAR_ARC_BONUS, 1);
+      expect(specs(feed, true).map((p) => p.text)).toEqual(['Stern!', 'Sternenbogen!']);
+    });
+
+    it('other popups carry no points to sum', () => {
+      const feed = new PopupFeed();
+      feed.cleared(1, 50);
+      expect(feed.flush(false)[0]!.points).toBeUndefined();
+    });
   });
 });

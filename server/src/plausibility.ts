@@ -5,10 +5,14 @@
  *   PX_PER_METRE = 10 (src/ui/layout.ts), so at most 19 m/s;
  * - points: obstacles 60-150 x multiplier 5 (catalogue.ts, scoring.ts),
  *   items 200 x 5, kickflips 100-150 x flips, stunt lines up to 100 x 6 per
- *   piece plus 150 per piece (stunts.ts), park sessions up to 500 (park.ts).
+ *   piece plus 150 per piece (stunts.ts), park sessions up to 500 (park.ts),
+ *   stars 10 x 5 each plus 50 x 5 per whole star arc (star-arcs.ts; the
+ *   street lays about 0.9 stars and 0.16 arcs per 10 m, so taking every one
+ *   at x5 adds at most about 9 points per metre).
  *   The best recorded playtest run made about 7 points per metre; a dense
  *   stunt line earns much more for a moment, which SCORE_ALLOWANCE covers.
- *   The rates below allow roughly ten times the recorded average.
+ *   The rates below allow roughly five times the recorded average plus
+ *   every star.
  * Not cheat-proof (the game runs on the client), it only stops absurd entries.
  */
 export const MAX_SPEED_M_PER_S = 190 / 10;

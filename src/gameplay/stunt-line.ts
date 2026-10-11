@@ -32,6 +32,7 @@ import { GROUND_Y } from '../core/config';
 import type { Rng } from '../core/rng';
 import type { Rect } from '../types';
 import { kickerRect, LEDGE, ledgeRect, starRect, STAR_SIZE } from './catalogue';
+import { asArc } from './star-arcs';
 import { HUMAN_HOLDS } from './fairness';
 import { leadFor, type Pattern, type Piece, runoutFor } from './patterns';
 import { planLineStreet } from './line-street';
@@ -267,7 +268,18 @@ export class LineBuilder {
     const steps = this.pieces.length;
     this.pieces.forEach((p, i) => Object.assign(p.data!, { step: i + 1, steps }));
     const worst = stuntWorstLanding(this.pieces, this.fast);
-    return { name, pieces: [...extra, ...this.pieces, ...this.street, ...this.stars], length: worst + runoutFor(this.fast) };
+    return { name, pieces: [...extra, ...this.pieces, ...this.street, ...this.starArcs()], length: worst + runoutFor(this.fast) };
+  }
+
+  /**
+   * The stars as arcs (star-arcs.ts): one per stretch the made line rides
+   * without touching the street, from one kicker to the next (a drop comes
+   * down onto the street before its kicker).
+   */
+  private starArcs(): Piece[] {
+    const kickers = this.pieces.filter((p) => p.kind === 'kicker').map((k) => k.x);
+    const stretch = (star: Piece) => kickers.filter((x) => x <= star.x).length;
+    return this.stars.flatMap((star) => asArc([star], `stretch${stretch(star)}`));
   }
 
   /** Charges the simulated ticks to `budget`; a generator step that yields once the budget is used up. */

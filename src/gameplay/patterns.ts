@@ -37,6 +37,7 @@ import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFa
 import { PROPS } from './items';
 import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
 import { lineGuide, type Point, spreadStars } from './line-guide';
+import { asArc } from './star-arcs';
 import { MIX_TEMPLATES, type MixBuilder } from './mixes';
 import { anchorOf, type Motion } from './motion';
 import { constantPace, type Course, HOLDS, resumable, Solver, type WorkBudget } from './solver';
@@ -501,9 +502,9 @@ export function jumpArcStars(from: number, speed: number): Piece[] {
   return arcPoints(arcPath(from, speed)).map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) }));
 }
 
-/** Stars centred on `points` (in riding order); the pattern lasts until past the last one. */
+/** Stars centred on `points` (in riding order), one arc (star-arcs.ts); the pattern lasts until past the last one. */
 function placeStars(pattern: Pattern, points: Point[]): void {
-  pattern.pieces.push(...points.map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) })));
+  pattern.pieces.push(...asArc(points.map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) })), 'arc'));
   const last = points[points.length - 1];
   if (last) pattern.length = Math.max(pattern.length, last.x + STAR_SPACING);
 }

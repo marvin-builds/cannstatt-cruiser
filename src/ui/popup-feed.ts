@@ -5,8 +5,12 @@
  * the same person become one "Stomp! +150", a ball hit and its points one
  * "Treffer! +200". Every text is German; kid mode never mentions beer.
  * A full kickflip gets the big stunt callout instead (stunt-callout.ts); a
- * reduced one (ROADMAP 41) only a plain popup here.
+ * reduced one (ROADMAP 41) only a plain popup here. A star (ROADMAP 65)
+ * shows "Stern!" with the points of the score change gameplay emits right
+ * after it, and an arc bonus right after those its own "Sternenbogen!"
+ * (gameplay/star-arcs.ts); the pool sums star points of quick repeats.
  */
+import { STAR_ARC_BONUS } from '../gameplay/star-arcs';
 import type { GameState, ItemAction } from '../types';
 import { UI } from './art';
 import { plusPoints } from './layout';
@@ -16,6 +20,8 @@ export interface PopupSpec {
   color: string;
   /** Small icon drawn after the text. */
   icon: 'heart' | null;
+  /** Points drawn after the text, summed when it merges with a live repeat (PopupPool); absent: none. */
+  points?: number;
 }
 
 /**
@@ -36,7 +42,8 @@ type Entry =
   | { kind: 'cleared'; entityId: number; points: number }
   | { kind: 'stomp' | 'ballHit'; entityId: number }
   | { kind: 'used'; action: ItemAction }
-  | { kind: 'score'; delta: number }
+  | { kind: 'score'; delta: number; multiplier: number }
+  | { kind: 'star' }
   | { kind: 'healthGained' | 'ballBack' }
   | { kind: 'crash'; bail: BailCause | null }
   | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number };
@@ -74,8 +81,12 @@ export class PopupFeed {
     this.entries.push({ kind: 'healthGained' });
   }
 
-  scoreChanged(delta: number): void {
-    this.entries.push({ kind: 'score', delta });
+  scoreChanged(delta: number, multiplier: number): void {
+    this.entries.push({ kind: 'score', delta, multiplier });
+  }
+
+  star(): void {
+    this.entries.push({ kind: 'star' });
   }
 
   ballBack(): void {
@@ -143,6 +154,9 @@ export class PopupFeed {
         case 'reducedKickflip':
           add(`Kickflip ${plusPoints(e.points)}`, UI.palePink);
           break;
+        case 'star':
+          addStar(out, entries[i + 1], entries[i + 2]);
+          break;
       }
     });
     return out;
@@ -152,4 +166,13 @@ export class PopupFeed {
 /** The bonus points of a score change right next to an eat (full health). */
 function bonus(e: Entry | undefined): string | null {
   return e?.kind === 'score' && e.delta > 0 ? plusPoints(e.delta) : null;
+}
+
+/** "Stern!" with the points of the star's score change (`own`), and "Sternenbogen!" when the arc bonus follows it (`next`). */
+function addStar(out: PopupSpec[], own: Entry | undefined, next: Entry | undefined): void {
+  const points = own?.kind === 'score' ? own.delta : 0;
+  out.push(points > 0 ? { text: 'Stern!', color: UI.yellow, icon: null, points } : { text: 'Stern!', color: UI.yellow, icon: null });
+  if (own?.kind === 'score' && next?.kind === 'score' && next.delta === STAR_ARC_BONUS * next.multiplier) {
+    out.push({ text: 'Sternenbogen!', color: UI.orange, icon: null, points: next.delta });
+  }
 }
