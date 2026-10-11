@@ -17,7 +17,9 @@
  * all drawing in screens.ts. The online list ("Bestenliste", "Eintragen"
  * after game over) is highscore-flow.ts over src/net, laid out in
  * score-layout.ts and drawn in score-screens.ts; the native name input is
- * name-field.ts, drag and wheel scrolling list-scroll.ts. The anonymous
+ * name-field.ts, drag and wheel scrolling list-scroll.ts (also of the "Neu in dieser
+ * Version" list, whats-new.ts; in portrait that list is the full-screen sheet
+ * of whats-new-sheet.ts). The anonymous
  * statistics (src/net/telemetry.ts) get the session on the first title, each
  * game over and the active play time; their switch ("Anonyme Statistik") is in
  * the settings menu and on the "Bestenliste", with the "Datenschutz" link
@@ -25,6 +27,8 @@
  * the title's speech-bubble icon and the pause menu's "Feedback") is
  * feedback-flow.ts over src/net/feedback.ts, laid out in feedback-layout.ts,
  * drawn in feedback-screen.ts, typed into the textarea of feedback-field.ts;
+ * in portrait both text forms show as full-screen DOM sheets instead
+ * (portrait-sheets.ts, feedback-sheet.ts, entry-sheet.ts, form-surface.ts);
  * F opens it on the title and pause screens and, while riding, pauses first.
  * Menu notes fall back to shorter wordings at portrait's scale 2 (note-text.ts).
  */
@@ -42,10 +46,13 @@ import { AirTrickHint } from './air-trick-hint';
 import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
+import { createDomEntrySheet, type EntrySheet, type EntrySheetHandlers } from './entry-sheet';
 import { createDomFeedbackField, type FeedbackField } from './feedback-field';
 import { FeedbackFlow } from './feedback-flow';
 import { feedbackLayout } from './feedback-layout';
 import { feedbackPlaceholder } from './feedback-screen';
+import { createDomFeedbackSheet, type FeedbackSheet, type FeedbackSheetHandlers } from './feedback-sheet';
+import { FormSurface } from './form-surface';
 import { installUiDebug } from './debug';
 import { handShown, highFiveHand, highFiveHintPlate, HighFiveHint } from './high-five';
 import { HintSlot, type HintWants } from './hint-slot';
@@ -64,6 +71,8 @@ import { bailCause, PopupFeed } from './popup-feed';
 import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { createDomNameField, type NameField } from './name-field';
+import { entrySheetModel, feedbackSheetModel, sheetShown } from './portrait-sheets';
+import type { SheetFactory } from './sheet-dom';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
 import { drawUi, type UiView } from './screens';
@@ -73,6 +82,8 @@ import { placeCallout, StuntCallout } from './stunt-callout';
 import { browserOpenPage, type OpenPage, PrivacyLink } from './privacy-link';
 import { browserOrientationEnv, type OrientationEnv } from '../core/orientation';
 import { TypingOrientation } from './typing-orientation';
+import { ListScroll, pageScroll, scrollDirection } from './whats-new';
+import { createDomWhatsNewSheet, type WhatsNewSheet, type WhatsNewSheetHandlers } from './whats-new-sheet';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -100,6 +111,12 @@ export interface UiSystemOptions {
   feedback?: FeedbackSenderLike | null;
   /** The feedback screen's native textarea (default: an HTML textarea in a browser, none elsewhere). */
   feedbackField?: FeedbackField | null;
+  /** The feedback form's portrait sheet (default: a DOM sheet in a browser, none elsewhere); tests pass a fake. */
+  feedbackSheet?: SheetFactory<FeedbackSheetHandlers, FeedbackSheet> | null;
+  /** The name entry's portrait sheet (default: a DOM sheet in a browser, none elsewhere); tests pass a fake. */
+  entrySheet?: SheetFactory<EntrySheetHandlers, EntrySheet> | null;
+  /** The "Neu in dieser Version" portrait sheet (default: a DOM sheet in a browser, none elsewhere); tests pass a fake. */
+  whatsNewSheet?: SheetFactory<WhatsNewSheetHandlers, WhatsNewSheet> | null;
   /**
    * The screen orientation lock, freed to portrait while the player types (default: the browser's
    * in a browser, none elsewhere); tests pass a fake.
@@ -108,7 +125,7 @@ export interface UiSystemOptions {
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback screen's (null without a sender). */
-export type UiSystem = System & { highscores: HighscoreFlow | null; feedback: FeedbackFlow | null };
+export type UiSystem = System & { highscores: HighscoreFlow | null; feedback: FeedbackFlow | null; whatsNew: ListScroll };
 
 /** Popups appear with their bottom this far above the skater's feet, clear of his head. */
 const HEAD_CLEARANCE = 33;
@@ -151,6 +168,20 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       : browser && feedback
         ? createDomFeedbackField({ onInput: (v) => feedback.setText(v), onCancel: () => feedback.close() }, () => document.getElementById('game'))
         : null;
+  /** Set in init: the context the portrait sheets' actions run in. */
+  let uiCtx: GameContext | null = null;
+  const feedbackSheetFactory = options.feedbackSheet !== undefined ? options.feedbackSheet : browser ? createDomFeedbackSheet : null;
+  const feedbackSheet =
+    feedback && feedbackSheetFactory
+      ? feedbackSheetFactory({
+          onInput: (v) => feedback.setText(v),
+          onKind: (k) => feedback.setKind(k),
+          onToggleLog: () => feedback.toggleLog(),
+          onSend: () => void (uiCtx && feedback.send(feedbackContext(uiCtx))),
+          onCancel: () => feedback.close(),
+        })
+      : null;
+  const feedbackSurface = new FormSurface({ field: feedbackField, sheet: feedbackSheet });
   /** Focus the textarea on the next tick (desktop): focusing inside the opening key press would type its letter. */
   let focusFeedback = false;
   /** The mode the feedback form was opened in (title or paused): it never outlives that screen. */
@@ -167,6 +198,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
             () => document.getElementById('game'),
           )
         : null;
+  const entrySheetFactory = options.entrySheet !== undefined ? options.entrySheet : browser ? createDomEntrySheet : null;
+  const entrySheet =
+    flow && entrySheetFactory
+      ? entrySheetFactory({ onInput: (v) => flow.setName(v), onSubmit: () => void flow.submit(), onCancel: () => flow.close() })
+      : null;
+  const entrySurface = new FormSurface({ field: nameField, sheet: entrySheet });
+  const whatsNewSheetFactory = options.whatsNewSheet !== undefined ? options.whatsNewSheet : browser ? createDomWhatsNewSheet : null;
+  const whatsNewSheet = whatsNewSheetFactory?.({ onDone: () => uiCtx?.commands.markVersionSeen() }) ?? null;
   const typingOrientation = new TypingOrientation(
     options.orientation !== undefined ? options.orientation : browser ? browserOrientationEnv() : null,
   );
@@ -180,6 +219,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   let runKidMode = false;
   /** The arrow keys held on the list: -1 up, 1 down, 0 none. */
   let listScroll = 0;
+  /** The same for the "Neu in dieser Version" list. */
+  let whatsNewKeys: -1 | 0 | 1 = 0;
   let lastMode: string | null = null;
   const view: UiView = {
     records: loadRecords(store),
@@ -205,6 +246,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     logoHold: new LongPress(),
     scores: flow,
     feedback,
+    whatsNew: new ListScroll(),
   };
   /** Set in init: restarts a paused run when kid mode was switched in the menu. */
   let onSettingsClosed: (switched: boolean) => void = () => {};
@@ -359,20 +401,69 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     });
   }
 
-  /** "Neu in dieser Version" is modal: a tap or any key but M closes it (marks the version seen) and shows the title. */
+  /** "Neu in dieser Version" shows (not under the rotate hint). */
+  const whatsNewShown = (ctx: GameContext) => menuScreen(ctx.state, view) === 'whatsNew' && !portraitHintShown(ctx, view);
+  /** It shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
+  const whatsNewOnSheet = (ctx: GameContext) => !!whatsNewSheet && whatsNewShown(ctx) && sheetShown(ctx.display, true);
+
+  /** The canvas "Neu in dieser Version" list while that screen shows on the canvas, else null. */
+  function whatsNewList(ctx: GameContext) {
+    if (!whatsNewShown(ctx) || whatsNewOnSheet(ctx)) return null;
+    return currentMenu(ctx, view)?.list ?? null;
+  }
+
+  /**
+   * "Neu in dieser Version" is modal: a tap or any key but M and the scroll keys closes it (marks the
+   * version seen) and shows the title. A list that scrolls keeps a tap on itself (drag, wheel:
+   * list-scroll.ts); arrow keys / W / S, Page Up / Down, Home and End move it. On the portrait
+   * sheet its own "Weiter" takes the taps and the scroll keys move the sheet's list.
+   */
   function addWhatsNewHotspot(ctx: GameContext): void {
-    const shown = () => menuScreen(ctx.state, view) === 'whatsNew' && !portraitHintShown(ctx, view);
     const close = () => ctx.commands.markVersionSeen();
     const screen: InputHotspot = {
-      rect: () => (shown() ? EVERYWHERE : null),
+      rect: () => (whatsNewShown(ctx) ? EVERYWHERE : null),
       onPress: close,
       onKeyDown: (code) => {
         if (code === 'KeyM') return false;
-        close();
+        if (whatsNewOnSheet(ctx)) {
+          if (!whatsNewSheet!.scrollKey(code)) close();
+          return true;
+        }
+        const list = whatsNewList(ctx)!;
+        const page = pageScroll(code, list);
+        whatsNewKeys = scrollDirection(code);
+        if (whatsNewKeys !== 0) view.whatsNew.by(whatsNewKeys * list.rowH);
+        else if (page !== null) view.whatsNew.by(page);
+        else close();
+        view.whatsNew.clamp(list.maxScroll);
         return true;
       },
+      onKeyUp: () => void (whatsNewKeys = 0),
     };
     ctx.addHotspot(screen);
+    ctx.addHotspot({
+      rect: () => {
+        const list = whatsNewList(ctx);
+        return list && list.maxScroll > 0 ? list.rect : null;
+      },
+      onPress: () => {},
+    });
+  }
+
+  /**
+   * Per tick: the portrait sheet shows or hides; held arrow keys scroll the canvas "Neu in dieser
+   * Version" list, kept in range; it starts at the top again once closed.
+   */
+  function updateWhatsNew(ctx: GameContext, dt: number): void {
+    whatsNewSheet?.show(whatsNewOnSheet(ctx) ? ctx.state.whatsNew : null);
+    const list = whatsNewList(ctx);
+    if (!list) {
+      whatsNewKeys = 0;
+      if (ctx.state.whatsNew.length === 0) view.whatsNew.reset();
+      return;
+    }
+    if (whatsNewKeys !== 0) view.whatsNew.by(whatsNewKeys * LIST_KEY_ROWS_PER_SECOND * list.rowH * dt);
+    view.whatsNew.clamp(list.maxScroll);
   }
 
   /** Ends the run in progress (its score and stars still count, for the mode it was played in) and shows the title. */
@@ -440,15 +531,25 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     return { platform: state.install.platform, touch: display.touch, portrait: display.portrait, viewWidth: display.viewWidth, mode: state.mode };
   }
 
-  /** The native textarea over the form's field while the form shows, else hidden; a pending desktop focus. */
+  /** The feedback form shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
+  const feedbackOnSheet = (ctx: GameContext) => !!feedbackSheet && sheetShown(ctx.display, true);
+
+  /**
+   * While the form shows: the native textarea over the canvas form's field, or the portrait sheet;
+   * else both hidden. A pending desktop focus goes to the one shown.
+   */
   function placeFeedbackField(ctx: GameContext): void {
-    if (!feedback || !feedbackField) return;
-    const shown = feedback.open && !feedback.done && !portraitHintShown(ctx, view);
-    feedbackField.place(shown ? feedbackLayout(ctx.display).field : null, feedback.text, feedbackPlaceholder(feedback));
+    if (!feedback) return;
+    const shown = feedback.open && !portraitHintShown(ctx, view);
+    const where = !shown ? null : feedbackOnSheet(ctx) ? 'sheet' : feedback.done ? null : 'field';
+    feedbackSurface.update(where, (surface) => {
+      feedbackField?.place(surface === 'field' ? feedbackLayout(ctx.display).field : null, feedback.text, feedbackPlaceholder(feedback));
+      feedbackSheet?.show(surface === 'sheet' ? feedbackSheetModel(feedback) : null);
+    });
     if (!feedback.open) focusFeedback = false;
-    if (shown && focusFeedback) {
+    if (where && focusFeedback) {
       focusFeedback = false;
-      feedbackField.focus();
+      feedbackSurface.focus();
     }
   }
 
@@ -461,17 +562,18 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     if (!feedback) return;
     const { display } = ctx;
     const shown = () => feedback.open && !portraitHintShown(ctx, view);
+    // The canvas form's buttons; on the portrait sheet its own buttons take the taps.
     const form = (pick: (l: ReturnType<typeof feedbackLayout>) => Rect | null) => () =>
-      shown() && !feedback.done ? pick(feedbackLayout(display)) : null;
+      shown() && !feedback.done && !feedbackOnSheet(ctx) ? pick(feedbackLayout(display)) : null;
     const send = () => void feedback.send(feedbackContext(ctx));
     const modal: InputHotspot = {
       rect: () => (shown() ? EVERYWHERE : null),
-      onPress: () => feedbackField?.blur(),
+      onPress: () => feedbackSurface.blur(),
       onKeyDown: (code) => {
         if (code === 'KeyM') return false;
         const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
         if (code === 'Escape' || (feedback.done && confirm)) feedback.close();
-        else if (!feedback.done) feedbackField?.focus();
+        else if (!feedback.done) feedbackSurface.focus();
         return true;
       },
     };
@@ -482,7 +584,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: form((l) => (feedback.logShown ? l.log : null)), onPress: () => feedback.toggleLog() });
     ctx.addHotspot({ rect: form((l) => l.cancel), onPress: () => feedback.close() });
     ctx.addHotspot({ rect: form((l) => l.send), onPress: send });
-    ctx.addHotspot({ rect: () => (shown() && feedback.done ? feedbackLayout(display).ok : null), onPress: () => feedback.close() });
+    ctx.addHotspot({ rect: () => (shown() && feedback.done && !feedbackOnSheet(ctx) ? feedbackLayout(display).ok : null), onPress: () => feedback.close() });
   }
 
   /** The logo's long press (pointer or K) on the title and pause screens, the menu's (or kid notice's) modal layer and its buttons. */
@@ -535,11 +637,17 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
   }
 
-  /** The native name input over the entry's field while the entry shows, else hidden. */
+  /** The name entry shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
+  const entryOnSheet = (ctx: GameContext) => !!entrySheet && sheetShown(ctx.display, true);
+
+  /** While the entry shows: the native name input over the canvas entry's field, or the portrait sheet; else both hidden. */
   function placeNameField(ctx: GameContext): void {
-    if (!flow || !nameField) return;
+    if (!flow) return;
     const shown = flow.screen === 'entry' && !portraitHintShown(ctx, view);
-    nameField.place(shown ? scoreEntryLayout(ctx.display).field : null, flow.name);
+    entrySurface.update(!shown ? null : entryOnSheet(ctx) ? 'sheet' : 'field', (surface) => {
+      nameField?.place(surface === 'field' ? scoreEntryLayout(ctx.display).field : null, flow.name);
+      entrySheet?.show(surface === 'sheet' ? entrySheetModel(flow) : null);
+    });
   }
 
   /**
@@ -551,7 +659,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     if (!flow) return;
     flow.openEntry();
     placeNameField(ctx);
-    if (!ctx.display.touch || !flow.name) nameField?.focus();
+    if (!ctx.display.touch || !flow.name) entrySurface.focus();
   }
 
   /** The "Bestenliste" layout as drawn now. */
@@ -575,7 +683,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     }
     if (code === 'Escape') flow.close();
     else if (code === 'Enter' || code === 'NumpadEnter') void flow.submit();
-    else nameField?.focus();
+    else entrySurface.focus();
     return true;
   }
 
@@ -599,24 +707,29 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     };
     const modal: InputHotspot = {
       rect: () => (flow.open && !covered() ? EVERYWHERE : null),
-      onPress: () => nameField?.blur(),
+      onPress: () => entrySurface.blur(),
       onKeyDown: (code) => scoreKey(ctx, code),
       onKeyUp: () => void (listScroll = 0),
     };
+    // The canvas entry's buttons; on the portrait sheet its own buttons take the taps.
+    const onSheet = () => flow.screen === 'entry' && entryOnSheet(ctx);
     const entry = (pick: (l: ReturnType<typeof scoreEntryLayout>) => Rect | null) => () =>
-      flow.screen === 'entry' && !covered() ? pick(scoreEntryLayout(display)) : null;
+      flow.screen === 'entry' && !covered() && !onSheet() ? pick(scoreEntryLayout(display)) : null;
     ctx.addHotspot(trophy);
     ctx.addHotspot(modal);
-    ctx.addHotspot({ rect: () => (flow.open && !covered() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
+    ctx.addHotspot({ rect: () => (flow.open && !covered() && !onSheet() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
     ctx.addHotspot({ rect: () => (flow.screen === 'list' && !covered() ? listLayout(ctx).stats : null), onPress: () => view.settings.toggleStats() });
     ctx.addHotspot({ rect: () => (flow.screen === 'list' && !covered() ? listLayout(ctx).privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: entry((l) => l.submit), onPress: () => void flow.submit() });
     ctx.addHotspot({ rect: entry((l) => l.field), onPress: () => nameField?.focus() });
   }
 
-  /** Frees portrait while the feedback form or the name entry takes text, after any path that opened or closed them this tick. */
-  function updateOrientation(): void {
-    const typing = (!!feedback?.open && !feedback.done) || flow?.screen === 'entry';
+  /**
+   * Frees portrait while the feedback form or the name entry takes text, after any path that opened or
+   * closed them this tick; the portrait sheet's thank-you keeps it until its OK.
+   */
+  function updateOrientation(ctx: GameContext): void {
+    const typing = (!!feedback?.open && (!feedback.done || feedbackOnSheet(ctx))) || flow?.screen === 'entry';
     typingOrientation.update(typing);
     view.portraitFree = typingOrientation.free;
   }
@@ -676,8 +789,10 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     name: 'ui',
     highscores: flow,
     feedback,
+    whatsNew: view.whatsNew,
 
     init(ctx) {
+      uiCtx = ctx;
       view.fullscreenAvailable = (options.fullscreenAvailable ?? browserFullscreen)();
       ctx.state.kidMode = loadKidMode(store);
       onSettingsClosed = (switched) => {
@@ -689,13 +804,19 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       bindEvents(ctx);
       addHotspots(ctx);
       ctx.onUserGesture(() => privacyLink.gesture());
+      if (browser) {
+        bindListScroll(
+          { active: () => (whatsNewList(ctx)?.maxScroll ?? 0) > 0, scrollBy: (dy) => view.whatsNew.by(dy), lineHeight: () => whatsNewList(ctx)?.rowH ?? 1 },
+          () => document.getElementById('game'),
+        );
+      }
       if (browser && flow) {
         bindListScroll(
           { active: () => flow.screen === 'list', scrollBy: (dy) => flow.scrollBy(dy), lineHeight: () => listLayout(ctx).rowH },
           () => document.getElementById('game'),
         );
       }
-      if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view, feed);
+      if (typeof window !== 'undefined' && testHookEnabled()) installUiDebug(ctx, view, feed, () => whatsNewSheet?.scroll() ?? null);
     },
 
     update(ctx, dt) {
@@ -729,8 +850,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
       keepFeedbackOnItsScreen(ctx);
-      updateOrientation();
+      updateOrientation(ctx);
       updateScores(ctx, dt);
+      updateWhatsNew(ctx, dt);
       placeFeedbackField(ctx);
       reportSession(ctx);
       if (state.mode !== 'playing') return;

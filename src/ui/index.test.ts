@@ -9,7 +9,8 @@ import { PLAYER_X } from '../core/config';
 import { itemButtonRect } from './item-button';
 import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
-import { gameOverLayout, type MenuInput, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
+import { gameOverLayout, type MenuInput, pauseLayout, titleLayout } from './menu-layout';
+import { whatsNewLayout } from './whats-new';
 import { KICKER_HINT_LAUNCHES, KickerHint } from './kicker-hint';
 import { kidNoticeLayout } from './kid-notice';
 import { loadKidMode, saveKidMode } from './settings';
@@ -505,7 +506,7 @@ describe('update, what is new, install hint and pause navigation', () => {
       game.bus.on('runStarted', () => n++);
       return () => n;
     };
-    return { game, store, pointers, ticks, input, press, key, capturePrompt, runStarts, reloads: () => reloads, prompts: () => prompts };
+    return { game, ui, store, pointers, ticks, input, press, key, capturePrompt, runStarts, reloads: () => reloads, prompts: () => prompts };
   }
 
   it('the reload button shows on title, pause and game over only while a new version waits; tap or U reloads', () => {
@@ -568,11 +569,61 @@ describe('update, what is new, install hint and pause navigation', () => {
   it("the 'Weiter' button continues too, and the logo is not live behind the screen", () => {
     const t = app({ touch: true });
     t.game.state.whatsNew = [{ version: '2099-01-01.1', date: '2099-01-01', items: ['Neu A', 'Neu B'] }];
-    const next = whatsNewLayout(t.input(), ['Neu A', 'Neu B']).buttons.next;
+    const next = whatsNewLayout(t.input(), t.game.state.whatsNew).buttons.next;
     expect(t.press(next)).toBe(true);
     expect(t.game.state.whatsNew).toEqual([]);
     t.ticks(2);
     expect(t.game.state.mode).toBe('title');
+  });
+
+  /** Ten entries of three items: the list scrolls in every view. */
+  const many = () =>
+    Array.from({ length: 10 }, (_, i) => ({ version: `2099-01-${String(20 - i).padStart(2, '0')}.1`, date: `2099-01-${String(20 - i).padStart(2, '0')}`, items: ['Neu A', 'Neu B', 'Neu C'] }));
+
+  it("a long 'Neu in dieser Version' list scrolls: arrow keys and S/W move it, a tap on the list keeps the screen, Weiter and Enter continue", () => {
+    for (const touch of [false, true]) {
+      const t = app({ touch });
+      t.game.state.whatsNew = many();
+      t.ticks(1);
+      const l = whatsNewLayout(t.input(), t.game.state.whatsNew);
+      const list = l.list!;
+      const scroll = t.ui.whatsNew;
+      expect(scroll.offset).toBe(0);
+      t.key('ArrowDown');
+      expect(scroll.offset).toBe(list.rowH);
+      t.key('KeyS');
+      t.key('ArrowUp');
+      expect(scroll.offset).toBe(list.rowH);
+      t.key('PageDown');
+      expect(scroll.offset).toBe(list.rowH + list.rect.h);
+      t.key('End');
+      expect(scroll.offset).toBe(list.maxScroll);
+      t.key('PageDown');
+      expect(scroll.offset).toBe(list.maxScroll);
+      t.key('Home');
+      expect(scroll.offset).toBe(0);
+      scroll.by(-50);
+      t.ticks(1);
+      expect(scroll.offset).toBe(0);
+      expect(t.press(list.rect)).toBe(true);
+      t.ticks(2);
+      expect(t.game.state.whatsNew).toHaveLength(10);
+      t.key('Enter');
+      expect(t.game.state.whatsNew).toEqual([]);
+      expect(t.game.state.mode).toBe('title');
+    }
+  });
+
+  it("the list scroll starts at the top again for the next 'Neu in dieser Version'", () => {
+    const t = app();
+    t.game.state.whatsNew = many();
+    t.ticks(1);
+    t.key('ArrowDown');
+    expect(t.ui.whatsNew.offset).toBeGreaterThan(0);
+    t.key('Escape');
+    t.game.state.whatsNew = many();
+    t.ticks(1);
+    expect(t.ui.whatsNew.offset).toBe(0);
   });
 
   it('install hint: Installieren shows the captured prompt from the tap, × dismisses for good', () => {

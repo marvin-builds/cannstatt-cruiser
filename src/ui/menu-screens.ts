@@ -8,11 +8,10 @@ import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
 import { ARROW_RIGHT, DISMISS_ICON, ICON_FEEDBACK, SHARE_ICON, STAR, UI } from './art';
-import { centred, fill, iconButton, menuButton, ribbon, text } from './draw-kit';
+import { centred, fill, iconButton, menuButton, ribbon, scrollBar, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
 import {
-  BULLET_W,
   controlsLine,
   feedbackLabel,
   gameOverPrompt,
@@ -36,7 +35,7 @@ import {
   trickKeysHint,
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
-import { whatsNewLines } from './notices';
+import { SCROLLBAR_W } from './score-layout';
 import { PRIVACY_LABEL } from './privacy-link';
 import { bestOf, type Records, type RunResult } from './records';
 import { STATS_TEXT } from './settings';
@@ -188,23 +187,37 @@ function drawRecordsRow(r: RenderContext, highscore: number, starsTotal: number,
   text(r, stars, x + STAR.width + 3, y, { color: UI.white });
 }
 
-export function drawWhatsNew(r: RenderContext, l: MenuLayout): void {
+/** "Neu in dieser Version": the headline, the list scrolled by `scroll` (version headings, bullet items, a scroll bar when it overflows), "Weiter". */
+export function drawWhatsNew(r: RenderContext, l: MenuLayout, scroll: number): void {
+  const { g } = r;
   fill(r, UI.dim);
   const title = l.blocks.get('title')!;
   text(r, MENU_TEXT.whatsNew, title.x, title.y, { scale: 2, color: UI.yellow });
-  if (l.panel) {
-    r.g.fillStyle = UI.panel;
-    r.g.fillRect(l.panel.x, l.panel.y, l.panel.w, l.panel.h);
-  }
-  const lines = whatsNewLines(r.state.whatsNew);
-  const left = l.panel ? l.panel.x + 6 : 0;
-  lines.forEach((s, i) => {
-    const row = l.blocks.get(`line${i}`);
-    if (!row) return;
-    r.g.fillStyle = UI.yellow;
-    r.g.fillRect(left, row.y + 3, 2, 2);
-    text(r, s, left + BULLET_W, row.y, { color: UI.white });
+  const list = l.list!;
+  const { rect, rowH, scale } = list;
+  g.fillStyle = UI.panel;
+  g.fillRect(rect.x, rect.y, rect.w, rect.h);
+  const offset = Math.round(scroll);
+  const textTop = Math.floor((rowH - 7 * scale) / 2);
+  g.save();
+  g.beginPath();
+  g.rect(rect.x, rect.y, rect.w, rect.h);
+  g.clip();
+  list.rows.forEach((row, i) => {
+    const y = rect.y + i * rowH - offset;
+    if (y + rowH <= rect.y || y >= rect.y + rect.h) return;
+    if (row.kind === 'heading') {
+      text(r, row.text, list.headingX, y + textTop, { color: UI.teal, scale });
+      return;
+    }
+    if (row.kind === 'item') {
+      g.fillStyle = UI.yellow;
+      g.fillRect(list.headingX, y + textTop + 3 * scale, 2 * scale, 2 * scale);
+    }
+    text(r, row.text, list.itemX, y + textTop, { color: UI.white, scale });
   });
+  g.restore();
+  if (list.maxScroll > 0) scrollBar(r, rect, list.contentH, offset, SCROLLBAR_W * scale);
   if (l.buttons.next) menuButton(r, l.buttons.next, MENU_TEXT.next, UI.yellow);
 }
 

@@ -15,8 +15,8 @@ export interface ChangelogEntry {
 /** Item limits, so an entry fits the "Neu in dieser Version" screen. */
 export const CHANGELOG_ITEM_MAX_CHARS = 40;
 export const CHANGELOG_MAX_ITEMS_PER_ENTRY = 6;
-/** Items shown at most on the screen, over all entries since the last-seen version. */
-export const WHATS_NEW_MAX_ITEMS = 6;
+/** Entries shown at most on the (scrollable) screen: the newest ones since the last-seen version, each with all its items. */
+export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
@@ -241,23 +241,18 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /**
- * The entries newer than `lastSeen`, newest first, with at most `maxItems`
- * items over all of them (entries left without items are dropped). Empty on
- * a first visit (`lastSeen` null) and once the newest entry was seen.
+ * The entries newer than `lastSeen`, newest first, each with all its items,
+ * at most the newest `maxEntries` of them. Empty on a first visit (`lastSeen`
+ * null) and once the newest entry was seen.
  */
 export function changesSince(
   lastSeen: string | null,
   log: readonly ChangelogEntry[],
-  maxItems = WHATS_NEW_MAX_ITEMS,
+  maxEntries = WHATS_NEW_MAX_ENTRIES,
 ): ChangelogEntry[] {
   if (lastSeen === null) return [];
-  const shown: ChangelogEntry[] = [];
-  let room = maxItems;
-  for (const entry of log) {
-    if (room <= 0 || compareVersions(entry.version, lastSeen) <= 0) break;
-    const items = entry.items.slice(0, room);
-    shown.push({ ...entry, items });
-    room -= items.length;
-  }
-  return shown;
+  return log
+    .filter((entry) => compareVersions(entry.version, lastSeen) > 0)
+    .slice(0, maxEntries)
+    .map((entry) => ({ ...entry, items: [...entry.items] }));
 }

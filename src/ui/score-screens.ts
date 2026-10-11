@@ -4,9 +4,9 @@
  * Menu screens only (not drawn while riding), so plain allocation is fine.
  */
 import { measureText } from '../core/font';
-import type { Rect, RenderContext } from '../types';
+import type { RenderContext } from '../types';
 import { UI } from './art';
-import { fill, menuButton, text } from './draw-kit';
+import { fill, menuButton, scrollBar, text } from './draw-kit';
 import { type HighscoreFlow, SCORE_TEXT } from './highscore-flow';
 import { fitCentred, formatNumber } from './layout';
 import { drawDismiss, drawPrivacyLink, drawStatsSwitch } from './menu-screens';
@@ -86,24 +86,11 @@ function drawRows(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout): vo
     text(r, formatNumber(e.score), l.scoreRight, y + textTop, { align: 'right', color, scale });
   });
   g.restore();
-  if (l.maxScroll > 0) drawScrollbar(r, list, l.contentH, scroll);
-}
-
-/** A thin bar at the list's right edge: where the visible rows are in the whole list. */
-function drawScrollbar(r: RenderContext, list: Rect, contentH: number, scroll: number): void {
-  const { g } = r;
-  const x = list.x + list.w - SCROLLBAR_W - 2;
-  const track = list.h - 4;
-  const thumb = Math.max(6, Math.round((track * list.h) / contentH));
-  const y = list.y + 2 + Math.round(((track - thumb) * scroll) / Math.max(1, contentH - list.h));
-  g.fillStyle = UI.empty;
-  g.fillRect(x, list.y + 2, SCROLLBAR_W, track);
-  g.fillStyle = UI.muted;
-  g.fillRect(x, y, SCROLLBAR_W, thumb);
+  if (l.maxScroll > 0) scrollBar(r, list, l.contentH, scroll, SCROLLBAR_W);
 }
 
 /** The submit button's label: "Als <Name> eintragen" once the name is valid. */
-export function submitButtonLabel(flow: HighscoreFlow): string {
+export function submitButtonLabel(flow: Pick<HighscoreFlow, 'sending' | 'canSubmit' | 'name'>): string {
   if (flow.sending) return SCORE_TEXT.sending;
   return flow.canSubmit ? `Als ${flow.name.trim()} eintragen` : SCORE_TEXT.submit;
 }

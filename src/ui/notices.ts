@@ -1,10 +1,9 @@
 /**
- * When the menu screens offer the reload button ("Neue Version da"), the
- * install hint and the "Neu in dieser Version" lines. Pure rules over the
- * state core writes (updateReady, install, whatsNew); layout in
- * menu-layout.ts, hotspots in index.ts, drawing in menu-draw.ts.
+ * When the menu screens offer the reload button ("Neue Version da") and the
+ * install hint. Pure rules over the state core writes (updateReady, install);
+ * layout in menu-layout.ts, hotspots in index.ts, drawing in menu-screens.ts.
  */
-import type { ChangelogEntry, GameMode, InstallState } from '../types';
+import type { GameMode, InstallState } from '../types';
 
 /** The reload button: while a new version waits, on title, pause and game over (never mid-run). */
 export function reloadOffered(state: { mode: GameMode; updateReady: boolean }): boolean {
@@ -23,9 +22,4 @@ export function installHintKind(install: InstallState, touch: boolean): InstallH
   if (install.visits < INSTALL_HINT_MIN_VISITS) return null;
   if (install.canPrompt) return 'prompt';
   return install.platform === 'ios' ? 'ios' : null;
-}
-
-/** The bullet lines of the "Neu in dieser Version" screen: every entry's items, newest first (core caps them). */
-export function whatsNewLines(entries: readonly ChangelogEntry[]): string[] {
-  return entries.flatMap((e) => e.items);
 }

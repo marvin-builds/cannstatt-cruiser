@@ -20,6 +20,8 @@ export interface NameField {
   focus(): void;
   /** Takes the focus away (closes the phone keyboard) and leaves the field shown: a tap beside it on the modal screen. */
   blur(): void;
+  /** It has the focus (the keyboard is up): a turn of the phone moves it to the portrait sheet. */
+  isFocused(): boolean;
 }
 
 export interface NameFieldHandlers {
@@ -114,6 +116,9 @@ export function createDomNameField(handlers: NameFieldHandlers, canvas: () => HT
     },
     blur() {
       input?.blur();
+    },
+    isFocused() {
+      return !!input && document.activeElement === input;
     },
   };
 }

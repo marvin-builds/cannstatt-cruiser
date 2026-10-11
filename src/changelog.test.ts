@@ -7,7 +7,7 @@ import {
   type ChangelogEntry,
   changesSince,
   compareVersions,
-  WHATS_NEW_MAX_ITEMS,
+  WHATS_NEW_MAX_ENTRIES,
 } from './changelog';
 import { glyphFor } from './core/font-data';
 
@@ -45,20 +45,27 @@ describe('changesSince', () => {
     expect(changesSince('2026-10-08.1', LOG).map((e) => e.version)).toEqual(['2026-10-09.1', '2026-10-08.2']);
   });
 
-  it('caps the number of items over all entries and drops entries left empty', () => {
-    const shown = changesSince('2026-10-07.1', LOG, 3);
-    expect(shown).toEqual([entry('2026-10-09.1', 'c1', 'c2'), entry('2026-10-08.2', 'b1')]);
-    expect(changesSince('2026-10-07.1', LOG, 2)).toEqual([entry('2026-10-09.1', 'c1', 'c2')]);
+  it('keeps every item of the entries it shows (no item cap)', () => {
+    expect(changesSince('2026-10-07.1', LOG)).toEqual(LOG);
   });
 
-  it('never changes the log it reads', () => {
-    changesSince('2026-10-07.1', LOG, 1);
+  it('caps the number of entries, keeping the newest ones', () => {
+    expect(changesSince('2026-10-07.1', LOG, 2).map((e) => e.version)).toEqual(['2026-10-09.1', '2026-10-08.2']);
+    expect(changesSince('2026-10-07.1', LOG, 1)).toEqual([entry('2026-10-09.1', 'c1', 'c2')]);
+  });
+
+  it('never changes the log it reads, nor shares its item lists', () => {
+    const shown = changesSince('2026-10-07.1', LOG, 1);
+    shown[0]!.items.push('x');
     expect(LOG[0]!.items).toEqual(['c1', 'c2']);
   });
 
-  it('caps to WHATS_NEW_MAX_ITEMS by default', () => {
-    const items = changesSince('2000-01-01.1', CHANGELOG).flatMap((e) => e.items);
-    expect(items.length).toBe(Math.min(WHATS_NEW_MAX_ITEMS, CHANGELOG.flatMap((e) => e.items).length));
+  it('caps to the last WHATS_NEW_MAX_ENTRIES (10) entries by default, with all their items', () => {
+    expect(WHATS_NEW_MAX_ENTRIES).toBe(10);
+    const many = Array.from({ length: 14 }, (_, i) => entry(`2026-11-${String(20 - i).padStart(2, '0')}.1`, `n${i}a`, `n${i}b`));
+    const shown = changesSince('2000-01-01.1', many);
+    expect(shown).toEqual(many.slice(0, 10));
+    expect(shown.flatMap((e) => e.items)).toHaveLength(20);
   });
 });
 

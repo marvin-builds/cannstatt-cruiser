@@ -8,7 +8,8 @@
  * rank), a higher run replaces the row (one row per device), a stale client
  * gets the "Dein Eintrag bleibt" note, kid mode has no trophy, list or entry
  * (only its own local record, ROADMAP 45), and offline shows the notes and
- * queues the run (resent once online, desktop).
+ * queues the run (resent once online, desktop). In portrait the name entry is
+ * the full-screen sheet (ROADMAP 58), tapped through its DOM controls.
  *
  *   npm run playtest -- --scenario <this file> --viewports desktop,phone-landscape,phone-portrait --name highscores
  */
@@ -123,9 +124,21 @@ async function crash(t: PlaytestContext, score: number): Promise<void> {
   await t.game.step(60);
 }
 
+/** The name entry in portrait: the full-screen sheet (ROADMAP 58) over the canvas entry. */
+const entrySheet = (t: PlaytestContext) => t.page.locator('[role=dialog][aria-label="Eintragen"]');
+const portrait = async (t: PlaytestContext) => (await t.game.display()).portrait;
+
+/** Taps the name entry's field or "Eintragen" button: the canvas rect, or the sheet's control in portrait. */
+async function tapEntry(t: PlaytestContext, control: 'field' | 'submit'): Promise<void> {
+  if (!(await portrait(t))) return tap(t, (await hs(t))[control]);
+  const sheet = entrySheet(t);
+  await (control === 'field' ? sheet.locator('input') : sheet.getByRole('button', { name: /eintragen$/ })).tap();
+  await t.game.step(1);
+}
+
 /** Types into the name input like a player: desktop has it focused already, a phone taps it first. */
 async function typeName(t: PlaytestContext, name: string): Promise<void> {
-  if (t.viewport.touch) await tap(t, (await hs(t)).field);
+  if (t.viewport.touch) await tapEntry(t, 'field');
   await t.page.keyboard.press('Control+A');
   await t.page.keyboard.press('Backspace');
   await t.page.keyboard.type(name, { delay: 20 });
@@ -243,7 +256,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   t.check('the native input is visible over the field', await t.page.locator('input').isVisible());
   await t.screenshot('name entry typed page');
   await t.canvasShot('name entry typed');
-  if (t.viewport.touch) await tap(t, typed.submit);
+  if (t.viewport.touch) await tapEntry(t, 'submit');
   else await t.page.keyboard.press('Enter');
   const after = await waitFor(t, 'submit shows the list with the own entry highlighted', (h) => h.screen === 'list' && h.highlight !== null);
   const post = server.posts[server.posts.length - 1] ?? {};
@@ -280,7 +293,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   await t.canvasShot('name entry remembered');
   const newName = `${name} II`;
   await typeName(t, newName);
-  if (t.viewport.touch) await tap(t, (await hs(t)).submit);
+  if (t.viewport.touch) await tapEntry(t, 'submit');
   else await t.page.keyboard.press('Enter');
   const replaced = await waitFor(t, 'higher run: list with the replaced own entry', (h) => h.screen === 'list' && h.ownBest === 6000 && h.highlight !== null);
   const mine = server.rows.filter((r) => r.device === device);
@@ -299,7 +312,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   if (t.viewport.touch) await tap(t, (await menuButtons(t))!.submit!);
   else await t.page.keyboard.press('KeyE');
   await t.game.step(1);
-  if (t.viewport.touch) await tap(t, (await hs(t)).submit);
+  if (t.viewport.touch) await tapEntry(t, 'submit');
   else await t.page.keyboard.press('Enter');
   const kept = await waitFor(t, 'stale: the kept entry note and the new best', (h) => h.screen === 'list' && h.message === 'Dein Eintrag bleibt: 9.000 Punkte' && h.ownBest === 9000);
   t.check('stale: still one row for this device', server.rows.filter((r) => r.device === device).length === 1 && server.row(device)!.score === 9000, kept);
@@ -339,7 +352,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   else await t.page.keyboard.press('KeyE');
   await t.game.step(1);
   const posts = server.posts.length;
-  if (t.viewport.touch) await tap(t, (await hs(t)).submit);
+  if (t.viewport.touch) await tapEntry(t, 'submit');
   else await t.page.keyboard.press('Enter');
   const queued = await waitFor(t, 'offline: entry queued with the note', (h) => h.screen === 'list' && h.message === 'Wird gesendet, sobald du online bist');
   t.check('offline: nothing was sent', server.posts.length === posts, queued);

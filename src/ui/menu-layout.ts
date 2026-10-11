@@ -1,6 +1,6 @@
 /**
  * Layout of the menu screens (title, pause, game over, "Neu in dieser
- * Version") with their buttons: reload ("Neue Version da"), the install hint,
+ * Version", whose list is in whats-new.ts) with their buttons: reload ("Neue Version da"), the install hint,
  * "Startbildschirm", "Weiter" and the pause logo. One pure function per
  * screen, used by both the hotspots (index.ts) and the drawing
  * (menu-screens.ts), so what is drawn is what can be tapped. Optional text
@@ -23,6 +23,7 @@ import { buttonPlate, centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics
 import { LOGO_Y, logoRect } from './logo';
 import type { InstallHintKind } from './notices';
 import { statsLayout } from './stats';
+import type { WhatsNewList } from './whats-new';
 
 /** What a menu screen depends on besides its texts. */
 export interface MenuInput {
@@ -77,6 +78,8 @@ export interface MenuLayout {
   panel: Rect | null;
   /** Font scale of the body text rows (prompt, hints): 2 in portrait where it fits. */
   textScale: number;
+  /** "Neu in dieser Version" only: its scrollable list (whats-new.ts). */
+  list?: WhatsNewList;
 }
 
 /** All texts of the menu screens (German, game font). */
@@ -266,7 +269,7 @@ export function installParts(
   return { textX: card.x, textY, button: { x: dismiss.x - CARD_GAP - w, y: card.y, w, h }, dismiss };
 }
 
-function noButtons(): MenuButtons {
+export function noButtons(): MenuButtons {
   return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, kidMode: null, feedback: null };
 }
 
@@ -299,14 +302,14 @@ function withCards(input: MenuInput, m: UiMetrics, placed: Map<string, Rect>, in
 }
 
 /** Lowest y of the HUD button row and the x where it starts, for this screen. */
-function hudBand(input: MenuInput, m: UiMetrics, riding: boolean): { bottom: number; left: number } {
+export function hudBand(input: MenuInput, m: UiMetrics, riding: boolean): { bottom: number; left: number } {
   const h = hudButtons(input.viewWidth, input.fullscreenAvailable, m, riding);
   const row = [h.pause, h.mute, h.fullscreen].filter((r): r is Rect => !!r && (riding || r !== h.pause));
   return { bottom: Math.max(...row.map((r) => r.y + r.h)), left: Math.min(...row.map((r) => r.x)) };
 }
 
 /** A scale-2 headline at HEADLINE_Y, centred unless that runs under the HUD buttons. */
-function headline(text: string, input: MenuInput, hudLeft: number): Rect {
+export function headline(text: string, input: MenuInput, hudLeft: number): Rect {
   const w = measureText(text, 2);
   const cx = fitCentred(w, input.viewWidth, hudLeft);
   return { x: cx - Math.ceil(w / 2), y: HEADLINE_Y, w, h: 14 };
@@ -493,24 +496,5 @@ export function gameOverLayout(input: MenuInput & { newRecord: boolean; submit?:
   return layout;
 }
 
-/** "Neu in dieser Version": headline, one bullet line per item, "Weiter". */
-export function whatsNewLayout(input: MenuInput, lines: readonly string[]): MenuLayout {
-  const m = uiMetrics(input);
-  const hud = hudBand(input, m, false);
-  const title = headline(MENU_TEXT.whatsNew, input, hud.left);
-  const blocks: Block[] = lines.map((s, i) => ({ id: `line${i}`, w: BULLET_W + measureText(s), h: LINE, gap: i === 0 ? 8 : 0 }));
-  blocks.push({ id: 'next', w: Math.max(buttonWidth(MENU_TEXT.next, m), 80), h: m.menuButtonH, gap: 10 });
-  const placed = fitColumn(blocks, bounds(input, Math.max(title.y + title.h, hud.bottom)));
-  placed.set('title', title);
-  const buttons = noButtons();
-  buttons.next = placed.get('next') ?? null;
-  const items = lines.map((_, i) => placed.get(`line${i}`)!).filter(Boolean);
-  const w = Math.max(...items.map((r) => r.w)) + 12;
-  const panel = items.length
-    ? { x: centreX(input.viewWidth) - Math.floor(w / 2), y: items[0]!.y - 4, w, h: items.length * LINE + 4 }
-    : null;
-  return { blocks: placed, buttons, install: null, panel, textScale: 1 };
-}
-
-/** Bullet square and space before each "Neu in dieser Version" line. */
+/** Bullet square and space before each "Neu in dieser Version" item (at font scale 1). */
 export const BULLET_W = 6;
