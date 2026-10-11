@@ -18,6 +18,8 @@ export interface MenuView {
   hud: { layout: { plate: Rect } };
   /** The online list (highscore-flow.ts): its screens cover the menus; `offered` adds "Eintragen" to game over. Null without one. */
   scores: { open: boolean; offered: boolean } | null;
+  /** The feedback screen (feedback-flow.ts): it covers the title and pause screens, which offer it in adult mode. Null without one. */
+  feedback: { open: boolean } | null;
 }
 
 export type MenuScreen = 'whatsNew' | 'title' | 'pause' | 'gameOver';
@@ -33,7 +35,7 @@ export function portraitHintShown(r: { display: { portrait: boolean; touch: bool
 
 /** The menu screen of this mode, or null while riding or while the settings menu or a highscore screen covers it. */
 export function menuScreen(state: GameState, view: MenuView): MenuScreen | null {
-  if (view.settings.open || view.scores?.open) return null;
+  if (view.settings.open || view.scores?.open || view.feedback?.open) return null;
   switch (state.mode) {
     case 'title':
       return state.whatsNew.length > 0 ? 'whatsNew' : 'title';
@@ -49,6 +51,11 @@ export function menuScreen(state: GameState, view: MenuView): MenuScreen | null 
 /** The title's trophy ("Bestenliste") shows: on the title with an online list, never in kid mode (ROADMAP 45). */
 export function trophyShown(state: GameState, view: MenuView): boolean {
   return !!view.scores && !state.kidMode && menuScreen(state, view) === 'title';
+}
+
+/** Feedback is offered on the title and the pause screen, never in kid mode and never on game over. */
+export function feedbackOffered(state: GameState, view: MenuView, screen: MenuScreen | null): boolean {
+  return !!view.feedback && !state.kidMode && (screen === 'title' || screen === 'pause');
 }
 
 /** Game-over buttons and prompt appear only after the input delay, so a tap at the crash hits nothing. */
@@ -73,11 +80,12 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     install,
     plate: screen === 'pause' ? view.hud.layout.plate : null,
     kidButton: screen === 'title' && !state.kidMode,
+    feedback: feedbackOffered(state, view, screen),
   };
   const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
   const submit = screen === 'gameOver' && !!view.scores?.offered;
-  const key = `${screen}|${input.kidButton}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
+  const key = `${screen}|${input.kidButton}|${input.feedback}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

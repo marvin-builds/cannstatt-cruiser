@@ -19,7 +19,6 @@ import {
   ICON_FULLSCREEN,
   ICON_PAUSE,
   ICON_PLAY,
-  ICON_SIZE,
   ICON_SOUND,
   ICON_TROPHY,
   ITEM_ICONS,
@@ -32,7 +31,7 @@ import {
 } from './art';
 import { type Banner, BANNER_H, BANNER_Y } from './banner';
 import { chillLook } from './chill-look';
-import { centred, fill, menuButton, ribbon, text } from './draw-kit';
+import { centred, fill, iconButton, menuButton, ribbon, text } from './draw-kit';
 import { drunkShown, drunkStrength, GHOST_ALPHA, SECOND_GHOST_ALPHA, swayOffset } from './drunk-look';
 import { HEART_STEP, type HudModel, STAR_GAP, STAR_TEXT_GAP } from './hud-model';
 import { AlphaColors } from './hud-text';
@@ -68,6 +67,9 @@ import { MENU_TEXT } from './menu-layout';
 import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
 import { currentMenu, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
+import type { FeedbackFlow } from './feedback-flow';
+import { feedbackLayout } from './feedback-layout';
+import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
@@ -117,6 +119,8 @@ export interface UiView {
   logoHold: LongPress;
   /** The online list's screens and the "Eintragen" offer; null without an online list (tests, headless). */
   scores: HighscoreFlow | null;
+  /** The feedback screen (title icon, pause button); null without a feedback sender (tests, headless). */
+  feedback: FeedbackFlow | null;
 }
 
 const MUTED: TextOptions = { color: UI.muted };
@@ -148,16 +152,6 @@ function keyCap(r: RenderContext, x: number, y: number): void {
   g.fillRect(x, y, KEYCAP_W, KEYCAP_H - 2);
 }
 
-/** One HUD button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
-function hudButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame: number): void {
-  const plateInset = Math.floor((hit.w - m.plate) / 2);
-  const x = hit.x + plateInset;
-  const y = hit.y + plateInset;
-  buttonPlateSprite(m.plate).draw(r.g, 0, x, y);
-  const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
-  icon.draw(r.g, frame, x + inset, y + inset, m.iconScale);
-}
-
 /** The button row is laid out again only when the width, device or mode changes (drawn every frame). */
 const buttonRow = { width: 0, metrics: null as UiMetrics | null, fullscreen: false, pause: false, rects: null as HudButtons | null };
 
@@ -173,11 +167,11 @@ function drawButtons(r: RenderContext, view: UiView): void {
   const m = uiMetrics(r.display);
   const { mode, muted } = r.state;
   const b = cachedHudButtons(r.display.viewWidth, view.fullscreenAvailable, m, riding(mode));
-  if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
-  hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
-  if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
+  if (riding(mode)) iconButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
+  iconButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
+  if (b.fullscreen) iconButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
   if (trophyShown(r.state, view)) {
-    hudButton(r, m, titleTrophy(r.display.viewWidth, view.fullscreenAvailable, m), ICON_TROPHY, 0);
+    iconButton(r, m, titleTrophy(r.display.viewWidth, view.fullscreenAvailable, m), ICON_TROPHY, 0);
   }
 }
 
@@ -535,6 +529,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
       else if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
+      else if (view.feedback?.open) drawFeedback(r, view.feedback, feedbackLayout(r.display));
       else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!);
       else drawTitle(r, view, menu!);
       break;
@@ -554,6 +549,10 @@ export function drawUi(r: RenderContext, view: UiView): void {
         drawSettings(r, view);
         break;
       }
+      if (view.feedback?.open) {
+        drawFeedback(r, view.feedback, feedbackLayout(r.display));
+        break;
+      }
       drawDrunk(r, view);
       drawChillTint(r);
       drawStats(r, view);
@@ -569,5 +568,5 @@ export function drawUi(r: RenderContext, view: UiView): void {
     drawPortraitHint(r);
     return;
   }
-  if (!view.settings.open && !view.scores?.open) drawButtons(r, view);
+  if (!view.settings.open && !view.scores?.open && !view.feedback?.open) drawButtons(r, view);
 }

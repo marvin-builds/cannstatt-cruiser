@@ -10,14 +10,16 @@
  * corner button at the left under the stats plate, away from where a thumb
  * taps to ride on or start a new run. The title's "Kindermodus" button
  * (adult mode only, ROADMAP 43) sits in the same top-left corner, left of
- * the logo.
+ * the logo. Feedback (ROADMAP 50, adult mode): a speech-bubble icon in the
+ * title's bottom-right corner and a "Feedback" button in the pause column.
  */
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { ARROW_RIGHT, SHARE_ICON } from './art';
 import { type Block, type ColumnBounds, fitColumn } from './column';
-import { centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
+import { feedbackIcon } from './feedback-layout';
+import { buttonPlate, centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 import type { InstallHintKind } from './notices';
 import { statsLayout } from './stats';
@@ -36,6 +38,8 @@ export interface MenuInput {
   plate?: Rect | null;
   /** Offer the "Kindermodus" button (title in adult mode only). */
   kidButton?: boolean;
+  /** Offer feedback (adult mode with a feedback sender): the title's icon, the pause screen's button. */
+  feedback?: boolean;
 }
 
 export interface MenuButtons {
@@ -53,6 +57,8 @@ export interface MenuButtons {
   submit: Rect | null;
   /** "Kindermodus" on the title (adult mode): turns kid mode on and shows its notice. */
   kidMode: Rect | null;
+  /** Opens the feedback screen: the title's speech-bubble icon or the pause screen's "Feedback" button. */
+  feedback: Rect | null;
 }
 
 /**
@@ -105,6 +111,8 @@ export const controlsLine = (touch: boolean) =>
   touch ? 'Tippen = springen, runterwischen = ducken' : 'Leertaste = springen, S = ducken';
 export const trickKeysHint = (touch: boolean) =>
   touch ? 'Beim Grinden runterwischen = Trick' : 'Beim Grinden: Pfeil runter / S = Trick';
+/** The pause screen's "Feedback" (F on desktop, also on the title). */
+export const feedbackLabel = (touch: boolean) => (touch ? 'Feedback' : 'Feedback (F)');
 /** Game over's "Eintragen" (E or Enter on desktop). */
 export const submitLabel = (touch: boolean) => (touch ? 'Eintragen' : 'Eintragen (E)');
 export const gameOverPrompt = (touch: boolean) => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde');
@@ -132,6 +140,8 @@ export const RESULT_ROWS = ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'S
 const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5];
 /** On a crowded game over the (compact) install hint goes before stars and distance (the title still shows it). */
 const INSTALL_DROP_GAMEOVER = 0.75;
+/** The pause screen's "Feedback" gives way last, and only to the reload card (portrait; the title still offers feedback). */
+const FEEDBACK_DROP = 0.5;
 /** With "Eintragen" on a crowded game over (portrait), the reload card gives way last (the title still shows it). */
 const RELOAD_DROP_SUBMIT = 0.1;
 
@@ -256,7 +266,7 @@ export function installParts(
 }
 
 function noButtons(): MenuButtons {
-  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, kidMode: null };
+  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, kidMode: null, feedback: null };
 }
 
 /** The install card for the input: compacted where asked (only the prompt kind has a short form). */
@@ -337,22 +347,41 @@ function fitBody(input: MenuInput, blocks: (scale: number) => Block[], column: C
   return fits ? { placed: big, scale: 2 } : { placed: small, scale: 1 };
 }
 
-/** The title under the logo: tagline, start prompt, controls help, notices, records; "Kindermodus" in the corner. */
+/**
+ * The title under the logo: tagline, start prompt, controls help, notices,
+ * records; "Kindermodus" in the corner and the feedback icon bottom right. The
+ * icon never costs a row: where the full install card would reach it (narrow
+ * portrait views) the card shows compact, and where even that collides the
+ * icon gives way.
+ */
 export function titleLayout(input: MenuInput): MenuLayout {
   const m = uiMetrics(input);
+  let layout = titleColumn(input, m, installCard(input, false));
+  if (input.feedback) {
+    const icon = feedbackIcon(input.viewWidth, m);
+    const clear = (l: MenuLayout) =>
+      ![...l.blocks.values()].some((r) => overlaps(r, icon)) && !(l.panel && overlaps(l.panel, buttonPlate(icon, m)));
+    if (!clear(layout) && input.install === 'prompt') layout = titleColumn(input, m, 'compact');
+    if (clear(layout)) layout.buttons.feedback = icon;
+  }
+  if (input.kidButton) layout.buttons.kidMode = kidModeButton(input, m);
+  return layout;
+}
+
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** The title's column and panel with the given install card. */
+function titleColumn(input: MenuInput, m: UiMetrics, install: InstallCard | null): MenuLayout {
   const row = (id: string, gap: number, drop?: number, lines = 1): Block => ({ id, w: TITLE_PANEL_W - 8, h: lines * LINE, gap, drop });
   // Every first row (the tagline, or the prompt once the tagline gave way) has a gap of 2. The tagline gives way first.
   const tagline = row('tagline', 2, 6);
   const prompt: Block = { id: 'prompt', w: measureText(startPrompt(input.touch)), h: LINE, gap: 2 };
-  const install = installCard(input, false);
   const tail = [...noticeBlocks(input, m, install), row('records', 3, 3)];
   const column = { ...bounds(input, TITLE_PANEL_Y + PANEL_PAD - 2), bottom: VIEW_H - 2 - PANEL_PAD, maxWidth: input.viewWidth - 2 * PANEL_PAD - 4 };
   const help = [row('help', 3, 4, titleHelp(input.touch).length), ...(input.touch ? [] : [row('keys', 1, 5)])];
   let placed = fitColumn([tagline, prompt, ...help, ...tail], column);
   if (!placed.has('help')) placed = condensedTitle([tagline, prompt], tail, input, column);
-  const layout = withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
-  if (input.kidButton) layout.buttons.kidMode = kidModeButton(input, m);
-  return layout;
+  return withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
 }
 
 /**
@@ -416,6 +445,7 @@ export function pauseLayout(input: MenuInput): MenuLayout {
     { id: 'prompt', w: measureText(pausePrompt(input.touch), scale) + 16, h: promptRibbonH(scale), gap: 4 },
     ...(input.touch ? [] : [text('keys', PAUSE_KEYS, 3, scale, 2)]),
     text('trick', trickKeysHint(input.touch), input.touch ? 3 : 0, scale, 2),
+    ...(input.feedback ? [{ id: 'feedback', w: buttonWidth(feedbackLabel(input.touch), m), h: m.menuButtonH, gap: 4, drop: FEEDBACK_DROP }] : []),
     ...reloadBlock(input, m),
   ];
   // Portrait: the column starts under the corner button, so the body text has the width for the big font.
@@ -424,6 +454,7 @@ export function pauseLayout(input: MenuInput): MenuLayout {
   const layout = withCards(input, m, placed, null);
   layout.buttons.logo = logo;
   layout.buttons.toTitle = corner;
+  layout.buttons.feedback = placed.get('feedback') ?? null;
   layout.textScale = scale;
   return layout;
 }

@@ -22,7 +22,8 @@
       <p>
         Das Spiel betreibt eine Privatperson unter dem Namen <strong>marvinmai</strong>. Fragen und Wünsche zum Datenschutz am
         besten über ein
-        <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a>. GitHub-Issues sind öffentlich: Schreib dort bitte nichts Persönliches hinein.
+        <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a>
+        oder über „Feedback“ im Spiel. GitHub-Issues sind öffentlich: Schreib dort bitte nichts Persönliches hinein.
       </p>
 
       <h2>Hosting</h2>
@@ -35,7 +36,7 @@
           >).
         </li>
         <li>
-          Der Server für Bestenliste und Statistik läuft bei <strong>Cloudflare Workers</strong>. Cloudflare verarbeitet
+          Der Server für Bestenliste, Statistik und Feedback läuft bei <strong>Cloudflare Workers</strong>. Cloudflare verarbeitet
           dabei technisch deine IP-Adresse (siehe
           <a href="https://www.cloudflare.com/de-de/privacypolicy/" rel="noopener">Datenschutzerklärung von Cloudflare</a>). Der
           Spiel-Server selbst liest und speichert die IP-Adresse nie.
@@ -101,6 +102,27 @@
       </div>
       <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, das Spiel zu verbessern.</p>
 
+      <h2>Feedback</h2>
+      <p>
+        Nur wenn du im Pausenmenü oder auf dem Startbildschirm Feedback schreibst und auf „Senden“ tippst, sendet das Spiel: die
+        Art (Fehler oder Idee), deinen Text, Spielversion, Plattform (Android, iOS, andere), Touch oder Tastatur, Quer- oder
+        Hochformat und die Bildbreite des Spiels. Im Kindermodus gibt es kein Feedback.
+      </p>
+      <p>
+        Nur wenn du bei einem Fehler das Häkchen „Fehlerprotokoll mitsenden“ setzt, kommt ein kurzes Fehlerprotokoll dazu: die
+        letzten Fehlermeldungen des Spiels, fehlgeschlagene Anfragen an den Spiel-Server (nur welche Funktion und der Fehlercode,
+        ohne Inhalt) und wo du gerade warst (Startbildschirm oder Pause, Spielversion, Bildgröße). Namen stehen nicht darin.
+      </p>
+      <p>
+        Gespeichert wird das mit dem Tag, ohne Uhrzeit. Kein Name, keine Geräte-ID, keine IP-Adresse. Damit niemand das Feedback
+        flutet, schickt das Spiel die zufällige Sitzungs-ID des Besuchs mit (siehe Spielstatistik). Der Server merkt sich davon
+        nur einen Hash, um höchstens drei Meldungen pro Besuch und Tag anzunehmen, nie zusammen mit deinem Text, und löscht ihn
+        nach dem Tag. Feedback wird nach einem Jahr gelöscht. Der Schalter „Anonyme Statistik“ betrifft das Feedback nicht: Es
+        wird nur gesendet, wenn du selbst auf „Senden“ tippst.
+      </p>
+      <p>Bitte schreib keine persönlichen Daten (Name, Adresse, Telefonnummer) in den Text.</p>
+      <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, Fehler zu beheben und das Spiel zu verbessern.</p>
+
       <h2>Deine Rechte</h2>
       <p>
         Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Widerspruch (Art. 15 bis 21
@@ -110,7 +132,7 @@
         >.
       </p>
       <p>
-        Die Statistik enthält keine Kennung. Einzelne Einträge lassen sich deshalb nicht finden oder einer Person
+        Statistik und Feedback enthalten keine Kennung. Einzelne Einträge lassen sich deshalb nicht finden oder einer Person
         zuordnen. Für einen Eintrag in der Bestenliste nenne bitte Name, Punkte und Datum.
       </p>
 

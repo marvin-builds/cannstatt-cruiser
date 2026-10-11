@@ -5,8 +5,8 @@
  */
 import { drawText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { UI } from './art';
-import { centreX } from './layout';
+import { buttonPlateSprite, ICON_SIZE, type PixelIcon, UI } from './art';
+import { centreX, type UiMetrics } from './layout';
 
 const NO_TEXT_OPTIONS: TextOptions = {};
 const scratch: TextOptions = {};
@@ -48,4 +48,14 @@ export function menuButton(r: RenderContext, rect: Rect, label: string, color: s
   g.fillStyle = UI.buttonFace;
   g.fillRect(x + 1, y + 1, w - 2, h - 2);
   text(r, label, x + Math.floor(w / 2), y + Math.floor((h - 7 * scale) / 2), { align: 'center', scale, color });
+}
+
+/** A HUD-style icon button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
+export function iconButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame = 0): void {
+  const plateInset = Math.floor((hit.w - m.plate) / 2);
+  const x = hit.x + plateInset;
+  const y = hit.y + plateInset;
+  buttonPlateSprite(m.plate).draw(r.g, 0, x, y);
+  const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
+  icon.draw(r.g, frame, x + inset, y + inset, m.iconScale);
 }

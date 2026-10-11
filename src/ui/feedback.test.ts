@@ -1,0 +1,195 @@
+import { describe, expect, it } from 'vitest';
+import { Game } from '../core/game';
+import { keyDown, keyUp } from '../core/input';
+import { createStore, type Store } from '../core/storage';
+import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
+import type { Rect } from '../types';
+import type { FeedbackField } from './feedback-field';
+import { feedbackIcon, feedbackLayout } from './feedback-layout';
+import { createUiSystem } from './index';
+import { uiMetrics } from './layout';
+import { type MenuInput, pauseLayout } from './menu-layout';
+
+function memoryStore(): Store {
+  const raw = new Map<string, string>();
+  return createStore({ getItem: (k: string) => raw.get(k) ?? null, setItem: (k: string, v: string) => void raw.set(k, v) } as unknown as Storage);
+}
+
+const centre = (r: Rect) => [r.x + r.w / 2, r.y + r.h / 2] as const;
+
+function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult } = {}) {
+  const sent: { draft: FeedbackDraft; context: FeedbackContext }[] = [];
+  const sender = {
+    send: (draft: FeedbackDraft, context: FeedbackContext) => {
+      sent.push({ draft: { ...draft }, context: { ...context } });
+      return Promise.resolve(options.result ?? 'sent');
+    },
+  };
+  const field = {
+    rect: null as Rect | null,
+    value: '',
+    placeholder: '',
+    focused: 0,
+    place(rect: Rect | null, value: string, placeholder: string) {
+      field.rect = rect;
+      field.value = value;
+      field.placeholder = placeholder;
+    },
+    focus() {
+      field.focused++;
+    },
+  } satisfies FeedbackField & Record<string, unknown>;
+  const store = memoryStore();
+  if (options.kid) store.set('kidMode', true);
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field });
+  const game = new Game({ systems: [ui] });
+  game.display.touch = options.touch ?? false;
+  game.display.portrait = options.portrait ?? false;
+  const input = (fields: Partial<MenuInput> = {}): MenuInput => ({
+    viewWidth: game.display.viewWidth,
+    touch: game.display.touch,
+    portrait: game.display.portrait,
+    fullscreenAvailable: true,
+    reload: false,
+    install: null,
+    feedback: true,
+    ...fields,
+  });
+  const press = (r: Rect | null) => (r ? game.hitHotspot(...centre(r)) : false);
+  const key = (code: string) => {
+    keyDown(game, code);
+    keyUp(game, code);
+    game.tick();
+  };
+  const form = () => feedbackLayout(game.display);
+  const icon = () => feedbackIcon(game.display.viewWidth, uiMetrics(game.display));
+  game.tick();
+  return { game, ui, flow: ui.feedback!, sent, field, input, press, key, form, icon };
+}
+
+describe('feedback in the game', () => {
+  it('the pause menu has a "Feedback" button: it opens the screen and the run stays paused', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    expect(t.press(pauseLayout(t.input()).buttons.feedback)).toBe(true);
+    expect(t.flow.open).toBe(true);
+    t.game.tick();
+    expect(t.game.state.mode).toBe('paused');
+    // A tap on the screen outside its buttons does not resume behind it, nor do the pause keys.
+    expect(t.game.hitHotspot(5, 100)).toBe(true);
+    for (const code of ['Space', 'KeyP', 'KeyW', 'KeyS', 'KeyE', 'KeyT']) t.key(code);
+    expect(t.game.state.mode).toBe('paused');
+    expect(t.flow.open).toBe(true);
+    // Esc closes it, the pause screen is back.
+    t.key('Escape');
+    expect(t.flow.open).toBe(false);
+    expect(t.game.state.mode).toBe('paused');
+    t.key('Space');
+    expect(t.game.state.mode).toBe('playing');
+  });
+
+  it('the title icon (and F) opens it, no run starts behind it; "Abbrechen" closes it', () => {
+    const t = app();
+    expect(t.press(t.icon())).toBe(true);
+    expect(t.flow.open).toBe(true);
+    t.key('Space');
+    t.key('Enter');
+    expect(t.game.state.mode).toBe('title');
+    expect(t.press(t.form().cancel)).toBe(true);
+    expect(t.flow.open).toBe(false);
+    t.key('KeyF');
+    expect(t.flow.open).toBe(true);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('is not offered on game over', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    for (let i = 0; i < 60; i++) t.game.tick();
+    expect(t.press(t.icon())).toBe(false);
+    t.key('KeyF');
+    expect(t.flow.open).toBe(false);
+  });
+
+  it('kid mode has neither the title icon nor the pause button nor F', () => {
+    const t = app({ kid: true });
+    expect(t.game.state.kidMode).toBe(true);
+    t.press(t.icon());
+    t.key('KeyF');
+    expect(t.flow.open).toBe(false);
+    expect(t.game.state.mode).toBe('title');
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    const button = pauseLayout(t.input()).buttons.feedback!;
+    t.press(button);
+    expect(t.flow.open).toBe(false);
+  });
+
+  it('the native field lies on the drawn field while the form shows, with the kind as placeholder; desktop focuses it on the next tick', () => {
+    const t = app();
+    expect(t.field.rect).toBeNull();
+    t.key('KeyF');
+    expect(t.field.rect).toEqual(t.form().field);
+    expect(t.field.focused).toBe(1);
+    expect(t.field.placeholder).toBe('Was ist passiert?');
+    t.press(t.form().idea);
+    t.game.tick();
+    expect(t.field.placeholder).toBe('Was wünschst du dir?');
+    t.key('Escape');
+    expect(t.field.rect).toBeNull();
+  });
+
+  it('touch: no automatic focus (the keyboard opens on a tap into the field); hidden under the portrait rotate hint', () => {
+    const t = app({ touch: true, portrait: true });
+    // The rotate hint covers the title: no icon until it is dismissed.
+    expect(t.press(t.icon())).toBe(true);
+    expect(t.flow.open).toBe(false);
+    expect(t.press(t.icon())).toBe(true);
+    expect(t.flow.open).toBe(true);
+    t.game.tick();
+    expect(t.field.focused).toBe(0);
+    expect(t.field.rect).toEqual(t.form().field);
+    t.game.display.portrait = false;
+    t.game.tick();
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.field.rect).toBeNull();
+  });
+
+  it('"Senden" sends kind, text and the log box with the game context; the log only when ticked on a bug report', async () => {
+    const t = app();
+    t.key('KeyF');
+    t.flow.setText('Ich hänge in der Bank fest');
+    t.press(t.form().send);
+    await Promise.resolve();
+    expect(t.sent).toHaveLength(1);
+    expect(t.sent[0]!.draft).toEqual({ kind: 'bug', text: 'Ich hänge in der Bank fest', withLog: false });
+    expect(t.sent[0]!.context).toEqual({ platform: t.game.state.install.platform, touch: false, portrait: false, viewWidth: 320, mode: 'title' });
+    expect(t.flow.done).toBe(true);
+    // OK closes the thank-you.
+    t.press(t.form().ok);
+    expect(t.flow.open).toBe(false);
+
+    t.key('KeyF');
+    t.flow.setText('Nochmal mit Protokoll');
+    t.press(t.form().log);
+    t.press(t.form().send);
+    await Promise.resolve();
+    expect(t.sent[1]!.draft.withLog).toBe(true);
+  });
+
+  it('the log toggle has no tap area on an idea, and nothing is sent before "Senden"', () => {
+    const t = app();
+    t.key('KeyF');
+    t.press(t.form().idea);
+    expect(t.flow.kind).toBe('idea');
+    t.flow.setText('Mehr Brezeln');
+    t.press(t.form().log);
+    expect(t.flow.withLog).toBe(false);
+    expect(t.sent).toHaveLength(0);
+  });
+});
