@@ -7,6 +7,7 @@ import { highFiverRect } from './catalogue';
 import { speedAt } from './difficulty';
 import { HIGH_FIVE_APPROACH, HIGH_FIVE_POINTS, HIGH_FIVE_REACH, highFiveWindow, highFiverAhead } from './high-five';
 import { createGameplaySystem } from './index';
+import { klatschPoint } from './klatsch';
 import { CHEER_STEP, PARK_CLEAR_AFTER, SESSION_MAX_POINTS } from './park';
 import { PARK_ANNOUNCE } from './spawner';
 import { place, quietGame, record } from './test-kit';
@@ -131,6 +132,17 @@ describe('the high five', () => {
       use(game);
       expect(fives.length).toBe(1);
       expect(used).toEqual([]);
+    }
+  });
+
+  it('the high five keeps the klatsch point (between his hand and the skater’s palm, facing the skater) on him, moving with the street', () => {
+    for (const dx of [-HIGH_FIVE_REACH, 0, HIGH_FIVE_REACH]) {
+      const { game, fiver } = withFiver(dx);
+      game.state.speed = 0;
+      const expected = klatschPoint(fiver, game.state.player);
+      use(game);
+      expect({ dx: fiver.data?.klatschDx, y: fiver.data?.klatschY }).toEqual(expected);
+      expect(fiver.data?.slapRight).toBe(dx < 0);
     }
   });
 

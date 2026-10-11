@@ -17,7 +17,9 @@
  * kickers, ledges of the upper level and their combo (stunt-line.ts plans
  * them, stunts.ts launches and scores, stunt-art.ts draws them), and the
  * NorDIY park in Bad Cannstatt (spawner.ts plans it into state.park with its
- * line, park-line.ts; park.ts cheers and pays the session; high-five.ts;
+ * line, park-line.ts; park.ts cheers and pays the session; high-five.ts and
+ * the klatsch burst where the hands meet with his arm over the skater,
+ * klatsch.ts;
  * park-art.ts draws the high fiver and the park's banks and ledges; the
  * speed ramp pauses inside, spawner.rampDistance).
  */
@@ -27,6 +29,7 @@ import { testHookEnabled } from '../core/testhook';
 import type { CarriedItem, Entity, GameContext, ParkPlan, System } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { drawEntity, drawSparkle, SPARKLE_TICKS, warmArt } from './art';
+import { drawHighFiveFx } from './klatsch';
 import { AirTrickScore } from './air-trick';
 import { AutoDrink } from './auto-drink';
 import { bail, duckLanding, landedLate } from './bail';
@@ -300,7 +303,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
           if (isLive(e) && isPickup(e)) drawEntity(g, e, state, scrollLead);
         }
       },
-      fx({ g, scrollLead }) {
+      fx({ g, state, scrollLead }) {
+        drawHighFiveFx(g, state.entities, state.frame, scrollLead);
         for (let i = 0; i < sparkles.length; i++) {
           const s = sparkles[i]!;
           drawSparkle(g, s.x - scrollLead, s.y, s.age);
