@@ -20,6 +20,18 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.9',
+    date: '2026-10-11',
+    items: [
+      'Neue Hindernis-Kombis auf der Straße',
+      'Vom Kopf abspringen: tippen oder halten',
+      'Hoch nur noch über die Rampe',
+      'Zahnrad öffnet die Einstellungen',
+      'Großes Feedback-Fenster im Hochformat',
+      'Ton bleibt zuverlässig an',
+    ],
+  },
+  {
     version: '2026-10-11.8',
     date: '2026-10-11',
     items: ['Datenschutz-Seite ergänzt'],
