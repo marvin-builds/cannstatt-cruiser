@@ -1,8 +1,8 @@
 /**
  * Sprite strings of the skater (a relaxed 40-50 year old cruiser: navy cap,
  * dark hair with a hint of grey at the temple, red hoodie, jeans, white sneakers) and his
- * longboard. He faces right; only the grind trick turns him to the camera
- * (front view, the only view that shows his moustache). Body frames are composed from shared parts (see compose.ts).
+ * longboard. He faces right; only the grind trick (a boardslide) turns him to the camera
+ * (front view, the only view that shows his moustache) and the board across the rail. Body frames are composed from shared parts (see compose.ts).
  *
  * Body frame: BODY_W x BODY_H; soles of a rider on the flat deck end just
  * above BODY_DECK_ROW, the pushing foot and the crash poses reach down to
@@ -671,6 +671,10 @@ export const BD = {
   edgeGrip: 7,
   /** Kickflip, three quarters: the deck on edge, the bottom with trucks and wheels facing the camera. */
   edgeBottom: 8,
+  /** Boardslide, turning in or out: the board half turned across the rail (3/4 view). */
+  halfTurn: 9,
+  /** Boardslide: the board across the rail, seen end-on from the nose. */
+  endOn: 10,
 } as const;
 
 /** The deck on edge (kickflip), grip side: a band at about the trucks' height, the wheels behind it. */
@@ -695,6 +699,38 @@ const EDGE_BOTTOM_ART = rowsFromString(`
   ..........................
 `);
 
+/**
+ * Boardslide, half turned (3/4 view): a shorter board, the grip tape seen a little from
+ * above, the nose end towards the camera; each truck shows both wheels. The deck
+ * and the wheel bottom stay on the rows of BOARD_ART, so it slides on the same line.
+ */
+const HALF_TURN_ART = rowsFromString(`
+  .gk.......................
+  .kdgggggggggggggggk.......
+  ..kgggggggggggggggggdk....
+  ...kDDDDDDDDDDDDDDDDDk....
+  ..oookTk.......ooo.kTk.oo.
+  ..oootttoo.....oootttttoo.
+  ..ooOTTToO.....ooOTTTTTOO.
+  ...OOO..........OOO....O..
+`);
+
+/**
+ * Boardslide, end-on (seen from the nose): a short, wide deck across the rail, its
+ * wood edge and underside, the front truck's dark hanger (it reads against the rail) with a wheel at each side.
+ * Same rows as BOARD_ART: the grip tape under the feet, the wheel bottom on the last row.
+ */
+const END_ON_ART = rowsFromString(`
+  ..........................
+  .....kgggggggggggggggk....
+  .....kDdddddddddddddDk....
+  ......kkkkkkkkkkkkkkk.....
+  ...ooo.....kTTTk.....ooo..
+  ...ooOTTTTTTTTTTTTTTTOoo..
+  ...ooO.kkkkkkkkkkkkk.Ooo..
+  ...OOO...............OOO..
+`);
+
 const REAR_WHEEL_X = 5;
 const upsideDown = [...BOARD_ART].reverse();
 
@@ -708,4 +744,6 @@ export const BOARD_FRAMES: string[][] = [
   shearColumns(BOARD_ART, -0.2, BOARD_ANCHOR_X, BOARD_H),
   shearColumns(EDGE_GRIP_ART, 0, BOARD_ANCHOR_X, BOARD_H),
   shearColumns(EDGE_BOTTOM_ART, 0, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(HALF_TURN_ART, 0, BOARD_ANCHOR_X, BOARD_H),
+  shearColumns(END_ON_ART, 0, BOARD_ANCHOR_X, BOARD_H),
 ];
