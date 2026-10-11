@@ -3,7 +3,6 @@ import { createMemoryStore } from '../core/storage';
 import type { ScoreEntry, ScoreSubmission } from '../net/api';
 import type { SubmitOutcome } from '../net/service';
 import { HighscoreFlow, SCORE_TEXT, type ScoreServiceLike } from './highscore-flow';
-import { allNicknames } from './nicknames';
 import { submitButtonLabel } from './score-screens';
 import { loadLastEntry, loadName, saveName } from './score-rules';
 
@@ -35,16 +34,24 @@ function setup() {
     },
   };
   const store = createMemoryStore();
-  let r = 0;
-  const flow = new HighscoreFlow({ service, store, random: () => ((r = (r + 0.37) % 1), r) });
+  const flow = new HighscoreFlow({ service, store });
   return { flow, service, store, sent, outcomes, refreshes: () => refreshes, retries: () => retries };
 }
 
 describe('HighscoreFlow: Eintragen offer', () => {
   it('fetches the list in the background when a run starts', () => {
     const { flow, refreshes } = setup();
-    flow.runStarted();
+    flow.runStarted(true);
     expect(refreshes()).toBe(1);
+  });
+
+  it('a run without the online list (kid mode) forgets the last run but fetches nothing', () => {
+    const { flow, refreshes } = setup();
+    flow.runEnded(RUN);
+    expect(flow.offered).toBe(true);
+    flow.runStarted(false);
+    expect(flow.offered).toBe(false);
+    expect(refreshes()).toBe(0);
   });
 
   it('offers Eintragen only for a run that makes the list', () => {
@@ -55,7 +62,7 @@ describe('HighscoreFlow: Eintragen offer', () => {
     expect(flow.offered).toBe(false);
     flow.runEnded({ ...RUN, score: 1200 });
     expect(flow.offered).toBe(true);
-    flow.runStarted();
+    flow.runStarted(true);
     expect(flow.offered).toBe(false);
   });
 
@@ -63,7 +70,7 @@ describe('HighscoreFlow: Eintragen offer', () => {
     const { flow, outcomes } = setup();
     flow.runEnded(RUN);
     expect(flow.offered).toBe(true);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('Max');
     outcomes.push({ kind: 'queued', reason: 'offline' });
     await flow.submit();
@@ -77,13 +84,13 @@ describe('HighscoreFlow: name entry', () => {
   it('starts empty the first time and with the remembered name later', () => {
     const { flow, store } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     expect(flow.screen).toBe('entry');
     expect(flow.name).toBe('');
     expect(flow.canSubmit).toBe(false);
     flow.close();
-    saveName(store, false, 'Max');
-    flow.openEntry(false);
+    saveName(store, 'Max');
+    flow.openEntry();
     expect(flow.name).toBe('Max');
     expect(flow.canSubmit).toBe(true);
   });
@@ -91,7 +98,7 @@ describe('HighscoreFlow: name entry', () => {
   it('typing keeps only allowed characters', () => {
     const { flow } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('Mäx@<1>');
     expect(flow.name).toBe('Mäx1');
   });
@@ -99,7 +106,7 @@ describe('HighscoreFlow: name entry', () => {
   it('a submit with a bad name sends nothing and says why', async () => {
     const { flow, sent } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('M');
     await flow.submit();
     expect(sent).toHaveLength(0);
@@ -109,7 +116,7 @@ describe('HighscoreFlow: name entry', () => {
   it('success: remembers the name and entry, shows the list with the own entry', async () => {
     const { flow, store, sent, outcomes } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('  Max   Muster ');
     outcomes.push({ kind: 'ok', rank: 3, entries: [entry(1, 'A', 9000), entry(2, 'B', 2000), entry(3, 'Max Muster', 1500)] });
     const pending = flow.submit();
@@ -120,7 +127,7 @@ describe('HighscoreFlow: name entry', () => {
     expect(flow.screen).toBe('list');
     expect(flow.highlight).toBe(3);
     expect(flow.entries.map((e) => e.name)).toEqual(['A', 'B', 'Max Muster']);
-    expect(loadName(store, false)).toBe('Max Muster');
+    expect(loadName(store)).toBe('Max Muster');
     expect(loadLastEntry(store)).toEqual({ name: 'Max Muster', score: 1500 });
     expect(flow.offered).toBe(false);
   });
@@ -133,7 +140,7 @@ describe('HighscoreFlow: name entry', () => {
   ] as const)('server answer %s stays on the entry with a message', async (error, message) => {
     const { flow, outcomes } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('Max');
     outcomes.push({ kind: 'failed', error });
     await flow.submit();
@@ -146,7 +153,7 @@ describe('HighscoreFlow: name entry', () => {
   it('a server error queues the run like offline', async () => {
     const { flow, outcomes } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.setName('Max');
     outcomes.push({ kind: 'queued', reason: 'server' });
     await flow.submit();
@@ -157,7 +164,7 @@ describe('HighscoreFlow: name entry', () => {
   it('cancel closes without sending', () => {
     const { flow, sent } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(false);
+    flow.openEntry();
     flow.close();
     expect(flow.screen).toBe('closed');
     expect(sent).toHaveLength(0);
@@ -165,44 +172,14 @@ describe('HighscoreFlow: name entry', () => {
   });
 });
 
-describe('HighscoreFlow: kid mode', () => {
-  it('offers only generated nicknames: no free text, a reroll for a new one', async () => {
-    const { flow, sent, store } = setup();
-    flow.runEnded(RUN);
-    flow.openEntry(true);
-    const first = flow.name;
-    expect(allNicknames()).toContain(first);
-    flow.setName('Free Text');
-    expect(flow.name).toBe(first);
-    flow.reroll();
-    expect(flow.name).not.toBe(first);
-    expect(allNicknames()).toContain(flow.name);
-    const picked = flow.name;
-    await flow.submit();
-    expect(sent[0]!.name).toBe(picked);
-    expect(loadName(store, true)).toBe(picked);
-    expect(loadName(store, false)).toBe('');
-  });
-
-  it('labels the submit button just "Eintragen": the nickname already shows in the field', () => {
+describe('HighscoreFlow: submit label', () => {
+  it('says "Als <Name> eintragen" once the name is valid, else just "Eintragen"', () => {
     const { flow } = setup();
     flow.runEnded(RUN);
-    flow.openEntry(true);
+    flow.openEntry();
     expect(submitButtonLabel(flow)).toBe(SCORE_TEXT.submit);
-    flow.openEntry(false);
     flow.setName('Mia');
     expect(submitButtonLabel(flow)).toBe('Als Mia eintragen');
-  });
-
-  it('keeps the remembered nickname, never the adult free text name', () => {
-    const { flow, store } = setup();
-    saveName(store, false, 'Erwachsen');
-    flow.runEnded(RUN);
-    flow.openEntry(true);
-    expect(flow.name).not.toBe('Erwachsen');
-    saveName(store, true, 'Flinker Fuchs 42');
-    flow.openEntry(true);
-    expect(flow.name).toBe('Flinker Fuchs 42');
   });
 });
 

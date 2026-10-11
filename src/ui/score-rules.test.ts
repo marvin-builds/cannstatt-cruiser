@@ -72,19 +72,17 @@ describe('name rules', () => {
 });
 
 describe('remembered name and last entry', () => {
-  it('remembers the last used name, apart for kid mode', () => {
+  it('remembers the last used name', () => {
     const store = createMemoryStore();
-    expect(loadName(store, false)).toBe('');
-    saveName(store, false, 'Max');
-    saveName(store, true, 'Flinker Fuchs 42');
-    expect(loadName(store, false)).toBe('Max');
-    expect(loadName(store, true)).toBe('Flinker Fuchs 42');
+    expect(loadName(store)).toBe('');
+    saveName(store, 'Max');
+    expect(loadName(store)).toBe('Max');
   });
 
   it('ignores a stored name that breaks the rules', () => {
     const store = createMemoryStore();
     store.set('scoreName', '<bad>');
-    expect(loadName(store, false)).toBe('');
+    expect(loadName(store)).toBe('');
   });
 
   it('finds the own entry in a list by the last submitted name and score', () => {

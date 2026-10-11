@@ -52,6 +52,29 @@ describe('ui system', () => {
     expect(store.get('starsTotal', 0)).toBe(6);
   });
 
+  it('keeps a separate kid record: kid runs never touch the adult highscore, stars stay shared', () => {
+    const store = memoryStore();
+    store.set('highscore', 5000);
+    const { game } = setup(true, store);
+    game.state.kidMode = true;
+    game.commands.startRun();
+    game.state.score = 800;
+    game.state.stars = 2;
+    game.commands.gameOver();
+    expect(store.get('highscore', 0)).toBe(5000);
+    expect(store.get('kidHighscore', 0)).toBe(800);
+    expect(store.get('starsTotal', 0)).toBe(2);
+
+    game.state.kidMode = false;
+    game.commands.startRun();
+    game.state.score = 900;
+    game.state.stars = 1;
+    game.commands.gameOver();
+    expect(store.get('highscore', 0)).toBe(5000);
+    expect(store.get('kidHighscore', 0)).toBe(800);
+    expect(store.get('starsTotal', 0)).toBe(3);
+  });
+
   it('the pause hotspot pauses a run and swallows the press', () => {
     const { game } = setup();
     game.commands.startRun();
@@ -726,6 +749,32 @@ describe('update, what is new, install hint and pause navigation', () => {
     t.ticks(1);
     expect(t.press(menu.toggle)).toBe(true);
     expect(t.game.state.kidMode).toBe(true); // toggled on from the adult mode default
+  });
+
+  it('a run cut short by switching kid mode in pause counts for the mode it was played in', () => {
+    const t = app();
+    const menu = settingsLayout(t.game.display.viewWidth, uiMetrics(t.game.display));
+    const switchInPause = () => {
+      t.game.commands.pause();
+      keyDown(t.game, 'KeyK');
+      t.ticks(180);
+      keyUp(t.game, 'KeyK');
+      t.ticks(1);
+      t.press(menu.toggle);
+      t.press(menu.back);
+    };
+    t.game.commands.startRun();
+    t.game.state.score = 2000;
+    switchInPause(); // adult run, cut short: kid mode is on before the run is recorded
+    expect(t.game.state.kidMode).toBe(true);
+    expect(t.store.get('highscore', 0)).toBe(2000);
+    expect(t.store.get('kidHighscore', 0)).toBe(0);
+
+    t.game.state.score = 700;
+    switchInPause(); // the kid run that restarted, cut short by switching back
+    expect(t.game.state.kidMode).toBe(false);
+    expect(t.store.get('highscore', 0)).toBe(2000);
+    expect(t.store.get('kidHighscore', 0)).toBe(700);
   });
 
   it('switching kid mode from pause restarts the run when the menu closes; no switch keeps the pause', () => {

@@ -8,7 +8,6 @@ import type { Store } from '../core/storage';
 import type { ScoreEntry } from '../net/api';
 import type { RunStats } from '../net/payload';
 import type { ScoreService } from '../net/service';
-import { nickname } from './nicknames';
 import { loadLastEntry, loadName, nameProblem, cleanName, ownRank, qualifies, saveLastEntry, saveName, stripNameInput } from './score-rules';
 
 export type ScoreServiceLike = Pick<ScoreService, 'top' | 'topState' | 'pending' | 'refreshTop' | 'submit' | 'retryPending'>;
@@ -31,25 +30,19 @@ export const SCORE_TEXT = {
   rate: 'Bitte kurz warten',
   failed: 'Das hat leider nicht geklappt',
   short: 'Mindestens 2 Zeichen',
-  newName: 'Neuer Name',
   namePrompt: 'Dein Name:',
-  kidPrompt: 'Dein Spitzname:',
   outside: 'Eingetragen! Leider nicht unter den Top 20',
 } as const;
 
 export interface HighscoreFlowDeps {
   service: ScoreServiceLike;
   store: Store;
-  /** [0, 1) for the kid nicknames. */
-  random: () => number;
 }
 
 export class HighscoreFlow {
   screen: ScoreScreen = 'closed';
-  /** The name in the entry field (kid mode: the generated nickname). */
+  /** The name in the entry field. */
   name = '';
-  /** Kid mode entry: only generated nicknames, no free text. */
-  kid = false;
   /** Status or error line of the screen, or null. */
   message: string | null = null;
   sending = false;
@@ -93,12 +86,15 @@ export class HighscoreFlow {
     return !this.sending && nameProblem(this.name) === null;
   }
 
-  /** A run starts: forget the last one and fetch the list in the background, so it is ready at game over. */
-  runStarted(): void {
+  /**
+   * A run starts: forget the last one. With `fetchList` (adult mode) the list is fetched in the
+   * background, so it is ready at game over; a kid run never uses the online list.
+   */
+  runStarted(fetchList: boolean): void {
     this.run = null;
     this.submitted = false;
     this.close();
-    void this.deps.service.refreshTop();
+    if (fetchList) void this.deps.service.refreshTop();
   }
 
   runEnded(run: RunStats): void {
@@ -115,26 +111,17 @@ export class HighscoreFlow {
     void this.deps.service.retryPending();
   }
 
-  /** The name entry: the remembered name, in kid mode the remembered or a new nickname. */
-  openEntry(kid: boolean): void {
+  /** The name entry with the remembered name. */
+  openEntry(): void {
     this.screen = 'entry';
-    this.kid = kid;
     this.message = null;
-    this.name = loadName(this.deps.store, kid) || (kid ? nickname(this.deps.random) : '');
+    this.name = loadName(this.deps.store);
   }
 
-  /** Typing (adult mode only): allowed characters only. */
+  /** Typing: allowed characters only. */
   setName(raw: string): void {
-    if (this.kid || this.sending) return;
+    if (this.sending) return;
     this.name = stripNameInput(raw);
-    this.message = null;
-  }
-
-  /** "Neuer Name" in kid mode: another nickname. */
-  reroll(): void {
-    if (!this.kid || this.sending) return;
-    const before = this.name;
-    for (let i = 0; i < 10 && this.name === before; i++) this.name = nickname(this.deps.random);
     this.message = null;
   }
 
@@ -171,7 +158,7 @@ export class HighscoreFlow {
       return;
     }
     this.submitted = true;
-    saveName(this.deps.store, this.kid, name);
+    saveName(this.deps.store, name);
     saveLastEntry(this.deps.store, { name, score });
     this.screen = 'list';
     this.scroll = 0;

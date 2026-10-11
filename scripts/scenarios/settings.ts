@@ -100,7 +100,7 @@ async function adultDefault(t: PlaytestContext): Promise<void> {
   }
   await game.step(1);
   const entry = await highscores(t);
-  t.check('adult default: the highscore entry has the free text field', entry.screen === 'entry' && !entry.kid && (await t.page.locator('input').isVisible()), entry);
+  t.check('adult default: the highscore entry has the free text field', entry.screen === 'entry' && (await t.page.locator('input').isVisible()), entry);
   await t.canvasShot('highscore entry adult default');
   await t.page.keyboard.press('Escape');
   await game.step(1);

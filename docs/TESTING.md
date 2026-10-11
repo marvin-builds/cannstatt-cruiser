@@ -258,14 +258,14 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.samplePopups()` | spawns "+50", "Grind!", "Stern!" above the skater |
 | `window.__ui.itemPopups(...kinds)` | feeds sample item events to the popup feed (shown on the next tick): `'drink'`, `'eat'` (+1 health), `'throw'`, `'hit'` (ball hit with points), `'back'` (ricochet), `'stomp'` (with points), `'trick'` |
 | `window.__ui.carry(item \| null)` | puts an item in the hands (`state.carriedItem`) like a catch, incl. the first-time touch hint (storage key `itemHintSeen`), without toss or popup |
-| `window.__ui.setRecords(highscore, starsTotal)` | replaces the loaded records in memory |
+| `window.__ui.setRecords(highscore, starsTotal, kidHighscore)` | replaces the loaded records in memory (`kidHighscore` is the kid-mode record) |
 | `window.__ui.stuntStep(multiplier)` / `stuntEnd(completed, points)` | emits stunt line events like gameplay ("Combo xN!", "Stunt-Linie! +…") |
 | `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu wacklig!" popup while drunk, "Zu entspannt!" while chilled, else "Zu spät geflippt!") / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
-| `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, kid, message, topState, entries, highlight, scroll, maxScroll}` plus the tap areas `trophy`, `close`, `field`, `submit`, `reroll` (view px; `reroll` only in kid mode). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
+| `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
 | `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
@@ -534,8 +534,10 @@ npm run playtest -- --headed
   device); the input hides after sending, the list shows the own entry
   highlighted, and game over offers no second "Eintragen"; a new run starts
   as before; the remembered name is prefilled next time; kid mode
-  (`__player.kidMode(true)`) offers a generated nickname, no text input,
-  and "Neuer Name" rerolls it; offline (`setOffline`) the list shows the
+  (`__player.kidMode(true)`) shows no trophy (tap and B open nothing), a kid
+  game over offers no "Eintragen" and posts or queues nothing, the kid record
+  (`kidHighscore`) is kept apart from the adult `highscore`, and the adult
+  title shows the trophy again; offline (`setOffline`) the list shows the
   offline note, the entry is still offered, is queued with "Wird gesendet,
   sobald du online bist" and waits in `pendingScore`; on desktop, back
   online, the queued run is sent within ~20 s and the queue empties.

@@ -3,7 +3,8 @@
  * (Playwright route; nothing reaches the live list): the title's trophy
  * opens the "Bestenliste" (scrolling by drag on phones, wheel on desktop),
  * game over offers "Eintragen" only for a top-20 score, name entry and submit
- * show the own entry highlighted, kid mode picks generated nicknames, and
+ * show the own entry highlighted, kid mode has no trophy, list or entry
+ * (only its own local record, ROADMAP 45), and
  * offline shows the notes and queues the run (resent once online, desktop).
  *
  *   npm run playtest -- --scenario <this file> --viewports desktop,phone-landscape,phone-portrait --name highscores
@@ -106,6 +107,45 @@ async function typeName(t: PlaytestContext, name: string): Promise<void> {
   await t.game.step(1);
 }
 
+/** From game over (or the title) to the title, ready for input. */
+async function toTitle(t: PlaytestContext): Promise<void> {
+  await t.game.step(2);
+  if ((await t.game.state()).mode !== 'title') await tap(t, (await menuButtons(t))!.toTitle!);
+  await t.game.step(2);
+}
+
+const stored = (t: PlaytestContext, key: string) => t.page.evaluate((k) => localStorage.getItem(`cannstatt-cruiser:${k}`), key);
+
+/** Kid mode from the title: no trophy (B and its spot open nothing), game over shows the kid record and no Eintragen. */
+async function kidMode(t: PlaytestContext, server: FakeServer): Promise<void> {
+  const title = await hs(t);
+  t.check('kid title: no trophy', !title.trophyShown && title.screen === 'closed', title);
+  await t.canvasShot('kid title without trophy');
+  await t.page.keyboard.press('KeyB');
+  await t.game.step(1);
+  t.check('kid title: B opens nothing', (await hs(t)).screen === 'closed' && (await t.game.state()).mode === 'title');
+  await tap(t, title.trophy);
+  t.check('kid title: the trophy spot opens no list', (await hs(t)).screen === 'closed');
+
+  const adultBest = await stored(t, 'highscore');
+  const posts = server.posts.length;
+  await crash(t, 7000);
+  const over = await hs(t);
+  t.check('kid game over: no Eintragen', !over.offered && (await menuButtons(t))?.submit === null, over);
+  await t.canvasShot('kid game over own record');
+  await t.page.keyboard.press('KeyE');
+  await t.game.step(1);
+  t.check('kid game over: E opens no entry', (await hs(t)).screen === 'closed');
+  const pending = await stored(t, 'pendingScore');
+  t.check('kid game over: nothing sent or queued', server.posts.length === posts && (pending === null || pending === 'null'), { posts: server.posts.length, pending });
+  t.check('kid record stored apart, adult record untouched', (await stored(t, 'kidHighscore')) === '7000' && (await stored(t, 'highscore')) === adultBest, {
+    kid: await stored(t, 'kidHighscore'),
+    adult: await stored(t, 'highscore'),
+  });
+  await crash(t, 3000);
+  await t.canvasShot('kid game over below own record');
+}
+
 export default async function highscores(t: PlaytestContext): Promise<void> {
   const server = new FakeServer();
   await t.page.route(`${API}/**`, (route) => server.handle(route));
@@ -203,23 +243,18 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   t.check('remembered name prefilled', (await hs(t)).name === name);
   await t.canvasShot('name entry remembered');
 
-  // Kid mode: generated nicknames only.
+  // Kid mode (ROADMAP 45): no trophy, no list, no Eintragen; only the local kid record.
   await t.page.keyboard.press('Escape');
   await t.game.step(1);
   if ((await hs(t)).screen !== 'closed') await tap(t, (await hs(t)).close);
   await t.page.evaluate(() => window.__player!.kidMode(true));
-  await crash(t, 7000);
-  if (t.viewport.touch) await tap(t, (await menuButtons(t))!.submit!);
-  else await t.page.keyboard.press('KeyE');
-  await t.game.step(1);
-  const kid = await hs(t);
-  t.check('kid mode: a generated nickname, no text input', kid.kid && /^\S+ \S+ \d\d$/.test(kid.name) && !(await t.page.locator('input').isVisible()), kid);
-  await t.canvasShot('kid name entry');
-  await tap(t, kid.reroll!);
-  t.check('kid mode: Neuer Name rerolls', (await hs(t)).name !== kid.name);
-  await t.canvasShot('kid name entry rerolled');
+  await toTitle(t);
+  await kidMode(t, server);
   await t.page.evaluate(() => window.__player!.kidMode(false));
-  await tap(t, (await hs(t)).close);
+  await toTitle(t);
+  const adult = await hs(t);
+  t.check('adult mode again: the title shows the trophy', adult.trophyShown, adult);
+  await t.canvasShot('adult title trophy back');
 
   // Offline: the list shows the note, an entry is queued.
   await t.page.context().setOffline(true);

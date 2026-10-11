@@ -12,7 +12,6 @@ import { createUiSystem } from './index';
 import { uiMetrics } from './layout';
 import { gameOverLayout } from './menu-layout';
 import type { NameField } from './name-field';
-import { allNicknames } from './nicknames';
 import { closeButton, scoreEntryLayout, titleTrophy } from './score-layout';
 
 const entry = (rank: number, score: number): ScoreEntry => ({ rank, name: `P${rank}`, score, distance: 100, date: '2026-10-09T10:00:00.000Z' });
@@ -205,30 +204,11 @@ describe('Eintragen after game over', () => {
     expect(game.state.kidMode).toBe(false);
     crash(4500);
     key('KeyE');
-    const field = scoreEntryLayout({ ...game.display }, false).field;
+    const field = scoreEntryLayout({ ...game.display }).field;
     expect(placed[placed.length - 1]).toEqual(field);
     expect(focused()).toBe(1);
     key('Escape');
     expect(placed[placed.length - 1]).toBeNull();
-  });
-
-  it('kid mode: no free text field, a generated nickname, N for a new one', async () => {
-    const { game, flow, crash, key, placed, sent } = setup();
-    game.state.kidMode = true;
-    crash(4500);
-    key('KeyE');
-    expect(placed[placed.length - 1]).toBeNull();
-    const first = flow.name;
-    expect(allNicknames()).toContain(first);
-    key('KeyN');
-    expect(flow.name).not.toBe(first);
-    const reroll = scoreEntryLayout({ ...game.display }, true).reroll!;
-    game.hitHotspot(...centre(reroll));
-    expect(allNicknames()).toContain(flow.name);
-    const picked = flow.name;
-    game.hitHotspot(...centre(scoreEntryLayout({ ...game.display }, true).submit));
-    await Promise.resolve();
-    expect(sent[0]!.name).toBe(picked);
   });
 
   it('a new run closes the screens and asks for the list again', () => {
@@ -240,6 +220,51 @@ describe('Eintragen after game over', () => {
     game.tick();
     expect(flow.screen).toBe('closed');
     expect(refreshes()).toBe(before + 1);
+  });
+});
+
+describe('kid mode: local records only (ROADMAP 45)', () => {
+  it('the title has no trophy: its spot and B open nothing', () => {
+    const { game, flow, key, refreshes } = setup();
+    game.state.kidMode = true;
+    const trophy = titleTrophy(game.display.viewWidth, false, uiMetrics(game.display));
+    game.hitHotspot(...centre(trophy));
+    expect(flow.screen).toBe('closed');
+    key('KeyB');
+    expect(flow.screen).toBe('closed');
+    expect(game.state.mode).toBe('title');
+    expect(refreshes()).toBe(0);
+  });
+
+  it('a kid run never offers Eintragen and never sends or queues it', async () => {
+    const { game, flow, crash, key, sent, submitRect } = setup();
+    game.state.kidMode = true;
+    crash(4500);
+    expect(flow.offered).toBe(false);
+    expect(game.hitHotspot(...centre(submitRect()))).toBe(false);
+    key('KeyE');
+    expect(flow.screen).toBe('closed');
+    key('Enter');
+    await Promise.resolve();
+    expect(sent).toHaveLength(0);
+  });
+
+  it('a kid run fetches no list at its start', () => {
+    const { game, refreshes } = setup();
+    game.state.kidMode = true;
+    game.commands.startRun();
+    game.tick();
+    expect(refreshes()).toBe(0);
+  });
+
+  it('the adult trophy comes back once kid mode is off', () => {
+    const { game, flow, key } = setup();
+    game.state.kidMode = true;
+    key('KeyB');
+    expect(flow.screen).toBe('closed');
+    game.state.kidMode = false;
+    key('KeyB');
+    expect(flow.screen).toBe('list');
   });
 });
 

@@ -13,9 +13,8 @@ export const NAME_MAX = 16;
 const ALLOWED = /^[A-Za-z0-9äöüßÄÖÜ _.-]+$/;
 const NOT_ALLOWED = /[^A-Za-z0-9äöüßÄÖÜ _.-]/g;
 
-/** Store keys: the remembered name (separate in kid mode, so no free text shows there) and the last entry sent. */
+/** Store keys: the remembered name and the last entry sent. */
 const NAME_KEY = 'scoreName';
-const KID_NAME_KEY = 'scoreKidName';
 const LAST_ENTRY_KEY = 'scoreLastEntry';
 
 /**
@@ -48,13 +47,13 @@ export function stripNameInput(raw: string): string {
   return raw.normalize('NFC').replace(NOT_ALLOWED, '').slice(0, NAME_MAX);
 }
 
-export function loadName(store: Store, kid: boolean): string {
-  const name = store.get<unknown>(kid ? KID_NAME_KEY : NAME_KEY, '');
+export function loadName(store: Store): string {
+  const name = store.get<unknown>(NAME_KEY, '');
   return typeof name === 'string' && nameProblem(name) === null ? name : '';
 }
 
-export function saveName(store: Store, kid: boolean, name: string): void {
-  store.set(kid ? KID_NAME_KEY : NAME_KEY, name);
+export function saveName(store: Store, name: string): void {
+  store.set(NAME_KEY, name);
 }
 
 export interface LastEntry {

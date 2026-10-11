@@ -392,8 +392,8 @@ The art is recognisable but stylised.
   make the top 20. It asks for a name (on-screen keyboard on touch); the name
   is remembered, so later entries take one tap. Then the list shows with the
   own entry highlighted. Nothing in the pause menu.
-- Kid mode: no free-text names, only generated nicknames such as "Flinker
-  Fuchs 42".
+- Kid mode has no online list: no trophy, no list and no "Eintragen". Game
+  over shows only the local record, kept apart from the adult record.
 - Entering is optional. An entry made offline is queued and sent later.
 - Privacy: only nickname, score, distance, run time and date are stored (no
   IP address, no account); a short note in the game says so.

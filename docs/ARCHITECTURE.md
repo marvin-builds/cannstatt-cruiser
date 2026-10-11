@@ -782,7 +782,7 @@ picks one (null while riding or while the settings menu covers it):
 | Screen | When | Buttons (key) |
 |---|---|---|
 | "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
-| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, see [Online highscores](#online-highscores-roadmap-34)); the logo's long press opens the settings |
+| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)); the logo's long press opens the settings |
 | pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), reload |
 | game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Eintragen" (E / Enter, only when the run makes the online top 20), "Zum Startbildschirm" (T), reload, install hint |
 
@@ -952,13 +952,15 @@ enough for friends and family.
 
 Placement approved by the user (ROADMAP 34):
 
+- **Kid mode has no online list (ROADMAP 45)**: no trophy, no list and no
+  "Eintragen"; kid runs are never passed to the online flow (nothing is sent
+  or queued for them). Already queued adult entries are still retried.
 - **Title**: a trophy button in the top-right button row (key B) opens the
   "Bestenliste" screen: the top 20 (scrollable on phones), an offline note
   instead of the list when there is no connection, and a short privacy note.
 - **Game over**: an "Eintragen" button only when the score would reach the
   top 20 (compared with the last fetched list). It leads to a name entry
-  (on-screen keyboard on touch); in kid mode only generated nicknames such as
-  "Flinker Fuchs 42" can be picked, no free text. The remembered name makes
+  (on-screen keyboard on touch). The remembered name makes
   later entries one tap. Afterwards the list shows with the own entry
   highlighted.
 - Nothing in the pause menu.
@@ -977,9 +979,8 @@ Modules:
 | `net/queue.ts` | `ScoreQueue`: the offline queue, store key `pendingScore`, keeps only the best pending run; `SEND_SPACING_MS` 20 s (the server's rate limit) |
 | `net/service.ts` | `ScoreService`: `top` (last fetched list) and `topState` (`'idle' \| 'loading' \| 'ready' \| 'offline'`), `refreshTop()`, `submit(run, name)` -> `SubmitOutcome` (`ok` with rank / `queued` offline or on a server error / `failed` name, implausible, rate, bad-request), `retryPending()` (spaced by `SEND_SPACING_MS`). Clock, `online()`, timers, store and api are injected |
 | `net/browser.ts` | `createBrowserScoreService(store)`: real `fetch`, `navigator.onLine`, `BUILD_VERSION`; retries the queue on `online` and when the page becomes visible |
-| `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store keys `scoreName`, kid mode `scoreKidName`), last entry (`scoreLastEntry`) and `ownRank` for the highlight |
-| `ui/nicknames.ts` | kid-mode nicknames "Adjektiv Tier NN" (all <= 16 chars, numbers with a bad meaning skipped; the test checks every combination against the rules) |
-| `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `SCORE_TEXT` (all German texts incl. the privacy note), `offered`, `openList()`, `openEntry(kid)`, `setName`, `reroll` (kid mode "Neuer Name"), `submit()`, scroll. A run start fetches the list in the background so `offered` is known at game over |
+| `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store key `scoreName`), last entry (`scoreLastEntry`) and `ownRank` for the highlight |
+| `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `SCORE_TEXT` (all German texts incl. the privacy note), `offered`, `openList()`, `openEntry()`, `setName`, `submit()`, scroll. `runStarted(fetchList)`: an adult run start fetches the list in the background so `offered` is known at game over; a kid run start only resets the flow |
 | `ui/score-layout.ts` / `ui/score-screens.ts` | pure layouts (title trophy left of mute / fullscreen, moved below the row where it would touch the logo; list rows and scroll; entry field and buttons) and their drawing |
 | `ui/name-field.ts` | the native `<input>` over the drawn field in adult mode, so phones open their own keyboard; its key and touch events stop there and never reach the game |
 | `ui/list-scroll.ts` | drag and wheel scrolling of the list (arrow keys scroll in `index.ts`) |
@@ -990,7 +991,7 @@ Modules:
   `nameField` defaults to the DOM input (`createDomNameField`) in a browser
   when there is an online list. Passing `null` turns the part off: `scores:
   null` means no trophy, no "Eintragen", no network at all; `nameField: null`
-  means no native input (typing then goes nowhere; kid mode never needs it).
+  means no native input (typing then goes nowhere).
   Tests pass a fake `ScoreServiceLike` and a fake `NameField`, never the
   real network. The returned `UiSystem` exposes `highscores` (the
   `HighscoreFlow`, null without an online list).
@@ -1000,15 +1001,13 @@ Modules:
   | `deviceId` | `net/device.ts` | the random install id sent as `device` |
   | `pendingScore` | `net/queue.ts` | the best run waiting to be sent (`null` when empty) |
   | `scoreName` | `ui/score-rules.ts` | the remembered free-text name (adult mode) |
-  | `scoreKidName` | `ui/score-rules.ts` | the remembered nickname (kid mode), kept apart so no free text shows in kid mode |
   | `scoreLastEntry` | `ui/score-rules.ts` | `{name, score}` of the last entry sent, for the highlighted own row (`ownRank`) |
 - **Keys** (a highscore screen takes every key but M, so nothing starts a
   run behind it): B opens the list on the title; on the list B or Esc
   closes it, ↑ / ↓ (and W / S) scroll one row per press and keep scrolling
   while held (`LIST_KEY_ROWS_PER_SECOND` = 10 rows per second), PageUp / PageDown scroll a page;
   "Eintragen" on game over is E or Enter; in the entry Enter sends, Esc goes
-  back, N picks a new nickname in kid mode, and in adult mode any other key
-  focuses the native input.
+  back, and any other key focuses the native input.
 - **Native input overlay** (`ui/name-field.ts`, adult mode only): an HTML
   `<input>` (max `NAME_MAX` chars, `enterkeyhint="send"`, no autocorrect)
   that `index.ts` places every tick over the drawn name field
@@ -1022,8 +1021,6 @@ Modules:
   inside the tap or key press (so phones open their keyboard): on desktop
   always, on a phone only without a remembered name (with one, "Als <Name>
   eintragen" is a single tap); tapping the drawn field focuses it too.
-- Kid mode never shows a text input: the entry offers the remembered or a
-  generated nickname and "Neuer Name".
 - `window.__ui.highscores()` reports the flow's state and tap areas for
   playtests (docs/TESTING.md).
 - The server's name rules are duplicated in `ui/score-rules.ts` (to catch a
@@ -1644,7 +1641,10 @@ requestAnimationFrame -> FixedTimestep (0..n ticks) -> Game.render(layers) -> Re
 ```
 
 Persistence: `import { store } from '../core/storage'`. Keys are namespaced
-`cannstatt-cruiser:*`. Use `highscore`, `starsTotal`, `kidMode` and
+`cannstatt-cruiser:*`. Use `highscore` (the adult record), `kidHighscore` (the kid-mode record,
+ROADMAP 45; a run counts for the mode it started in, `runKidMode` in
+`ui/index.ts`, also when cut short by a mode switch in pause), `starsTotal`
+(shared by both modes), `kidMode` and
 `itemHintSeen` (ui; the first-catch touch hint was shown), `muted`
 (audio), and `lastSeenVersion`, `visits`, `installHintDismissed` (core; the
 ui changes them only through `commands`). Calls never throw.

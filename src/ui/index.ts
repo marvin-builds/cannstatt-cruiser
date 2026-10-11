@@ -44,7 +44,7 @@ import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './lay
 import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
-import { currentMenu, gameOverReady, menuScreen, portraitHintShown } from './menu-state';
+import { currentMenu, gameOverReady, menuScreen, portraitHintShown, trophyShown } from './menu-state';
 import { bailCause, PopupFeed } from './popup-feed';
 import { type Popup, popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
@@ -98,9 +98,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const store = options.store ?? defaultStore;
   const browser = typeof window !== 'undefined';
   const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
-  /** Kid nicknames draw from the game rng (set in init; re-seeded at every run start). */
-  let random: () => number = () => 0;
-  const flow = scores ? new HighscoreFlow({ service: scores, store, random: () => random() }) : null;
+  const flow = scores ? new HighscoreFlow({ service: scores, store }) : null;
   const nameField =
     options.nameField !== undefined
       ? options.nameField
@@ -112,6 +110,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
         : null;
   /** Seconds of play in the current run (not paused time), for the online entry. */
   let runSeconds = 0;
+  /**
+   * Kid mode as the current run started: the run counts for that mode's record, also when a
+   * switch in the pause menu cuts it short (state.kidMode has flipped by then). Kid runs never
+   * reach the online list (ROADMAP 45).
+   */
+  let runKidMode = false;
   /** The arrow keys held on the list: -1 up, 1 down, 0 none. */
   let listScroll = 0;
   let lastMode: string | null = null;
@@ -163,7 +167,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     };
     bus.on('runStarted', () => {
       runSeconds = 0;
-      flow?.runStarted();
+      runKidMode = state.kidMode;
+      flow?.runStarted(!runKidMode);
       view.popups.clear();
       feed.clear();
       view.itemHint.hide();
@@ -235,8 +240,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });
     bus.on('gameOver', (e) => {
-      flow?.runEnded({ score: e.score, distance: e.distance, seconds: runSeconds });
-      view.lastRun = recordRun(view.records, e);
+      if (!runKidMode) flow?.runEnded({ score: e.score, distance: e.distance, seconds: runSeconds });
+      view.lastRun = recordRun(view.records, e, runKidMode);
       view.records = view.lastRun.records;
       saveRecords(store, view.records);
     });
@@ -294,11 +299,11 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(screen);
   }
 
-  /** Ends the run in progress (its score and stars still count) and shows the title. */
+  /** Ends the run in progress (its score and stars still count, for the mode it was played in) and shows the title. */
   function leaveRun(ctx: GameContext): void {
     const { state } = ctx;
     if (state.mode === 'paused') {
-      view.records = recordRun(view.records, state).records;
+      view.records = recordRun(view.records, state, runKidMode).records;
       saveRecords(store, view.records);
     }
     ctx.commands.toTitle();
@@ -380,11 +385,11 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
   }
 
-  /** The native name input over the entry's field (adult mode only), else hidden. */
+  /** The native name input over the entry's field while the entry shows, else hidden. */
   function placeNameField(ctx: GameContext): void {
     if (!flow || !nameField) return;
-    const shown = flow.screen === 'entry' && !flow.kid && !portraitHintShown(ctx, view);
-    nameField.place(shown ? scoreEntryLayout(ctx.display, false).field : null, flow.name);
+    const shown = flow.screen === 'entry' && !portraitHintShown(ctx, view);
+    nameField.place(shown ? scoreEntryLayout(ctx.display).field : null, flow.name);
   }
 
   /**
@@ -394,9 +399,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
    */
   function openEntry(ctx: GameContext): void {
     if (!flow) return;
-    flow.openEntry(ctx.state.kidMode);
+    flow.openEntry();
     placeNameField(ctx);
-    if (!flow.kid && (!ctx.display.touch || !flow.name)) nameField?.focus();
+    if (!ctx.display.touch || !flow.name) nameField?.focus();
   }
 
   /** The "Bestenliste" layout as drawn now. */
@@ -419,19 +424,18 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     }
     if (code === 'Escape') flow.close();
     else if (code === 'Enter' || code === 'NumpadEnter') void flow.submit();
-    else if (code === 'KeyN') flow.reroll();
-    else if (!flow.kid) nameField?.focus();
+    else nameField?.focus();
     return true;
   }
 
-  /** The trophy on the title (B), the modal layer of the list and the entry, and their buttons. */
+  /** The trophy on the title (B, adult mode only), the modal layer of the list and the entry, and their buttons. */
   function addScoreHotspots(ctx: GameContext, full: () => Rect): void {
     if (!flow) return;
     const { state, display } = ctx;
     const covered = () => portraitHintShown(ctx, view) || view.settings.open;
     const trophy: InputHotspot = {
       rect: () =>
-        !covered() && menuScreen(state, view) === 'title' ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
+        !covered() && trophyShown(state, view) ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
       onPress: () => flow.openList(),
       onKeyDown: (code) => {
         if (code !== 'KeyB') return false;
@@ -446,13 +450,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       onKeyUp: () => void (listScroll = 0),
     };
     const entry = (pick: (l: ReturnType<typeof scoreEntryLayout>) => Rect | null) => () =>
-      flow.screen === 'entry' && !covered() ? pick(scoreEntryLayout(display, flow.kid)) : null;
+      flow.screen === 'entry' && !covered() ? pick(scoreEntryLayout(display)) : null;
     ctx.addHotspot(trophy);
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (flow.open && !covered() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
     ctx.addHotspot({ rect: entry((l) => l.submit), onPress: () => void flow.submit() });
-    ctx.addHotspot({ rect: entry((l) => l.reroll), onPress: () => flow.reroll() });
-    ctx.addHotspot({ rect: entry((l) => (flow.kid ? null : l.field)), onPress: () => nameField?.focus() });
+    ctx.addHotspot({ rect: entry((l) => l.field), onPress: () => nameField?.focus() });
   }
 
   /** Per tick while a highscore screen shows: held arrow keys, keeping the scroll in range (and the own entry in view), the name input. */
@@ -511,7 +514,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
         leaveRun(ctx);
         ctx.commands.startRun();
       };
-      random = () => ctx.rng.next();
       bindEvents(ctx);
       addHotspots(ctx);
       if (browser && flow) {
