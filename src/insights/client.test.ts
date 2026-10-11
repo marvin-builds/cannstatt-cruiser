@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../net/api';
 import { SCORES_URL } from '../net/api';
 import { ALL_RANGE } from '../net/telemetry-types';
-import { apiBase, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats } from './client';
+import { apiBase, createIssue, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
 import { sampleFeedback } from './sample-feedback';
 import { sampleStats } from './sample-stats';
 
-function fakeFetch(status: number, body: unknown, calls: { url: string; headers?: Record<string, string> }[] = []): FetchLike {
+interface Call {
+  url: string;
+  headers?: Record<string, string>;
+  method?: string;
+  body?: string;
+}
+
+function fakeFetch(status: number, body: unknown, calls: Call[] = []): FetchLike {
   return async (url, init) => {
-    calls.push({ url, headers: init?.headers });
+    calls.push(init?.method ? { url, headers: init.headers, method: init.method, ...(init.body ? { body: init.body } : {}) } : { url, headers: init?.headers });
     return { ok: status === 200, status, json: async () => body };
   };
 }
@@ -127,5 +134,82 @@ describe('isFeedbackList', () => {
     ['a missing log', { entries: [{ ...entry, log: undefined }] }],
   ])('rejects %s', (_, body) => {
     expect(isFeedbackList(body)).toBe(false);
+  });
+});
+
+describe('feedback triage fields', () => {
+  const entry = sampleFeedback()[0]!;
+  it('accepts status, issue and reply', () => {
+    expect(isFeedbackList({ entries: [{ ...entry, status: 'todo', issue: 12, reply: 'Kommt' }] })).toBe(true);
+  });
+  it.each([
+    ['an unknown status', { status: 'later' }],
+    ['a non-integer issue', { issue: 1.5 }],
+    ['a string issue', { issue: '12' }],
+    ['a non-string reply', { reply: 3 }],
+  ])('rejects %s', (_, triage) => {
+    expect(isFeedbackList({ entries: [{ ...entry, ...triage }] })).toBe(false);
+  });
+  it('reads entries of a worker without triage as open, without issue or reply', async () => {
+    const { status: _s, issue: _i, reply: _r, ...old } = entry;
+    const result = await fetchFeedback(fakeFetch(200, { entries: [old] }), { base: 'http://x', token: 'a' });
+    expect(result).toEqual({ ok: true, entries: [{ ...old, status: 'open', issue: null, reply: null }] });
+  });
+});
+
+describe('createIssue', () => {
+  const draft = { title: 'Idee: Hunde', body: '> Hunde' };
+  it('posts the draft as JSON with the bearer token and returns the issue number', async () => {
+    const calls: Call[] = [];
+    const result = await createIssue(fakeFetch(201, { ok: true, issue: 12 }, calls), { base: 'http://x', token: 'abc', id: 14, draft });
+    expect(calls).toEqual([
+      { url: 'http://x/feedback/14/issue', method: 'POST', headers: { Authorization: 'Bearer abc', 'Content-Type': 'application/json' }, body: JSON.stringify(draft) },
+    ]);
+    expect(result).toEqual({ ok: true, issue: 12 });
+  });
+  it('maps the worker errors', async () => {
+    const request = { base: 'http://x', token: 'a', id: 1, draft };
+    expect(await createIssue(fakeFetch(401, null), request)).toEqual({ ok: false, error: 'auth' });
+    expect(await createIssue(fakeFetch(404, { ok: false, error: 'not-found' }), request)).toEqual({ ok: false, error: 'not-found' });
+    expect(await createIssue(fakeFetch(409, { ok: false, error: 'exists', issue: 5 }), request)).toEqual({ ok: false, error: 'exists', issue: 5 });
+    expect(await createIssue(fakeFetch(502, { ok: false, error: 'github', status: 403 }), request)).toEqual({ ok: false, error: 'github', status: 403 });
+    expect(await createIssue(fakeFetch(503, { ok: false, error: 'github-token-missing' }), request)).toEqual({ ok: false, error: 'github-token-missing' });
+    expect(await createIssue(fakeFetch(400, { ok: false, error: 'bad-request' }), request)).toEqual({ ok: false, error: 'bad-request' });
+    expect(await createIssue(fakeFetch(500, { error: 'server' }), request)).toEqual({ ok: false, error: 'server' });
+    expect(await createIssue(fakeFetch(201, { ok: true }), request)).toEqual({ ok: false, error: 'server' });
+    const throwing: FetchLike = async () => {
+      throw new Error('down');
+    };
+    expect(await createIssue(throwing, request)).toEqual({ ok: false, error: 'offline' });
+  });
+});
+
+describe('patchFeedback', () => {
+  it('sends only the given fields and returns the triage fields', async () => {
+    const calls: Call[] = [];
+    const answer = { ok: true, status: 'rejected', issue: null, reply: 'Zu schwer' };
+    const result = await patchFeedback(fakeFetch(200, answer, calls), { base: 'http://x', token: 'abc', id: 3, patch: { status: 'rejected', reply: 'Zu schwer' } });
+    expect(calls[0]).toEqual({
+      url: 'http://x/feedback/3', method: 'PATCH', headers: { Authorization: 'Bearer abc', 'Content-Type': 'application/json' },
+      body: '{"status":"rejected","reply":"Zu schwer"}',
+    });
+    expect(result).toEqual({ ok: true, triage: { status: 'rejected', issue: null, reply: 'Zu schwer' } });
+  });
+  it('maps 404 and a malformed answer', async () => {
+    const request = { base: 'http://x', token: 'a', id: 3, patch: { status: 'done' as const } };
+    expect(await patchFeedback(fakeFetch(404, { ok: false, error: 'not-found' }), request)).toEqual({ ok: false, error: 'not-found' });
+    expect(await patchFeedback(fakeFetch(200, { ok: true, status: 'x' }), request)).toEqual({ ok: false, error: 'server' });
+  });
+});
+
+describe('deleteFeedback', () => {
+  it('sends DELETE with the bearer token; 204 is success', async () => {
+    const calls: Call[] = [];
+    expect(await deleteFeedback(fakeFetch(204, null, calls), { base: 'http://x', token: 'abc', id: 7 })).toEqual({ ok: true });
+    expect(calls).toEqual([{ url: 'http://x/feedback/7', method: 'DELETE', headers: { Authorization: 'Bearer abc' } }]);
+  });
+  it('maps 401 and 404', async () => {
+    expect(await deleteFeedback(fakeFetch(401, null), { base: 'http://x', token: 'a', id: 7 })).toEqual({ ok: false, error: 'auth' });
+    expect(await deleteFeedback(fakeFetch(404, { ok: false, error: 'not-found' }), { base: 'http://x', token: 'a', id: 7 })).toEqual({ ok: false, error: 'not-found' });
   });
 });

@@ -5,8 +5,7 @@ import { CHART_PAD_LEFT, GRAIN_UNIT, histogram, legend, periodBars, rankedList, 
 import type { DaySeries } from './day-chart';
 import { deviceSwitches, type DeviceSwitchesHandlers } from './device-switches';
 import { h } from './dom';
-import type { FeedbackFilter } from './feedback';
-import { feedbackCard, type FeedbackView } from './feedback-card';
+import { feedbackCard, type FeedbackHandlers, type FeedbackView } from './feedback-card';
 import { countryName, formatDecimal, formatDuration, formatNumber } from './format';
 import { chartPeriods } from './periods';
 import { isApproximate, rangeButtonLabel, rangeNote } from './ranges';
@@ -17,7 +16,7 @@ export interface BoardHandlers extends DeviceSwitchesHandlers {
   onRange(days: StatsRange): void;
   onReload(): void;
   onLock(): void;
-  onFeedbackFilter(filter: FeedbackFilter): void;
+  feedback: FeedbackHandlers;
 }
 
 export interface BoardView {
@@ -200,7 +199,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
         ),
         card('Aktuelle Bestenliste', stats.topScores.length ? top : h('p', { class: 'empty-note' }, 'Noch keine Einträge')),
       ),
-      feedbackCard(view.feedback, handlers.onFeedbackFilter),
+      feedbackCard(view.feedback, handlers.feedback),
       h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte ohne Angabe zählen als „Andere“'),
     ),
   );

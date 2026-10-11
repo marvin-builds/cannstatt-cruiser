@@ -1,5 +1,6 @@
 /**
- * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback, OPTIONS preflight.
+ * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback,
+ * the feedback triage routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
  * session events, Cloudflare's coarse location (request.cf); never the client IP.
  */
@@ -12,6 +13,10 @@ import { MAX_EVENT_BYTES, STATS_RANGES, STATS_TESTERS_PARAM } from './events';
 import { parseFeedback } from './feedback-parse';
 import { MAX_FEEDBACK_BYTES } from './feedback-rules';
 import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
+import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from './feedback-triage-parse';
+import { ISSUE_LABEL, MAX_TRIAGE_BYTES } from './feedback-triage-rules';
+import { deleteFeedback, feedbackForIssue, storeIssue, updateTriage } from './feedback-triage-store';
+import { createIssue, type GitHubFetch } from './github';
 import { locationOf } from './location';
 import { rankRows } from './ranking';
 import { isRateLimited } from './rate-limit';
@@ -21,8 +26,10 @@ import { isDeviceId, parseSubmission } from './submission';
 
 export interface Env {
   DB: D1Database;
-  /** Bearer token for GET /stats and GET /feedback (Wrangler secret). Without it both always answer 401. */
+  /** Bearer token for GET /stats and the feedback routes of the board (Wrangler secret). Without it they always answer 401. */
   STATS_TOKEN?: string;
+  /** Fine-grained GitHub token, Issues read/write on ISSUE_REPO only (Wrangler secret). Without it no issue can be made. */
+  GITHUB_TOKEN?: string;
 }
 
 /** Larger bodies are rejected unread beyond this many characters. */
@@ -33,30 +40,37 @@ const OWN_TOP_CACHE = 'private, max-age=30';
 /** sendBeacon sends text/plain; fetch may send JSON. Same for feedback. */
 const BODY_TYPES = ['text/plain', 'application/json'];
 
-type Failure = 'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found';
+type Failure =
+  'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found' | 'exists' | 'github' | 'github-token-missing';
 const STATUS: Record<Failure, number> = {
-  'bad-request': 400, unauthorized: 401, forbidden: 403, name: 422, implausible: 422, rate: 429, 'not-found': 404,
+  'bad-request': 400, unauthorized: 401, forbidden: 403, name: 422, implausible: 422, rate: 429, 'not-found': 404, exists: 409,
+  github: 502, 'github-token-missing': 503,
 };
+/** `/feedback/<id>` and `/feedback/<id>/issue`; the id is checked by parseFeedbackId. */
+const TRIAGE_PATH = /^\/feedback\/([^/]+)(\/issue)?$/;
 
 const jsonResponse = (cors: Record<string, string>, body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, ...extra, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache } });
 
-/** Answers the request; an unexpected error becomes a 500 with CORS headers, so the browser can read it. */
-export async function handleRequest(request: Request, env: Env, now: number): Promise<Response> {
+/**
+ * Answers the request; an unexpected error becomes a 500 with CORS headers, so the browser can read it.
+ * `github` reaches the GitHub API (injected, so tests never do).
+ */
+export async function handleRequest(request: Request, env: Env, now: number, github: GitHubFetch = fetch): Promise<Response> {
   try {
-    return await route(request, env, now);
+    return await route(request, env, now, github);
   } catch (error) {
     console.error('request failed', error);
     return jsonResponse(corsHeaders(request.headers.get('Origin')), { error: 'server' }, 500);
   }
 }
 
-async function route(request: Request, env: Env, now: number): Promise<Response> {
+async function route(request: Request, env: Env, now: number, github: GitHubFetch): Promise<Response> {
   const origin = request.headers.get('Origin');
   const cors = corsHeaders(origin);
   const json = (body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) => jsonResponse(cors, body, status, cache, extra);
-  const fail = (error: Failure) =>
-    json({ ok: false, error }, STATUS[error], 'no-store', error === 'unauthorized' ? { 'WWW-Authenticate': 'Bearer' } : {});
+  const fail = (error: Failure, extra: Record<string, unknown> = {}) =>
+    json({ ok: false, error, ...extra }, STATUS[error], 'no-store', error === 'unauthorized' ? { 'WWW-Authenticate': 'Bearer' } : {});
 
   const { pathname, searchParams } = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -105,6 +119,32 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     // Housekeeping after the feedback is stored: a failure is logged and retried on a later request.
     await pruneFeedbackOnceADay(env.DB, now).catch((error: unknown) => console.error('feedback prune failed', error));
     return json({ ok: true }, 201);
+  }
+  const triage = TRIAGE_PATH.exec(pathname);
+  if (triage) {
+    if (!(await authorized())) return fail('unauthorized');
+    const id = parseFeedbackId(triage[1]!);
+    const action = `${request.method} ${triage[2] ? 'issue' : 'row'}`;
+    if (!['POST issue', 'PATCH row', 'DELETE row'].includes(action)) return fail('not-found');
+    if (id === null) return fail('bad-request');
+    if (action === 'DELETE row') return (await deleteFeedback(env.DB, id)) ? new Response(null, { status: 204, headers: cors }) : fail('not-found');
+    const text = (await readLimitedText(request, MAX_TRIAGE_BYTES)) ?? '';
+    if (action === 'PATCH row') {
+      const patch = parseTriagePatch(text);
+      if (patch === null) return fail('bad-request');
+      const updated = await updateTriage(env.DB, id, patch);
+      return updated ? json({ ok: true, ...updated }, 200) : fail('not-found');
+    }
+    const draft = parseIssueDraft(text);
+    if (draft === null) return fail('bad-request');
+    if (!env.GITHUB_TOKEN) return fail('github-token-missing');
+    const row = await feedbackForIssue(env.DB, id);
+    if (!row) return fail('not-found');
+    if (row.issue !== null) return fail('exists', { issue: row.issue });
+    const created = await createIssue(github, env.GITHUB_TOKEN, { ...draft, labels: [ISSUE_LABEL, row.kind] });
+    if (!created.ok) return fail('github', { status: created.status });
+    await storeIssue(env.DB, id, created.number);
+    return json({ ok: true, issue: created.number }, 201);
   }
   if (request.method !== 'POST' || pathname !== '/score') return fail('not-found');
 

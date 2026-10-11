@@ -1,5 +1,6 @@
 /** Pure helpers of the feedback card: filter, order and German labels. */
 import type { FeedbackEntry, FeedbackKind } from '../net/feedback-types';
+import type { FeedbackStatus } from './triage-types';
 import type { InputKind, Orientation, Platform } from '../net/telemetry-types';
 
 /** The card's filter toggle: everything, only bug reports or only ideas. */
@@ -16,10 +17,14 @@ const PLATFORMS: Record<Platform, string> = { android: 'Android', ios: 'iOS', ot
 const INPUTS: Record<InputKind, string> = { touch: 'Touch', keys: 'Tastatur' };
 const ORIENTATIONS: Record<Orientation, string> = { landscape: 'Quer', portrait: 'Hoch' };
 
-/** Entries of the filter, newest day first; within a day the later (higher) id first. */
-export function filterFeedback(entries: readonly FeedbackEntry[], filter: FeedbackFilter): FeedbackEntry[] {
+/** Entries of the kind and status filters, newest day first; within a day the later (higher) id first. */
+export function filterFeedback<T extends FeedbackEntry & { status: FeedbackStatus }>(
+  entries: readonly T[],
+  filter: FeedbackFilter,
+  status: 'all' | FeedbackStatus = 'all',
+): T[] {
   return entries
-    .filter((e) => filter === 'all' || e.kind === filter)
+    .filter((e) => (filter === 'all' || e.kind === filter) && (status === 'all' || e.status === status))
     .sort((a, b) => (a.day === b.day ? b.id - a.id : a.day < b.day ? 1 : -1));
 }
 

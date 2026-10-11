@@ -16,7 +16,7 @@ describe('corsHeaders', () => {
 
   it('names the methods and headers and varies on Origin', () => {
     const headers = corsHeaders('https://marvinmai.github.io');
-    expect(headers['Access-Control-Allow-Methods']).toBe('GET, POST, OPTIONS');
+    expect(headers['Access-Control-Allow-Methods']).toBe('GET, POST, PATCH, DELETE, OPTIONS');
     expect(headers['Access-Control-Allow-Headers']).toBe('Content-Type, Authorization');
     expect(headers.Vary).toBe('Origin');
     expect(headers['Access-Control-Allow-Credentials']).toBeUndefined();
