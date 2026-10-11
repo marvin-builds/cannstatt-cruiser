@@ -20,6 +20,14 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.6',
+    date: '2026-10-11',
+    items: [
+      'Feedback-Fenster repariert',
+      'Zum Tippen aufs Hochformat drehen',
+    ],
+  },
+  {
     version: '2026-10-11.5',
     date: '2026-10-11',
     items: [
