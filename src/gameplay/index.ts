@@ -293,7 +293,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       // Before the contacts, so an item tossed by this tick's stomp starts flying next tick.
       catchItem(ctx, toss.update(handsOf(ctx), dt));
       if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
-      resolveContacts(ctx);
+      resolveContacts(ctx, stunts.ledgesReachable());
       stunts.update(ctx);
       airTrick.settle(ctx);
       session.update(ctx);

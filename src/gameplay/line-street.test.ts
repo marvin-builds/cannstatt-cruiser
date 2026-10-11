@@ -142,6 +142,15 @@ describe('obstacles on the street under stunt lines and the park', { timeout: 12
     expect(checked).toBeGreaterThan(500);
   });
 
+  it('the solver plans no street-to-ledge landing: a course of the whole line offers its ledges as no support (ROADMAP 61)', () => {
+    for (const { pattern } of LINES) {
+      const course = buildCourse(pattern.pieces, 0, (goal) => goal);
+      // Only a bench on the street below is a support (grindable from the street like any bench).
+      expect(course.rails).toEqual([]);
+      expect(course.ledges!.length).toBe(streetOf(pattern).filter((o) => o.kind === 'bench').length);
+    }
+  });
+
   it('keeps the high five free: no obstacle between the park entrance and its first bank', () => {
     for (const { pattern, park } of LINES) {
       if (!park) continue;

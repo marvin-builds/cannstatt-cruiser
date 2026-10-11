@@ -30,12 +30,20 @@
  *     piece leaving the street, or a single made piece being the last one.
  *   Nothing else happens: no crash, no health, no penalty.
  *
+ * Upper level (ROADMAP 61): only a launch gets the skater up there. Ledges
+ * (also the park's containers and crane boom) catch him only after a launch
+ * and until he touches the street again (a street landing or ollie, a
+ * crash); so gap jumps from ledge to ledge work, while a jump from the street
+ * (or off a person's head) passes in front of them like background
+ * (contacts.ts asks ledgesReachable).
+ *
  * Score: stunt points are added as they are (scoring.ts addBonus), not times
  * `state.multiplier`: the line multiplier is its own. The normal combo goes on
  * as before around it (a ledge landing is a trick like a rail landing, a
  * street landing breaks the combo), so a line pays both. An air trick in a
  * line uses the line multiplier when it is higher (air-trick.ts).
  */
+import { GROUND_Y } from '../core/config';
 import type { Entity, GameContext, GameState, StuntKind } from '../types';
 import { isKicker, isLedge } from './catalogue';
 import { KickerLaunch } from './kicker-launch';
@@ -75,9 +83,12 @@ export class StuntLines {
   /** The skater left the line's last ledge: the line completes in the next update. */
   private leftLast = false;
   private readonly launches = new KickerLaunch();
+  /** A launch got the skater up and he has not touched the street since. */
+  private up = false;
 
   reset(): void {
     this.launches.reset();
+    this.up = false;
     this.line = null;
     this.lastPiece = -1;
     this.leftLast = false;
@@ -93,9 +104,16 @@ export class StuntLines {
     return this.line?.multiplier ?? 1;
   }
 
-  /** The player's `jump` event (an ollie may arm a kicker). */
+  /** Whether a ledge may catch the skater now: a launch got him up and he has not touched the street since. */
+  ledgesReachable(): boolean {
+    return this.up;
+  }
+
+  /** The player's `jump` event: an ollie from the street (not off a rail or ledge) may arm a kicker, and is no way up. */
   jumped(state: GameState): void {
-    this.launches.jumped(state);
+    if (GROUND_Y - state.player.y >= 1) return;
+    this.up = false;
+    this.launches.ollied();
   }
 
   /** Every playing tick after the contacts: launches from kickers, and whether the next piece was passed by. */
@@ -103,6 +121,7 @@ export class StuntLines {
     const launch = this.launches.update(ctx);
     if (launch) {
       launch.kicker.done = true;
+      this.up = true;
       ctx.bus.emit('launch', { entityId: launch.kicker.id, velocity: launch.velocity });
       this.made(ctx, launch.kicker);
     }
@@ -140,12 +159,14 @@ export class StuntLines {
 
   /** The player touched the street (land). */
   landed(ctx: GameContext): void {
+    this.up = false;
     const line = this.line;
     if (!line) return;
     if (this.atLastPiece() || this.next(ctx)?.kind !== 'kicker') this.end(ctx);
   }
 
   crashed(ctx: GameContext): void {
+    this.up = false;
     if (this.line) this.end(ctx, true);
   }
 

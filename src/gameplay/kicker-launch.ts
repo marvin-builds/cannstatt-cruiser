@@ -15,7 +15,7 @@
  * where the line was planned for. A kicker without a ledge after it (debug
  * pieces) launches with its own speed.
  */
-import { GROUND_Y, TICK_DT } from '../core/config';
+import { TICK_DT } from '../core/config';
 import type { Entity, GameContext, GameState } from '../types';
 import { isKicker, isLedge } from './catalogue';
 import { groundBody, type MutableBody, copyBody } from './jumpsim';
@@ -73,25 +73,25 @@ function launchSpeed(state: GameState, kicker: Entity): number {
 
 export class KickerLaunch {
   /** The player ollied from the street this tick (its jump event). */
-  private ollied = false;
+  private olliedNow = false;
   /** Id of the kicker an ollie in its window armed, or -1. */
   private armed = -1;
 
   reset(): void {
-    this.ollied = false;
+    this.olliedNow = false;
     this.armed = -1;
   }
 
-  /** The player's `jump` event: an ollie from the street arms the kicker whose window the feet are in (not a jump off a rail or ledge). */
-  jumped(state: GameState): void {
-    if (GROUND_Y - state.player.y < 1) this.ollied = true;
+  /** The player ollied from the street (its `jump` event, not a jump off a rail or ledge): arms the kicker whose window the feet are in. */
+  ollied(): void {
+    this.olliedNow = true;
   }
 
   /** Every playing tick after the scroll: the kicker that launches the skater now, with the launch speed, or null. */
   update(ctx: GameContext): { kicker: Entity; velocity: number } | null {
     const { state } = ctx;
-    const ollied = this.ollied;
-    this.ollied = false;
+    const ollied = this.olliedNow;
+    this.olliedNow = false;
     const p = state.player;
     const kicker = p.state === 'crash' ? null : kickerAround(state, p.x);
     if (!kicker) {
