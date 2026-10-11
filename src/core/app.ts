@@ -27,6 +27,7 @@ export function startApp(systems: System[]): Game {
           userAgent: navigator.userAgent,
           maxTouchPoints: navigator.maxTouchPoints,
           displayModeStandalone: matchMedia('(display-mode: standalone)').matches,
+          displayModeFullscreen: matchMedia('(display-mode: fullscreen)').matches,
           navigatorStandalone: (navigator as Navigator & { standalone?: boolean }).standalone,
         }),
     },

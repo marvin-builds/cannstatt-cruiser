@@ -20,6 +20,7 @@ const browser = (userAgent: string, maxTouchPoints = 0) => ({
   userAgent,
   maxTouchPoints,
   displayModeStandalone: false,
+  displayModeFullscreen: false,
   navigatorStandalone: undefined,
 });
 
@@ -56,6 +57,15 @@ describe('detectInstallEnvironment', () => {
     expect(detectInstallEnvironment(browser(UA.android)).standalone).toBe(false);
     expect(detectInstallEnvironment({ ...browser(UA.android), displayModeStandalone: true }).standalone).toBe(true);
     expect(detectInstallEnvironment({ ...browser(UA.iphone, 5), navigatorStandalone: true }).standalone).toBe(true);
+  });
+
+  it('is standalone on a phone in display-mode fullscreen, which the manifest asks for (issue #2)', () => {
+    expect(detectInstallEnvironment({ ...browser(UA.android, 5), displayModeFullscreen: true }).standalone).toBe(true);
+    expect(detectInstallEnvironment({ ...browser(UA.iphone, 5), displayModeFullscreen: true }).standalone).toBe(true);
+  });
+
+  it('keeps a desktop tab in browser fullscreen (F11) as not installed', () => {
+    expect(detectInstallEnvironment({ ...browser(UA.desktop), displayModeFullscreen: true }).standalone).toBe(false);
   });
 });
 

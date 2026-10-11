@@ -6,7 +6,7 @@ export type InstallPlatform = 'android' | 'ios' | 'other';
 
 /** What the browser tells about the page at startup (Platform.installEnvironment). */
 export interface InstallEnvironment {
-  /** Running as the installed app (display-mode standalone, or navigator.standalone on iOS). */
+  /** Running as the installed app (display-mode standalone, fullscreen on a phone or tablet, or navigator.standalone on iOS). */
   standalone: boolean;
   platform: InstallPlatform;
 }
@@ -35,6 +35,8 @@ export interface BrowserFacts {
   maxTouchPoints: number;
   /** matchMedia('(display-mode: standalone)').matches */
   displayModeStandalone: boolean;
+  /** matchMedia('(display-mode: fullscreen)').matches: the installed app, since the manifest asks for fullscreen */
+  displayModeFullscreen: boolean;
   /** navigator.standalone (iOS Safari only) */
   navigatorStandalone: boolean | undefined;
 }
@@ -46,11 +48,16 @@ export function createInstallState(): InstallState {
   return { standalone: false, platform: 'other', canPrompt: false, installed: false, visits: 0, dismissed: false };
 }
 
-/** iPadOS reports a Mac desktop user agent; touch points tell it apart from a real Mac. */
+/**
+ * iPadOS reports a Mac desktop user agent; touch points tell it apart from a real Mac.
+ * Display-mode fullscreen counts as installed only on phones and tablets: a page cannot
+ * load in fullscreen there, while a desktop tab can (F11).
+ */
 export function detectInstallEnvironment(b: BrowserFacts): InstallEnvironment {
   const ios = /iPhone|iPad|iPod/.test(b.userAgent) || (/Macintosh/.test(b.userAgent) && b.maxTouchPoints > 1);
   const platform: InstallPlatform = ios ? 'ios' : /Android/i.test(b.userAgent) ? 'android' : 'other';
-  return { standalone: b.displayModeStandalone || b.navigatorStandalone === true, platform };
+  const appFullscreen = b.displayModeFullscreen && platform !== 'other';
+  return { standalone: b.displayModeStandalone || appFullscreen || b.navigatorStandalone === true, platform };
 }
 
 /** Keeps `state.install` and the captured browser prompt; DOM-free (app.ts forwards the window events). */
