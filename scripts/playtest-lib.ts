@@ -4,9 +4,10 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { BrowserContextOptions, CDPSession, Page } from 'playwright';
+import type { Browser, BrowserContext, BrowserContextOptions, CDPSession, Page } from 'playwright';
 import { build, preview, type PreviewServer } from 'vite';
 import { PLAYER_X } from '../src/core/config';
+import { SCORES_URL } from '../src/net/api';
 import type { LoggedEvent } from '../src/core/testhook';
 import { KICKER_LIP } from '../src/gameplay/rules';
 import type {} from '../src/player/debug'; // window.__player
@@ -119,6 +120,36 @@ export interface PlaytestContext {
 
 /** A scenario module default-exports this. */
 export type Scenario = (t: PlaytestContext) => Promise<void>;
+
+/** Host of the live highscore and statistics worker: playtests must never reach it (it would pollute the public list). */
+export const LIVE_WORKER_HOST = new URL(SCORES_URL).hostname;
+
+/**
+ * Aborts every request of `context` to the live worker. A scenario's own route for it wins (page
+ * routes before context routes, later context routes before earlier ones), so fakes keep working.
+ */
+export async function blockLiveWorker(context: BrowserContext): Promise<void> {
+  await context.route(
+    (url) => url.hostname === LIVE_WORKER_HOST,
+    (route) => route.abort('blockedbyclient'),
+  );
+}
+
+/** Makes every context (and page) `browser` creates from now on block the live worker, also those a scenario opens itself. */
+export function blockLiveWorkerEverywhere(browser: Browser): void {
+  const newContext = browser.newContext.bind(browser);
+  const newPage = browser.newPage.bind(browser);
+  browser.newContext = async (options) => {
+    const context = await newContext(options);
+    await blockLiveWorker(context);
+    return context;
+  };
+  browser.newPage = async (options) => {
+    const page = await newPage(options);
+    await blockLiveWorker(page.context());
+    return page;
+  };
+}
 
 /** Serves the game: `url` as given (e.g. a running `npm run dev`), otherwise a fresh build on vite preview. */
 export async function serveGame(url?: string): Promise<{ url: string; server?: PreviewServer }> {

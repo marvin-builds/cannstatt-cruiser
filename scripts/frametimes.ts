@@ -18,7 +18,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { chromium, type CDPSession, type Page } from 'playwright';
 import type { FrameRecord, ProbeDump } from '../src/core/perf';
-import { ensureDir, join, serveGame, VIEWPORTS } from './playtest-lib';
+import { blockLiveWorkerEverywhere, ensureDir, join, serveGame, VIEWPORTS } from './playtest-lib';
 
 const { values } = parseArgs({
   options: {
@@ -187,6 +187,7 @@ async function main(): Promise<void> {
   const target = new URL(url);
   target.searchParams.set('test', '1');
   const browser = await chromium.launch({ headless: !values.headed, args: ['--enable-precise-memory-info'] });
+  blockLiveWorkerEverywhere(browser);
   try {
     const context = await browser.newContext(viewport.options);
     const page = await context.newPage();

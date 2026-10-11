@@ -56,7 +56,11 @@ describe('Bestenliste layout', () => {
         const label = `${c.label} message=${message}`;
         const m = uiMetrics(c);
         const l = scoreListLayout(c, 20, message);
-        for (const r of [l.close, l.title, l.list]) expect(inside(r, c.viewWidth) && whole(r), `${label} ${JSON.stringify(r)}`).toBe(true);
+        for (const r of [l.close, l.title, l.list, l.stats]) expect(inside(r, c.viewWidth) && whole(r), `${label} ${JSON.stringify(r)}`).toBe(true);
+        for (const r of [l.close, l.title, l.list]) expect(overlap(l.stats, r), `${label}: stats switch`).toBe(false);
+        expect(l.stats.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
+        if (c.touch) expect(l.stats.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
+        expect(l.stats.x, `${label}: stats switch top left`).toBeLessThan(8);
         expect(l.close.w, label).toBeGreaterThanOrEqual(m.menuButtonH);
         expect(l.close.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
         if (c.touch) expect(l.close.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
@@ -64,7 +68,7 @@ describe('Bestenliste layout', () => {
         expect(overlap(l.title, l.close), label).toBe(false);
         expect(overlap(l.list, l.close), label).toBe(false);
         expect(l.list.y, label).toBeGreaterThanOrEqual(l.title.y + l.title.h);
-        const lines = [l.messageY, l.privacyY, l.keysY].filter((y): y is number => y !== null);
+        const lines = [l.messageY, l.privacyY, l.statsNoteY, l.keysY].filter((y): y is number => y !== null);
         for (const y of lines) expect(y, label).toBeGreaterThanOrEqual(l.list.y + l.list.h);
         expect(Math.max(...lines) + 7, label).toBeLessThanOrEqual(VIEW_H);
         expect(l.messageY !== null, label).toBe(message);

@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import {
+  blockLiveWorkerEverywhere,
   captureCanvas,
   type Check,
   createGameDriver,
@@ -60,6 +61,8 @@ async function main(): Promise<void> {
   target.searchParams.set('test', '1');
 
   const browser = await chromium.launch({ headless: !values.headed });
+  // No scenario may reach the live worker: every context gets a blocking route (scenario fakes override it).
+  blockLiveWorkerEverywhere(browser);
   const stateLog: LogEntry[] = [];
   const checks: (Check & { viewport: string })[] = [];
   const started = Date.now();

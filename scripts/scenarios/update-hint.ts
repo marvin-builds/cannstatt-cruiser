@@ -28,17 +28,20 @@ async function simulateDeploy(t: PlaytestContext): Promise<(() => Promise<void>)
   const context = t.page.context();
   const shellUrl = new URL('./', t.page.url()).href;
   const html = await (await context.request.get(shellUrl)).text();
-  const oldBundle = /assets\/index-[\w-]+\.js/.exec(html)?.[0];
+  const oldBundle = /assets\/(?:index|main)-[\w-]+\.js/.exec(html)?.[0];
   t.check('deploy simulation finds the bundle', Boolean(oldBundle), { html });
   if (!oldBundle) return null;
   const newBundle = 'assets/index-updatehint.js';
   const bundle = await (await context.request.get(new URL(oldBundle, shellUrl).href)).body();
-  await context.route(
-    (url) => url.href.split('?')[0] === shellUrl,
-    (route) => route.fulfill({ contentType: 'text/html', body: html.replace(oldBundle, newBundle) }),
-  );
-  await context.route(`**/${newBundle}`, (route) => route.fulfill({ contentType: 'text/javascript', body: bundle }));
-  return () => context.unrouteAll();
+  const isShell = (url: URL) => url.href.split('?')[0] === shellUrl;
+  const bundleUrl = `**/${newBundle}`;
+  await context.route(isShell, (route) => route.fulfill({ contentType: 'text/html', body: html.replace(oldBundle, newBundle) }));
+  await context.route(bundleUrl, (route) => route.fulfill({ contentType: 'text/javascript', body: bundle }));
+  // Only these two: the harness's live-worker block must stay.
+  return async () => {
+    await context.unroute(isShell);
+    await context.unroute(bundleUrl);
+  };
 }
 
 export default async function updateHint(t: PlaytestContext): Promise<void> {

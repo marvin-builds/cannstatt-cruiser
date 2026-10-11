@@ -1,11 +1,13 @@
 /**
- * The hidden settings menu ("Einstellungen") and its only setting, the kid
- * mode (state.kidMode), plus the notice the title's "Kindermodus" button
- * opens (ROADMAP 43). DOM-free logic: the long press that opens the menu
- * (the only guard: 3 s on the logo or K), the toggle and persistence.
- * Hotspots and drawing live in index.ts and screens.ts.
+ * The hidden settings menu ("Einstellungen") with the kid mode
+ * (state.kidMode) and the anonymous statistics switch (ROADMAP 46, also on the
+ * "Bestenliste"), plus the notice the title's "Kindermodus" button opens
+ * (ROADMAP 43). DOM-free logic: the long press that opens the menu (the only
+ * guard: 3 s on the logo or K), the toggles and persistence. Hotspots and
+ * drawing live in index.ts and screens.ts.
  */
 import type { Store } from '../core/storage';
+import { loadStatsOptOut, saveStatsOptOut } from '../net/telemetry';
 import type { GameState } from '../types';
 
 /** Seconds the title logo (or K) must be held to open the menu. */
@@ -64,6 +66,15 @@ export function saveKidMode(store: Store, on: boolean): void {
   store.set(KID_MODE_KEY, on);
 }
 
+/** The statistics switch's texts (game font, fit 320 px at scale 1). */
+export const STATS_TEXT = {
+  label: (on: boolean) => `Anonyme Statistik: ${on ? 'AN' : 'AUS'}`,
+  note: 'Ohne Namen. Ort grob (Stadt), keine IP gespeichert.',
+  /** The Bestenliste's line under its own privacy line. */
+  listNote: 'Statistik: anonym, Ort grob (Stadt), keine IP.',
+  offNote: 'Aus: Es wird keine Statistik gesendet.',
+} as const;
+
 /** 'kidNotice': "Kindermodus ist an" after the title's button, naming the way back. */
 export type SettingsScreen = 'closed' | 'menu' | 'kidNotice';
 
@@ -77,11 +88,15 @@ export class SettingsMenu {
   private kidModeAtOpen = false;
   /** Kid mode differs from when the menu opened. */
   switched = false;
+  /** Anonymous statistics are sent (the store keeps the opt-out; Telemetry reads it at every send). */
+  statsOn: boolean;
 
   constructor(
     private readonly store: Store,
     private readonly onClose: (switched: boolean) => void = () => {},
-  ) {}
+  ) {
+    this.statsOn = !loadStatsOptOut(store);
+  }
 
   get open(): boolean {
     return this.screen !== 'closed';
@@ -112,6 +127,12 @@ export class SettingsMenu {
   toggle(state: GameState): void {
     if (this.screen !== 'menu') return;
     this.setKidMode(state, !state.kidMode);
+  }
+
+  /** The statistics switch (settings menu and "Bestenliste"): on or off at once, stored. */
+  toggleStats(): void {
+    this.statsOn = !this.statsOn;
+    saveStatsOptOut(this.store, !this.statsOn);
   }
 
   private setKidMode(state: GameState, on: boolean): void {

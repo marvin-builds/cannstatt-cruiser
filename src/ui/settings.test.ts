@@ -9,7 +9,10 @@ import {
   LongPress,
   saveKidMode,
   SettingsMenu,
+  STATS_TEXT,
 } from './settings';
+import { measureText } from '../core/font';
+import { loadStatsOptOut, saveStatsOptOut } from '../net/telemetry';
 
 function memoryStore() {
   const raw = new Map<string, string>();
@@ -180,5 +183,39 @@ describe('SettingsMenu', () => {
     menu.close();
     expect(menu.screen).toBe('closed');
     expect(closed).toEqual([true]);
+  });
+});
+
+describe('anonymous statistics switch', () => {
+  it('is on by default and loads a stored opt-out', () => {
+    const store = memoryStore();
+    expect(new SettingsMenu(store).statsOn).toBe(true);
+    saveStatsOptOut(store, true);
+    expect(new SettingsMenu(store).statsOn).toBe(false);
+  });
+
+  it('toggles and stores the choice at once, in kid mode too, menu open or not', () => {
+    const store = memoryStore();
+    const menu = new SettingsMenu(store);
+    menu.toggleStats();
+    expect(menu.statsOn).toBe(false);
+    expect(loadStatsOptOut(store)).toBe(true);
+    const state = createInitialState();
+    state.kidMode = true;
+    menu.openMenu(true);
+    menu.toggleStats();
+    expect(menu.statsOn).toBe(true);
+    expect(loadStatsOptOut(store)).toBe(false);
+    expect(menu.switched).toBe(false); // the statistics switch never restarts a run
+  });
+
+  it('labels and notes fit the 320 px view at font scale 1', () => {
+    for (const s of [STATS_TEXT.label(true), STATS_TEXT.label(false), STATS_TEXT.note, STATS_TEXT.listNote, STATS_TEXT.offNote]) {
+      expect(measureText(s, 1), s).toBeLessThanOrEqual(300);
+    }
+    expect(STATS_TEXT.label(true)).toBe('Anonyme Statistik: AN');
+    expect(STATS_TEXT.label(false)).toBe('Anonyme Statistik: AUS');
+    expect(STATS_TEXT.note).toMatch(/Stadt/);
+    expect(STATS_TEXT.note).toMatch(/keine IP/i);
   });
 });

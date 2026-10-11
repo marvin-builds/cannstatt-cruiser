@@ -49,14 +49,25 @@ export function closeButton(viewWidth: number, m: UiMetrics): Rect {
   return { x: viewWidth - m.margin - s, y: m.margin, w: s, h: s };
 }
 
-function headlineRect(text: string, viewWidth: number, close: Rect, y = HEADLINE_Y): Rect {
+/** A headline centred left of the close button, and right of `leftEdge` (e.g. the list's statistics switch). */
+function headlineRect(text: string, viewWidth: number, close: Rect, y = HEADLINE_Y, leftEdge = 0): Rect {
   const w = measureText(text, 2);
   const cx = fitCentred(w, viewWidth, close.x);
-  return { x: cx - Math.ceil(w / 2), y, w, h: HEADLINE_H };
+  return { x: Math.max(leftEdge, cx - Math.ceil(w / 2)), y, w, h: HEADLINE_H };
+}
+
+/** Wide enough for "Anonyme Statistik: AUS" at scale 1. */
+const STATS_SWITCH_W = measureText('Anonyme Statistik: AUS', 1) + 12;
+
+/** The list's statistics switch: a menu-button-high button in the top-left corner, mirroring the close button. */
+function statsSwitch(m: UiMetrics): Rect {
+  return { x: m.margin, y: m.margin, w: STATS_SWITCH_W, h: m.menuButtonH };
 }
 
 export interface ScoreListLayout {
   close: Rect;
+  /** "Anonyme Statistik: AN/AUS" (top left). */
+  stats: Rect;
   title: Rect;
   /** The visible rows (clip rect); rows scroll inside it. */
   list: Rect;
@@ -73,6 +84,8 @@ export interface ScoreListLayout {
   /** Text lines under the list (top y), null where not shown. */
   messageY: number | null;
   privacyY: number;
+  /** The statistics note under the list's privacy line. */
+  statsNoteY: number;
   /** Desktop key help. */
   keysY: number | null;
 }
@@ -83,10 +96,12 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
   const textScale = input.portrait ? 2 : 1;
   const rowH = input.portrait ? 18 : LINE;
   const close = closeButton(input.viewWidth, m);
-  const title = headlineRect('Bestenliste', input.viewWidth, close);
+  const stats = statsSwitch(m);
+  const title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, stats.x + stats.w + 2);
   let y = VIEW_H - 2;
   const line = () => (y -= LINE);
   const keysY = input.touch ? null : line();
+  const statsNoteY = line();
   const privacyY = line();
   const messageY = message ? line() : null;
   const top = Math.max(title.y + title.h + 4, close.y + close.h + 2);
@@ -96,6 +111,7 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
   const contentH = rows * rowH;
   return {
     close,
+    stats,
     title,
     list,
     rowH,
@@ -107,6 +123,7 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
     maxScroll: Math.max(0, contentH - list.h),
     messageY,
     privacyY,
+    statsNoteY,
     keysY,
   };
 }

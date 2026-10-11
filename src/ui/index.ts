@@ -17,7 +17,10 @@
  * all drawing in screens.ts. The online list ("Bestenliste", "Eintragen"
  * after game over) is highscore-flow.ts over src/net, laid out in
  * score-layout.ts and drawn in score-screens.ts; the native name input is
- * name-field.ts, drag and wheel scrolling list-scroll.ts.
+ * name-field.ts, drag and wheel scrolling list-scroll.ts. The anonymous
+ * statistics (src/net/telemetry.ts) get the session on the first title, each
+ * game over and the active play time; their switch ("Anonyme Statistik") is in
+ * the settings menu and on the "Bestenliste".
  */
 import { CHILL_DURATION } from '../core/chill';
 import { GROUND_Y, PLAYER_X } from '../core/config';
@@ -25,7 +28,8 @@ import { fullscreenSupported } from '../core/fullscreen';
 import type { InputHotspot } from '../core/game';
 import { store as defaultStore, type Store } from '../core/storage';
 import { testHookEnabled } from '../core/testhook';
-import { createBrowserScoreService } from '../net/browser';
+import { createBrowserScoreService, createBrowserTelemetry } from '../net/browser';
+import type { TelemetryLike } from '../net/telemetry';
 import type { GameContext, Rect, System } from '../types';
 import { AirTrickHint } from './air-trick-hint';
 import { UI } from './art';
@@ -68,6 +72,11 @@ export interface UiSystemOptions {
   scores?: ScoreServiceLike | null;
   /** The native name input (default: an HTML input in a browser, none elsewhere). */
   nameField?: NameField | null;
+  /**
+   * The anonymous statistics (default: the browser's, gated to the production host, in a browser;
+   * none elsewhere). null sends nothing; tests pass a fake.
+   */
+  telemetry?: TelemetryLike | null;
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list). */
@@ -99,6 +108,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const browser = typeof window !== 'undefined';
   const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
   const flow = scores ? new HighscoreFlow({ service: scores, store }) : null;
+  const telemetry = options.telemetry !== undefined ? options.telemetry : browser ? createBrowserTelemetry(store) : null;
+  /** The session event goes out once per page load, when the title first shows. */
+  let sessionReported = false;
   const nameField =
     options.nameField !== undefined
       ? options.nameField
@@ -240,7 +252,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });
     bus.on('gameOver', (e) => {
-      if (!runKidMode) flow?.runEnded({ score: e.score, distance: e.distance, seconds: runSeconds });
+      const run = { score: e.score, distance: e.distance, seconds: runSeconds };
+      if (!runKidMode) flow?.runEnded(run);
+      telemetry?.run(run, runKidMode);
       view.lastRun = recordRun(view.records, e, runKidMode);
       view.records = view.lastRun.records;
       saveRecords(store, view.records);
@@ -365,6 +379,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       },
       onKeyUp: () => void logoHold.end('key'),
     };
+    const onMenu = () => settings.screen === 'menu';
     // While open, the menu swallows every tap and key (except M = mute), so nothing starts a run behind it.
     // The kid notice closes with Enter, Space or Escape (its OK).
     const modal: InputHotspot = {
@@ -374,13 +389,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
         const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
         if (code === 'Escape' || (confirm && settings.screen === 'kidNotice')) settings.close();
         else if (confirm) settings.toggle(state);
+        else if (code === 'KeyA' && onMenu()) settings.toggleStats();
         return code !== 'KeyM';
       },
     };
-    const onMenu = () => settings.screen === 'menu';
     ctx.addHotspot(logo);
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (onMenu() ? menu().toggle : null), onPress: () => settings.toggle(state) });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().stats : null), onPress: () => settings.toggleStats() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
   }
@@ -416,6 +432,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       const step = listLayout(ctx).rowH;
       const down = code === 'ArrowDown' || code === 'KeyS';
       if (code === 'Escape' || code === 'KeyB') flow.close();
+      else if (code === 'KeyA') view.settings.toggleStats();
       else if (down || code === 'ArrowUp' || code === 'KeyW') {
         listScroll = down ? 1 : -1;
         flow.scrollBy(listScroll * step);
@@ -454,6 +471,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(trophy);
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (flow.open && !covered() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
+    ctx.addHotspot({ rect: () => (flow.screen === 'list' && !covered() ? listLayout(ctx).stats : null), onPress: () => view.settings.toggleStats() });
     ctx.addHotspot({ rect: entry((l) => l.submit), onPress: () => void flow.submit() });
     ctx.addHotspot({ rect: entry((l) => l.field), onPress: () => nameField?.focus() });
   }
@@ -484,6 +502,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     if (!button) return null;
     if (view.highFiveHint.visible) return highFiveHintPlate(display).rect;
     return view.itemHint.visible ? itemHintRect(display.viewWidth, display, popupScale(display, false)) : null;
+  }
+
+  /** The session event, once per page load, on the first tick the title shows. */
+  function reportSession(ctx: GameContext): void {
+    const { state, display } = ctx;
+    if (sessionReported || !telemetry || state.mode !== 'title') return;
+    sessionReported = true;
+    telemetry.session({ touch: display.touch, portrait: display.portrait, platform: state.install.platform, kid: state.kidMode });
   }
 
   /** What each riding hint wants this tick (reused). */
@@ -555,8 +581,10 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
       updateScores(ctx, dt);
+      reportSession(ctx);
       if (state.mode !== 'playing') return;
       runSeconds += dt;
+      telemetry?.played(dt);
       const { player } = state;
       view.popups.update(dt);
       view.banner.update(dt);

@@ -13,6 +13,9 @@ import { gameOverLayout, type MenuInput, pauseLayout, titleLayout, whatsNewLayou
 import { KICKER_HINT_LAUNCHES, KickerHint } from './kicker-hint';
 import { kidNoticeLayout } from './kid-notice';
 import { loadKidMode, saveKidMode } from './settings';
+import type { TelemetryLike } from '../net/telemetry';
+import { loadStatsOptOut } from '../net/telemetry';
+import { TICK_DT } from '../core/config';
 
 function memoryStore(): Store & { raw: Map<string, string> } {
   const raw = new Map<string, string>();
@@ -810,5 +813,106 @@ describe('update, what is new, install hint and pause navigation', () => {
     t.press(menu.back);
     expect(starts()).toBe(3);
     expect(t.game.state.mode).toBe('playing');
+  });
+});
+
+describe('anonymous statistics', () => {
+  function withTelemetry(options: { kidMode?: boolean; touch?: boolean; portrait?: boolean } = {}) {
+    const calls: { kind: string; args: unknown[] }[] = [];
+    let played = 0;
+    const telemetry: TelemetryLike = {
+      session: (...args) => void calls.push({ kind: 'session', args }),
+      run: (...args) => void calls.push({ kind: 'run', args }),
+      played: (s) => void (played += s),
+      end: () => void calls.push({ kind: 'end', args: [] }),
+    };
+    const store = memoryStore();
+    if (options.kidMode !== undefined) saveKidMode(store, options.kidMode);
+    const ui = createUiSystem({ store, fullscreenAvailable: () => true, telemetry });
+    const game = new Game({ systems: [ui] });
+    game.display.touch = options.touch ?? false;
+    game.display.portrait = options.portrait ?? false;
+    const ticks = (n: number) => {
+      for (let i = 0; i < n; i++) game.tick();
+    };
+    return { game, store, calls, ticks, played: () => played };
+  }
+
+  it('sends the session once per page load when the title first shows', () => {
+    const t = withTelemetry({ kidMode: true, touch: true, portrait: true });
+    t.game.state.install.platform = 'ios';
+    t.ticks(3);
+    expect(t.calls).toEqual([{ kind: 'session', args: [{ touch: true, portrait: true, platform: 'ios', kid: true }] }]);
+    t.game.commands.startRun();
+    t.ticks(2);
+    t.game.commands.toTitle();
+    t.ticks(2);
+    expect(t.calls.filter((c) => c.kind === 'session')).toHaveLength(1);
+  });
+
+  it('sends one run per game over with its playing seconds and the mode it was played in', () => {
+    const t = withTelemetry();
+    t.ticks(1);
+    t.game.commands.startRun();
+    t.ticks(120);
+    t.game.commands.pause();
+    t.ticks(60); // paused time does not count
+    t.game.commands.resume();
+    t.ticks(60);
+    t.game.state.score = 900;
+    t.game.state.distance = 4321;
+    t.game.commands.gameOver();
+    t.ticks(5);
+    const runs = t.calls.filter((c) => c.kind === 'run');
+    expect(runs).toHaveLength(1);
+    const [stats, kid] = runs[0]!.args as [{ score: number; distance: number; seconds: number }, boolean];
+    expect(stats.score).toBe(900);
+    expect(stats.distance).toBe(4321);
+    expect(stats.seconds).toBeCloseTo(180 * TICK_DT, 5);
+    expect(kid).toBe(false);
+  });
+
+  it('counts active play seconds only while a run is playing', () => {
+    const t = withTelemetry();
+    t.ticks(30); // title
+    t.game.commands.startRun();
+    t.ticks(60);
+    t.game.commands.pause();
+    t.ticks(60);
+    expect(t.played()).toBeCloseTo(60 * TICK_DT, 5);
+  });
+});
+
+describe('statistics switch in the hidden settings menu', () => {
+  function menuOpen(kidMode: boolean) {
+    const store = memoryStore();
+    saveKidMode(store, kidMode);
+    const t = setup(true, store);
+    keyDown(t.game, 'KeyK');
+    for (let i = 0; i < 180; i++) t.game.tick();
+    keyUp(t.game, 'KeyK');
+    t.game.tick();
+    const menu = settingsLayout(t.game.display.viewWidth, uiMetrics(t.game.display));
+    return { ...t, menu };
+  }
+
+  it('the switch is there in adult and kid mode; a tap stores the opt-out at once, a second tap undoes it', () => {
+    for (const kidMode of [false, true]) {
+      const t = menuOpen(kidMode);
+      expect(t.game.hitHotspot(...centre(t.menu.stats))).toBe(true);
+      expect(loadStatsOptOut(t.store)).toBe(true);
+      expect(t.game.state.kidMode).toBe(kidMode);
+      t.game.hitHotspot(...centre(t.menu.stats));
+      expect(loadStatsOptOut(t.store)).toBe(false);
+    }
+  });
+
+  it('A toggles it from the keyboard', () => {
+    const t = menuOpen(false);
+    keyDown(t.game, 'KeyA');
+    keyUp(t.game, 'KeyA');
+    t.game.tick();
+    expect(loadStatsOptOut(t.store)).toBe(true);
+    expect(t.game.state.mode).toBe('title');
   });
 });

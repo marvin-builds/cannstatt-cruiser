@@ -4,11 +4,16 @@
  *
  * - install: caches the app shell, i.e. the page plus every same-origin
  *   script / style / icon it references (Vite's hashed assets included).
- * - fetch: the page is served from the cache at once and refreshed in the
- *   background. A changed page (a new deploy) replaces the cached one only
+ * - fetch: a navigation to the game page (the scope root or index.html) is
+ *   served from the cache at once and refreshed in the background. Other
+ *   navigations (e.g. insights.html) go to the network untouched, so they
+ *   never get the game page instead. A changed page (a new deploy) replaces the cached one only
  *   after all of its assets are cached, so an offline start always finds a
  *   complete build; assets only the old page referenced are then dropped.
- *   All other same-origin GETs are cache-first and cached on first use.
+ *   Same-origin GETs of the game page are cache-first and cached on first
+ *   use; those of other pages (insights.html) go to the network uncached, so
+ *   their assets never pile up in the cache. Cross-origin requests (the highscore and statistics worker) are never
+ *   touched or cached.
  * - activate: deletes caches of older versions.
  * - message {type: 'checkForUpdate'} (src/core/update.ts, posted on resume and
  *   every few minutes while the app stays open): re-fetches the page and stores
@@ -22,10 +27,11 @@
  * Bump VERSION only when this file's caching logic changes; new game builds
  * are picked up by the background page refresh.
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const PREFIX = 'cannstatt-cruiser-';
 const CACHE = PREFIX + VERSION;
 const SHELL_URL = new URL('./', self.registration.scope).href;
+const SHELL_PATHS = [new URL(SHELL_URL).pathname, new URL('index.html', SHELL_URL).pathname];
 const STATIC_FILES = ['./manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'].map(
   (f) => new URL(f, SHELL_URL).href,
 );
@@ -141,9 +147,19 @@ async function cacheFirst(request) {
   return response;
 }
 
+/** True when the request comes from a window that is not the game page. */
+async function fromOtherPage(clientId) {
+  const client = clientId ? await self.clients.get(clientId) : null;
+  return Boolean(client) && !SHELL_PATHS.includes(new URL(client.url).pathname);
+}
+
+async function subresource(event) {
+  return (await fromOtherPage(event.clientId)) ? fetch(event.request) : cacheFirst(event.request);
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
-  if (request.mode === 'navigate') event.respondWith(fromCacheThenRefreshPage(event));
-  else event.respondWith(cacheFirst(request));
+  if (request.mode !== 'navigate') event.respondWith(subresource(event));
+  else if (SHELL_PATHS.includes(new URL(request.url).pathname)) event.respondWith(fromCacheThenRefreshPage(event));
 });
