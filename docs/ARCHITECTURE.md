@@ -214,9 +214,25 @@ kept across runs:
   hotspot's `onPress`, it needs the user gesture) and clears `canPrompt`; a
   prompt can be shown only once, a refused one is swallowed.
   `ctx.commands.dismissInstallHint()` sets and persists `dismissed`.
-- The ui decides when to show the hint: touch device, not `standalone`, not
-  `installed`, not `dismissed`, `visits >= 2`, on title or game over only; a
-  button when `canPrompt`, otherwise "Teilen -> Zum Home-Bildschirm" on `ios`.
+- The ui decides when to offer it (ROADMAP 68, `ui/install-offer.ts`): touch
+  devices only (Android and iOS always, other platforms only with a kept
+  prompt), not `standalone` / `installed`, and only on game over after a run
+  of at least 30 s or after beating an earlier record above 0; never on the
+  title. "×" snoozes the card (store key `installSnooze`): back after 7 days
+  or 5 visits, at most 3 returns, the 4th "×" hides it for good; the old
+  `installHintDismissed` counts as one snooze used.
+- "App installieren" (the card and a permanent entry in the settings, both
+  modes, `settingsLayout(..., installable)`) acts on **release**
+  (`onRelease`): a touch grants the user gesture only on pointerup /
+  touchend, and a `prompt()` from pointerdown was refused, which used up the
+  kept prompt. Without a kept prompt it opens the manual steps modal
+  (`ui/install-guide.ts`: Android ⋮ -> "App installieren" / "Zum
+  Startbildschirm", iOS "Teilen" -> "Zum Home-Bildschirm", desktop the
+  address bar icon). `window.__ui.install()` reports the offer.
+- Open core follow-up: `InstallController.promptInstall` should keep the
+  event when `prompt()` rejects with NotAllowedError and expose `userChoice`,
+  so a refused dialog can lead straight to the manual steps; `dismissed`,
+  `INSTALL_HINT_DISMISSED_KEY` and `dismissInstallHint` can then retire.
 - Tests: `src/core/install.test.ts`; `window.__game.simulateInstall({...})`
   and `promptsShown()` for playtests; `scripts/scenarios/version-install.ts`
   checks both contracts end to end (docs/TESTING.md).
@@ -1493,6 +1509,21 @@ milliseconds, so the live game never plans a whole pattern in one tick:
   checked for includes that delay.
 - Units are deterministic, so runs replay exactly. Without `workPerTick`
   (unit tests, `new Spawner(zoneAt)`) every pattern is planned when due.
+
+### Touch duck limit (ROADMAP 66)
+
+A swipe ducks for `SWIPE_DUCK_TICKS` (1.2 s) and a tap ends it, so the street
+never asks for a longer duck (`gameplay/duck-span.ts`): signs ducked in one go
+(a duck group: the next sign's duck zone starts within `DUCK_REPEAT_SECONDS`
+1.5 s of the group's first, with no ground obstacle or person between) span at
+most `ONE_GO_DUCK_SECONDS` 1.0 s incl. `DUCK_TRANSITION` and hold at most
+`MAX_ONE_GO_SIGNS` 2 signs; after the longest group there are at least
+`MIN_STAND_UP_SECONDS` 0.5 s of street. The planner checks each pattern with
+`touchDuckable` together with the previous pattern's pieces at every speed
+(also the chill speeds), so chance meetings across patterns are rerolled;
+mixes.ts chains never lay more than 2 signs in a row. `HUMAN_TOUCH_STYLE`
+(testing.ts) rides with swipe ducks. A second swipe while ducked restarts the
+timer in core, but the model never relies on it.
 
 ### Fair people
 
