@@ -34,8 +34,8 @@ and on desktop (keyboard and mouse). The UI language is German.
   button that shows only while the skater carries an item (see Using items):
   top right under the HUD buttons in landscape, under the stats plate on the
   left (behind the skater, so it never hides what comes) in portrait.
-- Grind trick: down (↓ / S, swipe down) while grinding (see Obstacles and
-  scoring).
+- Boardslide (the grind trick): down (↓ / S, swipe down) while grinding (see
+  Obstacles and scoring).
 - Coyote time (~80 ms) and jump buffering (~120 ms).
 - P / Escape = pause; P / Escape, Space (the jump key) or a tap resumes.
 - On the menu screens: T = "Zum Startbildschirm" (pause, game over), U =
@@ -77,11 +77,15 @@ and on desktop (keyboard and mouse). The UI language is German.
   on the ground does not extend a combo). Landing on a rail starts a
   grind, which scores points per tick. A combo multiplier grows for chains that
   don't touch the ground or crash.
-- Grind trick: holding down while grinding turns the skater to face the player
-  (front view, the only view that shows his moustache) for as long as down is
-  held. It ends when down is released or the grind ends and scores 3 trick
-  points per tick (times the multiplier) on top of the grind, with the popup
-  "Grind-Trick! +…".
+- Boardslide (the grind trick): holding down while grinding turns the board
+  across the rail together with the skater, who faces the player (front view,
+  the only view that shows his moustache), for as long as down is held. It ends
+  when down is released or the grind ends and scores 3 trick points per tick
+  (times the multiplier) on top of the grind, with the popup "Boardslide! +…".
+  The grind itself, its hitbox and timing do not change. The title help says
+  "Auf dem Geländer runterwischen = Boardslide" (touch) / "Auf dem Geländer
+  Pfeil runter = Boardslide" (keyboard); the pause screen's big portrait font
+  uses the short "Geländer: runterwischen = Boardslide".
 - Kickflip (down in the air, see Stunt lines) pays for a reason, not for spam:
   - Over something: a street kickflip pays its full 100 only when that jump
     cleared an obstacle or stomped someone; a flip into empty air pays 20. A
@@ -110,10 +114,11 @@ and on desktop (keyboard and mouse). The UI language is German.
   - A full kickflip gets the big "Kickflip! +…" callout and its sting; a cut
     one only a plain "Kickflip +…" popup and the plain trick sound. Kid mode
     follows the same rules.
-- Grind trick hint: until the player has done a grind trick once (stored on
+- Boardslide hint: until the player has done a boardslide once (stored on
   the device), the first 3 grinds of a run show a small plate under the
-  skater: "↓ = Trick!" with a key cap on desktop, "Wisch runter = Trick!" on
-  touch. It hides while the trick is held and when the grind ends.
+  skater: "↓ = Boardslide!" with a key cap on desktop, "Runterwischen =
+  Boardslide!" on touch in landscape and the compact "↓ wischen = Boardslide!"
+  (yellow arrow) in the big portrait font. It hides while the trick is held and when the grind ends.
 
 ## Stomp and carried items
 
@@ -313,7 +318,7 @@ self-built but well built DIY skatepark about one screen wide.
 - A guaranteed, optional stunt line: banks as kickers (jump on them like on
   every ramp), container roofs as
   ledges, the crane boom as the highest ledge with a bonus star.
-- The crowd cheers for grind tricks, air tricks and combo steps; leaving the
+- The crowd cheers for boardslides, kickflips and combo steps; leaving the
   park gives a "Session! +…" bonus scaled by the cheering.
 - High five: a skater at the edge raises a hand; pressing use (E / the item
   button) at the right moment gives a small bonus and a popup, and does not

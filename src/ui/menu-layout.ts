@@ -109,8 +109,9 @@ export const startPrompt = (touch: boolean) => (touch ? 'Tippen zum Starten' : '
 /** The title's controls in one line, when notices leave no room for the full help. */
 export const controlsLine = (touch: boolean) =>
   touch ? 'Tippen = springen, runterwischen = ducken' : 'Leertaste = springen, S = ducken';
-export const trickKeysHint = (touch: boolean) =>
-  touch ? 'Beim Grinden runterwischen = Trick' : 'Beim Grinden: Pfeil runter / S = Trick';
+/** The boardslide line; `short` fits the pause screen's big portrait font into 320 px. */
+export const trickKeysHint = (touch: boolean, short = false) =>
+  `${short ? 'Geländer:' : 'Auf dem Geländer'} ${touch ? 'runterwischen' : 'Pfeil runter'} = Boardslide`;
 /** The pause screen's "Feedback" (F on desktop, also on the title). */
 export const feedbackLabel = (touch: boolean) => (touch ? 'Feedback' : 'Feedback (F)');
 /** Game over's "Eintragen" (E or Enter on desktop). */
@@ -444,7 +445,7 @@ export function pauseLayout(input: MenuInput): MenuLayout {
     { id: 'pause', w: measureText(MENU_TEXT.pause, 2), h: 14, gap: 2, drop: 1 },
     { id: 'prompt', w: measureText(pausePrompt(input.touch), scale) + 16, h: promptRibbonH(scale), gap: 4 },
     ...(input.touch ? [] : [text('keys', PAUSE_KEYS, 3, scale, 2)]),
-    text('trick', trickKeysHint(input.touch), input.touch ? 3 : 0, scale, 2),
+    text('trick', trickKeysHint(input.touch, scale === 2), input.touch ? 3 : 0, scale, 2),
     ...(input.feedback ? [{ id: 'feedback', w: buttonWidth(feedbackLabel(input.touch), m), h: m.menuButtonH, gap: 4, drop: FEEDBACK_DROP }] : []),
     ...reloadBlock(input, m),
   ];

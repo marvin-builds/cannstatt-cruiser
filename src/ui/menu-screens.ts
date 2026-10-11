@@ -229,7 +229,7 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
   const keys = l.blocks.get('keys');
   if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted, scale });
   const trick = l.blocks.get('trick');
-  if (trick) centredIn(r, trickKeysHint(r.display.touch), trick, { color: UI.muted, scale });
+  if (trick) centredIn(r, trickKeysHint(r.display.touch, scale === 2), trick, { color: UI.muted, scale });
   drawNotices(r, l);
 }
 

@@ -101,11 +101,11 @@ export interface UiView {
   hud: HudModel;
   /** First-time touch hint "Tippe auf den Gegenstand". */
   itemHint: ItemHint;
-  /** "↓ = Trick!" under the skater on the first grinds, until a grind trick was done once. */
+  /** "↓ = Boardslide!" under the skater on the first grinds, until a grind trick was done once. */
   trickHint: TrickHint;
   /** "Auf der Rampe springen!" / "tippen!" around each kicker, until a few ramp launches were done. */
   kickerHint: KickerHint;
-  /** "In der Luft ↓ = Trick!" in the air after a launch, until an air trick was done once. */
+  /** "In der Luft ↓ = Kickflip!" in the air after a launch, until an air trick was done once. */
   airHint: AirTrickHint;
   /** "[E] = High Five!" / "Knopf: High Five!" while a NorDIY high-fiver approaches, until the first high five. */
   highFiveHint: HighFiveHint;

@@ -135,7 +135,7 @@ export class PopupFeed {
           add(e.bail ? BAIL_TEXT[e.bail] : 'Autsch!', UI.red);
           break;
         case 'grindTrick':
-          add(`Grind-Trick! ${plusPoints(e.points)}`, UI.teal);
+          add(`Boardslide! ${plusPoints(e.points)}`, UI.teal);
           break;
         case 'highFive':
           add(`High Five! ${plusPoints(e.points)}`, UI.yellow);
