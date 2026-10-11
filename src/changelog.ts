@@ -20,6 +20,11 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.8',
+    date: '2026-10-11',
+    items: ['Datenschutz-Seite ergänzt'],
+  },
+  {
     version: '2026-10-11.7',
     date: '2026-10-11',
     items: [
