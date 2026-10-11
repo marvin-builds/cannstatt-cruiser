@@ -1240,6 +1240,16 @@ and locks to landscape again on OK; in landscape it locks right after sending.
   per card "Todo" (an editor; the log only when ticked), "Löschen" with a
   confirm, a status choice with an optional reply, and a status filter;
   board-side types in `src/insights/triage-types.ts`.
+- **Status for players (ROADMAP 57):** `POST /feedback` answers `{ok, id}`;
+  the game keeps the ids of its own sent feedback (store key `feedbackIds`,
+  at most 10). `GET /feedback/status?ids=` (no token, game Origin only, 1-10
+  digit ids, no writes, `private, max-age=300`) returns only id, status and
+  reply. The title asks at most once per UTC day, online, adult mode, through
+  the sender's gate (`src/net/feedback-status.ts`); notes already shown are
+  kept under `feedbackNotes`. A note ("Dein Feedback: geplant! / umgesetzt! /
+  nicht geplant" plus the reply) is a modal menu screen `feedbackNote` after
+  "Neu in dieser Version" (`src/ui/feedback-note.ts`), once per report and
+  status, never in kid mode.
 - `datenschutz.html` describes feedback; keep it true when this changes.
 
 ## Stomp and carried items
@@ -1536,6 +1546,36 @@ the street path only jumps the ground obstacles.
   template (e.g. a combo) with its origin at screen x, see
   [docs/TESTING.md](TESTING.md). Tests: `gameplay/combos.test.ts`; playtest
   `scripts/scenarios/combos.ts`.
+
+## Waves and moving hazards (ROADMAP 52 Phase 2)
+
+- **Waves** (`gameplay/waves.ts`, template `wave`, tier 2 on, every zone):
+  3-4 easy single ground obstacles at an even beat (0.78-0.95 s apart, kid
+  mode always 3), then a `BREATHER_SECONDS` 2 s breather with only an optional
+  star arc. Planned and checked like any template (real arcs, 14/12-tick
+  window); never while drunk or chilled.
+- **E-scooter rider** (`gameplay/hazards.ts`, tier 2 on): a person-like mover
+  coming towards the skater at 1.36-1.5x the street speed (kid mode
+  1.2-1.3x), with the person rules: jump him or stomp him (130 points, he
+  tosses a football), alone with a person's free street around him. The
+  solver uses his real motion.
+- **Pigeons** (`gameplay/pigeons.ts`): harmless; they take off 0.35 s before
+  the skater reaches them. Passing them in the air pays 60 x multiplier as a
+  trick, ducked as plain points; riding through upright just scares them.
+  Planned as a low obstacle (`solverStandIn`), so what follows keeps the full
+  window.
+- **Stand-ins until a contract change:** a scooter is a `vfbFan` entity and a
+  flock a `star` entity, tagged `data.hazard` (`isScooter` / `isPigeons`;
+  every place that handles those kinds checks them first). Proposed: an
+  ObstacleKind `scooter` and an EntityKind `pigeons`.
+- Art in `gameplay/hazard-art.ts`; sounds in `audio/hazards.ts` (a bell and
+  whine just before the scooter comes on screen, a wing flurry and "gurr" on
+  take-off), read from the street, no new event.
+- The crossing Stadtbahn was left out: a tram blocks the whole street and
+  would need a timed gap, which breaks the "no tighter windows" rule.
+- Knobs: template weights in `patterns.ts` (wave 2.4, scooter 1.5, pigeons
+  1.5, single 1.5 from tier 2), `SCOOTER.walk` / `kidWalk`,
+  `PIGEONS.flushSeconds`, `BREATHER_SECONDS`.
 
 ## Bench (ledge contract)
 

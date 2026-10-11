@@ -379,3 +379,9 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
     ....w....
     ```
     If `PixelIcon` or the button layout needs 8x8 (or even sizes) for crisp centring, adapt the icon box rather than the shape, and check it at 1x and 2x on desktop, phone landscape and portrait next to the trophy, fullscreen and speaker icons. Owner: `src/ui`; queued for the next ui slice (the running feedback-status slice owns src/ui).
+
+## Status checkpoint 2026-10-11 (night)
+
+- Live: v2026-10-11.9 (combos, head jump, ramp-only ledges, shorter crane, gear, portrait sheets, scrollable changelog, sound fix; worker with feedback triage and migration 0007). The USER still has to try the board's "Todo" button once (needs the board token).
+- On main, not released: 65 star points (d63d013), 52 Phase 2 waves + e-scooter + pigeons (Stadtbahn left out), 57 feedback status for players (worker change: needs `npx wrangler deploy` before the game release; no migration). The USER plays it first.
+- Next, in this order: 66 duck chains that fit one swipe (gameplay) together with 67 the new gear icon (ui) as one wave; then contract follow-ups by the orchestrator: EntityKinds `scooter` / `pigeons` instead of the `data.hazard` stand-ins, a `starArc` event, popup texts "Tauben!" / "Roller!" (ui). Then 52 point 8 (scarcer healing late) and Phase 3.
