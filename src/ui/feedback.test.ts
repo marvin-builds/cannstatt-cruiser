@@ -17,6 +17,7 @@ import { createUiSystem } from './index';
 import { listRowRect, pageLayout } from './feedback-page-layout';
 import { uiMetrics } from './layout';
 import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
+import { fakeRotateSheet } from './rotate-sheet.fake';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -149,7 +150,8 @@ function app(options: AppOptions = {}) {
   const locks: string[] = [];
   const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
   const feedbackSheet = (handlers: FeedbackSheetHandlers) => ((sheet.actions = handlers), sheet);
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackInbox: inbox, feedbackField: field, feedbackSheet, orientation });
+  const rotate = fakeRotateSheet();
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackInbox: inbox, feedbackField: field, feedbackSheet, rotateSheet: rotate.factory, orientation });
   const game = new Game({ systems: [ui] });
   game.display.touch = options.touch ?? false;
   game.display.portrait = options.portrait ?? false;
@@ -179,7 +181,7 @@ function app(options: AppOptions = {}) {
     for (let i = 0; i < 8; i++) game.tick();
   };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, sheet, locks, input, press, key, form, icon, tap, inbox, answer: (r: FeedbackResult) => answer(r) };
+  return { game, ui, flow: ui.feedback!, sent, field, sheet, rotate, locks, input, press, key, form, icon, tap, inbox, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -281,7 +283,7 @@ describe('feedback in the game', () => {
     expect(t.field.rect).toBeNull();
   });
 
-  it('touch: no automatic focus (the keyboard opens on a tap into the field); hidden under the portrait rotate hint', () => {
+  it('touch: no automatic focus (the keyboard opens on a tap into the field); the portrait sheet without the rotate screen', () => {
     const t = app({ touch: true, portrait: true });
     // The rotate hint covers the title: no icon until it is dismissed.
     expect(t.press(t.icon())).toBe(true);
@@ -296,10 +298,12 @@ describe('feedback in the game', () => {
     t.game.tick();
     expect(t.sheet.model).toBeNull();
     expect(t.field.rect).toEqual(t.form().field);
+    // Turned back to portrait: the sheet again, no rotate screen over it (ROADMAP 73).
     t.game.display.portrait = true;
     t.game.tick();
     expect(t.field.rect).toBeNull();
-    expect(t.sheet.model).toBeNull();
+    expect(t.sheet.model).not.toBeNull();
+    expect(t.rotate.shown).toBe(false);
   });
 
   it('portrait shows the full-screen sheet instead of the canvas form; its actions work like the form (ROADMAP 58)', async () => {
@@ -762,3 +766,61 @@ describe('"Mein Feedback" and "Ansehen" in the game (ROADMAP 70)', () => {
   });
 });
 
+
+describe('the rotate screen around the feedback dialog (ROADMAP 73)', () => {
+  it('a plain tab: turned to portrait while typing, the sheet shows at once, without the rotate screen or a tap', () => {
+    const t = app({ touch: true });
+    t.press(t.icon());
+    t.game.tick();
+    t.ui.feedback!.setText('Halb getippt');
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.rotate.shown).toBe(false);
+    expect(t.sheet.model).toMatchObject({ text: 'Halb getippt' });
+  });
+
+  it('the tabs and pages ("Mein Feedback", "Ansehen") keep the sheet too', () => {
+    const t = app({ touch: true, inbox: fakeInbox([keptReport(5)]) });
+    t.press(t.icon());
+    t.game.tick();
+    t.game.display.portrait = true;
+    t.game.tick();
+    t.sheet.actions!.onTab('mine');
+    t.game.tick();
+    t.sheet.actions!.onOpenReport(5);
+    t.game.tick();
+    expect(t.rotate.shown).toBe(false);
+    expect(t.sheet.model?.page).toBe('detail');
+  });
+
+  it('closing the sheet in portrait brings the rotate screen back over the title; "Trotzdem weiter" dismisses it', () => {
+    const t = app({ touch: true });
+    t.press(t.icon());
+    t.game.tick();
+    t.game.display.portrait = true;
+    t.game.tick();
+    t.sheet.actions!.onClose();
+    t.game.tick();
+    expect(t.flow.open).toBe(false);
+    expect(t.sheet.model).toBeNull();
+    expect(t.rotate.shown).toBe(true);
+    t.rotate.actions!.onDismiss();
+    t.game.tick();
+    expect(t.rotate.shown).toBe(false);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('opened from the pause menu: the turn shows the sheet, the run stays paused', () => {
+    const t = app({ touch: true });
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    t.press(pauseLayout(t.input()).buttons.feedback);
+    t.game.tick();
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.rotate.shown).toBe(false);
+    expect(t.sheet.model).not.toBeNull();
+    expect(t.game.state.mode).toBe('paused');
+  });
+});

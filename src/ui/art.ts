@@ -247,31 +247,44 @@ export const ICON_FULLSCREEN = new PixelIcon(ICON, [
 `,
 ]);
 
-const ROTATE_ART = [
-  '.wwwwwwww...........',
-  '.wssssssw...........',
-  '.wssssssw...........',
-  '.wssssssw....yy.....',
-  '.wssssssw......y....',
-  '.wssssssw.......y...',
-  '.wssssssw.......y...',
-  '.wssssssw.....y.y.y.',
-  '.wssssssw......yyy..',
-  '.wssssssw.......y...',
-  '.wssssssw...........',
-  '.wssssssw...........',
-  '.wwwwwwww...........',
-  '.www..www...........',
-  '.wwwwwwww...........',
-];
+/** The phone of the rotate screen (ROADMAP 73), upright: a light frame with a speaker and a home button, a skateboard on its teal screen. */
+export const ROTATE_PHONE = sprite({ w: UI.white, m: UI.muted, k: UI.ink, s: UI.teal, y: UI.yellow, r: UI.red, o: UI.orange }, [`
+  .mmmmmmmmmmmm.
+  mwwwwwwwwwwwwm
+  mwwwwkkkkwwwwm
+  mwwwwwwwwwwwwm
+  mwsssssssssswm
+  mwssssssssyywm
+  mwssssssssyywm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsssssssssswm
+  mwsrrrrrrrrswm
+  mwsksssssskswm
+  mwoooooooooowm
+  mwoooooooooowm
+  mwwwwwwwwwwwwm
+  mwwwwwkkwwwwwm
+  mwwwwwkkwwwwwm
+  mwwwwwwwwwwwwm
+  .mmmmmmmmmmmm.
+`]);
 
-/** Phone turning to landscape, for the portrait hint (drawn at twice the pixel size so it reads on a phone). */
-export const ROTATE = sprite({ w: UI.white, s: UI.teal, y: UI.yellow }, [
-  ROTATE_ART.flatMap((row) => {
-    const wide = row.replace(/./g, '$&$&');
-    return [wide, wide];
-  }),
-]);
+/** The yellow arrow beside it: turn the phone clockwise. */
+export const ROTATE_ARROW = sprite({ y: UI.yellow }, [`
+  ..yyyyy....
+  .yy...yy...
+  yy.....yy..
+  y.......y..
+  y.......y..
+  y.....yyyyy
+  y......yyy.
+  ........y..
+`]);
 
 /** Down arrow on the desktop key cap of the grind trick hint (ink on the light cap face). */
 export const ARROW_DOWN = sprite({ k: UI.ink }, [`

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../core/game';
 import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
+import { fakeRotateSheet } from './rotate-sheet.fake';
 import { createUiSystem } from './index';
 import type { Rect, System } from '../types';
 import { HudModel } from './hud-model';
@@ -197,6 +198,21 @@ describe('ui system', () => {
     expect(game.hitHotspot(160, 90)).toBe(true);
     expect(game.state.mode).toBe('paused');
     game.tick();
+    expect(game.state.mode).toBe('paused');
+  });
+
+  it('the full-screen rotate screen (ROADMAP 73) shows over the paused run and goes as soon as the phone is in landscape', () => {
+    const rotate = fakeRotateSheet();
+    const game = new Game({ systems: [createUiSystem({ store: memoryStore(), rotateSheet: rotate.factory })] });
+    game.display.touch = true;
+    game.commands.startRun();
+    game.display.portrait = true;
+    game.tick();
+    expect(rotate.shown).toBe(true);
+    expect(game.state.mode).toBe('paused');
+    game.display.portrait = false;
+    game.tick();
+    expect(rotate.shown).toBe(false);
     expect(game.state.mode).toBe('paused');
   });
 });

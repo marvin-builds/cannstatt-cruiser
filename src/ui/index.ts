@@ -1,5 +1,5 @@
 /**
- * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
+ * UI slice: title, HUD, pause, game over, the rotate screen (rotate-screen.ts, rotate-sheet.ts), the pointer buttons
  * (pause, mute, fullscreen, the item button), the settings menu (kid mode,
  * opened by the title's gear in adult mode or by a 3 s long press on the title
  * or pause logo or holding K), the kid notice after turning kid mode on there
@@ -73,7 +73,7 @@ import { EVERYWHERE, hudButtons, popupScale, riding, settingsLayout, uiMetrics }
 import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
-import { currentMenu, gameOverReady, menuScreen, portraitHintShown, trophyShown } from './menu-state';
+import { currentMenu, gameOverReady, menuScreen, trophyShown } from './menu-state';
 import { bailCause, PopupFeed, type PopupSpec } from './popup-feed';
 import { popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
@@ -90,6 +90,8 @@ import { browserOpenPage, type OpenPage, PrivacyLink } from './privacy-link';
 import { browserOrientationEnv, type OrientationEnv } from '../core/orientation';
 import { TypingOrientation } from './typing-orientation';
 import { ListScroll, pageScroll, scrollDirection } from './whats-new';
+import { RotateHint, uiScreen } from './rotate-screen';
+import { createDomRotateSheet, type RotateSheet, type RotateSheetHandlers } from './rotate-sheet';
 import { createDomWhatsNewSheet, type WhatsNewSheet, type WhatsNewSheetHandlers } from './whats-new-sheet';
 
 export interface UiSystemOptions {
@@ -130,6 +132,8 @@ export interface UiSystemOptions {
   entrySheet?: SheetFactory<EntrySheetHandlers, EntrySheet> | null;
   /** The "Neu in dieser Version" portrait sheet (default: a DOM sheet in a browser, none elsewhere); tests pass a fake. */
   whatsNewSheet?: SheetFactory<WhatsNewSheetHandlers, WhatsNewSheet> | null;
+  /** The full-screen rotate screen (ROADMAP 73; default: a DOM overlay in a browser, none elsewhere); tests pass a fake. */
+  rotateSheet?: SheetFactory<RotateSheetHandlers, RotateSheet> | null;
   /**
    * The screen orientation lock, freed to portrait while the player types (default: the browser's
    * in a browser, none elsewhere); tests pass a fake.
@@ -190,7 +194,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
           options.feedbackField !== undefined ? options.feedbackField : browser ? createDomFeedbackField(handlers, () => document.getElementById('game')) : null,
         sheet: feedbackSheetFactory,
         bindScroll: browser,
-        covered: () => !!uiCtx && portraitHintShown(uiCtx, view),
+        covered: () => !!uiCtx && rotateShown(uiCtx),
       })
     : null;
   const feedback = dialog?.flow ?? null;
@@ -214,6 +218,23 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const entrySurface = new FormSurface({ field: nameField, sheet: entrySheet });
   const whatsNewSheetFactory = options.whatsNewSheet !== undefined ? options.whatsNewSheet : browser ? createDomWhatsNewSheet : null;
   const whatsNewSheet = whatsNewSheetFactory?.({ onDone: () => uiCtx?.commands.markVersionSeen() }) ?? null;
+  /** The rotate screen (ROADMAP 73): where it shows (rotate-screen.ts) and its full-screen overlay. */
+  const rotate = new RotateHint();
+  const rotateSheetFactory = options.rotateSheet !== undefined ? options.rotateSheet : browser ? createDomRotateSheet : null;
+  const rotateSheet = rotateSheetFactory?.({ onDismiss: () => rotate.dismiss() }) ?? null;
+  /** The rotate screen covers the game now: on a phone in portrait, on a screen that needs landscape, not dismissed. */
+  function rotateShown(ctx: GameContext): boolean {
+    const { state } = ctx;
+    const screen = uiScreen({
+      mode: state.mode,
+      whatsNew: state.whatsNew.length > 0,
+      installGuide: view.install.guideOpen,
+      settings: view.settings.open,
+      feedback: !!feedback?.open,
+      scores: flow?.open ? (flow.screen === 'entry' ? 'entry' : 'list') : null,
+    });
+    return rotate.shown(ctx.display, screen);
+  }
   const typingOrientation = new TypingOrientation(
     options.orientation !== undefined ? options.orientation : browser ? browserOrientationEnv() : null,
   );
@@ -236,8 +257,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     popups: Object.assign(new PopupPool(MAX_POPUPS), { floor: POPUP_FLOOR }),
     banner: new Banner(),
     fullscreenAvailable: false,
-    portraitDismissed: false,
-    portraitFree: false,
     chillDuration: CHILL_DURATION,
     drunkDuration: DEFAULT_DRUNK_DURATION,
     hud: new HudModel(),
@@ -372,7 +391,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const { state, display, commands } = ctx;
     const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode));
     const whenButtons = (pick: () => Rect | null) => () =>
-      portraitHintShown(ctx, view) || view.settings.open || view.install.guideOpen ? null : pick();
+      rotateShown(ctx) || view.settings.open || view.install.guideOpen ? null : pick();
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? EVERYWHERE : null), onPress: () => commands.resume() });
     addWhatsNewHotspot(ctx);
@@ -408,13 +427,13 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     dialog?.init(ctx);
     addInstallGuideHotspots(ctx);
     ctx.addHotspot({
-      rect: () => (portraitHintShown(ctx, view) ? EVERYWHERE : null),
-      onPress: () => (view.portraitDismissed = true),
+      rect: () => (rotateShown(ctx) ? EVERYWHERE : null),
+      onPress: () => rotate.dismiss(),
     });
   }
 
-  /** "Neu in dieser Version" shows (not under the rotate hint). */
-  const whatsNewShown = (ctx: GameContext) => menuScreen(ctx.state, view) === 'whatsNew' && !portraitHintShown(ctx, view);
+  /** "Neu in dieser Version" shows (not under the rotate screen). */
+  const whatsNewShown = (ctx: GameContext) => menuScreen(ctx.state, view) === 'whatsNew' && !rotateShown(ctx);
   /** It shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
   const whatsNewOnSheet = (ctx: GameContext) => !!whatsNewSheet && whatsNewShown(ctx) && sheetShown(ctx.display, true);
 
@@ -494,7 +513,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
    */
   function addMenuHotspots(ctx: GameContext): void {
     const { state, commands } = ctx;
-    const live = () => (state.mode !== 'gameover' || gameOverReady(state)) && !portraitHintShown(ctx, view);
+    const live = () => (state.mode !== 'gameover' || gameOverReady(state)) && !rotateShown(ctx);
     const button = (pick: (b: MenuButtons) => Rect | null, onPress: () => void, keys: readonly string[] = []): InputHotspot => ({
       rect: () => {
         const menu = live() ? currentMenu(ctx, view) : null;
@@ -539,7 +558,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   /** The manual install steps: modal over every screen (taps and keys but M stay there); OK, Enter, Space or Esc close them. */
   function addInstallGuideHotspots(ctx: GameContext): void {
     const { state, display } = ctx;
-    const shown = () => view.install.guideOpen && !portraitHintShown(ctx, view);
+    const shown = () => view.install.guideOpen && !rotateShown(ctx);
     const modal: InputHotspot = {
       rect: () => (shown() ? EVERYWHERE : null),
       onPress: () => {},
@@ -559,7 +578,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const { settings, logoHold } = view;
     const menu = () => settingsLayout(display.viewWidth, uiMetrics(display), installable(state.install));
     const logoRectNow = (): Rect | null => {
-      if (settings.open || portraitHintShown(ctx, view)) return null;
+      if (settings.open || rotateShown(ctx)) return null;
       const screen = menuScreen(state, view);
       if (screen === 'title') return logoRect(display.viewWidth);
       return screen === 'pause' ? (currentMenu(ctx, view)?.buttons.logo ?? null) : null;
@@ -610,7 +629,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   /** While the entry shows: the native name input over the canvas entry's field, or the portrait sheet; else both hidden. */
   function placeNameField(ctx: GameContext): void {
     if (!flow) return;
-    const shown = flow.screen === 'entry' && !portraitHintShown(ctx, view);
+    const shown = flow.screen === 'entry' && !rotateShown(ctx);
     entrySurface.update(!shown ? null : entryOnSheet(ctx) ? 'sheet' : 'field', (surface) => {
       nameField?.place(surface === 'field' ? scoreEntryLayout(ctx.display).field : null, flow.name);
       entrySheet?.show(surface === 'sheet' ? entrySheetModel(flow) : null);
@@ -661,7 +680,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   function addScoreHotspots(ctx: GameContext): void {
     if (!flow) return;
     const { state, display } = ctx;
-    const covered = () => portraitHintShown(ctx, view) || view.settings.open;
+    const covered = () => rotateShown(ctx) || view.settings.open;
     const trophy: InputHotspot = {
       rect: () =>
         !covered() && trophyShown(state, view) ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
@@ -698,7 +717,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   function updateOrientation(ctx: GameContext): void {
     const typing = !!dialog?.typing(ctx) || flow?.screen === 'entry';
     typingOrientation.update(typing);
-    view.portraitFree = typingOrientation.free;
   }
 
   /** Per tick while a highscore screen shows: held arrow keys, keeping the scroll in range (and the own entry in view), the name input. */
@@ -791,9 +809,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
 
     update(ctx, dt) {
       const { state, display } = ctx;
-      if (!display.portrait) view.portraitDismissed = false;
+      rotate.update(display);
       privacyLink.update(dt);
-      if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
+      if (state.mode === 'playing' && rotateShown(ctx)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));
       const hintRect = buttonHintRect(ctx, control === 'button');
@@ -824,6 +842,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       updateScores(ctx, dt);
       updateWhatsNew(ctx, dt);
       dialog?.update(ctx, dt);
+      rotateSheet?.show(rotateShown(ctx));
       reportSession(ctx);
       if (state.mode !== 'playing') return;
       runSeconds += dt;
