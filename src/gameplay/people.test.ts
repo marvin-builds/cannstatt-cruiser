@@ -7,6 +7,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { EntityKind } from '../types';
 import { isPerson, OBSTACLES } from './catalogue';
 import { CHILL_SPEED_SCALE } from './chill';
+import { isScooter } from './hazards';
 import { anchorOf, type Motion, motionOf, motionOffset } from './motion';
 import { courseOf, planPattern } from './patterns';
 import { constantPace, Solver } from './solver';
@@ -71,9 +72,10 @@ describe('people obstacles', () => {
 });
 
 describe('zone-themed people in the patterns', () => {
+  // The e-scooter rider (hazards.ts) is a person in every zone, not one of the zone's people.
   function kindsIn(zone: number): string[] {
     const rng = new Rng(21);
-    return Array.from({ length: 300 }, () => planPattern(rng, 3, [120], { zone })).flatMap((p) => p.pieces.map((x): EntityKind => x.kind));
+    return Array.from({ length: 300 }, () => planPattern(rng, 3, [120], { zone })).flatMap((p) => p.pieces.filter((x) => !isScooter(x)).map((x): EntityKind => x.kind));
   }
 
   it('VfB fans walk at the Neckar (zone 1), Wasen visitors sway in Bad Cannstatt (zone 2), nobody in Mitte', () => {
@@ -90,7 +92,7 @@ describe('zone-themed people in the patterns', () => {
     const rng = new Rng(5);
     const people = Array.from({ length: 300 }, () => planPattern(rng, 3, [120], { zone: 1 + (rng.next() < 0.5 ? 1 : 0) }))
       .flatMap((p) => p.pieces)
-      .filter((p) => isPerson(p.kind));
+      .filter((p) => isPerson(p.kind) && !isScooter(p));
     expect(people.length).toBeGreaterThan(20);
     for (const p of people) {
       const m = motionOf(p)!;

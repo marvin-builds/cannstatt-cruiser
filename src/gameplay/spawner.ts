@@ -497,7 +497,7 @@ export class Spawner {
     } else {
       const chilled = street < this.cursor.chilledUntil;
       const effect = drunk || chilled;
-      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, effect, budget: this.budget };
+      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, effect, budget: this.budget, kidMode };
       if (street < this.cursor.chillUntil) {
         // A pinned speed stays pinned while chilled; otherwise from the slowest chill speed through the ramp back up.
         const low = Math.min(...speeds) * CHILL_SPEED_SCALE;
