@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryStore } from '../core/storage';
 import type { ScoreEntry, ScoreSubmission } from '../net/api';
 import type { SubmitOutcome } from '../net/service';
-import { HighscoreFlow, SCORE_TEXT, type ScoreServiceLike } from './highscore-flow';
+import { HighscoreFlow, keptText, SCORE_TEXT, type ScoreServiceLike } from './highscore-flow';
 import { submitButtonLabel } from './score-screens';
-import { loadLastEntry, loadName, saveName } from './score-rules';
+import { loadName, saveName } from './score-rules';
 
 const entry = (rank: number, name: string, score: number): ScoreEntry => ({ rank, name, score, distance: 100, date: '2026-10-09T10:00:00.000Z' });
 const RUN = { score: 1500, distance: 4000, seconds: 50 };
@@ -14,19 +14,25 @@ function setup() {
   const outcomes: SubmitOutcome[] = [];
   let refreshes = 0;
   let retries = 0;
-  // A plain object, so tests can set what the real service computes (pending is a getter there).
-  const service: Omit<ScoreServiceLike, 'pending'> & { pending: ScoreSubmission | null } = {
+  // A plain object, so tests can set what the real service computes (pending and ownBest are getters there).
+  const service: Omit<ScoreServiceLike, 'pending' | 'ownBest'> & { pending: ScoreSubmission | null; ownBest: number } = {
     top: null,
     topState: 'idle',
     pending: null,
+    ownBest: 0,
+    ownRank: null,
     async refreshTop() {
       refreshes++;
     },
     async submit(run, name) {
       sent.push({ name, score: run.score });
-      const outcome = outcomes.shift() ?? { kind: 'ok', rank: 1, entries: [entry(1, name, run.score)] };
-      // Like ScoreService: an accepted run brings the new list along.
-      if (outcome.kind === 'ok') service.top = outcome.entries;
+      const outcome = outcomes.shift() ?? { kind: 'ok', stored: true, rank: 1, best: run.score, entries: [entry(1, name, run.score)] };
+      // Like ScoreService: an accepted run brings the new list and the own row along.
+      if (outcome.kind === 'ok') {
+        service.top = outcome.entries;
+        service.ownRank = outcome.rank;
+        service.ownBest = outcome.best;
+      }
       return outcome;
     },
     async retryPending() {
@@ -64,6 +70,38 @@ describe('HighscoreFlow: Eintragen offer', () => {
     expect(flow.offered).toBe(true);
     flow.runStarted(true);
     expect(flow.offered).toBe(false);
+  });
+
+  it('offers it only for a run that beats the own online best', () => {
+    const { flow, service } = setup();
+    service.top = Array.from({ length: 20 }, (_, i) => entry(i + 1, `P${i}`, 3000 - i * 100));
+    service.ownBest = 2500;
+    flow.runEnded({ ...RUN, score: 2400 });
+    expect(flow.offered).toBe(false);
+    flow.runEnded({ ...RUN, score: 2500 });
+    expect(flow.offered).toBe(false);
+    flow.runEnded({ ...RUN, score: 2501 });
+    expect(flow.offered).toBe(true);
+  });
+
+  it('a better best learned after game over (the list loads late) takes the offer back', () => {
+    const { flow, service } = setup();
+    flow.runEnded(RUN);
+    expect(flow.offered).toBe(true);
+    service.ownBest = 2000;
+    expect(flow.offered).toBe(false);
+  });
+
+  it('offline: not offered for a run below the known best or the run already waiting to be sent', () => {
+    const { flow, service } = setup();
+    service.ownBest = 2000;
+    flow.runEnded(RUN);
+    expect(flow.offered).toBe(false);
+    service.ownBest = 0;
+    service.pending = { name: 'Max', score: 1500, distance: 1, duration: 1, version: 'v', device: 'device-1234' };
+    expect(flow.offered).toBe(false);
+    flow.runEnded({ ...RUN, score: 1600 });
+    expect(flow.offered).toBe(true);
   });
 
   it('offers it offline (no list known), the run is then queued', async () => {
@@ -113,12 +151,12 @@ describe('HighscoreFlow: name entry', () => {
     expect(flow.message).toBe(SCORE_TEXT.short);
   });
 
-  it('success: remembers the name and entry, shows the list with the own entry', async () => {
+  it('success: remembers the name, shows the list with the own entry from the server rank', async () => {
     const { flow, store, sent, outcomes } = setup();
     flow.runEnded(RUN);
     flow.openEntry();
     flow.setName('  Max   Muster ');
-    outcomes.push({ kind: 'ok', rank: 3, entries: [entry(1, 'A', 9000), entry(2, 'B', 2000), entry(3, 'Max Muster', 1500)] });
+    outcomes.push({ kind: 'ok', stored: true, rank: 3, best: 1500, entries: [entry(1, 'A', 9000), entry(2, 'B', 2000), entry(3, 'Max Muster', 1500)] });
     const pending = flow.submit();
     expect(flow.sending).toBe(true);
     expect(flow.canSubmit).toBe(false);
@@ -128,7 +166,32 @@ describe('HighscoreFlow: name entry', () => {
     expect(flow.highlight).toBe(3);
     expect(flow.entries.map((e) => e.name)).toEqual(['A', 'B', 'Max Muster']);
     expect(loadName(store)).toBe('Max Muster');
-    expect(loadLastEntry(store)).toEqual({ name: 'Max Muster', score: 1500 });
+    expect(flow.message).toBeNull();
+    expect(flow.offered).toBe(false);
+  });
+
+  it('a stored entry outside the top 20 says so', async () => {
+    const { flow, outcomes } = setup();
+    flow.runEnded(RUN);
+    flow.openEntry();
+    flow.setName('Max');
+    outcomes.push({ kind: 'ok', stored: true, rank: null, best: 1500, entries: [] });
+    await flow.submit();
+    expect(flow.message).toBe(SCORE_TEXT.outside);
+  });
+
+  it('a run the server did not store (a better own entry exists) shows the kept best', async () => {
+    const { flow, service, outcomes } = setup();
+    flow.runEnded(RUN);
+    flow.openEntry();
+    flow.setName('Max');
+    outcomes.push({ kind: 'ok', stored: false, rank: 2, best: 28507, entries: [entry(1, 'A', 30000), entry(2, 'Max', 28507)] });
+    await flow.submit();
+    expect(flow.screen).toBe('list');
+    expect(flow.message).toBe('Dein Eintrag bleibt: 28.507 Punkte');
+    expect(flow.message).toBe(keptText(28507));
+    expect(flow.highlight).toBe(2);
+    expect(service.ownBest).toBe(28507);
     expect(flow.offered).toBe(false);
   });
 
@@ -184,10 +247,10 @@ describe('HighscoreFlow: submit label', () => {
 });
 
 describe('HighscoreFlow: the list', () => {
-  it('opening it refreshes the list, retries the queue and highlights the last own entry', () => {
-    const { flow, service, store, refreshes, retries } = setup();
-    store.set('scoreLastEntry', { name: 'B', score: 2000 });
+  it('opening it refreshes the list, retries the queue and highlights the own row by the server rank', () => {
+    const { flow, service, refreshes, retries } = setup();
     service.top = [entry(1, 'A', 9000), entry(2, 'B', 2000)];
+    service.ownRank = 2;
     flow.openList();
     expect(flow.screen).toBe('list');
     expect(refreshes()).toBe(1);

@@ -3,12 +3,9 @@ import { createMemoryStore } from '../core/storage';
 import { normalizeName } from '../../server/src/name';
 import {
   cleanName,
-  loadLastEntry,
   loadName,
   nameProblem,
-  ownRank,
   qualifies,
-  saveLastEntry,
   saveName,
   stripNameInput,
   TOP_SIZE,
@@ -83,13 +80,5 @@ describe('remembered name and last entry', () => {
     const store = createMemoryStore();
     store.set('scoreName', '<bad>');
     expect(loadName(store)).toBe('');
-  });
-
-  it('finds the own entry in a list by the last submitted name and score', () => {
-    const store = createMemoryStore();
-    expect(ownRank(list(500, 400), loadLastEntry(store))).toBeNull();
-    saveLastEntry(store, { name: 'P1', score: 400 });
-    expect(ownRank(list(500, 400, 300), loadLastEntry(store))).toBe(2);
-    expect(ownRank(list(500, 450, 300), loadLastEntry(store))).toBeNull();
   });
 });

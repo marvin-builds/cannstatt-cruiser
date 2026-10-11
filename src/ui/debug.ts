@@ -81,7 +81,10 @@ export interface HighscoresDebug {
   message: string | null;
   topState: string;
   entries: number;
+  /** Rank of the own row (from the server), or null. */
   highlight: number | null;
+  /** The device's known own online best (0 = no entry). */
+  ownBest: number;
   scroll: number;
   maxScroll: number;
   /** Where the title's trophy would be; `trophyShown` tells whether it shows and takes taps and B (never in kid mode). */
@@ -200,6 +203,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         topState: flow.topState,
         entries: flow.entries.length,
         highlight: flow.highlight,
+        ownBest: flow.ownBest,
         scroll: flow.scroll,
         maxScroll: scoreListLayout(display, flow.entries.length, flow.message !== null).maxScroll,
         trophy: titleTrophy(display.viewWidth, view.fullscreenAvailable, metrics),

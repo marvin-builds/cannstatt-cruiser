@@ -22,17 +22,23 @@ function setup(options: { fullscreen?: boolean } = {}) {
   const sent: { run: RunStats; name: string }[] = [];
   const outcomes: SubmitOutcome[] = [];
   let refreshes = 0;
-  const service: ScoreServiceLike = {
+  const service: Omit<ScoreServiceLike, 'ownBest'> & { ownBest: number } = {
     top: fullList(),
     topState: 'ready',
     pending: null,
+    ownBest: 0,
+    ownRank: null,
     async refreshTop() {
       refreshes++;
     },
     async submit(run, name) {
       sent.push({ run, name });
-      const outcome = outcomes.shift() ?? { kind: 'ok', rank: 1, entries: [{ ...entry(1, run.score), name }] };
-      if (outcome.kind === 'ok') service.top = outcome.entries;
+      const outcome = outcomes.shift() ?? { kind: 'ok', stored: true, rank: 1, best: run.score, entries: [{ ...entry(1, run.score), name }] };
+      if (outcome.kind === 'ok') {
+        service.top = outcome.entries;
+        service.ownRank = outcome.rank;
+        service.ownBest = outcome.best;
+      }
       return outcome;
     },
     async retryPending() {},
@@ -180,6 +186,30 @@ describe('Eintragen after game over', () => {
     expect(flow.screen).toBe('list');
     expect(flow.highlight).toBe(1);
     expect(flow.offered).toBe(false);
+  });
+
+  it('after an own entry: a lower or equal run offers nothing, a higher one offers it with the name prefilled', async () => {
+    const { game, flow, crash, key, sent } = setup();
+    crash(4500);
+    key('KeyE');
+    flow.setName('Mia');
+    key('Enter');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sent).toHaveLength(1);
+    key('Escape');
+    crash(4400);
+    expect(flow.offered).toBe(false);
+    key('KeyE');
+    expect(flow.screen).toBe('closed');
+    crash(4500);
+    expect(flow.offered).toBe(false);
+    crash(4800);
+    expect(flow.offered).toBe(true);
+    key('KeyE');
+    expect(flow.screen).toBe('entry');
+    expect(flow.name).toBe('Mia');
+    expect(game.state.mode).toBe('gameover');
   });
 
   it('paused time does not count as play time', () => {

@@ -8,9 +8,10 @@ import type { Store } from '../core/storage';
 import type { ScoreEntry } from '../net/api';
 import type { RunStats } from '../net/payload';
 import type { ScoreService } from '../net/service';
-import { loadLastEntry, loadName, nameProblem, cleanName, ownRank, qualifies, saveLastEntry, saveName, stripNameInput } from './score-rules';
+import { formatNumber } from './layout';
+import { loadName, nameProblem, cleanName, qualifies, saveName, stripNameInput } from './score-rules';
 
-export type ScoreServiceLike = Pick<ScoreService, 'top' | 'topState' | 'pending' | 'refreshTop' | 'submit' | 'retryPending'>;
+export type ScoreServiceLike = Pick<ScoreService, 'top' | 'topState' | 'pending' | 'ownBest' | 'ownRank' | 'refreshTop' | 'submit' | 'retryPending'>;
 
 export type ScoreScreen = 'closed' | 'list' | 'entry';
 
@@ -33,6 +34,11 @@ export const SCORE_TEXT = {
   namePrompt: 'Dein Name:',
   outside: 'Eingetragen! Leider nicht unter den Top 20',
 } as const;
+
+/** The note when the server kept the device's better entry instead of the run. */
+export function keptText(best: number): string {
+  return `Dein Eintrag bleibt: ${formatNumber(best)} Punkte`;
+}
 
 export interface HighscoreFlowDeps {
   service: ScoreServiceLike;
@@ -68,14 +74,25 @@ export class HighscoreFlow {
     return this.deps.service.topState;
   }
 
-  /** Rank of the own last entry in the list, or null. */
+  /** Rank of the device's own row in the list (as the server said), or null. */
   get highlight(): number | null {
-    return ownRank(this.entries, loadLastEntry(this.deps.store));
+    return this.deps.service.ownRank;
   }
 
-  /** "Eintragen" shows on game over: the run makes the top list and was not entered yet. */
+  /** The device's known own online best (0 = no entry). */
+  get ownBest(): number {
+    return this.deps.service.ownBest;
+  }
+
+  /**
+   * "Eintragen" shows on game over: the run was not entered yet, beats the
+   * device's own online best (and a run still waiting to be sent), and makes
+   * the top list.
+   */
   get offered(): boolean {
-    return !!this.run && !this.submitted && qualifies(this.run.score, this.deps.service.top);
+    if (!this.run || this.submitted) return false;
+    const { pending, top } = this.deps.service;
+    return this.run.score > Math.max(this.ownBest, pending?.score ?? 0) && qualifies(this.run.score, top);
   }
 
   get score(): number {
@@ -148,7 +165,6 @@ export class HighscoreFlow {
       return;
     }
     const name = cleanName(this.name);
-    const score = this.run.score;
     this.sending = true;
     this.message = SCORE_TEXT.sending;
     const outcome = await this.deps.service.submit(this.run, name);
@@ -159,11 +175,11 @@ export class HighscoreFlow {
     }
     this.submitted = true;
     saveName(this.deps.store, name);
-    saveLastEntry(this.deps.store, { name, score });
     this.screen = 'list';
     this.scroll = 0;
     this.revealOwn = true;
     if (outcome.kind === 'queued') this.message = outcome.reason === 'offline' ? SCORE_TEXT.queued : SCORE_TEXT.queuedLater;
+    else if (!outcome.stored) this.message = keptText(outcome.best);
     else this.message = outcome.rank === null ? SCORE_TEXT.outside : null;
   }
 }

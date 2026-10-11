@@ -1,7 +1,7 @@
 /**
  * Rules of the online list on the client: when "Eintragen" is offered, the
  * name rules (the same as server/src/name.ts, so a bad name is caught before
- * sending), the remembered name and the last submitted entry (to highlight it).
+ * sending) and the remembered name.
  */
 import type { Store } from '../core/storage';
 
@@ -13,9 +13,8 @@ export const NAME_MAX = 16;
 const ALLOWED = /^[A-Za-z0-9äöüßÄÖÜ _.-]+$/;
 const NOT_ALLOWED = /[^A-Za-z0-9äöüßÄÖÜ _.-]/g;
 
-/** Store keys: the remembered name and the last entry sent. */
+/** Store key: the remembered name. */
 const NAME_KEY = 'scoreName';
-const LAST_ENTRY_KEY = 'scoreLastEntry';
 
 /**
  * Whether `score` would make the top list: above the last place of a full
@@ -54,26 +53,4 @@ export function loadName(store: Store): string {
 
 export function saveName(store: Store, name: string): void {
   store.set(NAME_KEY, name);
-}
-
-export interface LastEntry {
-  name: string;
-  score: number;
-}
-
-export function loadLastEntry(store: Store): LastEntry | null {
-  const e = store.get<unknown>(LAST_ENTRY_KEY, null);
-  if (typeof e !== 'object' || e === null) return null;
-  const { name, score } = e as Record<string, unknown>;
-  return typeof name === 'string' && typeof score === 'number' ? { name, score } : null;
-}
-
-export function saveLastEntry(store: Store, entry: LastEntry): void {
-  store.set(LAST_ENTRY_KEY, entry);
-}
-
-/** Rank of the own entry (same name and score as the last one sent) in the list, or null. */
-export function ownRank(entries: readonly { rank: number; name: string; score: number }[], last: LastEntry | null): number | null {
-  if (!last) return null;
-  return entries.find((e) => e.name === last.name && e.score === last.score)?.rank ?? null;
 }
