@@ -1075,13 +1075,24 @@ hidden page `insights.html` shows aggregates to the owner.
   it 204 and nothing written), and rows older than 90 days are deleted at
   most once per UTC day (`event_meta`). Tables come from
   `server/migrations/0003_play_statistics.sql`.
-- **`GET /stats?days=7|30|90`:** needs `Authorization: Bearer <STATS_TOKEN>`
+- **Daily summaries (ROADMAP 48):** on the same once-a-day trigger, before
+  the prune, the worker condenses every finished UTC day with raw rows into
+  `day_summaries(day, metric, key, value)` (migration 0004): totals, end
+  count/sum/median, the splits and the run histograms; no session ids, no
+  hours. Idempotent, at most 100 days per run, and the prune deletes raw rows
+  only of summarised days. Summaries are kept for good.
+- **`GET /stats?days=7|30|90|365|0`** (0 = "Alles", `ALL_RANGE`): ranges up to
+  `RAW_RETENTION_DAYS` (90) come from raw events; 365 and 0 from the
+  summaries plus the raw rows after the last summarised day, with the median
+  as the end-count-weighted mean of daily medians (the board marks it "≈"). needs `Authorization: Bearer <STATS_TOKEN>`
   (a Wrangler secret, never in `wrangler.toml` or a `VITE_` variable),
   compared as SHA-256 digests in constant time; 401 before any database
   query. Answers aggregates only with `no-store`. `MIN_GROUP_SESSIONS` is 1:
   every place shows from its first session; only unknown places are
   `other`. Splits are largest first, so `other` is not always last.
-- **Board** (`insights.html`, `src/insights/`): noindex, no-referrer, never
+- **Board** (`insights.html`, `src/insights/`): ranges 7 T / 30 T / 90 T /
+  365 T / Alles; `periods.ts` groups the day charts into ISO weeks or months
+  for long ranges and narrow (phone) charts, `ranges.ts` labels them. noindex, no-referrer, never
   linked from the game. The token sits in a password field (password managers
   can keep it) and in memory only, never in storage or a URL. Everything is
   rendered with `createElement`/`createElementNS` and text nodes, never
@@ -1089,7 +1100,16 @@ hidden page `insights.html` shows aggregates to the owner.
   localhost/127.0.0.1.
 - **Service worker:** `public/sw.js` answers only navigations to the scope
   root or `index.html` with the cached game page, and caches only requests
-  made by the game page; `insights.html` and its assets go to the network.
+  made by the game page; `insights.html`, `datenschutz.html` and their assets go to the network.
+- **Datenschutz page (ROADMAP 47):** `datenschutz.html` (third Vite input,
+  static, `src/privacy/privacy.css`) explains in plain German what the game
+  stores on the device, the online list, the statistics and the rights; the
+  operator is only named as "marvinmai" with GitHub issues as contact. Keep
+  it true when data handling changes. In the game a small "Datenschutz"
+  button sits right of the "Anonyme Statistik" switch on the Bestenliste and
+  in settings (`privacyLink` rects in `ScoreListLayout`/`SettingsLayout`);
+  `ui/privacy-link.ts` opens the page in a new tab on pointer release
+  (phone browsers block popups on touch start).
 
 ## Stomp and carried items
 
