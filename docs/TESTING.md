@@ -602,6 +602,10 @@ npm run playtest -- --headed
   install card and both; the settings opened from the gear; no gear in kid
   mode.
 
+- `scripts/scenarios/star-points.ts` (ROADMAP 65, all three viewports, adult
+  and kid mode): every star gives +10, a whole arc one +50, a short hop no
+  bonus; shots of the merged "Stern! +N" and "Sternenbogen! +N" popups.
+
 ### Quiet time (ROADMAP 52)
 
 `src/gameplay/quiet-time.test.ts` rides the spawner for 20 seeds x 6 min (slow,
