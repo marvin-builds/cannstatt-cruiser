@@ -614,6 +614,14 @@ npm run playtest -- --headed
 - `scripts/scenarios/feedback-note.ts` (ROADMAP 57): a faked status answer
   shows the done and rejected notes once on the title at several widths.
 
+- `scripts/scenarios/duck-swipe.ts` (ROADMAP 66, `phone-landscape`): sign
+  mixes at 90 and 190 px/s ridden by the touch bot (swipe ducks): at most 2
+  signs in one swipe, no crash.
+- `scripts/scenarios/install-offer.ts` (ROADMAP 68, all three viewports): no
+  card on the title, the card on game over after a calm run, the tap acting on
+  release (`promptsShown()`), the snooze, the settings entry and the manual
+  steps for Android, iOS and desktop.
+
 ### Quiet time (ROADMAP 52)
 
 `src/gameplay/quiet-time.test.ts` rides the spawner for 20 seeds x 6 min (slow,
