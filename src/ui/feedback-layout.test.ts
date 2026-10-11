@@ -23,13 +23,13 @@ describe('feedback screen layout', () => {
   it('fits the form inside the view without overlaps, at 320 px and in portrait', () => {
     for (const d of displays()) {
       const l = feedbackLayout(d);
-      const line: Rect = { x: l.field.x, y: l.lineY, w: l.field.w, h: 7 * l.lineScale };
       const parts: [string, Rect][] = [
         ['title', l.title],
         ['bug', l.bug],
         ['idea', l.idea],
         ['field', l.field],
-        ['line', line],
+        ['line', l.line],
+        ['counter', l.counter],
         ['log', l.log],
         ['cancel', l.cancel],
         ['send', l.send],
@@ -60,16 +60,40 @@ describe('feedback screen layout', () => {
       fits(FEEDBACK_TEXT.idea, l.idea, l.labelScale);
       fits(FEEDBACK_TEXT.send, l.send, l.labelScale);
       fits(FEEDBACK_TEXT.cancel, l.cancel, l.labelScale);
-      expect(measureText(FEEDBACK_TEXT.log, l.logScale) + l.logBox + 4, d.label).toBeLessThanOrEqual(l.log.w);
+      expect(l.logLines.join(' ').replace('Protokoll', 'protokoll'), d.label).toMatch(/protokoll mitsenden$/);
+      const labelW = Math.max(...l.logLines.map((s) => measureText(s, l.logScale)));
+      expect(labelW + l.logBox + 4, d.label).toBeLessThanOrEqual(l.log.w);
+      expect(l.logLines.length * 7 * l.logScale + (l.logLines.length - 1) * 2, d.label).toBeLessThanOrEqual(l.log.h - 4);
       expect(l.field.h, d.label).toBeGreaterThanOrEqual(60);
     }
   });
 
-  it('the status line fits the longest message and the counter beside it', () => {
+  it('the status line fits the longest message, the counter fits its rect', () => {
     for (const d of displays()) {
       const l = feedbackLayout(d);
-      const longest = Math.max(...[FEEDBACK_TEXT.hint, FEEDBACK_TEXT.offline, FEEDBACK_TEXT.rate, FEEDBACK_TEXT.invalid, FEEDBACK_TEXT.short].map((s) => measureText(s, 1)));
-      expect(longest + 6 + measureText('500/500', 1), d.label).toBeLessThanOrEqual(l.field.w);
+      const longest = Math.max(...[FEEDBACK_TEXT.hint, FEEDBACK_TEXT.offline, FEEDBACK_TEXT.rate, FEEDBACK_TEXT.invalid, FEEDBACK_TEXT.short].map((s) => measureText(s, l.lineScale)));
+      expect(longest, d.label).toBeLessThanOrEqual(l.line.w);
+      expect(measureText('500/500', l.lineScale), d.label).toBeLessThanOrEqual(l.counter.w);
+      expect(l.line.h, d.label).toBe(7 * l.lineScale);
+    }
+  });
+
+  it('phone portrait (about 1 CSS px per view px): every small text is drawn at least 2x', () => {
+    for (const d of displays()) {
+      if (!d.portrait) continue;
+      const l = feedbackLayout(d);
+      expect(l.lineScale, d.label).toBeGreaterThanOrEqual(2);
+      expect(l.logScale, d.label).toBeGreaterThanOrEqual(2);
+      expect(l.labelScale, d.label).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('phone landscape: the log toggle label has the scale of the other button labels', () => {
+    for (const d of displays()) {
+      if (!d.touch || d.portrait) continue;
+      const l = feedbackLayout(d);
+      expect(l.logScale, d.label).toBe(l.labelScale);
+      expect(l.labelScale, d.label).toBe(2);
     }
   });
 

@@ -1,6 +1,7 @@
 import type { GameMode } from '../core/modes';
 import type { Rect } from '../types';
-import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
+import { measureText } from '../core/font';
+import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 /**
  * Pointer button sizes (view pixels) for the device. Phones get bigger
@@ -91,7 +92,10 @@ export interface SettingsLayout {
   statsNoteY: number;
   /** Desktop key help; null on touch. */
   keysY: number | null;
+  /** Zurück: under the rest, in portrait in the title row at the right. */
   back: Rect;
+  /** Font scale of the notes (2 in portrait, where a view pixel is ~1 CSS px). */
+  noteScale: number;
 }
 
 /** Wide enough for "Anonyme Statistik: AUS" at scale 2. */
@@ -101,15 +105,24 @@ const TITLE_H = 14;
 /** One scale-1 text line with its spacing. */
 const NOTE_LINE = 11;
 
-/** The settings screens as one compact block; with portrait's 44 px buttons it fills the view height. */
+/** Portrait: Zurück, the statistics switch and the link with room for their labels at scale 2; a scale-2 note line with its spacing. */
+const PORTRAIT_BACK_W = measureText('Zurück', 2) + 24;
+const PORTRAIT_STATS_W = measureText('Anonyme Statistik: AUS', 2) + 12;
+const PORTRAIT_LINK_W = measureText(PRIVACY_LABEL, 2) + 12;
+const BIG_NOTE_LINE = 16;
+
+/**
+ * The settings screens as one compact block. Portrait's 44 px buttons and scale-2 notes need the
+ * whole view height: Zurück moves up into the title row there (settingsPortrait).
+ */
 export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout {
-  const cx = centreX(viewWidth);
   const h = m.menuButtonH;
-  const tall = h >= 44;
-  const gap = tall ? 0 : 4;
+  if (h >= 44) return settingsPortrait(viewWidth, h);
+  const cx = centreX(viewWidth);
+  const gap = 4;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
-  const titleY = tall ? 4 : 12;
-  const toggle = centred(TOGGLE_W, titleY + TITLE_H + (tall ? 2 : 8));
+  const titleY = 12;
+  const toggle = centred(TOGGLE_W, titleY + TITLE_H + 8);
   const kidNoteY = toggle.y + h + 2;
   // The switch and the link are centred as one row.
   const statsRow = centred(TOGGLE_W + PRIVACY_LINK_GAP + PRIVACY_LINK_W, kidNoteY + NOTE_LINE + gap);
@@ -120,7 +133,20 @@ export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout 
   // Touch (bigger buttons) has no key help line.
   const keysY = h > DESKTOP.menuButtonH ? null : below;
   const back = centred(BACK_W, keysY === null ? below : keysY + NOTE_LINE + gap);
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, noteScale: 1 };
+}
+
+function settingsPortrait(viewWidth: number, h: number): SettingsLayout {
+  const cx = centreX(viewWidth);
+  const back: Rect = { x: viewWidth - PORTRAIT_BACK_W, y: 0, w: PORTRAIT_BACK_W, h };
+  const titleY = Math.floor((h - TITLE_H) / 2);
+  const toggle: Rect = { x: cx - Math.floor(TOGGLE_W / 2), y: h + 6, w: TOGGLE_W, h };
+  const kidNoteY = toggle.y + h + 2;
+  const rowW = PORTRAIT_STATS_W + PRIVACY_LINK_GAP + PORTRAIT_LINK_W;
+  const stats: Rect = { x: cx - Math.floor(rowW / 2), y: kidNoteY + BIG_NOTE_LINE + 4, w: PORTRAIT_STATS_W, h };
+  const privacyLink: Rect = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PORTRAIT_LINK_W };
+  const statsNoteY = stats.y + h + 2;
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, noteScale: 2 };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */

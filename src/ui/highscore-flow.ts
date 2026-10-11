@@ -24,6 +24,8 @@ export const SCORE_TEXT = {
   offline: 'Offline – Bestenliste nicht verfügbar',
   empty: 'Noch keine Einträge – fahr los!',
   privacy: 'Die Bestenliste speichert Name, Punkte, Strecke, Datum.',
+  /** The privacy line where the long one does not fit (portrait, see note-text.ts). */
+  privacyShort: 'Liste: Name, Punkte, Strecke, Datum.',
   sending: 'Wird gesendet ...',
   queued: 'Wird gesendet, sobald du online bist',
   queuedLater: 'Wird später gesendet',

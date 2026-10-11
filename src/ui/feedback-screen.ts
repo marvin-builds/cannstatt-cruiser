@@ -14,6 +14,9 @@ import type { FeedbackLayout } from './feedback-layout';
 /** Space between the field's edge and the drawn text, and between text lines. */
 const FIELD_PAD = 5;
 const TEXT_LINE = 9;
+/** The log toggle's label lines: glyph height at scale 1 and the unscaled space between lines (as feedbackLayout counts them). */
+const LABEL_GLYPH = 7;
+const LABEL_LEADING = 2;
 
 /** The placeholder of the textarea for the chosen kind. */
 export function feedbackPlaceholder(flow: Pick<FeedbackFlow, 'kind'>): string {
@@ -86,7 +89,11 @@ function logToggle(r: RenderContext, l: FeedbackLayout, on: boolean): void {
     g.fillStyle = UI.yellow;
     g.fillRect(x + 2, y + 2, box - 4, box - 4);
   }
-  text(r, FEEDBACK_TEXT.log, x + box + 3, rect.y + Math.floor((rect.h - 7 * l.logScale) / 2), { color: on ? UI.white : UI.muted, scale: l.logScale });
+  const lineH = LABEL_GLYPH * l.logScale + LABEL_LEADING;
+  const textY = rect.y + Math.floor((rect.h - l.logLines.length * lineH + LABEL_LEADING) / 2);
+  l.logLines.forEach((line, i) =>
+    text(r, line, x + box + 3, textY + i * lineH, { color: on ? UI.white : UI.muted, scale: l.logScale }),
+  );
 }
 
 export function drawFeedback(r: RenderContext, flow: FeedbackFlow, l: FeedbackLayout): void {
@@ -101,8 +108,8 @@ export function drawFeedback(r: RenderContext, flow: FeedbackFlow, l: FeedbackLa
   kindButton(r, l.idea, FEEDBACK_TEXT.idea, flow.kind === 'idea', l.labelScale);
   drawField(r, flow, l.field);
   const message = flow.message;
-  text(r, message ?? FEEDBACK_TEXT.hint, l.field.x, l.lineY, { color: message ? UI.yellow : UI.muted, scale: l.lineScale });
-  text(r, flow.counter, l.field.x + l.field.w, l.lineY, { align: 'right', color: UI.muted, scale: l.lineScale });
+  text(r, message ?? FEEDBACK_TEXT.hint, l.line.x, l.line.y, { color: message ? UI.yellow : UI.muted, scale: l.lineScale });
+  text(r, flow.counter, l.counter.x + l.counter.w, l.counter.y, { align: 'right', color: UI.muted, scale: l.lineScale });
   if (flow.logShown) logToggle(r, l, flow.withLog);
   menuButton(r, l.cancel, FEEDBACK_TEXT.cancel, UI.white, l.labelScale);
   menuButton(r, l.send, FEEDBACK_TEXT.send, flow.canSend ? UI.yellow : UI.muted, l.labelScale);

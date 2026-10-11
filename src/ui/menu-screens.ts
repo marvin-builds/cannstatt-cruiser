@@ -115,9 +115,10 @@ export function drawStatsSwitch(r: RenderContext, rect: Rect, on: boolean): void
   menuButton(r, rect, label, on ? UI.white : UI.muted, scale);
 }
 
-/** The small "Datenschutz" link button beside the statistics switch. */
+/** The "Datenschutz" link button beside the statistics switch: scale 2 where its rect has room (portrait), else small. */
 export function drawPrivacyLink(r: RenderContext, rect: Rect): void {
-  menuButton(r, rect, PRIVACY_LABEL, UI.muted, 1);
+  const scale = rect.h >= 24 && measureText(PRIVACY_LABEL, 2) <= rect.w - 8 ? 2 : 1;
+  menuButton(r, rect, PRIVACY_LABEL, UI.muted, scale);
 }
 
 /** A "×" button (install hint, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
@@ -253,9 +254,12 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
   const title = l.blocks.get('title')!;
   textPlate(r, title);
   text(r, MENU_TEXT.gameOver, title.x, title.y, { scale: 2, color: UI.red });
+  // The blinking lines take their plate with them: no empty plate in the off phase.
   const record = l.blocks.get('record');
-  if (record) textPlate(r, record);
-  if (record && blinkOn(state.modeTime * 2)) centredIn(r, MENU_TEXT.newRecord, record, { scale: 2, color: UI.yellow });
+  if (record && blinkOn(state.modeTime * 2)) {
+    textPlate(r, record);
+    centredIn(r, MENU_TEXT.newRecord, record, { scale: 2, color: UI.yellow });
+  }
 
   const values = [
     formatNumber(state.score),
@@ -278,9 +282,9 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
 
   if (!gameOverReady(state)) return;
   const prompt = l.blocks.get('prompt');
-  if (prompt) {
+  if (prompt && blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) {
     textPlate(r, prompt);
-    if (blinkOn(state.modeTime - GAMEOVER_INPUT_DELAY)) centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow, scale: l.textScale });
+    centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow, scale: l.textScale });
   }
   drawNotices(r, l);
 }

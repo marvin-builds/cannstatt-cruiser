@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
+import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { buttonPlate, hudButtons, uiMetrics } from './layout';
 import { logoRect } from './logo';
@@ -60,18 +61,20 @@ describe('Bestenliste layout', () => {
         for (const r of [l.close, l.title, l.list]) expect(overlap(l.stats, r), `${label}: stats switch`).toBe(false);
         expect(l.stats.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
         if (c.touch) expect(l.stats.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
-        expect(l.stats.x, `${label}: stats switch top left`).toBeLessThan(8);
+        if (!c.portrait) expect(l.stats.x, `${label}: stats switch top left`).toBeLessThan(8);
         expect(inside(l.privacyLink, c.viewWidth) && whole(l.privacyLink), `${label}: privacy link`).toBe(true);
         for (const r of [l.close, l.title, l.list, l.stats]) expect(overlap(l.privacyLink, r), `${label}: privacy link`).toBe(false);
         expect(l.privacyLink.y, `${label}: privacy link beside the switch`).toBe(l.stats.y);
         expect(l.privacyLink.h, label).toBe(l.stats.h);
         expect(l.privacyLink.x, label).toBeGreaterThan(l.stats.x + l.stats.w);
-        expect(l.title.x, `${label}: title right of the link`).toBeGreaterThan(l.privacyLink.x + l.privacyLink.w);
         if (c.touch) expect(l.privacyLink.w * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
-        const viewCentred = Math.abs(l.title.x + l.title.w / 2 - c.viewWidth / 2) <= 1;
-        const gapLeft = l.title.x - (l.privacyLink.x + l.privacyLink.w);
-        const gapRight = l.close.x - (l.title.x + l.title.w);
-        if (!viewCentred) expect(Math.abs(gapLeft - gapRight), `${label}: title centred between link and close`).toBeLessThanOrEqual(1);
+        if (!c.portrait) {
+          expect(l.title.x, `${label}: title right of the link`).toBeGreaterThan(l.privacyLink.x + l.privacyLink.w);
+          const viewCentred = Math.abs(l.title.x + l.title.w / 2 - c.viewWidth / 2) <= 1;
+          const gapLeft = l.title.x - (l.privacyLink.x + l.privacyLink.w);
+          const gapRight = l.close.x - (l.title.x + l.title.w);
+          if (!viewCentred) expect(Math.abs(gapLeft - gapRight), `${label}: title centred between link and close`).toBeLessThanOrEqual(1);
+        }
         expect(l.close.w, label).toBeGreaterThanOrEqual(m.menuButtonH);
         expect(l.close.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
         if (c.touch) expect(l.close.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
@@ -81,11 +84,24 @@ describe('Bestenliste layout', () => {
         expect(l.list.y, label).toBeGreaterThanOrEqual(l.title.y + l.title.h);
         const lines = [l.messageY, l.privacyY, l.statsNoteY, l.keysY].filter((y): y is number => y !== null);
         for (const y of lines) expect(y, label).toBeGreaterThanOrEqual(l.list.y + l.list.h);
-        expect(Math.max(...lines) + 7, label).toBeLessThanOrEqual(VIEW_H);
+        expect(Math.max(...lines) + 7 * l.noteScale, label).toBeLessThanOrEqual(c.portrait ? l.stats.y : VIEW_H);
         expect(l.messageY !== null, label).toBe(message);
         expect(l.keysY !== null, label).toBe(!c.touch);
         expect(l.rankRight < l.nameX && l.nameX < l.scoreRight && l.scoreRight <= l.list.x + l.list.w, label).toBe(true);
       }
+    }
+  });
+
+  it('phone portrait (about 1 CSS px per view px): the switch and link in a bottom row, notes at 2x, the title centred beside the close button', () => {
+    for (const c of cases()) {
+      const l = scoreListLayout(c, 20, true);
+      expect(l.noteScale, c.label).toBe(c.portrait ? 2 : 1);
+      if (!c.portrait) continue;
+      expect(l.stats.y + l.stats.h, c.label).toBe(VIEW_H);
+      expect(l.stats.w, `${c.label}: room for the switch label at 2x`).toBeGreaterThanOrEqual(measureText('Anonyme Statistik: AUS', 2) + 8);
+      expect(l.privacyLink.w, `${c.label}: room for "Datenschutz" at 2x`).toBeGreaterThanOrEqual(measureText('Datenschutz', 2) + 8);
+      expect(Math.abs(l.title.y + l.title.h / 2 - (l.close.y + l.close.h / 2)), `${c.label}: title centred with close`).toBeLessThanOrEqual(1);
+      expect(l.list.y, c.label).toBeGreaterThanOrEqual(l.close.y + l.close.h);
     }
   });
 

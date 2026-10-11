@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
@@ -116,8 +117,28 @@ describe('layout helpers', () => {
     }
   });
 
+  it('settings in portrait (about 1 CSS px per view px): Zurück beside the title, notes and the link at 2x, all inside the view', () => {
+    const m = uiMetrics({ touch: true, portrait: true });
+    for (const width of WIDTHS) {
+      const l = settingsLayout(width, m);
+      const at = `portrait ${width}`;
+      const titleW = measureText('Einstellungen', 2);
+      expect(l.noteScale, at).toBe(2);
+      expect(l.back.y, at).toBe(0);
+      expect(l.back.x + l.back.w, at).toBe(width);
+      expect(Math.abs(l.titleY + 7 - (l.back.y + l.back.h / 2)), `${at}: title centred with Zurück`).toBeLessThanOrEqual(1);
+      expect(centreX(width) + Math.ceil(titleW / 2), `${at}: title left of Zurück`).toBeLessThanOrEqual(l.back.x - 2);
+      expect(l.toggle.y, at).toBeGreaterThanOrEqual(l.back.y + l.back.h);
+      expect(l.kidNoteY + 14, at).toBeLessThanOrEqual(l.stats.y);
+      expect(l.statsNoteY + 14, at).toBeLessThanOrEqual(180);
+      expect(l.stats.w, at).toBeGreaterThanOrEqual(measureText('Anonyme Statistik: AUS', 2) + 8);
+      expect(l.privacyLink.w, at).toBeGreaterThanOrEqual(measureText('Datenschutz', 2) + 8);
+      for (const r of [l.toggle, l.stats, l.privacyLink, l.back]) expect(inside(r, width), `${at} ${JSON.stringify(r)}`).toBe(true);
+    }
+  });
+
   it('settings: title, Kindermodus and its note, the statistics switch and its note, key hint, Zurück stacked top down', () => {
-    for (const { display } of DEVICES) {
+    for (const { display } of DEVICES.filter((d) => !d.display.portrait)) {
       const m = uiMetrics(display);
       const l = settingsLayout(390, m);
       const line = 7;
