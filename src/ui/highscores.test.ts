@@ -13,6 +13,8 @@ import { createUiSystem } from './index';
 import { uiMetrics } from './layout';
 import { gameOverLayout } from './menu-layout';
 import type { NameField } from './name-field';
+import type { EntrySheet, EntrySheetHandlers } from './entry-sheet';
+import type { EntrySheetModel } from './portrait-sheets';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { loadStatsOptOut } from '../net/telemetry';
 
@@ -49,16 +51,43 @@ function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
   const placed: (Rect | null)[] = [];
   let focused = 0;
   let blurred = 0;
+  let fieldFocus = false;
   const nameField: NameField = {
-    place: (rect) => void placed.push(rect),
-    focus: () => void focused++,
-    blur: () => void blurred++,
+    place: (rect) => {
+      placed.push(rect);
+      if (!rect) fieldFocus = false;
+    },
+    focus: () => void (focused++, (fieldFocus = true)),
+    blur: () => void (blurred++, (fieldFocus = false)),
+    isFocused: () => fieldFocus,
   };
+  /** The portrait name entry sheet (ROADMAP 58). */
+  const sheet = {
+    model: null as EntrySheetModel | null,
+    focused: 0,
+    hasFocus: false,
+    actions: null as EntrySheetHandlers | null,
+    show(model: EntrySheetModel | null) {
+      sheet.model = model;
+      if (!model) sheet.hasFocus = false;
+    },
+    focus() {
+      sheet.focused++;
+      sheet.hasFocus = true;
+    },
+    blur() {
+      sheet.hasFocus = false;
+    },
+    isFocused(): boolean {
+      return sheet.hasFocus;
+    },
+  } satisfies EntrySheet & Record<string, unknown>;
+  const entrySheet = (handlers: EntrySheetHandlers) => ((sheet.actions = handlers), sheet);
   const store = createMemoryStore();
   /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
   const locks: string[] = [];
   const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
-  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, orientation, openPage: (url) => (opened.push(url), true) });
+  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, entrySheet, orientation, openPage: (url) => (opened.push(url), true) });
   const game = new Game({ systems: [ui], store });
   const flow = ui.highscores!;
   const key = (code: string) => {
@@ -94,7 +123,7 @@ function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
     pointers.up(1);
     for (let i = 0; i < 8; i++) game.tick();
   };
-  return { game, flow, service, sent, locks, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
+  return { game, flow, service, sent, sheet, locks, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
 }
 
 describe('Bestenliste from the title', () => {
@@ -414,13 +443,56 @@ describe('portrait while typing a name in the installed app (ROADMAP 54)', () =>
     expect(locks).toEqual(['any', 'landscape', 'any', 'landscape']);
   });
 
-  it('turned to portrait while typing, the name field stays in the portrait layout instead of the rotate hint', () => {
-    const { game, crash, key, placed } = setup({ installed: true });
-    game.display.touch = true;
+  it('turned to portrait while typing, the full-screen entry sheet takes over with the name and the focus, and back', () => {
+    const { game, flow, crash, key, placed, sheet } = setup({ installed: true });
     crash(4500);
     key('KeyE');
+    flow.setName('Ma');
     game.display.portrait = true;
     game.tick();
+    expect(placed[placed.length - 1]).toBeNull();
+    expect(sheet.model).toMatchObject({ name: 'Ma', score: '4.500 Punkte', submit: 'Als Ma eintragen', canSubmit: true });
+    expect(sheet.isFocused()).toBe(true);
+    game.display.portrait = false;
+    game.tick();
+    expect(sheet.model).toBeNull();
     expect(placed[placed.length - 1]).toEqual(scoreEntryLayout({ ...game.display }).field);
+  });
+});
+
+describe('the name entry in portrait (ROADMAP 58)', () => {
+  it('opens as the full-screen sheet (focused in the tap when no name is known), and its actions type, send and close', async () => {
+    const { game, flow, crash, sheet, sent } = setup();
+    game.display.touch = true;
+    game.display.portrait = true;
+    game.hitHotspot(10, 10); // the rotate hint
+    crash(4500);
+    const submit = gameOverLayout({ viewWidth: game.display.viewWidth, touch: true, portrait: true, fullscreenAvailable: false, reload: false, install: null, newRecord: true, submit: true }).buttons.submit!;
+    expect(game.hitHotspot(...centre(submit))).toBe(true);
+    expect(flow.screen).toBe('entry');
+    expect(sheet.model).not.toBeNull();
+    expect(sheet.focused).toBe(1);
+    // The canvas entry under the sheet takes no taps.
+    expect(game.hitHotspot(...centre(scoreEntryLayout({ ...game.display }).submit))).toBe(true);
+    expect(sent).toHaveLength(0);
+    sheet.actions!.onInput('Rollo');
+    game.tick();
+    expect(sheet.model!.submit).toBe('Als Rollo eintragen');
+    sheet.actions!.onSubmit();
+    await Promise.resolve();
+    await Promise.resolve();
+    game.tick();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.name).toBe('Rollo');
+    expect(flow.screen).toBe('list');
+    expect(sheet.model).toBeNull();
+    flow.close();
+    game.tick();
+    crash(4800);
+    game.hitHotspot(...centre(submit));
+    sheet.actions!.onCancel();
+    game.tick();
+    expect(flow.screen).toBe('closed');
+    expect(game.state.mode).toBe('gameover');
   });
 });

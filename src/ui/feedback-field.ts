@@ -21,6 +21,8 @@ export interface FeedbackField {
   focus(): void;
   /** Takes the focus away (closes the phone keyboard) and leaves the field shown: a tap beside it on the modal screen. */
   blur(): void;
+  /** It has the focus (the keyboard is up): a turn of the phone moves it to the portrait sheet. */
+  isFocused(): boolean;
 }
 
 export interface FeedbackFieldHandlers {
@@ -106,6 +108,9 @@ export function createDomFeedbackField(handlers: FeedbackFieldHandlers, canvas: 
     },
     blur() {
       area?.blur();
+    },
+    isFocused() {
+      return !!area && document.activeElement === area;
     },
   };
 }

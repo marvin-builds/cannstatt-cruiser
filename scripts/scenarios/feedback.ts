@@ -12,6 +12,8 @@
  * with text typed, taps beside the open form (the letterbox, the page
  * corners, the form's background) on the title and in pause only blur the
  * field, never start or resume a run; game over and restart work after it.
+ * In portrait the form is the full-screen sheet (ROADMAP 58), pressed through
+ * its DOM controls.
  *
  *   npm run playtest -- --scenario scripts/scenarios/feedback.ts --viewports desktop,phone-landscape,phone-portrait --name feedback
  */
@@ -24,6 +26,9 @@ import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-
 const FAKE = 'https://feedback.example.test';
 const FIELDS = ['input', 'kind', 'log', 'orientation', 'platform', 'session', 'text', 'version', 'viewWidth'];
 type UiWindow = Window & { __ui?: UiDebugHook };
+/** The portrait sheet (ROADMAP 58) and its controls by label; the log box has none. */
+const FEEDBACK_SHEET = '[role=dialog][aria-label="Feedback"]';
+const SHEET_LABELS = { log: null, idea: 'Idee', send: 'Senden', ok: 'OK', cancel: 'Abbrechen' } as const;
 
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const mid = (r: Rect) => [Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2)] as const;
@@ -60,13 +65,21 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     await page.keyboard.type(s, { delay: 5 });
     await t.game.step(2);
   };
+  const { viewWidth, portrait } = await t.game.display();
+  /** Presses a form control: its canvas rect, or in portrait the full-screen sheet's control (ROADMAP 58). */
+  const press = async (form: FeedbackDebug['form'], control: keyof typeof SHEET_LABELS) => {
+    if (!portrait) return tap(form[control]);
+    const sheet = page.locator(FEEDBACK_SHEET);
+    const label = SHEET_LABELS[control];
+    await (label ? sheet.getByRole('button', { name: label, exact: true }) : sheet.locator('input[type=checkbox]')).tap();
+    await t.game.step(2);
+  };
   const sendAndWait = async (form: FeedbackDebug['form']) => {
     const before = bodies.length;
-    await tap(form.send);
+    await press(form, 'send');
     await page.waitForFunction((n) => (window as UiWindow).__ui!.feedback()!.status !== 'sending', before, { timeout: 8000 }).catch(() => {});
     await t.game.step(2);
   };
-  const { viewWidth } = await t.game.display();
 
   // Title: the icon bottom right, clear of every other button.
   const title = await screen();
@@ -109,7 +122,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   state = await fb();
   t.check('typed text arrives in the form', state.text === 'Ich bleibe hängen. pause escape wasd e m', state.text);
   t.check('game keys typed into the textarea do nothing in the game', after.mode === 'title' && after.muted === muted, { mode: after.mode, muted: after.muted });
-  await tap(state.form.log);
+  await press(state.form, 'log');
   state = await fb();
   t.check('log box ticked', state.withLog, state);
   await t.screenshot('fehler with log on');
@@ -126,7 +139,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   t.check('bug body values', bug.kind === 'bug' && /^[0-9a-f]{32}$/.test(String(bug.session)) && bug.viewWidth === viewWidth && bug.input === (t.viewport.touch ? 'touch' : 'keys'), bug);
   t.check('thank-you shows', state.status === 'sent' && state.message === 'Danke für dein Feedback!', state);
   await t.screenshot('thank you');
-  await tap(state.form.ok);
+  await press(state.form, 'ok');
   t.check('OK closes it, back on the title', !(await fb()).open && (await t.game.state()).mode === 'title');
 
   // Pause menu entry: an idea, the run stays paused, keys do not move the skater.
@@ -141,7 +154,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   await tap(pause.screen!.feedback!);
   state = await fb();
   t.check('pause button opens the form (fresh after the sent report)', state.open && state.text === '' && !state.withLog, state);
-  await tap(state.form.idea);
+  await press(state.form, 'idea');
   const skater = (await t.game.state()).player;
   await type('Mehr Musik und Brezeln bitte! space p e w s');
   const paused = await t.game.state();
@@ -154,7 +167,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   const idea = bodies[1] ?? {};
   t.check('idea body has no log', idea.kind === 'idea' && Array.isArray(idea.log) && (idea.log as string[]).length === 0, idea);
   state = await fb();
-  await tap(state.form.ok);
+  await press(state.form, 'ok');
   t.check('back on the pause screen', (await t.game.state()).mode === 'paused' && !(await fb()).open);
 
   // Rate limit: a bug report without the box ticked (no log), the text stays.
@@ -177,7 +190,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   await t.canvasShot('offline');
 
   // Esc closes (on touch the cancel button), the run resumes as before.
-  if (t.viewport.touch) await tap(state.form.cancel);
+  if (t.viewport.touch) await press(state.form, 'cancel');
   else {
     await page.keyboard.press('Escape');
     await t.game.step(2);
@@ -234,7 +247,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     t.check(`${where}: taps beside the form start or resume nothing`, now.mode === mode && state.open, { mode: now.mode, open: state.open, points: await besideForm() });
     t.check(`${where}: the field lost the focus, still shown with the text`, !(await fieldFocused()) && (await page.locator('textarea').isVisible()) && state.text.includes('und noch mehr'), state.text);
     await t.screenshot(`${where} after taps beside the form`);
-    await tap(state.form.cancel);
+    await press(state.form, 'cancel');
     t.check(`${where}: Abbrechen closes the form`, !(await fb()).open && (await t.game.state()).mode === mode);
   };
   await t.game.pauseGame();

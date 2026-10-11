@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInstallState, type InstallState } from '../core/install';
 import type { GameMode } from '../types';
-import { installHintKind, reloadOffered, whatsNewLines } from './notices';
+import { installHintKind, reloadOffered } from './notices';
 
 const install = (fields: Partial<InstallState> = {}): InstallState => ({ ...createInstallState(), visits: 2, ...fields });
 
@@ -38,16 +38,5 @@ describe('install hint', () => {
     expect(installHintKind(install({ ...base, standalone: true }), true)).toBeNull();
     expect(installHintKind(install({ ...base, installed: true }), true)).toBeNull();
     expect(installHintKind(install({ ...base, dismissed: true }), true)).toBeNull();
-  });
-});
-
-describe("what's new lines", () => {
-  it('lists the items of all entries, newest first', () => {
-    const entries = [
-      { version: '2026-10-09.1', date: '2026-10-09', items: ['Neu A', 'Neu B'] },
-      { version: '2026-10-08.2', date: '2026-10-08', items: ['Alt C'] },
-    ];
-    expect(whatsNewLines(entries)).toEqual(['Neu A', 'Neu B', 'Alt C']);
-    expect(whatsNewLines([])).toEqual([]);
   });
 });

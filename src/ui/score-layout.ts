@@ -41,6 +41,18 @@ const LINE = 11;
 /** Space between the list's edge and its columns, and the scroll bar width. */
 const LIST_PAD = 4;
 export const SCROLLBAR_W = 2;
+
+/**
+ * A scroll bar's thumb on a track `track` long, for a list showing `viewH` of
+ * `contentH` scrolled by `scroll`: its offset on the track and its length (at
+ * least `min`), or null when nothing overflows. Shared by the canvas lists and
+ * the portrait sheet.
+ */
+export function scrollThumb(track: number, viewH: number, contentH: number, scroll: number, min: number): { y: number; h: number } | null {
+  if (contentH <= viewH) return null;
+  const h = Math.max(min, Math.round((track * viewH) / contentH));
+  return { y: Math.round(((track - h) * scroll) / (contentH - viewH)), h };
+}
 /** The widest list (desktop, landscape): more spread would not read better. */
 const LIST_MAX_W = 300;
 

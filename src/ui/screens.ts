@@ -82,6 +82,7 @@ import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
 import { type TrickHint, trickHintPlate } from './trick-hint';
+import type { ListScroll } from './whats-new';
 
 export interface UiView {
   records: Records;
@@ -123,6 +124,8 @@ export interface UiView {
   logoHold: LongPress;
   /** The online list's screens and the "Eintragen" offer; null without an online list (tests, headless). */
   scores: HighscoreFlow | null;
+  /** Scroll offset of the "Neu in dieser Version" list. */
+  whatsNew: ListScroll;
   /** The feedback screen (title icon, pause button); null without a feedback sender (tests, headless). */
   feedback: FeedbackFlow | null;
 }
@@ -540,7 +543,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       if (view.settings.open) drawSettings(r, view);
       else if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
       else if (view.feedback?.open) drawFeedback(r, view.feedback, feedbackLayout(r.display));
-      else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!);
+      else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!, view.whatsNew.offset);
       else drawTitle(r, view, menu!);
       break;
     case 'playing':

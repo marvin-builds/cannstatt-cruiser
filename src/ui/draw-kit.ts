@@ -7,6 +7,7 @@ import { drawText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
 import { buttonPlateSprite, ICON_SIZE, type PixelIcon, UI } from './art';
 import { centreX, type UiMetrics } from './layout';
+import { scrollThumb } from './score-layout';
 
 const NO_TEXT_OPTIONS: TextOptions = {};
 const scratch: TextOptions = {};
@@ -58,4 +59,17 @@ export function iconButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: Pixe
   buttonPlateSprite(m.plate).draw(r.g, 0, x, y);
   const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
   icon.draw(r.g, frame, x + inset, y + inset, m.iconScale);
+}
+
+/** A bar `w` px wide at a scrolling list's right edge: where the visible rows are in the whole list. */
+export function scrollBar(r: RenderContext, list: Rect, contentH: number, scroll: number, w: number): void {
+  const { g } = r;
+  const x = list.x + list.w - w - 2;
+  const track = list.h - 4;
+  const thumb = scrollThumb(track, list.h, contentH, scroll, 6);
+  g.fillStyle = UI.empty;
+  g.fillRect(x, list.y + 2, w, track);
+  if (!thumb) return;
+  g.fillStyle = UI.muted;
+  g.fillRect(x, list.y + 2 + thumb.y, w, thumb.h);
 }

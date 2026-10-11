@@ -79,6 +79,20 @@ export interface UiDebugHook {
    * sender; the title icon and the pause button are in layout().screen.feedback.
    */
   feedback(): FeedbackDebug | null;
+  /**
+   * The "Neu in dieser Version" list while it shows (scroll offset, overflow, rows, list rect in view
+   * px), else null. On the portrait sheet (`sheet` true) offset and overflow are the sheet's, in CSS px.
+   */
+  whatsNew(): WhatsNewDebug | null;
+}
+
+export interface WhatsNewDebug {
+  sheet: boolean;
+  offset: number;
+  maxScroll: number;
+  rows: number;
+  headings: number;
+  list: Rect;
 }
 
 export interface FeedbackDebug {
@@ -122,7 +136,10 @@ declare global {
   }
 }
 
-export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed): void {
+/** The portrait "Neu in dieser Version" sheet's scroll while it shows, else null. */
+type SheetScroll = () => { offset: number; maxScroll: number } | null;
+
+export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, whatsNewSheet: SheetScroll): void {
   window.__ui = {
     hud(values) {
       Object.assign(ctx.state, values);
@@ -242,6 +259,13 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       if (!flow) return null;
       const { open, kind, text, withLog, status, message } = flow;
       return { open, kind, text, withLog, status, message, form: feedbackLayout(ctx.display) };
+    },
+    whatsNew() {
+      const list = currentMenu(ctx, view)?.list;
+      if (!list) return null;
+      const headings = list.rows.filter((r) => r.kind === 'heading').length;
+      const scroll = whatsNewSheet() ?? { offset: view.whatsNew.offset, maxScroll: list.maxScroll };
+      return { sheet: whatsNewSheet() !== null, ...scroll, rows: list.rows.length, headings, list: list.rect };
     },
   };
 }

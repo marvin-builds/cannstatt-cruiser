@@ -4,8 +4,9 @@
  */
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import type { DisplayInfo, GameState, Rect } from '../types';
-import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout, whatsNewLayout } from './menu-layout';
-import { installHintKind, reloadOffered, whatsNewLines } from './notices';
+import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout } from './menu-layout';
+import { installHintKind, reloadOffered } from './notices';
+import { whatsNewLayout } from './whats-new';
 import type { RunResult } from './records';
 
 /** The parts of the ui view the menu screens depend on. */
@@ -96,7 +97,7 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
   if (cache?.key === key) return cache.layout;
   const layout =
     screen === 'whatsNew'
-      ? whatsNewLayout(input, whatsNewLines(state.whatsNew))
+      ? whatsNewLayout(input, state.whatsNew)
       : screen === 'title'
         ? titleLayout(input)
         : screen === 'pause'

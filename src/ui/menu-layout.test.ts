@@ -22,7 +22,6 @@ import {
   toTitleLabel,
   toTitlePlate,
   trickKeysHint,
-  whatsNewLayout,
 } from './menu-layout';
 import type { InstallHintKind } from './notices';
 
@@ -419,14 +418,24 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it("what's new: title, up to six lines and Weiter fit, all variants", () => {
-    const lines = Array.from({ length: 6 }, () => 'Gefangene Sachen benutzen (E / Knopf) xx');
-    for (const input of inputs()) {
-      const l = whatsNewLayout(input, lines);
-      checkScreen(input, l, false);
-      expect(l.buttons.next, input.label).not.toBeNull();
-      for (let i = 0; i < 6; i++) expect(l.blocks.has(`line${i}`), input.label).toBe(true);
-      expect(l.buttons.reload).toBeNull();
+});
+
+describe('the reload card on 2:1 landscape titles (ROADMAP 59)', () => {
+  it('always shows with its button inside the view, beside the help, every notice and the feedback icon', () => {
+    // 800x400 and 844x390: view 400 and 422 px wide on desktop and phones.
+    for (const viewWidth of [400, 422]) {
+      for (const touch of [false, true]) {
+        for (const install of touch ? [null, 'prompt', 'ios'] as const : [null] as const) {
+          const input = { viewWidth, touch, portrait: false, fullscreenAvailable: true, reload: true, install, kidButton: true, feedback: true };
+          const l = titleLayout(input);
+          const label = JSON.stringify(input);
+          const card = l.blocks.get('reload');
+          expect(card, label).toBeDefined();
+          expect(inside(card!, viewWidth), label).toBe(true);
+          expect(l.buttons.reload, label).not.toBeNull();
+          expect(inside(l.buttons.reload!, viewWidth), label).toBe(true);
+        }
+      }
     }
   });
 });

@@ -7,6 +7,8 @@ import type { OrientationEnv } from '../core/orientation';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
 import type { Rect } from '../types';
 import type { FeedbackField } from './feedback-field';
+import type { FeedbackSheet, FeedbackSheetHandlers } from './feedback-sheet';
+import type { FeedbackSheetModel } from './portrait-sheets';
 import { feedbackIcon, feedbackLayout } from './feedback-layout';
 import { createUiSystem } from './index';
 import { uiMetrics } from './layout';
@@ -35,24 +37,53 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     placeholder: '',
     focused: 0,
     blurred: 0,
+    hasFocus: false,
     place(rect: Rect | null, value: string, placeholder: string) {
       field.rect = rect;
       field.value = value;
       field.placeholder = placeholder;
+      if (!rect) field.hasFocus = false;
     },
     focus() {
       field.focused++;
+      field.hasFocus = true;
     },
     blur() {
       field.blurred++;
+      field.hasFocus = false;
+    },
+    isFocused(): boolean {
+      return field.hasFocus;
     },
   } satisfies FeedbackField & Record<string, unknown>;
+  /** The portrait sheet (ROADMAP 58): what it shows and the player's actions on it. */
+  const sheet = {
+    model: null as FeedbackSheetModel | null,
+    focused: 0,
+    hasFocus: false,
+    actions: null as FeedbackSheetHandlers | null,
+    show(model: FeedbackSheetModel | null) {
+      sheet.model = model;
+      if (!model) sheet.hasFocus = false;
+    },
+    focus() {
+      sheet.focused++;
+      sheet.hasFocus = true;
+    },
+    blur() {
+      sheet.hasFocus = false;
+    },
+    isFocused(): boolean {
+      return sheet.hasFocus;
+    },
+  } satisfies FeedbackSheet & Record<string, unknown>;
   const store = memoryStore();
   if (options.kid) store.set('kidMode', true);
   /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
   const locks: string[] = [];
   const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field, orientation });
+  const feedbackSheet = (handlers: FeedbackSheetHandlers) => ((sheet.actions = handlers), sheet);
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field, feedbackSheet, orientation });
   const game = new Game({ systems: [ui] });
   game.display.touch = options.touch ?? false;
   game.display.portrait = options.portrait ?? false;
@@ -82,7 +113,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     for (let i = 0; i < 8; i++) game.tick();
   };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, locks, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
+  return { game, ui, flow: ui.feedback!, sent, field, sheet, locks, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -193,12 +224,64 @@ describe('feedback in the game', () => {
     expect(t.flow.open).toBe(true);
     t.game.tick();
     expect(t.field.focused).toBe(0);
-    expect(t.field.rect).toEqual(t.form().field);
+    expect(t.sheet.focused).toBe(0);
+    expect(t.sheet.model).not.toBeNull();
     t.game.display.portrait = false;
     t.game.tick();
+    expect(t.sheet.model).toBeNull();
+    expect(t.field.rect).toEqual(t.form().field);
     t.game.display.portrait = true;
     t.game.tick();
     expect(t.field.rect).toBeNull();
+    expect(t.sheet.model).toBeNull();
+  });
+
+  it('portrait shows the full-screen sheet instead of the canvas form; its actions work like the form (ROADMAP 58)', async () => {
+    const t = app({ touch: true, portrait: true });
+    t.game.hitHotspot(10, 10); // the rotate hint
+    t.press(t.icon());
+    t.game.tick();
+    expect(t.field.rect).toBeNull();
+    expect(t.sheet.model).toMatchObject({ done: false, kind: 'bug', text: '', logShown: true });
+    // The canvas form under the sheet takes no taps.
+    t.press(t.form().idea);
+    expect(t.flow.kind).toBe('bug');
+    const a = t.sheet.actions!;
+    a.onKind('idea');
+    a.onKind('bug');
+    a.onToggleLog();
+    a.onInput('Die Bank ist zu hoch');
+    t.game.tick();
+    expect(t.sheet.model).toMatchObject({ text: 'Die Bank ist zu hoch', withLog: true, canSend: true });
+    a.onSend();
+    await Promise.resolve();
+    t.game.tick();
+    expect(t.sent[0]!.draft).toEqual({ kind: 'bug', text: 'Die Bank ist zu hoch', withLog: true });
+    expect(t.sent[0]!.context).toMatchObject({ touch: true, portrait: true });
+    expect(t.sheet.model!.done).toBe(true);
+    a.onCancel();
+    t.game.tick();
+    expect(t.flow.open).toBe(false);
+    expect(t.sheet.model).toBeNull();
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('portrait: keys on the sheet type into its field, Esc closes; landscape never shows the sheet', () => {
+    const t = app({ portrait: true });
+    t.key('KeyF');
+    t.game.tick();
+    expect(t.sheet.model).not.toBeNull();
+    expect(t.sheet.focused).toBe(1);
+    t.sheet.blur();
+    t.key('KeyQ');
+    expect(t.sheet.isFocused()).toBe(true);
+    t.key('Escape');
+    expect(t.flow.open).toBe(false);
+    const l = app();
+    l.key('KeyF');
+    l.game.tick();
+    expect(l.sheet.model).toBeNull();
+    expect(l.field.rect).toEqual(l.form().field);
   });
 
   it('"Senden" sends kind, text and the log box with the game context; the log only when ticked on a bug report', async () => {
@@ -261,8 +344,11 @@ describe('the open feedback form is modal everywhere (phone bug of 2026-10-11.5)
       for (const [x, y] of [...outside(t.game.display.viewWidth, t.game.display.viewHeight), [5, 100]] as const) t.tap(x, y);
       expect(t.game.state.mode).toBe('title');
       expect(t.flow.open).toBe(true);
-      expect(t.field.blurred).toBeGreaterThan(blurred);
-      expect(t.field.rect).toEqual(t.form().field);
+      if (options.portrait) expect(t.sheet.model).not.toBeNull();
+      else {
+        expect(t.field.blurred).toBeGreaterThan(blurred);
+        expect(t.field.rect).toEqual(t.form().field);
+      }
     });
 
     it(`${name}: a tap outside the canvas does not resume the paused run behind the form`, () => {
@@ -374,6 +460,24 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
   });
 
+  it('the portrait sheet keeps portrait free over its thank-you until OK (ROADMAP 58)', async () => {
+    const t = app({ installed: true, touch: true });
+    t.press(t.icon());
+    t.game.display.portrait = true;
+    t.game.tick();
+    t.sheet.actions!.onInput('Die Bank ist zu hoch');
+    t.sheet.actions!.onSend();
+    await Promise.resolve();
+    await Promise.resolve();
+    t.game.tick();
+    expect(t.flow.done).toBe(true);
+    expect(t.sheet.model!.done).toBe(true);
+    expect(t.locks).toEqual(['any']);
+    t.sheet.actions!.onCancel();
+    t.game.tick();
+    expect(t.locks).toEqual(['any', 'landscape']);
+  });
+
   it('a run start or leaving the pause screen closes the form and locks landscape on the same tick', () => {
     const t = app({ installed: true });
     t.key('KeyF');
@@ -389,14 +493,36 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
   });
 
-  it('turned to portrait while typing, the form keeps its field in the portrait layout instead of the rotate hint', () => {
+  it('turned to portrait while typing, the sheet takes over with the text and the focus instead of the rotate hint, and back', () => {
     const t = app({ installed: true, touch: true });
     t.press(t.icon());
+    t.game.tick();
+    t.press(t.form().field);
+    t.ui.feedback!.setText('Halb getippt');
+    expect(t.field.isFocused()).toBe(true);
     t.game.display.portrait = true;
     t.game.tick();
-    expect(t.field.rect).toEqual(t.form().field);
-    expect(t.press(t.form().idea)).toBe(true);
+    expect(t.field.rect).toBeNull();
+    expect(t.sheet.model).toMatchObject({ text: 'Halb getippt' });
+    expect(t.sheet.isFocused()).toBe(true);
+    t.sheet.actions!.onKind('idea');
     expect(t.flow.kind).toBe('idea');
+    t.game.display.portrait = false;
+    t.game.tick();
+    expect(t.sheet.model).toBeNull();
+    expect(t.field.rect).toEqual(t.form().field);
+    expect(t.field.value).toBe('Halb getippt');
+    expect(t.field.isFocused()).toBe(true);
+  });
+
+  it('a turn without the focus in the field moves no focus (no keyboard pops up by itself)', () => {
+    const t = app({ installed: true, touch: true });
+    t.press(t.icon());
+    t.game.tick();
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.sheet.model).not.toBeNull();
+    expect(t.sheet.focused).toBe(0);
   });
 
   it('kid mode without feedback never frees portrait', () => {
