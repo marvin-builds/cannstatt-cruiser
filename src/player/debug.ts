@@ -8,6 +8,7 @@ import { drawText } from '../core/font';
 import type { CarriedItem, Entity, EntityKind, GameContext, ItemAction, RenderContext } from '../types';
 import { BOARD_FRAMES } from './art';
 import { chillStyle } from './chill';
+import type { HighFiveArm, HighFiveSide } from './high-five';
 import { drawBoard, drawPose } from './render';
 import { poseAt, TIMELINES, type TimelineName } from './poses';
 import { ITEM_USE_TIME, itemUseFrame, type UseFrame } from './use';
@@ -54,6 +55,8 @@ export interface PlayerDebugHook {
    * the ride, air, grind and grind-trick poses, then rows of the drunk wobble.
    */
   useLineup(scale?: number): string;
+  /** PNG data URL: the high five arm (raise, slap, lower; ahead, over, behind) in the ride, push, air, grab, grind, grind-trick and duck poses. */
+  highFiveLineup(scale?: number): string;
   /**
    * PNG data URL: every animation step and board frame, upscaled by `scale`;
    * `look` adds the adult chill look (joint, red eyes) or the kid one (bubble
@@ -136,6 +139,7 @@ export function installPlayerDebug(ctx: GameContext): void {
     },
     lineup: (scale = 6, look = 'normal', item) => renderLineup(scale, look, item ?? null),
     useLineup: (scale = 4) => renderUseLineup(scale),
+    highFiveLineup: (scale = 4) => renderHighFiveLineup(scale),
   };
 }
 
@@ -246,6 +250,23 @@ function renderUseLineup(scale: number): string {
     }
     row++;
   }
+  return canvas.toDataURL('image/png');
+}
+
+const HIGH_FIVE_POSES: TimelineName[] = ['ride', 'push', 'airRise', 'airFall', 'grab', 'grind', 'grindTrick', 'duck'];
+const HIGH_FIVE_CELLS: [HighFiveArm, HighFiveSide][] = (['ahead', 'over', 'behind'] as const).flatMap((side) =>
+  (['raise', 'slap', 'lower'] as const).map((arm): [HighFiveArm, HighFiveSide] => [arm, side]),
+);
+
+function renderHighFiveLineup(scale: number): string {
+  const { canvas, g } = lineupCanvas(HIGH_FIVE_CELLS.length, HIGH_FIVE_POSES.length, scale);
+  HIGH_FIVE_POSES.forEach((name, row) => {
+    drawText(g, `five ${name}`, 2, row * CELL_H + 2, { color: '#241c24' });
+    HIGH_FIVE_CELLS.forEach(([arm, side], col) => {
+      const { x, groundY } = cell(g, col, row);
+      drawPose(g, poseAt(name, 0.2), x, groundY, { highFive: { arm, side } });
+    });
+  });
   return canvas.toDataURL('image/png');
 }
 

@@ -278,6 +278,28 @@ in any slice's Vitest tests.
   the crash (ride, push, air, grind, grind trick, duck); a crash cuts it
   short, a run start clears it. Looks only: hitbox, jump and duck unchanged.
 
+## High five (highFive)
+
+- On `highFive {entityId}` (NorDIY, ROADMAP 49) the front arm goes up to the
+  high fiver's hand (`high-five.ts`, geometry in `high-five-art.ts`): raised
+  in `HIGH_FIVE_RAISE` (0.05 s), the slap with the open palm held for
+  `HIGH_FIVE_HOLD` (0.12 s, the contact), lowered within `HIGH_FIVE_TIME`
+  (0.3 s in all). The arm reaches ahead, straight up (behind the head, the
+  palm above the cap) or up and back, from the high fiver entity's middle
+  relative to `player.x` (more than 6 px off: ahead / behind); it follows him
+  every tick while the street carries him past, keeps its last side once
+  he is gone and reaches up and back for an unknown id.
+- Works in every pose but the crash (ride, push, air, grab, grind, grind
+  trick, duck), same in kid mode. Looks only: physics, hitbox, `player.state`
+  and controls unchanged. A crash, an air trick start or a grind trick start
+  cuts it short; it is ignored while the crash plays; a run start clears it.
+  It replaces a running item use, a later `itemUsed` replaces it; the
+  carried item, catch reach and drunk flail are not drawn meanwhile.
+- The skater's hand position is not published: gameplay places the contact
+  burst from the high fiver's own hand.
+- Debug: `window.__player.highFiveLineup(scale)` renders every phase and side
+  in the main poses.
+
 ## Drunk look (state.drunkTimer > 0)
 
 - `drunkLook(drunkTimer, state.time)` (`wobble.ts`): the body sways 1 px

@@ -21,6 +21,8 @@ import { BUBBLE_ART, BUBBLE_PALETTE, bubbleTime, chillBubble } from './bubble';
 import { CATCH_ARM, carriedItemDraw, ITEM_ART, ITEM_PALETTE, type ItemDraw, kidSafeItem } from './carry';
 import { chillJoint, chillStyle, type ChillStyle, glowColor, JOINT, JOINT_COLORS, type Point, smokePuffs } from './chill';
 import type { AnimView, SkaterController } from './controller';
+import { type HighFiveArm, type HighFiveSide, highFiveArm } from './high-five';
+import { type HighFiveDraw, highFiveDraw, PALM_H, PALM_W } from './high-five-art';
 import { type Pose, type TimelineName, timelineFor } from './poses';
 import { type UseFrame, itemUseFrame, type MugToss } from './use';
 import {
@@ -89,12 +91,20 @@ export interface UseLook {
   timeline: TimelineName;
 }
 
+/** The high five arm to draw (highFive): its phase and which way it reaches. */
+export interface HighFivePose {
+  arm: HighFiveArm;
+  side: HighFiveSide;
+}
+
 /** Everything drawn on top of a bare pose; all optional. */
 export interface PoseLooks {
   chill?: ChillLook | null;
   carry?: CarryLook | null;
   use?: UseLook | null;
   drunk?: DrunkLook | null;
+  /** The high five arm: replaces the carried item, the item use and the flail for its frames. */
+  highFive?: HighFivePose | null;
   /** Lid colour of the bin a bin-crash pose sits in. */
   binLid?: number;
 }
@@ -104,10 +114,10 @@ const NO_LOOKS: PoseLooks = {};
 /**
  * Draws `pose` with the wheel contact point at (x, y); everything snaps to
  * whole pixels together. `looks` adds the chill look, the carried item, the
- * item use, the drunk wobble and the bin lid colour.
+ * item use, the high five, the drunk wobble and the bin lid colour.
  */
 export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: number, looks: PoseLooks = NO_LOOKS): void {
-  const { chill, carry, use, drunk } = looks;
+  const { chill, drunk } = looks;
   const x0 = Math.round(x);
   const y0 = Math.round(y);
   const boardTop = y0 - BOARD_H;
@@ -115,15 +125,21 @@ export function drawPose(g: CanvasRenderingContext2D, pose: Pose, x: number, y: 
   // Drunk: the body sways over the board.
   const left = x0 - BODY_ANCHOR_X + (pose.bodyDx ?? 0) + (drunk?.lean ?? 0);
   const top = boardTop + BOARD_DECK_ROW - BODY_DECK_ROW + (pose.bodyDy ?? 0);
+  const five = looks.highFive ? highFiveDraw(pose.body, looks.highFive.arm, looks.highFive.side) : null;
+  // The high five arm takes the front hand: no carried item, item use or flail meanwhile.
+  const carry = five ? null : looks.carry;
+  const use = five ? null : looks.use;
   const item = carry && carriedItemDraw(carry.item, carry.timeline, pose.body, carry.catching);
   const using = use && useDraw(use.item, use.frame, use.timeline, pose.body);
-  const flail = drunk?.flail && !using && !item?.arm ? flailArm(pose.body, drunk.flailHigh) : null;
+  const flail = drunk?.flail && !five && !using && !item?.arm ? flailArm(pose.body, drunk.flailHigh) : null;
   // Reaching arms come from behind the head, so the body covers their root.
   if (item?.arm) ARM.draw(g, 0, left + item.arm.x, top + item.arm.y);
   if (using?.behind) drawArm(g, left, top, using.shoulder, using.hand);
-  bodySprite(chill?.style.redEyes ?? false, !!(using || flail)).draw(g, pose.body, left, top);
+  if (five?.behind) drawArm(g, left, top, five.shoulder, five.hand);
+  bodySprite(chill?.style.redEyes ?? false, !!(using || flail || five)).draw(g, pose.body, left, top);
   if (item) drawItem(g, item, left, top);
   if (flail) drawArm(g, left, top, flail.shoulder, flail.hand);
+  if (five) drawHighFive(g, five, left, top);
   // Upright on the deck, over the hips: only the legs stick out of the top.
   if (pose.bin) drawBin(g, looks.binLid ?? 0, 0, x0 + (pose.boardDx ?? 0), boardTop + BOARD_DECK_ROW + (pose.boardDy ?? 0));
   if (chill?.style.mouth === 'joint') {
@@ -152,6 +168,18 @@ function drawArm(g: CanvasRenderingContext2D, left: number, top: number, shoulde
   for (const p of line) g.fillRect(left + p.x, top + p.y, 1, 1);
   g.fillStyle = PALETTE.s;
   g.fillRect(left + hand.x, top + hand.y, 1, 1);
+}
+
+/** The high five arm in front of the body (unless it reaches back) and the open palm at the slap. */
+function drawHighFive(g: CanvasRenderingContext2D, five: HighFiveDraw, left: number, top: number): void {
+  if (!five.behind) drawArm(g, left, top, five.shoulder, five.hand);
+  if (!five.palm) return;
+  const x = left + five.palm.x;
+  const y = top + five.palm.y;
+  g.fillStyle = PALETTE.k;
+  g.fillRect(x - 1, y - 1, PALM_W + 2, PALM_H + 2);
+  g.fillStyle = PALETTE.s;
+  g.fillRect(x, y, PALM_W, PALM_H);
 }
 
 /** The using arm in front of the body, the item at the lips over it, and the falling crumbs. */
@@ -238,7 +266,10 @@ export function drawSkater(g: CanvasRenderingContext2D, state: GameState, view: 
   const frame = view.use && itemUseFrame(view.use.action, view.use.time);
   const use = view.use && frame ? { item: kidSafeItem(view.use.item, state.kidMode), frame, timeline } : null;
   const drunk = drunkLook(state.drunkTimer, state.time);
+  const fiveArm = view.highFive && highFiveArm(view.highFive.time);
+  const highFive = view.highFive && fiveArm ? { arm: fiveArm, side: view.highFive.side } : null;
   // On a kicker the wheels ride up the ramp surface (look only, y stays GROUND_Y).
-  drawPose(g, drunkPoseAt(timeline, animTime, drunk), p.x, p.y - view.kickerLift, { chill, carry, use, drunk, binLid: skater.bin.lid });
+  const looks = { chill, carry, use, drunk, highFive, binLid: skater.bin.lid };
+  drawPose(g, drunkPoseAt(timeline, animTime, drunk), p.x, p.y - view.kickerLift, looks);
   if (timeline === 'hardLand') drawLandingDust(g, p.x, p.y, view.time);
 }

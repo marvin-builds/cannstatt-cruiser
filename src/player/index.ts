@@ -37,6 +37,7 @@ export function createPlayerSystem(): PlayerSystem {
       ctx.bus.on('launch', (e) => c.launch(e.velocity));
       ctx.bus.on('itemCaught', () => c.catchItem());
       ctx.bus.on('itemUsed', (e) => c.useItem(e.item, e.action));
+      ctx.bus.on('highFive', (e) => c.highFive(ctx.state, e.entityId));
       debug = typeof window !== 'undefined' && testHookEnabled();
       if (debug) installPlayerDebug(ctx);
     },
