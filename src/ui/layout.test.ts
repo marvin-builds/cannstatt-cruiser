@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, TEST_DEVICE_LABEL, uiMetrics } from './layout';
+import { blinkOn, iconOnPlate, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, TEST_DEVICE_LABEL, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -19,6 +19,24 @@ const WIDTHS = [320, 360, 390, 422, 427];
 const STATS_PLATE_RIGHT = 120;
 
 describe('layout helpers', () => {
+  it('centres an icon exactly on its plate: an odd icon (the 9x9 gear) gets an odd plate where the HUD plate is even', () => {
+    for (const d of DEVICES) {
+      const m = uiMetrics(d.display);
+      const hit = { x: m.margin, y: m.margin, w: m.hit, h: m.hit };
+      for (const size of [8, 9]) {
+        const { plate, icon } = iconOnPlate(hit, m, size);
+        const drawn = size * m.iconScale;
+        expect(icon.x - plate.x).toBe(plate.x + plate.w - (icon.x + drawn));
+        expect(icon.y - plate.y).toBe(plate.y + plate.h - (icon.y + drawn));
+        expect(Math.abs(plate.w - m.plate)).toBeLessThanOrEqual(1);
+        expect(plate.x).toBeGreaterThanOrEqual(0);
+        expect(plate.y).toBeGreaterThanOrEqual(0);
+        // 8x8 icons keep their plate and place.
+        if (size === 8) expect(plate).toEqual(buttonPlate(hit, m));
+      }
+    }
+  });
+
   it('anchors to the right edge of the adaptive view', () => {
     expect(rightAnchor(320, 14, 4)).toBe(302);
     expect(rightAnchor(427, 14, 4)).toBe(409);
@@ -170,6 +188,32 @@ describe('layout helpers', () => {
       if (l.keysY !== null) expect(l.statsNoteY + line).toBeLessThanOrEqual(l.keysY);
       expect(lastLine + line).toBeLessThanOrEqual(l.back.y);
       expect(l.back.y + l.back.h).toBeLessThanOrEqual(180);
+    }
+  });
+
+  it('settings: "App installieren" only while installable, a full tap target inside the view, clear of everything else (ROADMAP 68)', () => {
+    for (const { name, display, cssPerPx } of DEVICES) {
+      const m = uiMetrics(display);
+      for (const width of WIDTHS) {
+        const at = `${name} ${width}`;
+        expect(settingsLayout(width, m).install, at).toBeNull();
+        const l = settingsLayout(width, m, true);
+        const button = l.install!;
+        expect(inside(button, width) && whole(button), `${at} ${JSON.stringify(button)}`).toBe(true);
+        expect(button.w, at).toBeGreaterThanOrEqual(measureText('App installieren', m.menuButtonH >= 24 ? 2 : 1) + 8);
+        expect(Math.min(button.w, button.h) * cssPerPx, at).toBeGreaterThanOrEqual(44);
+        const titleW = measureText('Einstellungen', 2);
+        const title: Rect = { x: centreX(width) - Math.ceil(titleW / 2), y: l.titleY, w: titleW, h: 14 };
+        const noteRow = (y: number): Rect => ({ x: 0, y, w: width, h: 7 * l.noteScale });
+        const keys = l.keysY === null ? [] : [noteRow(l.keysY)];
+        const t = l.testDevice;
+        const testDevice: Rect = { x: t.x, y: t.y, w: measureText(TEST_DEVICE_LABEL, t.scale), h: 7 * t.scale };
+        for (const r of [title, l.toggle, l.stats, l.privacyLink, l.back, noteRow(l.kidNoteY), noteRow(l.statsNoteY), testDevice, ...keys]) {
+          expect(overlaps(button, r), `${at} vs ${JSON.stringify(r)}`).toBe(false);
+        }
+        for (const r of [l.toggle, l.stats, l.privacyLink, l.back]) expect(inside(r, width), at).toBe(true);
+        expect(l.toggle.w, at).toBeGreaterThanOrEqual(measureText('Kindermodus: AUS', m.menuButtonH >= 24 ? 2 : 1) + 8);
+      }
     }
   });
 

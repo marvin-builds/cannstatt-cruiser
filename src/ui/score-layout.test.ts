@@ -36,7 +36,7 @@ describe('title trophy button', () => {
         for (const b of [row.mute, row.fullscreen]) if (b) expect(overlap(t, b), label).toBe(false);
         const plate = buttonPlate(t, m);
         expect(overlap(plate, logoRect(c.viewWidth)), `${label}: logo`).toBe(false);
-        const panel = titleLayout({ ...c, fullscreenAvailable: fullscreen, reload: false, install: null }).panel!;
+        const panel = titleLayout({ ...c, fullscreenAvailable: fullscreen, reload: false, install: false }).panel!;
         expect(overlap(plate, panel), `${label}: panel`).toBe(false);
         expect(t.x, `${label}: right half`).toBeGreaterThan(c.viewWidth / 2);
       }

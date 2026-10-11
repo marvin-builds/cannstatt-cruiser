@@ -7,7 +7,7 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { ARROW_RIGHT, DISMISS_ICON, ICON_FEEDBACK, ICON_GEAR, SHARE_ICON, STAR, UI } from './art';
+import { DISMISS_ICON, ICON_FEEDBACK, ICON_GEAR, STAR, UI } from './art';
 import { centred, fill, iconButton, menuButton, ribbon, scrollBar, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
@@ -19,14 +19,12 @@ import {
   titleKeys,
   LINE,
   MENU_TEXT,
-  type InstallCard,
   type MenuLayout,
   PAUSE_KEYS,
   pausePrompt,
   RESULT_ROWS,
   reloadLabel,
   reloadParts,
-  STEP_GAP,
   startPrompt,
   submitLabel,
   titleHelp,
@@ -83,28 +81,12 @@ function drawReloadCard(r: RenderContext, card: Rect): void {
   menuButton(r, parts.button, reloadLabel(r.display.touch), UI.yellow);
 }
 
-function drawInstallCard(r: RenderContext, card: Rect, kind: InstallCard): void {
-  const parts = installParts(card, kind, uiMetrics(r.display));
+/** The install card: "App installieren" and "×". */
+function drawInstallCard(r: RenderContext, card: Rect): void {
+  const parts = installParts(card, uiMetrics(r.display));
   cardPlate(r, card);
-  if (kind === 'compact') {
-    menuButton(r, parts.button!, MENU_TEXT.installApp, UI.teal);
-    drawDismiss(r, parts.dismiss);
-    return;
-  }
-  text(r, MENU_TEXT.installReason, parts.textX, parts.textY, { color: UI.white });
-  if (parts.button) menuButton(r, parts.button, MENU_TEXT.install, UI.teal);
+  menuButton(r, parts.button, MENU_TEXT.installApp, UI.teal);
   drawDismiss(r, parts.dismiss);
-  if (kind !== 'ios') return;
-  // "Teilen [share] -> Zum Home-Bildschirm"
-  const y = parts.textY + LINE;
-  let x = parts.textX;
-  text(r, MENU_TEXT.iosShare, x, y, { color: UI.yellow });
-  x += measureText(MENU_TEXT.iosShare) + STEP_GAP;
-  SHARE_ICON.draw(r.g, 0, x, y - 1);
-  x += SHARE_ICON.width + STEP_GAP;
-  ARROW_RIGHT.draw(r.g, 0, x, y + 1);
-  x += ARROW_RIGHT.width + STEP_GAP;
-  text(r, MENU_TEXT.iosHome, x, y, { color: UI.yellow });
 }
 
 /** The "Anonyme Statistik: AN/AUS" button (settings menu and "Bestenliste"); scale 1 where scale 2 would not fit. */
@@ -120,7 +102,7 @@ export function drawPrivacyLink(r: RenderContext, rect: Rect): void {
   menuButton(r, rect, PRIVACY_LABEL, UI.muted, scale);
 }
 
-/** A "×" button (install hint, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
+/** A "×" button (install card, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
 export function drawDismiss(r: RenderContext, rect: Rect): void {
   menuButton(r, rect, '');
   const scale = Math.max(1, Math.floor(rect.h / 12));
@@ -133,7 +115,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
   const install = l.blocks.get('install');
-  if (install && l.install) drawInstallCard(r, install, l.install);
+  if (install && l.install) drawInstallCard(r, install);
   const { display, state } = r;
   if (l.buttons.toTitle) {
     const label = toTitleLabel(display.touch, state.mode === 'gameover');

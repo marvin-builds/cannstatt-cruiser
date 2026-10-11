@@ -150,7 +150,7 @@ describe('feedback note on the title', () => {
   it('hides the title buttons (gear, mute): a tap there only closes the note', () => {
     const gearApp = app([DONE]);
     const gear = titleLayout({
-      viewWidth: gearApp.game.display.viewWidth, touch: false, portrait: false, fullscreenAvailable: true, reload: false, install: null, settingsButton: true,
+      viewWidth: gearApp.game.display.viewWidth, touch: false, portrait: false, fullscreenAvailable: true, reload: false, install: false, settingsButton: true,
     }).buttons.settings!;
     gearApp.tap(gear.x + 2, gear.y + 2);
     expect(gearApp.ui.settings.open).toBe(false);

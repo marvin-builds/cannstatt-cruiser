@@ -93,7 +93,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     portrait: game.display.portrait,
     fullscreenAvailable: true,
     reload: false,
-    install: null,
+    install: false,
     feedback: true,
     ...fields,
   });

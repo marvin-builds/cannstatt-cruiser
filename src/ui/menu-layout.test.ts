@@ -23,7 +23,6 @@ import {
   toTitlePlate,
   trickKeysHint,
 } from './menu-layout';
-import type { InstallHintKind } from './notices';
 
 interface Variant {
   name: string;
@@ -43,7 +42,7 @@ function* inputs(): Generator<MenuInput & { label: string }> {
     for (const viewWidth of v.widths) {
       for (const fullscreenAvailable of [true, false]) {
         for (const reload of [false, true]) {
-          const installs: (InstallHintKind | null)[] = v.touch ? [null, 'prompt', 'ios'] : [null];
+          const installs = v.touch ? [false, true] : [false];
           for (const install of installs) {
             const label = `${v.name} ${viewWidth} fs=${fullscreenAvailable} reload=${reload} install=${install}`;
             yield { label, viewWidth, touch: v.touch, portrait: v.portrait, fullscreenAvailable, reload, install };
@@ -101,8 +100,9 @@ describe('menu screen layouts', () => {
       const l = titleLayout(input);
       checkScreen(input, l, false, [logoRect(input.viewWidth)]);
       expect(!!l.buttons.reload, input.label).toBe(input.reload);
-      expect(!!l.buttons.dismiss, input.label).toBe(!!input.install);
-      expect(!!l.buttons.install, input.label).toBe(input.install === 'prompt');
+      // Never the install card on the title, where any tap starts a run (ROADMAP 68: game over only).
+      expect(l.install, input.label).toBe(false);
+      expect(l.buttons.dismiss ?? l.buttons.install, input.label).toBeNull();
       expect(l.buttons.toTitle).toBeNull();
       expect(l.buttons.settings).toBeNull();
       expect(l.blocks.has('prompt'), input.label).toBe(true);
@@ -153,9 +153,7 @@ describe('menu screen layouts', () => {
         const m = uiMetrics(input);
         const icon = l.buttons.feedback;
         checkScreen(input, l, false, [logoRect(input.viewWidth)]);
-        // Only a narrow portrait title with both notice cards has no room left for it (the pause menu still offers feedback).
-        const crowded = input.portrait && input.viewWidth < 360 && input.reload && !!input.install;
-        expect(icon === null, input.label).toBe(crowded);
+        expect(icon, input.label).not.toBeNull();
         if (!icon) continue;
         expect(icon, input.label).toEqual(feedbackIcon(input.viewWidth, m));
         const others = [logoRect(input.viewWidth), titleTrophy(input.viewWidth, input.fullscreenAvailable, m), ...l.blocks.values()];
@@ -166,25 +164,24 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it('title: the feedback icon costs no rows; only a narrow portrait view compacts the install card for it', () => {
+  it('title: the feedback icon costs no rows', () => {
     for (const base of inputs()) {
       const plain = titleLayout(base);
       const l = titleLayout({ ...base, feedback: true });
       expect([...l.blocks.keys()], base.label).toEqual([...plain.blocks.keys()]);
-      if (l.install !== plain.install) expect(base.portrait && base.viewWidth < 360 && l.install === 'compact', base.label).toBe(true);
     }
   });
 
   it('title and pause: no feedback entry unless offered (kid mode)', () => {
     for (const input of inputs()) {
       expect(titleLayout(input).buttons.feedback, input.label).toBeNull();
-      expect(pauseLayout({ ...input, install: null }).buttons.feedback, input.label).toBeNull();
+      expect(pauseLayout({ ...input, install: false }).buttons.feedback, input.label).toBeNull();
     }
   });
 
   it('pause: the "Feedback" button fits with the logo, "Startbildschirm" and the prompt, all variants', () => {
     for (const input of inputs()) {
-      const l = pauseLayout({ ...input, install: null, feedback: true });
+      const l = pauseLayout({ ...input, install: false, feedback: true });
       checkScreen(input, l, true, [l.buttons.logo!]);
       expect(l.blocks.has('prompt'), input.label).toBe(true);
       // Only portrait with a pending update gives it up for the reload card.
@@ -237,7 +234,7 @@ describe('menu screen layouts', () => {
     for (const input of inputs()) {
       if (input.portrait) continue;
       const screens = [
-        ['pause', pauseLayout({ ...input, install: null })],
+        ['pause', pauseLayout({ ...input, install: false })],
         ['game over', gameOverLayout({ ...input, newRecord: false })],
         ['game over record', gameOverLayout({ ...input, newRecord: true })],
       ] as const;
@@ -260,7 +257,7 @@ describe('menu screen layouts', () => {
 
   it('pause: the logo, "Startbildschirm" and the reload button fit, all variants', () => {
     for (const input of inputs()) {
-      const l = pauseLayout({ ...input, install: null });
+      const l = pauseLayout({ ...input, install: false });
       checkScreen(input, l, true, [l.buttons.logo!]);
       expect(l.buttons.logo, input.label).not.toBeNull();
       expect(l.buttons.toTitle, input.label).not.toBeNull();
@@ -276,10 +273,13 @@ describe('menu screen layouts', () => {
         const l = gameOverLayout({ ...input, newRecord });
         checkScreen({ ...input, label: `${input.label} record=${newRecord}` }, l, false);
         expect(l.buttons.toTitle, input.label).not.toBeNull();
-        expect(!!l.buttons.reload, input.label).toBe(input.reload);
+        // A portrait game over with the install card may leave the reload card to the title.
+        const crowded = input.portrait && input.install;
+        if (!crowded) expect(!!l.buttons.reload, input.label).toBe(input.reload);
         expect(l.blocks.has('title') && l.blocks.has('prompt') && l.blocks.has('row0'), input.label).toBe(true);
-        // Portrait (44 px buttons) leaves the install hint to the title screen.
-        if (!input.portrait) expect(!!l.buttons.dismiss, `${input.label} record=${newRecord}`).toBe(!!input.install);
+        // The card is offered only here (a calm moment), so it shows in every variant, portrait too.
+        expect(!!l.buttons.install && !!l.buttons.dismiss, `${input.label} record=${newRecord}`).toBe(input.install);
+        expect(l.install, input.label).toBe(input.install);
       }
     }
   });
@@ -305,7 +305,7 @@ describe('menu screen layouts', () => {
     for (const input of inputs()) {
       const m = uiMetrics(input);
       const screens = [
-        ['pause', pauseLayout({ ...input, install: null })],
+        ['pause', pauseLayout({ ...input, install: false })],
         ['game over', gameOverLayout({ ...input, newRecord: true })],
       ] as const;
       for (const [name, l] of screens) {
@@ -326,7 +326,7 @@ describe('menu screen layouts', () => {
     for (const input of inputs()) {
       if (!input.portrait) continue;
       const screens = [
-        ['pause', pauseLayout({ ...input, install: null, plate: tallest })],
+        ['pause', pauseLayout({ ...input, install: false, plate: tallest })],
         ['game over', gameOverLayout({ ...input, newRecord: true })],
       ] as const;
       for (const [name, l] of screens) {
@@ -367,7 +367,7 @@ describe('menu screen layouts', () => {
     const plates = [statsLayout(40, false).plate, statsLayout(110, false).plate, statsLayout(110, true, true).plate];
     for (const input of inputs()) {
       for (const plate of plates) {
-        const l = pauseLayout({ ...input, install: null, plate });
+        const l = pauseLayout({ ...input, install: false, plate });
         const logo = l.buttons.logo!;
         const at = `${input.label} plate ${JSON.stringify(plate)}: logo ${JSON.stringify(logo)}`;
         expect(overlap(logo, plate), at).toBe(false);
@@ -379,7 +379,7 @@ describe('menu screen layouts', () => {
 
   it('portrait: the menu body text uses the big font where it fits', () => {
     for (const input of inputs()) {
-      const pause = pauseLayout({ ...input, install: null });
+      const pause = pauseLayout({ ...input, install: false });
       const over = gameOverLayout({ ...input, newRecord: false });
       if (!input.portrait) {
         expect(pause.textScale, input.label).toBe(1);
@@ -387,7 +387,7 @@ describe('menu screen layouts', () => {
         continue;
       }
       if (!input.reload) expect(pause.textScale, input.label).toBe(2);
-      if (!input.reload) expect(pauseLayout({ ...input, install: null, plate: statsLayout(60, false).plate }).textScale, input.label).toBe(2);
+      if (!input.reload) expect(pauseLayout({ ...input, install: false, plate: statsLayout(60, false).plate }).textScale, input.label).toBe(2);
       if (!input.reload && !input.install) expect(over.textScale, input.label).toBe(2);
       for (const l of [pause, over]) {
         const prompt = l.blocks.get('prompt')!;
@@ -420,16 +420,7 @@ describe('menu screen layouts', () => {
         expect(l.blocks.has('row0') && l.blocks.has('row1'), `${at}: Punkte and Highscore`).toBe(true);
         if (input.reload) expect(!!l.buttons.reload, `${at}: reload`).toBe(true);
         if (newRecord && !input.install) expect(l.blocks.has('record'), `${at}: Neuer Rekord!`).toBe(true);
-        // The install hint is compacted to "App installieren" + "×" instead of costing rows.
-        if (l.blocks.has('install')) expect(l.install, at).toBe(input.install === 'prompt' ? 'compact' : input.install);
       }
-    }
-  });
-
-  it('the title shows the install hint in full', () => {
-    for (const input of inputs()) {
-      const l = titleLayout(input);
-      expect(l.install, input.label).toBe(l.blocks.has('install') ? input.install : null);
     }
   });
 
@@ -440,7 +431,7 @@ describe('the reload card on 2:1 landscape titles (ROADMAP 59)', () => {
     // 800x400 and 844x390: view 400 and 422 px wide on desktop and phones.
     for (const viewWidth of [400, 422]) {
       for (const touch of [false, true]) {
-        for (const install of touch ? [null, 'prompt', 'ios'] as const : [null] as const) {
+        for (const install of touch ? [false, true] : [false]) {
           const input = { viewWidth, touch, portrait: false, fullscreenAvailable: true, reload: true, install, settingsButton: true, feedback: true };
           const l = titleLayout(input);
           const label = JSON.stringify(input);
@@ -458,7 +449,7 @@ describe('the reload card on 2:1 landscape titles (ROADMAP 59)', () => {
 describe('notice cards', () => {
   it('the reload card puts its text left of the button, inside the card', () => {
     const m = uiMetrics({ touch: true, portrait: false });
-    const card = titleLayout({ viewWidth: 320, touch: true, portrait: false, fullscreenAvailable: true, reload: true, install: null })
+    const card = titleLayout({ viewWidth: 320, touch: true, portrait: false, fullscreenAvailable: true, reload: true, install: false })
       .blocks.get('reload')!;
     const parts = reloadParts(card, m, true);
     expect(parts.button.x + parts.button.w).toBe(card.x + card.w);
@@ -466,25 +457,16 @@ describe('notice cards', () => {
     expect(parts.button.h).toBe(m.menuButtonH);
   });
 
-  it('the install card: a button only with a prompt, always the ×', () => {
-    const input = { viewWidth: 320, touch: true, portrait: false, fullscreenAvailable: true, reload: false };
-    const m = uiMetrics(input);
-    const prompt = installParts(titleLayout({ ...input, install: 'prompt' }).blocks.get('install')!, 'prompt', m);
-    expect(prompt.button).not.toBeNull();
-    expect(prompt.dismiss.x).toBeGreaterThan(prompt.button!.x);
-    const ios = installParts(titleLayout({ ...input, install: 'ios' }).blocks.get('install')!, 'ios', m);
-    expect(ios.button).toBeNull();
-    expect(ios.dismiss.w).toBe(m.menuButtonH);
-  });
-
-  it('the compact install card is just "App installieren" and the ×, inside the card', () => {
-    const input = { viewWidth: 320, touch: true, portrait: false, fullscreenAvailable: true, reload: false, install: 'prompt' as const };
-    const m = uiMetrics(input);
-    const card = gameOverLayout({ ...input, newRecord: false }).blocks.get('install')!;
-    const parts = installParts(card, 'compact', m);
-    expect(parts.button!.x).toBe(card.x);
-    expect(parts.dismiss.x + parts.dismiss.w).toBe(card.x + card.w);
-    expect(overlap(parts.button!, parts.dismiss)).toBe(false);
-    expect(card.w).toBeLessThan(titleLayout(input).blocks.get('install')!.w);
+  it('the install card is just "App installieren" and the ×, inside the card', () => {
+    for (const portrait of [false, true]) {
+      const input = { viewWidth: 320, touch: true, portrait, fullscreenAvailable: true, reload: false, install: true };
+      const m = uiMetrics(input);
+      const card = gameOverLayout({ ...input, newRecord: false }).blocks.get('install')!;
+      const parts = installParts(card, m);
+      expect(parts.button.x).toBe(card.x);
+      expect(parts.dismiss.x + parts.dismiss.w).toBe(card.x + card.w);
+      expect(parts.dismiss.w).toBe(m.menuButtonH);
+      expect(overlap(parts.button, parts.dismiss)).toBe(false);
+    }
   });
 });

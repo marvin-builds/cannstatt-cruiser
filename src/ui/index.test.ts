@@ -11,6 +11,8 @@ import { hudButtons, settingsLayout, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { gameOverLayout, type MenuInput, pauseLayout, titleLayout } from './menu-layout';
 import { whatsNewLayout } from './whats-new';
+import { installGuideLayout } from './install-guide';
+import { CALM_RUN_SECONDS, SNOOZE_KEY } from './install-offer';
 import { KICKER_HINT_LAUNCHES, KickerHint } from './kicker-hint';
 import { kidNoticeLayout } from './kid-notice';
 import { loadKidMode, saveKidMode } from './settings';
@@ -353,9 +355,9 @@ describe('settings gear on the title, one place for Kindermodus (ROADMAP 64)', (
     const t = setup(true, store);
     t.game.display.touch = touch;
     const d = t.game.display;
-    const input: MenuInput = { viewWidth: d.viewWidth, touch, portrait: d.portrait, fullscreenAvailable: true, reload: false, install: null, settingsButton: true };
+    const input: MenuInput = { viewWidth: d.viewWidth, touch, portrait: d.portrait, fullscreenAvailable: true, reload: false, install: false, settingsButton: true };
     const gear = titleLayout(input).buttons.settings!;
-    const menu = () => settingsLayout(d.viewWidth, uiMetrics(d));
+    const menu = () => settingsLayout(d.viewWidth, uiMetrics(d), true);
     const ok = () => kidNoticeLayout(d).ok;
     const press = (r: Rect) => t.game.hitHotspot(...centre(r));
     const key = (code: string) => {
@@ -530,7 +532,7 @@ describe('update, what is new, install hint and pause navigation', () => {
       portrait: game.display.portrait,
       fullscreenAvailable: true,
       reload: game.state.updateReady,
-      install: null,
+      install: false,
       ...fields,
     });
     const press = (r: Rect | null) => (r ? game.hitHotspot(...centre(r)) : false);
@@ -665,49 +667,135 @@ describe('update, what is new, install hint and pause navigation', () => {
     expect(t.ui.whatsNew.offset).toBe(0);
   });
 
-  it('install hint: Installieren shows the captured prompt from the tap, × dismisses for good', () => {
-    const t = app({ touch: true });
-    t.game.state.install.visits = 2;
-    t.game.state.install.platform = 'android';
-    t.capturePrompt();
-    const l = titleLayout(t.input({ install: 'prompt' }));
-    expect(t.press(l.buttons.install)).toBe(true);
-    expect(t.prompts()).toBe(1);
-    expect(t.game.state.mode).toBe('title');
-    // Without a prompt left there is no hint on Android any more.
-    expect(t.press(l.buttons.dismiss)).toBe(false);
-
-    const ios = app({ touch: true });
-    ios.game.state.install.visits = 3;
-    ios.game.state.install.platform = 'ios';
-    const il = titleLayout(ios.input({ install: 'ios' }));
-    expect(ios.press(il.buttons.dismiss)).toBe(true);
-    expect(ios.game.state.install.dismissed).toBe(true);
-    expect(ios.press(il.buttons.dismiss)).toBe(false);
-  });
-
-  it('install hint: from the first visit, also on game over, never on desktop or mid-run', () => {
-    const first = app({ touch: true });
-    first.game.state.install.platform = 'ios';
-    first.game.state.install.visits = 1;
-    expect(first.press(titleLayout(first.input({ install: 'ios' })).buttons.dismiss)).toBe(true);
-
-    const t = app({ touch: true });
-    t.game.state.install.platform = 'ios';
-    t.game.state.install.visits = 2;
+  /** A run long enough for a calm game over (install-offer.ts), then game over with its buttons live. */
+  const calmGameOver = (t: ReturnType<typeof app>) => {
     t.game.commands.startRun();
+    t.ticks(Math.ceil(CALM_RUN_SECONDS / TICK_DT) + 1);
     t.game.commands.gameOver();
     t.ticks(60);
-    expect(t.press(gameOverLayout({ ...t.input({ install: 'ios' }), newRecord: false }).buttons.dismiss)).toBe(true);
-    expect(t.game.state.install.dismissed).toBe(true);
+  };
+  /** The tap of a finger on `r`: pointer down, then up (where phones grant the user gesture). */
+  const tap = (t: ReturnType<typeof app>, r: Rect) => {
+    t.pointers.down(1, ...centre(r), t.game.display.touch);
+    t.pointers.up(1);
+  };
+
+  /**
+   * ROADMAP 68: "Installieren" did nothing on Android. A touch's pointerdown grants no user
+   * activation there (only its pointerup / touchend does), so a prompt() called in the press
+   * is refused (NotAllowedError, swallowed by core) and the kept prompt is used up. The fake
+   * prompt only counts when it runs while the touch is being released, as a real one.
+   */
+  it('install: the browser prompt runs in the release of the touch, where phones grant the user gesture', () => {
+    const t = app({ touch: true });
+    t.game.state.install.platform = 'android';
+    let releasing = false;
+    let refused = 0;
+    t.game.install.capturePrompt({ preventDefault: () => {}, prompt: () => void (releasing ? 0 : refused++) });
+    calmGameOver(t);
+    const button = gameOverLayout({ ...t.input({ install: true }), newRecord: false }).buttons.install!;
+    t.pointers.down(1, ...centre(button), true);
+    expect(refused).toBe(0); // nothing prompted in the press
+    releasing = true;
+    t.pointers.up(1);
+    releasing = false;
+    expect(refused).toBe(0);
+    expect(t.game.state.install.canPrompt).toBe(false); // shown, in the release
+    expect(t.game.state.mode).toBe('gameover');
+  });
+
+  it('install card: on game over after a calm run only, never on the title or after a short run, never on desktop', () => {
+    const t = app({ touch: true });
+    t.game.state.install.platform = 'android';
+    t.capturePrompt();
+    expect(t.ui.install.cardShown(t.game.state.install, true)).toBe(false);
+    t.game.commands.startRun();
+    t.ticks(60);
+    t.game.commands.gameOver();
+    t.ticks(60);
+    expect(t.press(gameOverLayout({ ...t.input({ install: true }), newRecord: false }).buttons.dismiss)).toBe(false);
+    calmGameOver(t);
+    const l = gameOverLayout({ ...t.input({ install: true }), newRecord: false });
+    tap(t, l.buttons.install!);
+    expect(t.prompts()).toBe(1);
+    expect(t.game.state.mode).toBe('gameover');
+    // The title has no card: a tap where it was on game over starts a run.
+    t.game.commands.toTitle();
+    t.ticks(1);
+    tap(t, l.buttons.dismiss!);
+    t.ticks(2);
+    expect(t.game.state.mode).toBe('playing');
 
     const desk = app();
-    desk.game.state.install.platform = 'ios';
-    desk.game.state.install.visits = 2;
+    desk.game.state.install.platform = 'android';
+    calmGameOver(desk);
     desk.game.display.touch = true;
-    const rect = titleLayout(desk.input({ install: 'ios' })).buttons.dismiss;
+    const rect = gameOverLayout({ ...desk.input({ install: true }), newRecord: false }).buttons.install!;
     desk.game.display.touch = false;
     expect(desk.press(rect)).toBe(false);
+  });
+
+  it('install card: × snoozes it (the ui store key, not core\'s never-again), the next run does not bring it back', () => {
+    const t = app({ touch: true });
+    t.game.state.install.platform = 'ios';
+    calmGameOver(t);
+    const l = gameOverLayout({ ...t.input({ install: true }), newRecord: false });
+    expect(t.press(l.buttons.dismiss)).toBe(true);
+    expect(t.game.state.install.dismissed).toBe(false);
+    expect(t.store.get(SNOOZE_KEY, null)).toMatchObject({ count: 1 });
+    expect(t.press(l.buttons.dismiss)).toBe(false);
+    calmGameOver(t);
+    expect(t.ui.install.cardShown(t.game.state.install, true)).toBe(false);
+  });
+
+  it('install card without a kept prompt (iOS, or refused / used up): the manual steps, modal until OK or Esc', () => {
+    const t = app({ touch: true });
+    t.game.state.install.platform = 'ios';
+    calmGameOver(t);
+    tap(t, gameOverLayout({ ...t.input({ install: true }), newRecord: false }).buttons.install!);
+    expect(t.ui.install.guideOpen).toBe(true);
+    expect(t.prompts()).toBe(0);
+    // Modal: a tap beside OK and Space keep it, no new run starts behind it.
+    tap(t, { x: 2, y: 170, w: 1, h: 1 });
+    t.ticks(2);
+    expect(t.game.state.mode).toBe('gameover');
+    expect(t.ui.install.guideOpen).toBe(true);
+    t.press(installGuideLayout(t.game.display, 'ios').ok);
+    expect(t.ui.install.guideOpen).toBe(false);
+    expect(t.game.state.mode).toBe('gameover');
+
+    t.capturePrompt();
+    const l = gameOverLayout({ ...t.input({ install: true }), newRecord: false });
+    tap(t, l.buttons.install!);
+    expect(t.prompts()).toBe(1);
+    // The browser dialog was refused: the card stays and the next tap shows the steps.
+    tap(t, l.buttons.install!);
+    expect(t.ui.install.guideOpen).toBe(true);
+    t.key('Escape');
+    expect(t.ui.install.guideOpen).toBe(false);
+  });
+
+  it('settings: "App installieren" while not installed, in both modes: the prompt when kept, else the manual steps', () => {
+    for (const kidMode of [false, true]) {
+      const t = app({ touch: true });
+      t.game.state.kidMode = kidMode;
+      t.game.state.install.platform = 'android';
+      t.ui.settings.openMenu(kidMode);
+      const menu = () => settingsLayout(t.game.display.viewWidth, uiMetrics(t.game.display), true);
+      t.capturePrompt();
+      tap(t, menu().install!);
+      expect(t.prompts()).toBe(1);
+      expect(t.ui.settings.open).toBe(true);
+      tap(t, menu().install!);
+      expect(t.ui.install.guideOpen).toBe(true);
+      t.key('Enter');
+      expect(t.ui.install.guideOpen).toBe(false);
+      expect(t.ui.settings.open).toBe(true);
+      expect(t.game.state.kidMode).toBe(kidMode); // Enter closed the steps, not the kid mode switch
+      t.game.state.install.installed = true;
+      tap(t, menu().install!);
+      expect(t.ui.install.guideOpen).toBe(false);
+    }
   });
 
   it('pause: Startbildschirm ends the run (its stars still count) and shows the title', () => {

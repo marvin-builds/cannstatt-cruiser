@@ -80,7 +80,24 @@ export function buttonPlate(hit: Rect, m: UiMetrics): Rect {
   return { x: hit.x + inset, y: hit.y + inset, w: m.plate, h: m.plate };
 }
 
-/** The settings menu top down: title, Kindermodus and its note, the statistics switch (with the "Datenschutz" link right of it) and its note, the desktop key hint, Zurück. */
+/**
+ * An icon `size` px square (before iconScale) on its button plate, both centred in the tap area. The
+ * plate grows by 1 px where the icon's parity differs from it (the 9x9 gear on the 14 px desktop
+ * plate), so the icon sits exactly in the middle at every scale.
+ */
+export function iconOnPlate(hit: Rect, m: UiMetrics, size: number): { plate: Rect; icon: { x: number; y: number } } {
+  const drawn = size * m.iconScale;
+  const side = m.plate + ((m.plate - drawn) % 2 === 0 ? 0 : 1);
+  const plate = { x: hit.x + Math.floor((hit.w - side) / 2), y: hit.y + Math.floor((hit.h - side) / 2), w: side, h: side };
+  const inset = (side - drawn) / 2;
+  return { plate, icon: { x: plate.x + inset, y: plate.y + inset } };
+}
+
+/**
+ * The settings menu top down: title, Kindermodus and its note, the statistics switch (with the
+ * "Datenschutz" link right of it) and its note, the desktop key hint, Zurück; "App installieren"
+ * (while installable) left of Zurück, in portrait right of Kindermodus.
+ */
 export interface SettingsLayout {
   /** Top of the scale-2 title. */
   titleY: number;
@@ -94,6 +111,8 @@ export interface SettingsLayout {
   keysY: number | null;
   /** Zurück: under the rest, in portrait in the title row at the right. */
   back: Rect;
+  /** "App installieren" (ROADMAP 68), or null when the game is installed. */
+  install: Rect | null;
   /** Font scale of the notes (2 in portrait, where a view pixel is ~1 CSS px). */
   noteScale: number;
   /** Top-left of the plain "Testgerät" line (ROADMAP 55, only on a marked device): text, never a hotspot. */
@@ -110,6 +129,11 @@ const TITLE_H = 14;
 /** One scale-1 text line with its spacing. */
 const NOTE_LINE = 11;
 
+/** "App installieren" in the settings (ROADMAP 68). */
+export const SETTINGS_INSTALL_LABEL = 'App installieren';
+/** A settings button as wide as its label at the button's label scale (2 once touch-sized), with padding. */
+const labelButtonW = (label: string, h: number) => measureText(label, h >= 24 ? 2 : 1) + 24;
+
 /** Portrait: Zurück, the statistics switch and the link with room for their labels at scale 2; a scale-2 note line with its spacing. */
 const PORTRAIT_BACK_W = measureText('Zurück', 2) + 24;
 const PORTRAIT_STATS_W = measureText('Anonyme Statistik: AUS', 2) + 12;
@@ -120,9 +144,9 @@ const BIG_NOTE_LINE = 16;
  * The settings screens as one compact block. Portrait's 44 px buttons and scale-2 notes need the
  * whole view height: Zurück moves up into the title row there (settingsPortrait).
  */
-export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout {
+export function settingsLayout(viewWidth: number, m: UiMetrics, installable = false): SettingsLayout {
   const h = m.menuButtonH;
-  if (h >= 44) return settingsPortrait(viewWidth, h);
+  if (h >= 44) return settingsPortrait(viewWidth, h, installable);
   const cx = centreX(viewWidth);
   const gap = 4;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
@@ -137,17 +161,27 @@ export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout 
   const below = statsNoteY + NOTE_LINE + gap;
   // Touch (bigger buttons) has no key help line.
   const keysY = h > DESKTOP.menuButtonH ? null : below;
-  const back = centred(BACK_W, keysY === null ? below : keysY + NOTE_LINE + gap);
+  const backY = keysY === null ? below : keysY + NOTE_LINE + gap;
+  // "App installieren" and Zurück are centred as one row.
+  const installW = installable ? labelButtonW(SETTINGS_INSTALL_LABEL, h) : 0;
+  const backRow = centred(installW + (installable ? gap : 0) + BACK_W, backY);
+  const install = installable ? { ...backRow, w: installW } : null;
+  const back = { ...backRow, x: backRow.x + backRow.w - BACK_W, w: BACK_W };
   // Centred under Zurück, where the view has room left.
   const testDevice = { x: cx - Math.floor(measureText(TEST_DEVICE_LABEL, 1) / 2), y: back.y + h + gap + 2, scale: 1 };
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, noteScale: 1, testDevice };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, install, noteScale: 1, testDevice };
 }
 
-function settingsPortrait(viewWidth: number, h: number): SettingsLayout {
+/** Portrait: Zurück in the title row; "App installieren" beside a Kindermodus switch as narrow as its label. */
+function settingsPortrait(viewWidth: number, h: number, installable: boolean): SettingsLayout {
   const cx = centreX(viewWidth);
   const back: Rect = { x: viewWidth - PORTRAIT_BACK_W, y: 0, w: PORTRAIT_BACK_W, h };
   const titleY = Math.floor((h - TITLE_H) / 2);
-  const toggle: Rect = { x: cx - Math.floor(TOGGLE_W / 2), y: h + 6, w: TOGGLE_W, h };
+  const toggleW = installable ? labelButtonW('Kindermodus: AUS', h) : TOGGLE_W;
+  const installW = installable ? labelButtonW(SETTINGS_INSTALL_LABEL, h) : 0;
+  const kidRowW = toggleW + (installable ? PRIVACY_LINK_GAP + installW : 0);
+  const toggle: Rect = { x: cx - Math.floor(kidRowW / 2), y: h + 6, w: toggleW, h };
+  const install = installable ? { ...toggle, x: toggle.x + toggleW + PRIVACY_LINK_GAP, w: installW } : null;
   const kidNoteY = toggle.y + h + 2;
   const rowW = PORTRAIT_STATS_W + PRIVACY_LINK_GAP + PORTRAIT_LINK_W;
   const stats: Rect = { x: cx - Math.floor(rowW / 2), y: kidNoteY + BIG_NOTE_LINE + 4, w: PORTRAIT_STATS_W, h };
@@ -155,7 +189,7 @@ function settingsPortrait(viewWidth: number, h: number): SettingsLayout {
   const statsNoteY = stats.y + h + 2;
   // The view is full below; the title row has room left of the centred title (Zurück is at the right).
   const testDevice = { x: 8, y: titleY, scale: 2 };
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, noteScale: 2, testDevice };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, install, noteScale: 2, testDevice };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */
