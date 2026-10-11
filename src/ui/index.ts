@@ -68,8 +68,8 @@ import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu, gameOverReady, menuScreen, portraitHintShown, trophyShown } from './menu-state';
-import { bailCause, PopupFeed } from './popup-feed';
-import { type Popup, popupHeight, PopupPool } from './popups';
+import { bailCause, PopupFeed, type PopupSpec } from './popup-feed';
+import { popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { createDomNameField, type NameField } from './name-field';
 import { entrySheetModel, feedbackSheetModel, sheetShown } from './portrait-sheets';
@@ -261,9 +261,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   /** What popups keep clear of (popupAvoid fills it every tick). */
   const avoid: Rect[] = [];
 
-  function spawnPopup(ctx: GameContext, text: string, color: string, icon: Popup['icon']): void {
+  function spawnPopup(ctx: GameContext, spec: PopupSpec): void {
     const scale = popupScale(ctx.display, false);
-    view.popups.spawn(text, PLAYER_X, aboveHead(ctx, scale), color, scale, icon);
+    view.popups.spawn(spec.text, PLAYER_X, aboveHead(ctx, scale), spec.color, scale, spec.icon, spec.points ?? null);
   }
 
   function bindEvents(ctx: GameContext): void {
@@ -291,7 +291,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
     bus.on('stomp', (e) => feed.stomp(e.entityId));
     bus.on('crash', (e) => feed.crash(e.kind === 'bail' ? bailCause(state) : null));
-    bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta));
+    bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta, e.multiplier));
     bus.on('itemUsed', (e) => {
       feed.itemUsed(e.action);
       view.itemHint.hide();
@@ -333,7 +333,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.hints.dismiss('highFive');
     });
     bus.on('sessionEnd', (e) => view.stunt.session(e.points));
-    bus.on('starCollected', () => popup('Stern!', UI.yellow));
+    bus.on('starCollected', () => feed.star());
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
       popup(look.text, look.color, true, CATCH_RISE);
@@ -849,7 +849,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       skater.y = Math.round(state.player.y) - SKATER_H;
       view.popups.avoid = popupAvoid(display.viewWidth, display, control, skater, avoid);
       const popups = feed.flush(state.kidMode);
-      for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
+      for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
       keepFeedbackOnItsScreen(ctx);
       updateOrientation(ctx);

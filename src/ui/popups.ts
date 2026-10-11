@@ -1,6 +1,7 @@
 import { measureText } from '../core/font';
 import { FONT_LINE_HEIGHT } from '../core/font-data';
 import type { Rect } from '../types';
+import { plusPoints } from './layout';
 
 /** Seconds a floating popup ("+50", "Grind!") stays visible. */
 export const POPUP_LIFETIME = 0.9;
@@ -14,7 +15,7 @@ export function popupHeight(scale: number): number {
   return (FONT_LINE_HEIGHT + LINE_PAD) * scale;
 }
 export interface Popup {
-  /** What to draw: the spawned text, plus " x3" once it was merged with repeats. */
+  /** What to draw: the spawned text with its points ("Stern! +30", summed over repeats), or plus " x3" once merged with repeats. */
   text: string;
   color: string;
   /** Integer font scale. */
@@ -31,6 +32,8 @@ export interface Popup {
 interface Slot extends Popup {
   base: string;
   count: number;
+  /** Points shown after `base`, summed over merged repeats; null: a popup without points (repeats count "x2"). */
+  points: number | null;
   baseY: number;
   time: number;
   alive: boolean;
@@ -48,8 +51,9 @@ const ASIDE_GAP = 2;
 /**
  * Fixed-size pool of floating texts: spawning reuses slots (the oldest when
  * full), so the HUD allocates nothing per frame. A repeat of a live popup
- * ("Stern!") merges into it ("Stern! x2") instead of stacking, and moves to
- * the newest slot as if just spawned. Live popups
+ * ("Grind!") merges into it ("Grind! x2") instead of stacking, and moves to
+ * the newest slot as if just spawned; a popup spawned with points sums them
+ * instead ("Stern! +10" twice: "Stern! +20"). Live popups
  * form one column above the skater: each rises on its own, but the newest
  * sits at the bottom and older ones are pushed up so no two ever overlap,
  * and the whole column is pushed down so none rises above `ceiling` (the
@@ -73,23 +77,27 @@ export class PopupPool {
 
   constructor(capacity: number) {
     this.slots = Array.from({ length: capacity }, () => ({
-      text: '', base: '', count: 0, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false, icon: null, seq: 0, baseX: 0, minLeft: 0,
+      text: '', base: '', count: 0, points: null, color: '', scale: 1, x: 0, y: 0, baseY: 0, age: 0, time: 0, alive: false, icon: null, seq: 0, baseX: 0, minLeft: 0,
     }));
   }
 
-  spawn(text: string, x: number, y: number, color: string, scale = 1, icon: Popup['icon'] = null): void {
+  /** Spawns `text` (with `points` after it, if given) or merges it into a live repeat. */
+  spawn(text: string, x: number, y: number, color: string, scale = 1, icon: Popup['icon'] = null, points: number | null = null): void {
     const baseY = Math.max(Math.round(y), this.ceiling + RISE);
     const seq = ++this.spawned;
     // A repeat merges and then counts as just spawned: newest slot at the bottom, rising again from the new spot.
-    const repeat = this.slots.find((s) => s.alive && s.base === text && s.color === color);
+    const repeat = this.slots.find((s) => s.alive && s.base === text && s.color === color && (s.points === null) === (points === null));
     if (repeat) {
       repeat.count++;
-      Object.assign(repeat, { text: `${text} x${repeat.count}`, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, seq });
+      if (repeat.points !== null) repeat.points += points!;
+      const shown = repeat.points === null ? `${text} x${repeat.count}` : withPoints(text, repeat.points);
+      Object.assign(repeat, { text: shown, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, seq });
       this.layout();
       return;
     }
     const slot = this.slots.find((s) => !s.alive) ?? this.oldest();
-    Object.assign(slot, { text, base: text, count: 1, color, scale, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, alive: true, icon, seq });
+    const shown = points === null ? text : withPoints(text, points);
+    Object.assign(slot, { text: shown, base: text, count: 1, points, color, scale, x: Math.round(x), baseX: Math.round(x), minLeft: 0, y: baseY, baseY, age: 0, time: 0, alive: true, icon, seq });
     this.layout();
   }
 
@@ -167,3 +175,5 @@ export class PopupPool {
 }
 
 const newestFirst = (a: Slot, b: Slot) => b.seq - a.seq;
+
+const withPoints = (text: string, points: number) => `${text} ${plusPoints(points)}`;

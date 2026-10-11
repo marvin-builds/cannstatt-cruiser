@@ -47,6 +47,7 @@ import { ParkSession } from './park';
 import { PatternLog } from './pattern-log';
 import { anchorOf, moveTo } from './motion';
 import { addPoints, breakCombo } from './scoring';
+import { StarArcs } from './star-arcs';
 import { StuntLines } from './stunts';
 import { PLAN_WORK_PER_TICK, Spawner, type SpawnerOptions, type SpawnSituation } from './spawner';
 import { ItemToss, type Point } from './toss';
@@ -106,6 +107,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const stunts = new StuntLines();
   const airTrick = new AirTrickScore(() => stunts.multiplier());
   const session = new ParkSession();
+  const starArcs = new StarArcs();
   /** The spawner's park plan last put into state.park. */
   let spawnerPark: ParkPlan | null = null;
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
@@ -210,6 +212,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         stunts.reset();
         airTrick.reset();
         session.reset();
+        starArcs.reset();
         spawnerPark = null;
       });
       ctx.bus.on('gameOver', () => {
@@ -226,6 +229,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
           if (!duckLanding(ctx)) bail(ctx);
         }
         breakCombo(ctx.state);
+        starArcs.landed();
         stunts.landed(ctx);
         airTrick.touchedDown();
       });
@@ -293,7 +297,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       // Before the contacts, so an item tossed by this tick's stomp starts flying next tick.
       catchItem(ctx, toss.update(handsOf(ctx), dt));
       if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
-      resolveContacts(ctx, stunts.ledgesReachable());
+      resolveContacts(ctx, stunts.ledgesReachable(), starArcs);
       stunts.update(ctx);
       airTrick.settle(ctx);
       session.update(ctx);

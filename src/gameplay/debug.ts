@@ -16,6 +16,7 @@ import type { LaidPattern } from './pattern-log';
 import { withMotion } from './motion';
 import { parkPiecesOf, planParkLine } from './park-line';
 import { planPattern } from './patterns';
+import { linkArcs } from './star-arcs';
 import { planStuntLine } from './stunt-line';
 import { DEFAULT_LEDGE_HEIGHT, type StuntLines, type StuntLineView } from './stunts';
 
@@ -139,11 +140,14 @@ export function installGameplayDebug(
       while (!result.done) result = steps.next();
       const pieces = result.value.pieces;
       const dx = x - pieces[0]!.x;
-      return pieces.map((p) => {
+      const first = ctx.state.entities.length;
+      const ids = pieces.map((p) => {
         const e: Entity = { ...p, data: p.data && { ...p.data }, id: nextId++, x: p.x + dx, done: false };
         ctx.state.entities.push(e);
         return e.id;
       });
+      linkArcs(ctx.state.entities, first);
+      return ids;
     },
     pattern(name, x = PLAYER_X, seed = 1) {
       const { state } = ctx;
@@ -153,11 +157,14 @@ export function installGameplayDebug(
       for (let i = entities.length - 1; i >= 0; i--) if (entities[i]!.x + entities[i]!.w > x) entities.splice(i, 1);
       const start = state.distance + (x - PLAYER_X);
       reserve(start, start + planned.length, state.distance);
-      return planned.pieces.map((p) => {
+      const first = entities.length;
+      const ids = planned.pieces.map((p) => {
         const e: Entity = { ...p, data: p.data && { ...p.data }, id: nextId++, x: x + p.x, done: false };
         entities.push(e);
         return e.id;
       });
+      linkArcs(entities, first);
+      return ids;
     },
     stunts() {
       return stunts.view();
@@ -177,7 +184,9 @@ export function installGameplayDebug(
         const e = entities[i]!;
         if ((e.x < to && e.x + e.w > from) || e.data?.park !== undefined || e.kind === 'highFiver') entities.splice(i, 1);
       }
+      const first = entities.length;
       for (const p of line.pieces) entities.push({ ...p, data: p.data && { ...p.data }, id: nextId++, x: from + p.x, done: false });
+      linkArcs(entities, first);
       reserve(plan.start, plan.end, state.distance);
       state.park = plan;
       return plan;

@@ -15,6 +15,12 @@ describe('isPlausible', () => {
     expect(isPlausible({ score: 1200, distance: 40, duration: 5 })).toBe(true);
   });
 
+  it('accepts a top run that also takes every star and star arc at multiplier 5 (ROADMAP 65)', () => {
+    // Measured over 5 min of the spawner: about 350 stars in 65 arcs per 4000 m.
+    const everyStar = (350 * 10 + 65 * 50) * 5;
+    expect(isPlausible({ ...realTopRun, score: realTopRun.score + everyStar })).toBe(true);
+  });
+
   it('accepts a run at full speed with a 10 % margin, not beyond', () => {
     expect(isPlausible({ score: 0, distance: Math.floor(100 * 19 * 1.1), duration: 100 })).toBe(true);
     expect(isPlausible({ score: 0, distance: Math.ceil(100 * 19 * 1.1) + 20, duration: 100 })).toBe(false);

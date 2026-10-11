@@ -4,7 +4,8 @@
  * ROADMAP 61) and bench landings (grindStart; coming down anywhere on the bench top, from its
  * front corner to its rear end, grinds, and landing behind it never crashes),
  * stomps on people's heads, crashes (a bin that swallows the skater leaves the
- * street at once), clean clears, star and joint pickups.
+ * street at once), clean clears, star pickups (with their points, star-arcs.ts)
+ * and joint pickups.
  * Uses the same rules as the clearability solver (rules.ts). Runs every
  * tick, so it reuses scratch objects instead of allocating.
  */
@@ -15,18 +16,22 @@ import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isLedge, isObstacle, isP
 import { crashInto } from './health';
 import { feetOf, LEDGE_FRONT_REACH, landsOnHighLedge, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
 import { addPoints, addTrick } from './scoring';
+import type { StarArcs } from './star-arcs';
 import { stompPeople } from './stomp';
 
 export function isLive(e: Entity): boolean {
   return !e.data?.debugRail;
 }
 
-/** `ledgesReachable`: a launch got the skater up to the stunt ledges (ROADMAP 61, stunts.ts); else he passes in front of them. */
-export function resolveContacts(ctx: GameContext, ledgesReachable: boolean): void {
+/**
+ * `ledgesReachable`: a launch got the skater up to the stunt ledges (ROADMAP 61, stunts.ts); else he passes in front of them.
+ * `stars` scores the stars taken.
+ */
+export function resolveContacts(ctx: GameContext, ledgesReachable: boolean, stars: StarArcs): void {
   landOnRails(ctx, ledgesReachable);
   stompPeople(ctx);
   checkObstacles(ctx);
-  collectStars(ctx);
+  collectStars(ctx, stars);
   collectJoints(ctx);
 }
 
@@ -82,7 +87,7 @@ function ridesOn(p: PlayerState, e: Entity): boolean {
   return p.grinding && isGrindable(e.kind) && p.y === e.y && p.x >= e.x - LEDGE_FRONT_REACH && p.x <= e.x + e.w;
 }
 
-function collectStars(ctx: GameContext): void {
+function collectStars(ctx: GameContext, arcs: StarArcs): void {
   const { state } = ctx;
   const body = state.player.hitbox;
   const entities = state.entities;
@@ -92,6 +97,7 @@ function collectStars(ctx: GameContext): void {
     state.stars += 1;
     // Emitted while the star is still there (the sparkle starts at it).
     ctx.bus.emit('starCollected', { entityId: star.id, stars: state.stars });
+    arcs.collect(ctx, star);
     entities.splice(i, 1);
     i--;
   }
