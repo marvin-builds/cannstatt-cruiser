@@ -150,6 +150,53 @@ describe('stomp bounce', () => {
   });
 });
 
+describe('head jump (ROADMAP 60)', () => {
+  // [ticks the press comes before the take-off tick (0: in it), ticks held from the press, chillTimer]
+  const cases = [
+    [0, 1, 0],
+    [0, 10, 0],
+    [0, 20, 0],
+    [3, 2, 0],
+    [3, 15, 0],
+    [7, 30, 0],
+    [0, 20, 5],
+  ] as const;
+  for (const [before, hold, chillTimer] of cases) {
+    it(`matches the real player tick by tick: press ${before} ticks before the take-off, held ${hold} ticks${chillTimer ? ', chilled' : ''}`, () => {
+      const game = createPlayerTestGame();
+      tick(game, 3);
+      game.state.chillTimer = chillTimer;
+      const jumpScale = chillTimer > 0 ? CHILL_JUMP_SCALE : 1;
+      // A full-hold jump from the street, released at tick 20; falling at tick 30, where gameplay reports the stomp.
+      const takeOff = 30;
+      const pressAt = takeOff - before;
+      let b = groundBody();
+      for (let i = 0; i < 90; i++) {
+        if (i === 0 || i === pressAt) game.buttons.action.press('test');
+        if (i === 20 || i === pressAt + hold) game.buttons.action.release('test');
+        if (i === takeOff) {
+          expect(game.state.player.vy).toBeGreaterThan(0);
+          game.bus.emit('stomp', { entityId: 1, kind: 'vfbFan', item: 'football' });
+          b = stompBody(b);
+        }
+        game.tick();
+        // The solver presses on the bounce step: a buffered press takes off there too.
+        b = stepBody(b, 0, i === 0 || i === takeOff, i < 20 || (i >= pressAt && i < pressAt + hold), false, jumpScale);
+        expect(b.y, `tick ${i}`).toBeCloseTo(game.state.player.y, 6);
+        expect(b.grounded).toBe(game.state.player.grounded);
+      }
+    });
+  }
+
+  it('a press on a launch step does not jump on top (only a stomp turns into a head jump)', () => {
+    let b = groundBody();
+    for (let i = 0; i < 20; i++) b = stepBody(b, 0, i === 0, i < 6);
+    const launched = launchBody(b, 300);
+    expect(stepBody(launched, 0, true, true).vy).toBeCloseTo(-launched.bounce + GRAVITY * TICK_DT, 9);
+    expect(stepBody(stompBody(b), 0, true, true).vy).toBeCloseTo(-JUMP_VELOCITY + HOLD_GRAVITY * TICK_DT, 9);
+  });
+});
+
 describe('kicker launch', () => {
   it('matches the real player after a launch event tick by tick (a held action gives no boost)', () => {
     const velocity = 400;

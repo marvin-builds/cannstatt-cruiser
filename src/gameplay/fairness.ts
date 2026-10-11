@@ -13,8 +13,13 @@
  *   in its pattern (lead before, runout after, plus the gap between
  *   patterns), or inside a combination (mixes.ts, ROADMAP 52 6a) with that
  *   much street to every other piece from its swaying edges, where every
- *   stomp must also come down where the rest is fair (Solver.stompsLeadOn;
- *   measured: from ~0.85 s at 190 px/s, so 1 s keeps both windows full).
+ *   stomp must also come down where the rest is fair (Solver.stompsLeadOn),
+ *   after the plain bounce and after a head jump (ROADMAP 60: a press on the
+ *   bounce, up to a full jump from the head, landing ~0.75 s after it).
+ *   Measured: the bounce alone needs ~0.85 s, the head jumps ~1.1-1.2 s
+ *   (the most before a tall obstacle), so 1.15 s plus the spread mixes.ts
+ *   adds lets nearly every combination through; stompsLeadOn rejects the
+ *   rest.
  * - while the player may be drunk (spawner.ts) patterns come only from
  *   DRUNK_TEMPLATES (no people, nothing overhead, no rails) with a longer
  *   run-up, and must stay fair for the worst-case drunk
@@ -47,7 +52,7 @@ export function takeoffWindowAt(street: number): number {
 }
 
 /** Free street before and after every person, in seconds of riding at the current speed. */
-export const PERSON_ROOM_SECONDS = 1;
+export const PERSON_ROOM_SECONDS = 1.15;
 
 /** The only templates (patterns.ts) planned while the player may be drunk: lone or paired ground obstacles (no empty star patterns: drunk streets still have something to jump). */
 export const DRUNK_TEMPLATES = ['single', 'pair'] as const;
