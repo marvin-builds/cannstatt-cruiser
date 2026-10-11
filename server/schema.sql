@@ -1,5 +1,5 @@
--- Highscore list. Stores no IP and no request headers; `device` is the
--- SHA-256 hex of the client's random device id.
+-- Highscore list, one row per device (its best run). Stores no IP and no
+-- request headers; `device` is the SHA-256 hex of the client's random device id.
 CREATE TABLE IF NOT EXISTS scores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS scores (
   device TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS scores_rank ON scores (score DESC, date ASC, id ASC);
+-- Databases created before this index need migrations/0002_one_row_per_device.sql first.
+CREATE UNIQUE INDEX IF NOT EXISTS scores_device ON scores (device);
 
 -- One row per accepted submission, for the per-device rate limit.
 -- Rows older than a day are deleted on every submission.

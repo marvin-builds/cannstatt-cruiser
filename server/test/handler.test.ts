@@ -16,9 +16,14 @@ function call(method: string, path: string, body?: unknown, now = NOW): Promise<
   return handleRequest(new Request(`${BASE}${path}`, init), { DB: db.asD1() }, now);
 }
 
-function seed(rows: { name: string; score: number; date: string }[]): void {
-  const insert = db.sqlite.prepare("INSERT INTO scores (name, score, distance, duration, version, date, device) VALUES (?, ?, 100, 60, 'v', ?, 'seed')");
-  for (const row of rows) insert.run(row.name, row.score, row.date);
+/** Inserts rows directly, each under its own device hash (`seed-<name>`) unless one is given. */
+function seed(rows: { name: string; score: number; date: string; device?: string }[]): void {
+  const insert = db.sqlite.prepare("INSERT INTO scores (name, score, distance, duration, version, date, device) VALUES (?, ?, 100, 60, 'v', ?, ?)");
+  for (const row of rows) insert.run(row.name, row.score, row.date, row.device ?? `seed-${row.name}`);
+}
+
+function scoreRows(): Record<string, unknown>[] {
+  return db.sqlite.prepare('SELECT name, score, date, device FROM scores ORDER BY id').all() as Record<string, unknown>[];
 }
 
 beforeEach(() => {
@@ -73,7 +78,9 @@ describe('POST /score', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(await res.json()).toEqual({
       ok: true,
+      stored: true,
       rank: 2,
+      best: 28507,
       entries: [
         { rank: 1, name: 'Profi', score: 50_000, distance: 100, date: '2026-10-01T00:00:00.000Z' },
         { rank: 2, name: 'Flinker Fuchs 42', score: 28507, distance: 4069, date: '2026-10-09T12:00:00.000Z' },
@@ -94,8 +101,9 @@ describe('POST /score', () => {
 
   it('gives rank null when the run does not reach the top 20', async () => {
     seed(Array.from({ length: 20 }, (_, i) => ({ name: `P${i}`, score: 90_000 + i, date: '2026-10-01T00:00:00.000Z' })));
-    const body = (await (await call('POST', '/score', run)).json()) as { ok: boolean; rank: number | null; entries: unknown[] };
+    const body = (await (await call('POST', '/score', run)).json()) as { ok: boolean; stored: boolean; rank: number | null; entries: unknown[] };
     expect(body.ok).toBe(true);
+    expect(body.stored).toBe(true);
     expect(body.rank).toBeNull();
     expect(body.entries).toHaveLength(20);
   });
@@ -143,5 +151,91 @@ describe('POST /score', () => {
     await call('POST', '/score', run);
     expect(db.sqlite.prepare('SELECT COUNT(*) AS n FROM scores').get()).toEqual({ n: 500 });
     expect(db.sqlite.prepare('SELECT MIN(score) AS low FROM scores').get()).toEqual({ low: 106 });
+  });
+});
+
+describe('POST /score keeps one row per device', () => {
+  type Reply = { ok: boolean; stored: boolean; rank: number | null; best: number; entries: { name: string; score: number }[] };
+  const post = async (body: unknown, now: number) => (await (await call('POST', '/score', body, now)).json()) as Reply;
+
+  it('replaces the row in place when the same device beats its score', async () => {
+    await post(run, NOW);
+    const later = NOW + 60_000;
+    const reply = await post({ ...run, name: 'Neuer Name', score: 30_000 }, later);
+    expect(reply).toMatchObject({ ok: true, stored: true, rank: 1, best: 30_000 });
+    const rows = scoreRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ name: 'Neuer Name', score: 30_000, date: new Date(later).toISOString() });
+    expect(reply.entries.map((e) => e.name)).toEqual(['Neuer Name']);
+  });
+
+  it('does not store an equal or lower score and answers with the stored best', async () => {
+    await post(run, NOW);
+    for (const [i, score] of [run.score, run.score - 1].entries()) {
+      const reply = await post({ ...run, name: 'Anderer Name', score }, NOW + (i + 1) * 60_000);
+      expect(reply).toMatchObject({ ok: true, stored: false, rank: 1, best: run.score });
+    }
+    expect(scoreRows()).toEqual([expect.objectContaining({ name: run.name, score: run.score, date: new Date(NOW).toISOString() })]);
+  });
+
+  it('keeps separate rows for different devices', async () => {
+    await post(run, NOW);
+    await post({ ...run, device: 'device-0002', score: 100 }, NOW);
+    expect(scoreRows()).toHaveLength(2);
+  });
+
+  it('gives rank null and stored false when a lower run is outside the top 20 too', async () => {
+    seed(Array.from({ length: 20 }, (_, i) => ({ name: `P${i}`, score: 90_000 + i, date: '2026-10-01T00:00:00.000Z' })));
+    await post(run, NOW);
+    expect(await post({ ...run, score: 10 }, NOW + 60_000)).toMatchObject({ stored: false, rank: null, best: run.score });
+  });
+
+  it('answers stored false and best = the run score when the run is pruned at once', async () => {
+    seed(Array.from({ length: 500 }, (_, i) => ({ name: `P${i}`, score: 90_000 + i, date: '2026-10-01T00:00:00.000Z' })));
+    expect(await post({ ...run, score: 10 }, NOW)).toMatchObject({ stored: false, rank: null, best: 10 });
+    expect(scoreRows()).toHaveLength(500);
+  });
+
+  it('still counts runs that are not stored for the rate limit', async () => {
+    await post(run, NOW);
+    await post({ ...run, score: 10 }, NOW + 20_000);
+    expect((await call('POST', '/score', run, NOW + 39_000)).status).toBe(429);
+  });
+});
+
+describe('GET /top?device=', () => {
+  const ownOf = async (device: string) => {
+    const res = await call('GET', `/top?device=${device}`);
+    return { res, body: (await res.json()) as { entries: unknown[]; own: { rank: number | null; score: number } | null } };
+  };
+
+  it('adds the device own row with its rank, privately cached', async () => {
+    seed([{ name: 'Profi', score: 50_000, date: '2026-10-01T00:00:00.000Z' }]);
+    await call('POST', '/score', run);
+    const { res, body } = await ownOf(run.device);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=30');
+    expect(body.entries).toHaveLength(2);
+    expect(body.own).toEqual({ rank: 2, score: run.score });
+  });
+
+  it('gives own null for a device without a row', async () => {
+    const { res, body } = await ownOf('device-unknown');
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ entries: [], own: null });
+  });
+
+  it('gives rank null when the device row is outside the top 20', async () => {
+    seed(Array.from({ length: 20 }, (_, i) => ({ name: `P${i}`, score: 90_000 + i, date: '2026-10-01T00:00:00.000Z' })));
+    await call('POST', '/score', run);
+    expect((await ownOf(run.device)).body.own).toEqual({ rank: null, score: run.score });
+  });
+
+  it('rejects an invalid device id as 400 bad-request', async () => {
+    for (const device of ['', 'short', 'bad%20device!!', 'x'.repeat(65)]) {
+      const res = await call('GET', `/top?device=${device}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ ok: false, error: 'bad-request' });
+    }
   });
 });

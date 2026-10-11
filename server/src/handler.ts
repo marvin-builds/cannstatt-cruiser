@@ -5,8 +5,8 @@
 import { corsHeaders } from './cors';
 import { rankRows } from './ranking';
 import { isRateLimited } from './rate-limit';
-import { hashDevice, recentSubmissions, saveRun, topRows } from './store';
-import { parseSubmission } from './submission';
+import { deviceRow, hashDevice, recentSubmissions, saveBestRun, topRows } from './store';
+import { isDeviceId, parseSubmission } from './submission';
 
 export interface Env {
   DB: D1Database;
@@ -15,6 +15,8 @@ export interface Env {
 /** Larger bodies are rejected unread beyond this many characters. */
 const MAX_BODY = 2048;
 const TOP_CACHE = 'public, max-age=30';
+/** GET /top?device= answers per device, so shared caches must not keep it. */
+const OWN_TOP_CACHE = 'private, max-age=30';
 
 type Failure = 'bad-request' | 'name' | 'implausible' | 'rate' | 'not-found';
 const STATUS: Record<Failure, number> = { 'bad-request': 400, name: 422, implausible: 422, rate: 429, 'not-found': 404 };
@@ -25,10 +27,15 @@ export async function handleRequest(request: Request, env: Env, now: number): Pr
     new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache } });
   const fail = (error: Failure) => json({ ok: false, error }, STATUS[error]);
 
-  const { pathname } = new URL(request.url);
+  const { pathname, searchParams } = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method === 'GET' && pathname === '/top') {
-    return json({ entries: rankRows(await topRows(env.DB), null).entries }, 200, TOP_CACHE);
+    if (!searchParams.has('device')) return json({ entries: rankRows(await topRows(env.DB), null).entries }, 200, TOP_CACHE);
+    const rawDevice = searchParams.get('device');
+    if (!isDeviceId(rawDevice)) return fail('bad-request');
+    const own = await deviceRow(env.DB, await hashDevice(rawDevice));
+    const { entries, rank } = rankRows(await topRows(env.DB), own?.id ?? null);
+    return json({ entries, own: own && { rank, score: own.score } }, 200, OWN_TOP_CACHE);
   }
   if (request.method !== 'POST' || pathname !== '/score') return fail('not-found');
 
@@ -36,9 +43,11 @@ export async function handleRequest(request: Request, env: Env, now: number): Pr
   if (!parsed.ok) return fail(parsed.error);
   const device = await hashDevice(parsed.value.device);
   if (isRateLimited(await recentSubmissions(env.DB, device, now), now)) return fail('rate');
-  const id = await saveRun(env.DB, parsed.value, device, now);
-  const { entries, rank } = rankRows(await topRows(env.DB), id);
-  return json({ ok: true, rank, entries }, 200);
+  const written = await saveBestRun(env.DB, parsed.value, device, now);
+  const own = await deviceRow(env.DB, device);
+  const { entries, rank } = rankRows(await topRows(env.DB), own?.id ?? null);
+  // Without a row the run was pruned at once (outside the kept rows): its score is the best known.
+  return json({ ok: true, stored: written && own !== null, rank, best: own?.score ?? parsed.value.score, entries }, 200);
 }
 
 /** The parsed body, or undefined when it is too large or not JSON. */
