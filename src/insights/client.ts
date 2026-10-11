@@ -1,11 +1,15 @@
 /**
- * Reads GET /stats and GET /feedback of the highscore worker with the admin token. The token is
- * passed in per call and never stored. Every failure maps to an error code,
+ * Reads GET /stats and GET /feedback of the highscore worker with the admin token and sends the
+ * feedback triage (issue, status and reply, delete; ROADMAP 56). The token is passed in per call and never stored. Every failure maps to an error code,
  * nothing throws; `fetch` is passed in so tests never reach the live worker.
  */
 import { type FetchLike, REQUEST_TIMEOUT_MS, SCORES_URL } from '../net/api';
-import { FEEDBACK_KINDS, type FeedbackEntry, type FeedbackList } from '../net/feedback-types';
+import { FEEDBACK_KINDS, type FeedbackEntry } from '../net/feedback-types';
 import { type CountEntry, INPUTS, type InsightsStats, ORIENTATIONS, PLATFORMS, STATS_RANGES, STATS_TESTERS_PARAM, type StatsRange } from '../net/telemetry-types';
+import type { TriageError } from './triage';
+import {
+  FEEDBACK_STATUSES, type FeedbackTriage, type IssueDraft, type TriagedFeedbackEntry, type TriagePatch,
+} from './triage-types';
 
 export type StatsError = 'auth' | 'offline' | 'server';
 export type StatsResult = { ok: true; stats: InsightsStats } | { ok: false; error: StatsError };
@@ -59,9 +63,11 @@ export interface StatsRequest {
   timeoutMs?: number;
 }
 
-export function fetchStats(fetchFn: FetchLike, request: StatsRequest): Promise<StatsResult> {
+export async function fetchStats(fetchFn: FetchLike, request: StatsRequest): Promise<StatsResult> {
   const url = `${request.base}/stats?days=${request.days}${request.testers ? `&${STATS_TESTERS_PARAM}=1` : ''}`;
-  return authorizedGet(fetchFn, url, request, isInsightsStats).then((r) => (r.ok ? { ok: true, stats: r.body } : r));
+  const r = await authorizedRequest(fetchFn, url, request);
+  if (!r.ok) return r;
+  return r.status === 200 && isInsightsStats(r.body) ? { ok: true, stats: r.body } : { ok: false, error: 'server' };
 }
 
 const isIn = <T extends string>(values: readonly T[], v: unknown): v is T => values.includes(v as T);
@@ -73,12 +79,23 @@ function isFeedbackEntry(v: unknown): v is FeedbackEntry {
   return Array.isArray(v.log) && v.log.every((line) => typeof line === 'string');
 }
 
-/** Checks the GET /feedback answer; anything else counts as a server error. */
-export function isFeedbackList(v: unknown): v is FeedbackList {
-  return isRecord(v) && Array.isArray(v.entries) && v.entries.every(isFeedbackEntry);
+const isIssue = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
+
+/** The triage fields; each may be missing (a worker before ROADMAP 56), but never of the wrong type. */
+function hasValidTriage(v: unknown): boolean {
+  return isRecord(v) && (v.status === undefined || isIn(FEEDBACK_STATUSES, v.status)) &&
+    (v.issue === undefined || v.issue === null || isIssue(v.issue)) &&
+    (v.reply === undefined || v.reply === null || typeof v.reply === 'string');
 }
 
-export type FeedbackResult = { ok: true; entries: FeedbackEntry[] } | { ok: false; error: StatsError };
+const withTriage = (v: FeedbackEntry & Partial<FeedbackTriage>): TriagedFeedbackEntry => ({ ...v, status: v.status ?? 'open', issue: v.issue ?? null, reply: v.reply ?? null });
+
+/** Checks the GET /feedback answer (the triage fields optional); anything else counts as a server error. */
+export function isFeedbackList(v: unknown): v is { entries: (FeedbackEntry & Partial<FeedbackTriage>)[] } {
+  return isRecord(v) && Array.isArray(v.entries) && v.entries.every((e) => isFeedbackEntry(e) && hasValidTriage(e));
+}
+
+export type FeedbackResult = { ok: true; entries: TriagedFeedbackEntry[] } | { ok: false; error: StatsError };
 
 export interface FeedbackRequest {
   base: string;
@@ -86,40 +103,100 @@ export interface FeedbackRequest {
   timeoutMs?: number;
 }
 
-/** GET /feedback; an older worker without the route answers 404, which maps to 'server'. */
-export function fetchFeedback(fetchFn: FetchLike, request: FeedbackRequest): Promise<FeedbackResult> {
-  return authorizedGet(fetchFn, `${request.base}/feedback`, request, isFeedbackList).then((r) => (r.ok ? { ok: true, entries: r.body.entries } : r));
+/** GET /feedback; an older worker without the route answers 404, which maps to 'server'. Entries without triage count as open. */
+export async function fetchFeedback(fetchFn: FetchLike, request: FeedbackRequest): Promise<FeedbackResult> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/feedback`, request);
+  if (!r.ok) return r;
+  if (r.status !== 200 || !isFeedbackList(r.body)) return { ok: false, error: 'server' };
+  return { ok: true, entries: r.body.entries.map(withTriage) };
 }
 
-type GetResult<T> = { ok: true; body: T } | { ok: false; error: StatsError };
+export type TriageResult<T> = ({ ok: true } & T) | ({ ok: false } & TriageError);
 
-/** A GET with the bearer token, given up after the timeout; never throws. */
-async function authorizedGet<T>(
+export interface TriageRequest extends FeedbackRequest {
+  id: number;
+}
+
+/** The worker's error answer of a triage route as a TriageError. */
+function triageFailure(status: number, body: unknown): TriageError {
+  const answer = isRecord(body) ? body : {};
+  if (status === 401) return { error: 'auth' };
+  if (status === 400) return { error: 'bad-request' };
+  if (status === 404) return { error: 'not-found' };
+  if (status === 409 && isIssue(answer.issue)) return { error: 'exists', issue: answer.issue };
+  if (status === 502 && typeof answer.status === 'number') return { error: 'github', status: answer.status };
+  if (status === 503 && answer.error === 'github-token-missing') return { error: 'github-token-missing' };
+  return { error: 'server' };
+}
+
+/** POST /feedback/:id/issue: the worker creates the GitHub issue and sets the row to todo. */
+export async function createIssue(fetchFn: FetchLike, request: TriageRequest & { draft: IssueDraft }): Promise<TriageResult<{ issue: number }>> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}/issue`, request, 'POST', request.draft);
+  if (!r.ok) return r;
+  if (r.status !== 201) return { ok: false, ...triageFailure(r.status, r.body) };
+  const issue = isRecord(r.body) ? r.body.issue : undefined;
+  return isIssue(issue) ? { ok: true, issue } : { ok: false, error: 'server' };
+}
+
+const isTriage = (v: unknown): v is FeedbackTriage =>
+  isRecord(v) && isIn(FEEDBACK_STATUSES, v.status) && (v.issue === null || isIssue(v.issue)) && (v.reply === null || typeof v.reply === 'string');
+
+/** PATCH /feedback/:id with status and/or reply; the row's triage fields afterwards. */
+export async function patchFeedback(fetchFn: FetchLike, request: TriageRequest & { patch: TriagePatch }): Promise<TriageResult<{ triage: FeedbackTriage }>> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}`, request, 'PATCH', request.patch);
+  if (!r.ok) return r;
+  if (r.status !== 200) return { ok: false, ...triageFailure(r.status, r.body) };
+  if (!isTriage(r.body)) return { ok: false, error: 'server' };
+  const { status, issue, reply } = r.body;
+  return { ok: true, triage: { status, issue, reply } };
+}
+
+/** DELETE /feedback/:id. */
+export async function deleteFeedback(fetchFn: FetchLike, request: TriageRequest): Promise<TriageResult<object>> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}`, request, 'DELETE');
+  if (!r.ok) return r;
+  return r.status === 204 ? { ok: true } : { ok: false, ...triageFailure(r.status, r.body) };
+}
+
+type Answer = { ok: true; status: number; body: unknown } | { ok: false; error: 'auth' | 'offline' };
+
+/**
+ * A request with the bearer token (and a JSON body if given), given up after the timeout; never throws.
+ * 401 is 'auth'; any other status comes back with its body (null when there is none or it is not JSON).
+ */
+async function authorizedRequest(
   fetchFn: FetchLike,
   url: string,
   request: { token: string; timeoutMs?: number },
-  check: (v: unknown) => v is T,
-): Promise<GetResult<T>> {
+  method?: 'POST' | 'PATCH' | 'DELETE',
+  json?: unknown,
+): Promise<Answer> {
   const controller = typeof AbortController === 'undefined' ? null : new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<GetResult<T>>((resolve) => {
+  const timeout = new Promise<Answer>((resolve) => {
     timer = setTimeout(() => {
       controller?.abort();
       resolve({ ok: false, error: 'offline' });
     }, request.timeoutMs ?? REQUEST_TIMEOUT_MS);
   });
-  const call = async (): Promise<GetResult<T>> => {
-    const init = { headers: { Authorization: `Bearer ${request.token}` }, ...(controller ? { signal: controller.signal } : {}) };
+  const call = async (): Promise<Answer> => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${request.token}` };
+    if (json !== undefined) headers['Content-Type'] = 'application/json';
+    const init = {
+      ...(method ? { method } : {}),
+      headers,
+      ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
+      ...(controller ? { signal: controller.signal } : {}),
+    };
     const response = await fetchFn(url, init);
     if (response.status === 401) return { ok: false, error: 'auth' };
-    if (response.status !== 200) return { ok: false, error: 'server' };
     let body: unknown = null;
     try {
       body = await response.json();
     } catch {
-      // Not JSON: rejected below.
+      // No body or not JSON: the caller decides by the status.
     }
-    return check(body) ? { ok: true, body } : { ok: false, error: 'server' };
+    return { ok: true, status: response.status, body };
   };
   try {
     return await Promise.race([call(), timeout]);

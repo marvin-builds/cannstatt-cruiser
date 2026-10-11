@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { FeedbackEntry } from '../net/feedback-types';
 import { feedbackCount, filterFeedback, kindLabel, logSummary, metaLine } from './feedback';
 import { sampleFeedback } from './sample-feedback';
+import type { FeedbackStatus, TriagedFeedbackEntry } from './triage-types';
 
-const entry = (id: number, day: string, kind: FeedbackEntry['kind']): FeedbackEntry => ({
+const entry = (id: number, day: string, kind: TriagedFeedbackEntry['kind'], status: FeedbackStatus = 'open'): TriagedFeedbackEntry => ({
   id,
   day,
   kind,
@@ -14,6 +14,9 @@ const entry = (id: number, day: string, kind: FeedbackEntry['kind']): FeedbackEn
   orientation: 'portrait',
   viewWidth: 390,
   log: [],
+  status,
+  issue: null,
+  reply: null,
 });
 
 describe('filterFeedback', () => {
@@ -24,6 +27,14 @@ describe('filterFeedback', () => {
   it('keeps only bugs or only ideas', () => {
     expect(filterFeedback(entries, 'bug').map((e) => e.id)).toEqual([2, 1]);
     expect(filterFeedback(entries, 'idea').map((e) => e.id)).toEqual([3]);
+  });
+  it('keeps only one status, combined with the kind', () => {
+    const triaged = [...entries, entry(4, '2026-10-11', 'bug', 'todo'), entry(5, '2026-10-10', 'idea', 'rejected')];
+    expect(filterFeedback(triaged, 'all', 'open').map((e) => e.id)).toEqual([3, 2, 1]);
+    expect(filterFeedback(triaged, 'all', 'todo').map((e) => e.id)).toEqual([4]);
+    expect(filterFeedback(triaged, 'bug', 'rejected')).toEqual([]);
+    expect(filterFeedback(triaged, 'idea', 'rejected').map((e) => e.id)).toEqual([5]);
+    expect(filterFeedback(triaged, 'all', 'all')).toHaveLength(5);
   });
   it('does not change the input', () => {
     filterFeedback(entries, 'all');
@@ -58,5 +69,7 @@ describe('sampleFeedback', () => {
     expect(list.some((e) => e.kind === 'bug' && e.log.length > 0)).toBe(true);
     expect(list.some((e) => e.text.includes('<script>'))).toBe(true);
     expect(new Set(list.map((e) => e.kind))).toEqual(new Set(['bug', 'idea']));
+    expect(list.some((e) => e.status === 'todo' && e.issue !== null)).toBe(true);
+    expect(list.some((e) => e.status === 'rejected' && e.reply)).toBe(true);
   });
 });

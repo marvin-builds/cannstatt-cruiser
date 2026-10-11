@@ -35,7 +35,7 @@ describe('CORS and routing', () => {
     const res = await call('OPTIONS', '/score');
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
-    expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, PATCH, DELETE, OPTIONS');
   });
 
   it('adds CORS headers to normal responses', async () => {

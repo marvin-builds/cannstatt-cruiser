@@ -18,6 +18,8 @@
   --danger: #a32a2a;
   --idea-bg: #e3f4ec;
   --idea: #146b4b;
+  --todo-bg: #e5eefb;
+  --todo: #1d5aa6;
   --radius: 12px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
@@ -43,6 +45,8 @@
     --danger: #ffb4ad;
     --idea-bg: #1f3d32;
     --idea: #8fe0bd;
+    --todo-bg: #22344f;
+    --todo: #a9c8f5;
   }
 }
 
@@ -52,7 +56,7 @@ body { min-height: 100vh; overflow-x: hidden; }
 h1, h2, h3 { margin: 0; font-weight: 650; }
 h2 { font-size: 0.95rem; color: var(--ink); margin-bottom: 12px; }
 h3 { font-size: 0.85rem; color: var(--ink-2); margin-bottom: 6px; }
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 
 button {
   border: 0;
@@ -65,7 +69,7 @@ button {
 }
 button:disabled { opacity: 0.6; cursor: default; }
 button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -234,3 +238,39 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--c1); outlin
 .visits .tile-value { color: var(--ink); }
 .card-note.fine { font-size: 0.75rem; color: var(--ink-3); }
 .chart .bar.newPlayers { fill: var(--c3); }
+
+/* Feedback triage (ROADMAP 56) */
+.fb-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, .fb-panel input[type='text'], .fb-panel textarea {
+  padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); max-width: 100%;
+}
+.fb-status { font-weight: 650; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--track); color: var(--ink-2); text-decoration: none; }
+.fb-status.todo { background: var(--todo-bg); color: var(--todo); }
+.fb-status.done { background: var(--idea-bg); color: var(--idea); }
+.fb-status.rejected { background: var(--track); color: var(--ink-3); }
+a.fb-status { text-decoration: underline; text-underline-offset: 2px; }
+a.fb-status:hover { filter: brightness(0.95); }
+.fb-head time { margin-left: auto; }
+.fb-reply { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.fb-reply span { font-weight: 650; }
+.fb-triage { margin-top: 8px; }
+.fb-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+button.small { padding: 4px 12px; font-size: 0.85rem; min-height: 32px; }
+button[aria-expanded='true'] { background: var(--track); }
+button.danger-text { color: var(--danger); }
+button.danger { background: var(--danger); color: var(--card); }
+.fb-panel {
+  margin-top: 8px; padding: 12px; border-radius: 8px; background: var(--track);
+  display: grid; gap: 10px; min-width: 0;
+}
+.fb-field { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); min-width: 0; }
+.fb-field input, .fb-field textarea, .fb-field select { font-weight: 400; width: 100%; color: var(--ink); }
+.fb-field textarea { resize: vertical; min-height: 9em; font: 0.85rem/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
+.fb-check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; }
+.fb-check input { width: 18px; height: 18px; margin: 0; }
+.fb-hint { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
+.fb-confirm .fb-hint { color: var(--danger); font-weight: 600; }
+.fb-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-error { margin: 0; color: var(--danger); font-size: 0.85rem; font-weight: 600; }
+.fb-error:empty { display: none; }

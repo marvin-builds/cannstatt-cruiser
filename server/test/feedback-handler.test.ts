@@ -69,7 +69,8 @@ describe('POST /feedback stores valid feedback', () => {
     expect(rows()).toEqual([
       {
         id: 1, day: '2026-10-11', kind: 'bug', text: 'Der Skater bleibt\n\n\nhängen', version: '2026-10-11.4', platform: 'android',
-        input: 'touch', orientation: 'portrait', view_width: 360, log: '["TypeError: x is undefined"]',
+        input: 'touch', orientation: 'portrait', view_width: 360, log: '["TypeError: x is undefined"]', status: 'open', issue: null,
+        reply: null,
       },
     ]);
   });
@@ -218,7 +219,7 @@ describe('GET /feedback', () => {
     expect(list.entries.map((entry) => entry.text)).toEqual(['später am Tag', 'Der Skater bleibt\n\n\nhängen', 'älter']);
     expect(list.entries[0]).toEqual({
       id: 3, day: '2026-10-11', kind: 'idea', text: 'später am Tag', version: '2026-01-01.1', platform: 'other',
-      input: 'keys', orientation: 'landscape', viewWidth: 427, log: ['a', 'b'],
+      input: 'keys', orientation: 'landscape', viewWidth: 427, log: ['a', 'b'], status: 'open', issue: null, reply: null,
     });
     expect(list.entries[1]!.log).toEqual(['TypeError: x is undefined']);
   });

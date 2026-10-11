@@ -24,11 +24,14 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/event-parse.ts` | Strict `POST /event` body check |
 | `src/event-store.ts`, `src/location.ts` | Daily cap, once-a-day condense + 90-day prune, storing events; coarse location from `request.cf` |
 | `src/day-summary.ts` | Condensing finished days into `day_summaries` (kept for good) |
-| `src/auth.ts` | Bearer token check for `GET /stats` and `GET /feedback` (SHA-256 + constant-time compare) |
+| `src/auth.ts` | Bearer token check for `GET /stats` and the feedback routes of the board (SHA-256 + constant-time compare) |
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
 | `src/feedback-parse.ts` | Strict `POST /feedback` body check and text normalisation |
 | `src/feedback-store.ts` | Per-session and daily feedback limits, storing, once-a-day 365-day prune, the `GET /feedback` list |
+| `src/feedback-triage-rules.ts`, `src/feedback-triage-types.ts` | Triage contract (ROADMAP 56): statuses, issue draft and reply limits, shapes (board copy: the game's `src/insights/triage-types.ts`) |
+| `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply patch) and D1 access |
+| `src/github.ts` | Creates the GitHub issue (REST API, injected `fetch`) |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
 ## Develop and test
@@ -71,6 +74,33 @@ npx wrangler secret put STATS_TOKEN   # paste it when asked
 
 Never put the token in `wrangler.toml` (`[vars]`), in any `VITE_` variable, in
 the game's code or in git: the insights page asks for it at runtime.
+
+### GitHub token (secret)
+
+`POST /feedback/:id/issue` (the board's "Issue anlegen") needs the Wrangler
+secret `GITHUB_TOKEN`; without it the route answers
+`503 {"ok": false, "error": "github-token-missing"}` and nothing else changes.
+Use a **fine-grained** personal access token that can do nothing else:
+
+1. GitHub (signed in as `marvinmai`) -> Settings -> Developer settings ->
+   Personal access tokens -> Fine-grained tokens -> "Generate new token".
+2. Name it e.g. `cannstatt-cruiser-feedback`, pick an expiration (renew it then
+   with the same steps), resource owner `marvinmai`.
+3. Repository access: **Only select repositories** -> `marvinmai/cannstatt-cruiser`.
+4. Repository permissions: **Issues: Read and write** (Metadata: read-only is
+   added automatically). Nothing else.
+5. Generate, copy the token into your password manager, and set it:
+
+```sh
+cd server
+npx wrangler secret put GITHUB_TOKEN   # paste it when asked
+```
+
+Create the labels `feedback`, `bug` and `idea` in the repository once (Issues ->
+Labels), so the new issues are labelled as intended. Like `STATS_TOKEN`, the
+GitHub token never goes into `wrangler.toml` (`[vars]`), a `VITE_` variable,
+the board, the game or git; the worker sends it only to `api.github.com`, and
+no answer ever contains it. Revoking it on GitHub stops issue creation at once.
 
 ## Migrations
 
@@ -158,6 +188,25 @@ npx wrangler deploy   # 4. new worker (accepts events with and without the new f
 Deploy the worker before the game release that sends `tester` and
 `returning`: the old worker rejects session events with unknown fields.
 
+`0007_feedback_triage.sql` (feedback triage, ROADMAP 56): adds
+`feedback.status` (`open`/`todo`/`done`/`rejected`, `NOT NULL DEFAULT 'open'`
+with a `CHECK`), `feedback.issue` and `feedback.reply` (both nullable); every
+existing row becomes `open` without issue or reply. Like 0006 it is **not**
+safe to apply twice: a second run fails at its first statement ("duplicate
+column name: status") and changes nothing. The new worker reads and writes
+these columns (also in `GET /feedback` and the daily prune), so the order is:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0007.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0007_feedback_triage.sql   # 2. migrate, once
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler secret put GITHUB_TOKEN   # 4. token (see "GitHub token"), once
+npx wrangler deploy   # 5. new worker
+```
+
+Locally: `npx wrangler d1 execute cannstatt-cruiser-scores --local --file=migrations/0007_feedback_triage.sql`.
+
 ## Daily summaries
 
 Raw events live for 90 days; the daily counts are kept for good in
@@ -197,7 +246,7 @@ the event is still stored and answered with 204.
 
 All responses are JSON (except the empty 204 answers). CORS allows
 `https://marvinmai.github.io` and `http://localhost:*` / `http://127.0.0.1:*`
-with the methods `GET, POST, OPTIONS` and the headers `Content-Type,
+with the methods `GET, POST, PATCH, DELETE, OPTIONS` and the headers `Content-Type,
 Authorization` (no credentials); `OPTIONS` answers the preflight with 204.
 
 ### `GET /top`
@@ -345,7 +394,7 @@ Responses:
   shows "heute schon genug Feedback".
 
 On the first accepted feedback of a UTC day, after it is stored, the worker
-deletes feedback older than 365 days and the counters of past days, in one
+deletes feedback older than 365 days (except status `todo`) and the counters of past days, in one
 transaction that also marks the day as done (`event_meta` key
 `feedback-pruned`). A failure is logged, the feedback stays stored and is
 answered with 201, and the next feedback retries.
@@ -357,7 +406,36 @@ like `GET /stats` (401 before any database access otherwise). Not cached
 (`Cache-Control: no-store`). `200 {"entries": [...]}` (`FeedbackList`): the
 newest 100 (`FEEDBACK_LIST_LIMIT`), newest day first and, within a day, the
 latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
-`version`, `platform`, `input`, `orientation`, `viewWidth` and `log` (array).
+`version`, `platform`, `input`, `orientation`, `viewWidth` and `log` (array),
+and the triage fields `status` (`open`, `todo`, `done`, `rejected`), `issue`
+(GitHub issue number or `null`) and `reply` (string or `null`).
+
+### Feedback triage (ROADMAP 56)
+
+All three routes need `Authorization: Bearer <STATS_TOKEN>` and check it first:
+without it they answer `401` before any database access or GitHub call. The id
+is the entry's `id` (a positive integer; anything else is 400). JSON bodies
+(`application/json` or `text/plain`) of at most 32 KB. Not cached.
+
+- `POST /feedback/:id/issue`, body exactly `{"title", "body"}` as the operator
+  edited them on the board: title 3-120 chars (one line, spaces collapsed),
+  body 1-8000 chars after trimming (line breaks and tabs allowed, no other
+  control characters). Creates an issue in `marvinmai/cannstatt-cruiser`
+  with the labels `feedback` plus the entry's kind (`bug` or `idea`), stores
+  its number and sets the status to `todo`.
+  - `201 {"ok": true, "issue": 12}`.
+  - `400` bad id or body; `404` no such entry; `409 {"ok": false, "error":
+    "exists", "issue": 5}` when the entry already has an issue.
+  - `503 {"ok": false, "error": "github-token-missing"}` without the secret.
+  - `502 {"ok": false, "error": "github", "status": 403}` when GitHub refuses
+    (its HTTP status) or cannot be reached / answers unusably (`status` 0).
+    Nothing of GitHub's answer is passed on, and nothing is stored.
+- `PATCH /feedback/:id`, body with `status` and/or `reply` (no other fields):
+  `status` one of the four; `reply` a single line of at most 140 chars after
+  trimming (`MAX_REPLY_CHARS`, shown to players later, ROADMAP 57), `""` or
+  `null` clears it. Only the given fields change; the issue number stays.
+  `200 {"ok": true, "status", "issue", "reply"}`, `400`, `404`.
+- `DELETE /feedback/:id`: deletes the entry. `204`, `404`.
 
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
 An unexpected server error (for example a failing database) answers
@@ -414,8 +492,12 @@ and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
   session id with a count, and one count for all sessions. It is not linked to
   any feedback row and is deleted on the first feedback of the next day.
 - Retention: feedback is deleted after 365 days (checked on the first
-  feedback of each UTC day).
-- Access: only with the `STATS_TOKEN` secret (`GET /feedback`).
+  feedback of each UTC day), except entries with status `todo`, which are
+  kept until their status changes.
+- Triage: the operator may publish an entry as an anonymous GitHub issue
+  after reviewing and editing the text on the board (the log only when it is
+  needed), and store a status and a short reply on the row.
+- Access: only with the `STATS_TOKEN` secret (`GET /feedback` and the triage routes).
 
 ## Keeping it in sync with the game
 

@@ -6,11 +6,13 @@
 import './insights.css';
 import { store } from '../core/storage';
 import type { FetchLike } from '../net/api';
-import type { FeedbackEntry } from '../net/feedback-types';
 import type { InsightsStats, StatsRange } from '../net/telemetry-types';
 import { drawDayCharts, renderBoard } from './board';
-import { apiBase, fetchFeedback, fetchStats, type StatsError } from './client';
+import { apiBase, createIssue, deleteFeedback, fetchFeedback, fetchStats, patchFeedback, type StatsError, type TriageResult } from './client';
 import type { FeedbackFilter } from './feedback';
+import type { FeedbackHandlers } from './feedback-card';
+import type { StatusFilter } from './triage';
+import type { TriagedFeedbackEntry } from './triage-types';
 import { renderLocked } from './locked';
 import { markOnUnlock, setTestDevice, testDeviceState } from './test-device';
 
@@ -28,8 +30,9 @@ let token: string | null = null;
 let range: StatsRange = 7;
 let stats: InsightsStats | null = null;
 /** null while GET /feedback fails; the stats still render. */
-let feedback: FeedbackEntry[] | null = null;
+let feedback: TriagedFeedbackEntry[] | null = null;
 let feedbackFilter: FeedbackFilter = 'all';
+let statusFilter: StatusFilter = 'all';
 /** The test-device marker as the board shows it; written only through test-device.ts. */
 let testDevice = testDeviceState(store) === true;
 /** 'inkl. Testgeräte': off on every page load, never stored. */
@@ -44,17 +47,41 @@ function showBoard(loading: boolean, error: string | null = null): void {
   if (!stats) return;
   renderBoard(
     root,
-    { stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter }, testDevice, testers },
+    { stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter, status: statusFilter }, testDevice, testers },
     {
       onRange: switchRange,
       onReload: () => void load(),
       onLock: lock,
-      onFeedbackFilter: (filter) => (feedbackFilter = filter),
+      feedback: feedbackHandlers,
       onTestDevice: switchTestDevice,
       onTesters: switchTesters,
     },
   );
 }
+
+/** A triage call with the token in memory; a 401 locks the board like a failed load. */
+async function triage<T>(call: (token: string) => Promise<TriageResult<T>>): Promise<TriageResult<T>> {
+  if (!token) return { ok: false, error: 'auth' };
+  const result = await call(token);
+  if (!result.ok && result.error === 'auth') {
+    token = null;
+    showLocked(ERRORS.auth);
+  }
+  return result;
+}
+
+const feedbackHandlers: FeedbackHandlers = {
+  onFilter(filter, status) {
+    feedbackFilter = filter;
+    statusFilter = status;
+  },
+  onEntries(entries) {
+    feedback = entries;
+  },
+  createIssue: (id, draft) => triage((t) => createIssue(fetchFn, { base, token: t, id, draft })),
+  patch: (id, patch) => triage((t) => patchFeedback(fetchFn, { base, token: t, id, patch })),
+  remove: (id) => triage((t) => deleteFeedback(fetchFn, { base, token: t, id })),
+};
 
 async function load(): Promise<void> {
   if (!token) return;

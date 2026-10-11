@@ -90,7 +90,11 @@ CREATE TABLE IF NOT EXISTS feedback (
   input TEXT NOT NULL,
   orientation TEXT NOT NULL,
   view_width INTEGER NOT NULL,
-  log TEXT NOT NULL
+  log TEXT NOT NULL,
+  -- Triage on the insights board (migrations/0007_feedback_triage.sql documents them).
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'todo', 'done', 'rejected')),
+  issue INTEGER,
+  reply TEXT
 );
 CREATE INDEX IF NOT EXISTS feedback_day ON feedback (day, id);
 
