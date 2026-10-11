@@ -337,7 +337,7 @@ menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 [Menu screens](#menu-screens-ui)). Modal layers (feedback form, settings
 menu, Bestenliste and name entry, "Neu in dieser Version", the rotate hint and
 pause) use a rect covering every pointer position (`EVERYWHERE` in
-`ui/index.ts`), so a tap in the phone letterbox or anywhere on the page beside
+`ui/layout.ts`), so a tap in the phone letterbox or anywhere on the page beside
 the canvas never starts or resumes a run behind them. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 
 ### Events (`GameEvents`)
@@ -1213,7 +1213,8 @@ and locks to landscape again on OK; in landscape it locks right after sending.
   `feedback-layout.ts`, `feedback-screen.ts` and `feedback-field.ts` (a native
   `<textarea>` over the canvas like the name field: font >= 16 CSS px, keys
   stop at it, Esc closes). Kind Fehler / Idee, "Fehlerprotokoll mitsenden"
-  (bug only, default off), "Senden" / "Abbrechen"; results sent / rate
+  (bug only, default off), "Senden" and a "×" in the tab row (ROADMAP 70; Esc
+  goes back a page, then closes); results sent / rate
   (429) / invalid (400/413) / offline, the text is kept unless sent. In phone
   landscape the log toggle gets its own 2x row above the buttons; in portrait
   the counter sits in the title row and all notes are 2x.
@@ -1259,16 +1260,29 @@ and locks to landscape again on OK; in landscape it locks right after sending.
   per card "Todo" (an editor; the log only when ticked), "Löschen" with a
   confirm, a status choice with an optional reply, and a status filter;
   board-side types in `src/insights/triage-types.ts`.
-- **Status for players (ROADMAP 57):** `POST /feedback` answers `{ok, id}`;
-  the game keeps the ids of its own sent feedback (store key `feedbackIds`,
-  at most 10). `GET /feedback/status?ids=` (no token, game Origin only, 1-10
-  digit ids, no writes, `private, max-age=300`) returns only id, status and
-  reply. The title asks at most once per UTC day, online, adult mode, through
-  the sender's gate (`src/net/feedback-status.ts`); notes already shown are
-  kept under `feedbackNotes`. A note ("Dein Feedback: geplant! / umgesetzt! /
-  nicht geplant" plus the reply) is a modal menu screen `feedbackNote` after
-  "Neu in dieser Version" (`src/ui/feedback-note.ts`), once per report and
-  status, never in kid mode.
+- **Mein Feedback (ROADMAP 70, replaces the note of 57):** the game makes a
+  32-hex secret `key` per report (`crypto.getRandomValues`) and sends it in
+  the `POST /feedback` body; the worker keeps only SHA-256(key) in `key_hash`
+  (migration 0008, which also adds `done_version`). After a successful send
+  the device keeps the report (store key `feedbackSent`, newest 20: id, key,
+  kind, text, day, version, device details and the log lines actually sent;
+  `src/net/feedback-reports.ts`). `POST /feedback/status` (no token, game
+  Origin only, body `{items: [{id, key}]}` with 1-20 items, no writes,
+  `no-store`) answers `{entries: [{id, status, reply, doneVersion}]}` only for
+  rows whose key hash matches; an omitted kept report shows as "Entfernt".
+  The old `GET /feedback/status?ids=` is gone (404). The title asks at most
+  once per 60 s (`feedbackCheckedAt`), online, adult mode, only with kept
+  reports, through the sender's gate (`src/net/feedback-status.ts`). A report
+  whose status, reply or version differs from what the player last saw puts a
+  red dot on the title's feedback icon, the pause menu's "Feedback" and the
+  "Mein Feedback" tab; opening the tab marks all as seen. The dialog
+  (`ui/feedback-dialog.ts`, `feedback-pages.ts`, `feedback-page-layout.ts`,
+  portrait in `feedback-sheet.ts`) has the tabs "Neu" and "Mein Feedback"
+  (list newest first with coloured status, details with reply, version and
+  the sent log). "Ansehen" beside the log toggle shows "Das wird gesendet":
+  a snapshot taken when opened, and exactly that snapshot is what "Senden"
+  sends. The board sets the version with "Erledigt" (`PATCH doneVersion`,
+  cleared when the status leaves done) and marks cards "mit Fehlerprotokoll".
 - `datenschutz.html` describes feedback; keep it true when this changes.
 
 ## Stomp and carried items
