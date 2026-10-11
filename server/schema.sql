@@ -71,3 +71,27 @@ CREATE TABLE IF NOT EXISTS day_summaries (
   value INTEGER NOT NULL,
   PRIMARY KEY (day, metric, key)
 );
+
+-- Player feedback (POST /feedback, GET /feedback). Databases created before these
+-- tables get them from migrations/0005_feedback.sql (same statements, which document them).
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY,
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  version TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  input TEXT NOT NULL,
+  orientation TEXT NOT NULL,
+  view_width INTEGER NOT NULL,
+  log TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS feedback_day ON feedback (day, id);
+
+-- Feedback rate-limit counters per UTC day (SHA-256 of the session, or 'all').
+CREATE TABLE IF NOT EXISTS feedback_counts (
+  day TEXT NOT NULL,
+  session_hash TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  PRIMARY KEY (day, session_hash)
+);

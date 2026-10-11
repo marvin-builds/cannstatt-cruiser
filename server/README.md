@@ -1,6 +1,6 @@
 # Cannstatt Cruiser highscores
 
-Online highscore list and anonymous play statistics for the game: a
+Online highscore list, anonymous play statistics and player feedback for the game: a
 Cloudflare Worker with a D1 database (free plan). Self-contained: its own `package.json`, `tsconfig.json` and tests;
 the game's root build and tests ignore this folder.
 
@@ -11,7 +11,7 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | File | Purpose |
 | --- | --- |
 | `wrangler.toml` | Worker name, D1 binding `DB` (database `cannstatt-cruiser-scores`) |
-| `schema.sql` | Tables `scores` (the list, one row per device), `submissions` (rate-limit log), `events`, `event_days`, `event_meta`, `day_summaries` (play statistics) |
+| `schema.sql` | Tables `scores` (the list, one row per device), `submissions` (rate-limit log), `events`, `event_days`, `event_meta`, `day_summaries` (play statistics), `feedback`, `feedback_counts` (player feedback) |
 | `migrations/` | One-off changes to an existing database (see "Migrations") |
 | `src/index.ts` | Worker entry |
 | `src/handler.ts` | Routing, CORS, status codes |
@@ -24,8 +24,11 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/event-parse.ts` | Strict `POST /event` body check |
 | `src/event-store.ts`, `src/location.ts` | Daily cap, once-a-day condense + 90-day prune, storing events; coarse location from `request.cf` |
 | `src/day-summary.ts` | Condensing finished days into `day_summaries` (kept for good) |
-| `src/auth.ts` | Bearer token check for `GET /stats` (SHA-256 + constant-time compare) |
+| `src/auth.ts` | Bearer token check for `GET /stats` and `GET /feedback` (SHA-256 + constant-time compare) |
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
+| `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
+| `src/feedback-parse.ts` | Strict `POST /feedback` body check and text normalisation |
+| `src/feedback-store.ts` | Per-session and daily feedback limits, storing, once-a-day 365-day prune, the `GET /feedback` list |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
 ## Develop and test
@@ -116,6 +119,21 @@ npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0004
 npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
 npx wrangler deploy   # 4. new worker
 ```
+
+`0005_feedback.sql` (player feedback): only adds the tables `feedback` and
+`feedback_counts` and the index `feedback_day` (`IF NOT EXISTS`, safe to apply
+twice, keeps all data). `POST /feedback` and `GET /feedback` need them, so the
+order is:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0005.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0005_feedback.sql   # 2. migrate
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler deploy   # 4. new worker
+```
+
+`GET /feedback` uses the existing `STATS_TOKEN` secret; nothing new to set.
 
 On the first event of the next UTC day the worker summarises every finished
 day that still has raw events (at most 100 days per run, oldest first), so the
@@ -265,6 +283,50 @@ count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count
   (`MIN_GROUP_SESSIONS` = 1); only unknown places are merged into `other`.
 - `topScores`: the current top 20 (`name`, `score`, `date`), as `GET /top`.
 
+### `POST /feedback`
+
+A bug report or an idea from the game. `Content-Type` `text/plain` or
+`application/json`, at most 16384 bytes (`MAX_FEEDBACK_BYTES`). The body must
+have exactly these fields (`FeedbackBody` in `src/feedback-types.ts`, limits in
+`src/feedback-rules.ts`):
+
+| Field | Rule |
+| --- | --- |
+| `session` | the telemetry session id of the page load, 32 lowercase hex chars (rate limit only, see "Privacy") |
+| `kind` | `bug` or `idea` |
+| `text` | 3-500 chars after trimming; no control characters except newline (`\r\n` counts as newline); stored trimmed, with more than two blank lines in a row cut to two |
+| `version` | `YYYY-MM-DD.n` |
+| `platform`, `input`, `orientation` | as in `POST /event` |
+| `viewWidth` | integer 320..427 |
+| `log` | array of at most 20 strings of at most 200 chars without control characters; must be `[]` for an `idea` |
+
+Responses:
+
+- `201 {"ok": true}`: stored.
+- `400 {"ok": false, "error": "bad-request"}`: other content type, too large,
+  not JSON, unknown or missing fields, values outside the rules.
+- `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
+  not one of the game origins.
+- `429 {"ok": false, "error": "rate"}`: this session already sent 3 today
+  (`FEEDBACK_PER_SESSION_PER_DAY`, per UTC day), or 200 were accepted from all
+  sessions today (`FEEDBACK_DAILY_CAP` in `src/feedback-store.ts`). The game
+  shows "heute schon genug Feedback".
+
+On the first accepted feedback of a UTC day, after it is stored, the worker
+deletes feedback older than 365 days and the counters of past days, in one
+transaction that also marks the day as done (`event_meta` key
+`feedback-pruned`). A failure is logged, the feedback stays stored and is
+answered with 201, and the next feedback retries.
+
+### `GET /feedback`
+
+The insights board's feedback list. Needs `Authorization: Bearer <STATS_TOKEN>`
+like `GET /stats` (401 before any database access otherwise). Not cached
+(`Cache-Control: no-store`). `200 {"entries": [...]}` (`FeedbackList`): the
+newest 100 (`FEEDBACK_LIST_LIMIT`), newest day first and, within a day, the
+latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
+`version`, `platform`, `input`, `orientation`, `viewWidth` and `log` (array).
+
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
 An unexpected server error (for example a failing database) answers
 `500 {"error": "server"}` with the CORS headers of the request, so the browser
@@ -304,6 +366,22 @@ the data is anonymous and coarse, so a person cannot be identified from it.
   summaries"): per UTC day only totals and per-value counts, no session id, no
   hour, no device id, no IP.
 - Access: only with the `STATS_TOKEN` secret.
+
+### Feedback
+
+Purpose: let players report bugs and suggest ideas so the game can be fixed
+and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
+
+- Stored per feedback (table `feedback`): kind, the text (normalised), game
+  version, platform, input, orientation, view width, the UTC **day** (no time) and, only when the player
+  ticked "Fehlerprotokoll mitsenden" on a bug report, up to 20 error log lines.
+  No name, no device id, no session id, no IP address.
+- Rate limit (table `feedback_counts`): per UTC day the SHA-256 hash of the
+  session id with a count, and one count for all sessions. It is not linked to
+  any feedback row and is deleted on the first feedback of the next day.
+- Retention: feedback is deleted after 365 days (checked on the first
+  feedback of each UTC day).
+- Access: only with the `STATS_TOKEN` secret (`GET /feedback`).
 
 ## Keeping it in sync with the game
 
