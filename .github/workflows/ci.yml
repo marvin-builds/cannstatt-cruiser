@@ -1,0 +1,33 @@
+# Tests and builds every push to main (no deploy; releases deploy from a tag,
+# see deploy.yml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm ci
+        working-directory: server
+      - run: npx vitest run
+        working-directory: server
+      - run: npx tsc --noEmit
+        working-directory: server

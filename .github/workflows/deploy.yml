@@ -1,12 +1,15 @@
-# Builds, tests and deploys the game to GitHub Pages on every push to main.
+# Deploys the game to GitHub Pages when a release tag `v<version>` is pushed,
+# where <version> must be the newest entry in src/changelog.ts (BUILD_VERSION),
+# so only released builds with a "Neu in dieser Version" entry go live.
 # The Vite build uses a relative base (./), so it works under the
 # https://<user>.github.io/<repo>/ sub-path without extra configuration.
-# One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
+# One-time setup: repository Settings -> Pages -> Source: "GitHub Actions", and
+# the github-pages environment allows tags matching `v*`.
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -23,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Tag matches the newest changelog version
+        run: |
+          version="$(grep -m1 -oP "version: '\K[^']+" src/changelog.ts)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Ref $GITHUB_REF_NAME is not the release tag v$version from src/changelog.ts"
+            exit 1
+          fi
       - uses: actions/setup-node@v5
         with:
           node-version: 22

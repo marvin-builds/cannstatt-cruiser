@@ -53,9 +53,12 @@ When the user asks to continue (or resumes work on this game), always work in or
 - Before committing, the orchestrator checks `npm test` and `npm run build`, looks at the key
   playtest screenshots itself, and then commits one commit per slice on `main` (linear history)
   and pushes (the user allowed pushing after each verified slice).
-- Before every push that deploys user-visible changes, the orchestrator adds a new entry to `src/changelog.ts`
-  (next `YYYY-MM-DD.n` version, at most 6 short kid-safe German items that fit 40 characters). Players who
-  saw an older version get the "Neu in dieser Version" screen from it.
+- Pushing `main` only runs CI (`.github/workflows/ci.yml`); the game goes live only from a release tag.
+  A release: add a new entry to `src/changelog.ts` (next `YYYY-MM-DD.n` version, at most 6 short kid-safe
+  German items that fit 40 characters; players who saw an older version get the "Neu in dieser Version"
+  screen from it), deploy the worker first if `server/` changed (backup, migrations, `npx wrangler deploy`),
+  then push `main` and the tag `v<version>` (`git tag v2026-10-11.3 && git push origin v2026-10-11.3`).
+  `deploy.yml` refuses a tag that is not `v` + the newest changelog version.
 - New user wishes go into `docs/ROADMAP.md` (backlog and status checkpoint) first. They are briefed to the next fitting slice,
   never patched into a slice that is already running.
 - The plan ends with a final multi-persona playtest (desktop keyboard, phone touch landscape and
