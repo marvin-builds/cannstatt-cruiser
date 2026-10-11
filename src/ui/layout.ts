@@ -96,7 +96,12 @@ export interface SettingsLayout {
   back: Rect;
   /** Font scale of the notes (2 in portrait, where a view pixel is ~1 CSS px). */
   noteScale: number;
+  /** Top-left of the plain "Testgerät" line (ROADMAP 55, only on a marked device): text, never a hotspot. */
+  testDevice: { x: number; y: number; scale: number };
 }
+
+/** The settings line on the owner's test devices (ROADMAP 55). */
+export const TEST_DEVICE_LABEL = 'Testgerät';
 
 /** Wide enough for "Anonyme Statistik: AUS" at scale 2. */
 const TOGGLE_W = 200;
@@ -133,7 +138,9 @@ export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout 
   // Touch (bigger buttons) has no key help line.
   const keysY = h > DESKTOP.menuButtonH ? null : below;
   const back = centred(BACK_W, keysY === null ? below : keysY + NOTE_LINE + gap);
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, noteScale: 1 };
+  // Centred under Zurück, where the view has room left.
+  const testDevice = { x: cx - Math.floor(measureText(TEST_DEVICE_LABEL, 1) / 2), y: back.y + h + gap + 2, scale: 1 };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, noteScale: 1, testDevice };
 }
 
 function settingsPortrait(viewWidth: number, h: number): SettingsLayout {
@@ -146,7 +153,9 @@ function settingsPortrait(viewWidth: number, h: number): SettingsLayout {
   const stats: Rect = { x: cx - Math.floor(rowW / 2), y: kidNoteY + BIG_NOTE_LINE + 4, w: PORTRAIT_STATS_W, h };
   const privacyLink: Rect = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PORTRAIT_LINK_W };
   const statsNoteY = stats.y + h + 2;
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, noteScale: 2 };
+  // The view is full below; the title row has room left of the centred title (Zurück is at the right).
+  const testDevice = { x: 8, y: titleY, scale: 2 };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, noteScale: 2, testDevice };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */

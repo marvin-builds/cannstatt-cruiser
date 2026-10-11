@@ -14,6 +14,7 @@ import { type FetchLike, ScoresApi } from './api';
 import { loadDeviceId } from './device';
 import { ErrorLog, installErrorLog, loggedFetch } from './error-log';
 import { feedbackBaseUrl, FeedbackSender } from './feedback';
+import { hadGameData } from './returning';
 import { ScoreService } from './service';
 import { newSessionId, Telemetry, telemetryBaseUrl } from './telemetry';
 
@@ -32,6 +33,21 @@ declare global {
     globalPrivacyControl?: boolean;
   }
 }
+
+function pageStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * New vs. returning (ROADMAP 55), read when this module is evaluated: main.ts's
+ * imports run before its body, so this comes before any slice factory or the
+ * Game constructor writes (device id, visits, last-seen version).
+ */
+const pageReturning = hadGameData(pageStorage());
 
 let pageLog: ErrorLog | null = null;
 let pageSession: string | null = null;
@@ -84,7 +100,7 @@ export function createBrowserTelemetry(store: Store): Telemetry {
     typeof navigator.sendBeacon === 'function'
       ? (url: string, body: string) => navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }))
       : null;
-  const telemetry = new Telemetry({ baseUrl, fetch: netFetch(), beacon, store, version: BUILD_VERSION, session: browserSession() });
+  const telemetry = new Telemetry({ baseUrl, fetch: netFetch(), beacon, store, version: BUILD_VERSION, session: browserSession(), returning: pageReturning });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') telemetry.end();
   });

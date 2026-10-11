@@ -60,6 +60,7 @@ import {
   popupScale,
   riding,
   settingsLayout,
+  TEST_DEVICE_LABEL,
   type UiMetrics,
   uiMetrics,
 } from './layout';
@@ -518,6 +519,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
   note(settings.statsOn ? [STATS_TEXT.note, STATS_TEXT.noteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
   if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
   menuButton(r, l.back, 'Zurück');
+  if (settings.testDevice) text(r, TEST_DEVICE_LABEL, l.testDevice.x, l.testDevice.y, { scale: l.testDevice.scale, color: UI.muted });
 }
 
 /** Desktop key help of the settings menu. */

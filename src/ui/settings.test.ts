@@ -13,6 +13,7 @@ import {
 } from './settings';
 import { measureText } from '../core/font';
 import { loadStatsOptOut, saveStatsOptOut } from '../net/telemetry';
+import { TEST_DEVICE_KEY } from '../net/telemetry-types';
 
 function memoryStore() {
   const raw = new Map<string, string>();
@@ -217,5 +218,37 @@ describe('anonymous statistics switch', () => {
     expect(STATS_TEXT.label(false)).toBe('Anonyme Statistik: AUS');
     expect(STATS_TEXT.note).toMatch(/Stadt/);
     expect(STATS_TEXT.note).toMatch(/keine IP/i);
+  });
+});
+
+describe('test device line (ROADMAP 55)', () => {
+  it('shows only while the board stored true for this device, read when the menu opens', () => {
+    const store = memoryStore();
+    const menu = new SettingsMenu(store);
+    menu.openMenu(false);
+    expect(menu.testDevice).toBe(false);
+    store.set(TEST_DEVICE_KEY, true);
+    expect(menu.testDevice).toBe(false);
+    menu.openMenu(false);
+    expect(menu.testDevice).toBe(true);
+    store.set(TEST_DEVICE_KEY, false);
+    menu.openMenu(true);
+    expect(menu.testDevice).toBe(false);
+    for (const junk of ['1', 1, 'true', null]) {
+      store.set(TEST_DEVICE_KEY, junk);
+      menu.openMenu(false);
+      expect(menu.testDevice, String(junk)).toBe(false);
+    }
+  });
+
+  it('the game never writes the marker', () => {
+    const store = memoryStore();
+    const menu = new SettingsMenu(store);
+    const state = createInitialState();
+    menu.openMenu(false);
+    menu.toggle(state);
+    menu.toggleStats();
+    menu.close();
+    expect(store.get<unknown>(TEST_DEVICE_KEY, 'absent')).toBe('absent');
   });
 });

@@ -17,7 +17,7 @@ import {
   telemetryBaseUrl,
   type BeaconLike,
 } from './telemetry';
-import { MAX_DISTANCE_M, MAX_END_SECONDS, MAX_RUN_SECONDS, SESSION_ID_PATTERN } from './telemetry-types';
+import { MAX_DISTANCE_M, MAX_END_SECONDS, MAX_RUN_SECONDS, SESSION_ID_PATTERN, TEST_DEVICE_KEY } from './telemetry-types';
 import { SCORES_URL } from './api';
 
 function memoryStore(): Store & { raw: Map<string, string> } {
@@ -56,8 +56,8 @@ function fakeNet(options: { fetchFails?: 'reject' | 'throw'; beaconThrows?: bool
 const SESSION = 'a'.repeat(32);
 const INFO = { touch: true, portrait: false, platform: 'android', kid: false } as const;
 
-function telemetry(net = fakeNet(), store = memoryStore(), baseUrl: string | null = 'https://stats.test') {
-  const t = new Telemetry({ baseUrl, fetch: net.fetchFn, beacon: net.beacon, store, version: '2026-10-11.1', session: SESSION });
+function telemetry(net = fakeNet(), store = memoryStore(), baseUrl: string | null = 'https://stats.test', returning?: boolean) {
+  const t = new Telemetry({ baseUrl, fetch: net.fetchFn, beacon: net.beacon, store, version: '2026-10-11.1', session: SESSION, returning });
   return { t, net, store };
 }
 
@@ -118,6 +118,15 @@ describe('event builders', () => {
       orientation: 'portrait',
       kid: true,
     });
+  });
+
+  it('session flags (ROADMAP 55): tester only when true, returning when known', () => {
+    const base = sessionEvent(SESSION, 'v', INFO);
+    expect(sessionEvent(SESSION, 'v', INFO, { tester: false })).toEqual(base);
+    expect(sessionEvent(SESSION, 'v', INFO, { tester: true })).toEqual({ ...base, tester: true });
+    expect(sessionEvent(SESSION, 'v', INFO, { tester: false, returning: false })).toEqual({ ...base, returning: false });
+    expect(sessionEvent(SESSION, 'v', INFO, { tester: true, returning: true })).toEqual({ ...base, tester: true, returning: true });
+    expect('returning' in sessionEvent(SESSION, 'v', INFO, { tester: false, returning: undefined })).toBe(false);
   });
 
   it('run: only buckets, never the exact score', () => {
@@ -304,6 +313,44 @@ describe('Telemetry sender', () => {
       }).not.toThrow();
     }
     await new Promise((r) => setTimeout(r, 0)); // a rejected fetch must not surface as an unhandled rejection
+  });
+});
+
+describe('session flags (ROADMAP 55)', () => {
+  const sentSession = (net: ReturnType<typeof fakeNet>) => net.fetched[0]!.body as Record<string, unknown>;
+
+  it('carries tester: true only while the board marked this device (store true)', () => {
+    for (const [stored, tester] of [[true, true], [false, undefined], ['1', undefined], [undefined, undefined]] as const) {
+      const store = memoryStore();
+      if (stored !== undefined) store.set(TEST_DEVICE_KEY, stored);
+      const { t, net } = telemetry(fakeNet(), store);
+      t.session(INFO);
+      expect(sentSession(net).tester, String(stored)).toBe(tester);
+      expect('tester' in sentSession(net)).toBe(tester === true);
+    }
+  });
+
+  it('reads the marker when the session goes out, never writes it', () => {
+    const store = memoryStore();
+    saveStatsOptOut(store, true);
+    const { t, net } = telemetry(fakeNet(), store);
+    t.session(INFO);
+    store.set(TEST_DEVICE_KEY, true);
+    saveStatsOptOut(store, false);
+    t.end();
+    expect(sentSession(net).tester).toBe(true);
+    expect([...store.raw.keys()].filter((k) => k.endsWith(TEST_DEVICE_KEY))).toHaveLength(1);
+  });
+
+  it('carries returning as given at startup, omitted when unknown', () => {
+    for (const returning of [true, false]) {
+      const { t, net } = telemetry(fakeNet(), memoryStore(), 'https://stats.test', returning);
+      t.session(INFO);
+      expect(sentSession(net).returning).toBe(returning);
+    }
+    const { t, net } = telemetry();
+    t.session(INFO);
+    expect('returning' in sentSession(net)).toBe(false);
   });
 });
 

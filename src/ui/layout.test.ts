@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
+import { blinkOn, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, TEST_DEVICE_LABEL, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -87,6 +87,25 @@ describe('layout helpers', () => {
         expect(l.privacyLink.x, at).toBeGreaterThan(l.stats.x + l.stats.w);
         expect(Math.min(l.privacyLink.w, l.privacyLink.h) * cssPerPx, at).toBeGreaterThanOrEqual(44);
         for (const r of [l.toggle, l.stats, l.back]) expect(overlaps(l.privacyLink, r), at).toBe(false);
+      }
+    });
+    it(`${name}: the plain "Testgerät" line (ROADMAP 55) sits inside the view, clear of the title, buttons and notes`, () => {
+      const m = uiMetrics(display);
+      for (const width of WIDTHS) {
+        const l = settingsLayout(width, m);
+        const at = `${name} ${width}`;
+        const t = l.testDevice;
+        const line: Rect = { x: t.x, y: t.y, w: measureText(TEST_DEVICE_LABEL, t.scale), h: 7 * t.scale };
+        expect(inside(line, width) && whole(line), `${at} ${JSON.stringify(line)}`).toBe(true);
+        const titleW = measureText('Einstellungen', 2);
+        const title: Rect = { x: centreX(width) - Math.ceil(titleW / 2), y: l.titleY, w: titleW, h: 14 };
+        const noteRow = (y: number): Rect => ({ x: 0, y, w: width, h: 7 * l.noteScale });
+        const keys = l.keysY === null ? [] : [noteRow(l.keysY)];
+        for (const r of [title, l.toggle, l.stats, l.privacyLink, l.back, noteRow(l.kidNoteY), noteRow(l.statsNoteY), ...keys]) {
+          expect(overlaps(line, r), `${at} vs ${JSON.stringify(r)}`).toBe(false);
+        }
+        // Readable for the owner: as big as the notes.
+        expect(t.scale, at).toBe(l.noteScale);
       }
     });
   }
