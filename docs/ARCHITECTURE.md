@@ -113,7 +113,7 @@ foundation owner can extend it.
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting |
-| `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
+| `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; the speaker button (`state.muted`) sets the master gain on every gesture, visibility return and context restart, and a suspended or interrupted context is resumed then, with retries (`AudioBackend.wake()`, ROADMAP 63); manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
 | `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
 | `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game) |
 
@@ -180,8 +180,8 @@ creates them in `public/`):
   - nothing or junk stored (first visit): it stores `BUILD_VERSION` at once
     and `state.whatsNew` stays empty, so first-timers never see the screen;
   - otherwise `state.whatsNew = changesSince(lastSeen, CHANGELOG)`: the
-    entries newer than the stored version, newest first, capped to
-    `WHATS_NEW_MAX_ITEMS` = 6 items in total (entries left empty are dropped).
+    entries newer than the stored version, newest first, with all their
+    items, capped to the newest `WHATS_NEW_MAX_ENTRIES` = 10 entries (ROADMAP 59).
     Empty when the running build was already seen.
 - The ui shows the screen while `state.whatsNew` is non-empty (before the
   normal title) and calls `ctx.commands.markVersionSeen()` when the player
@@ -338,7 +338,7 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu wacklig!" (drunk), "Zu entspannt!" (chilled) or "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
 | `starCollected` | `{entityId, stars}` | gameplay |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
-| `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick) |
+| `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick, or head jumps with a buffered press, ROADMAP 60) |
 | `itemCaught` | `{item}` | gameplay (the tossed item reached the hands, or a [dropped item](#dropped-items) was picked up; `state.carriedItem = item`) |
 | `itemUsed` | `{item, action}` | gameplay (use button with an item in hand; `action` is `'drink' \| 'eat' \| 'throw'`; clears `state.carriedItem`) |
 | `drunkStart` | `{duration}` | gameplay (Maßkrug drunk; `state.drunkTimer = duration`) |
@@ -822,9 +822,12 @@ picks one (null while riding or while the settings menu covers it):
   views (< 360 px wide), where the compact card leaves room for the feedback
   icon (with an update card as well, the icon is hidden there; the pause
   menu still offers feedback).
-- **"Neu in dieser Version"**: a headline and one bullet line per item of
-  `state.whatsNew` (`whatsNewLines`, newest first; core caps them to
-  `WHATS_NEW_MAX_ITEMS`).
+- **"Neu in dieser Version"** (ROADMAP 59): every item of `state.whatsNew`
+  under its version heading, newest first, in a scrollable list (touch drag,
+  wheel, arrow keys / Home / End, a scroll bar; `ui/whats-new.ts`). In
+  portrait it is a full-screen DOM sheet (`ui/whats-new-sheet.ts`, see
+  [Portrait sheets](#portrait-sheets-roadmap-58)). `scrollThumb`
+  (`ui/score-layout.ts`) is shared by the canvas lists and the sheet.
 - **Layout**: `ui/menu-layout.ts` has one pure function per screen
   (`titleLayout`, `pauseLayout`, `gameOverLayout`, `whatsNewLayout`)
   returning `MenuLayout {blocks, buttons, panel}`; `currentMenu(r, view)`
@@ -1149,6 +1152,21 @@ hidden page `insights.html` shows aggregates to the owner.
   `ui/privacy-link.ts` opens the page in a new tab on pointer release
   (phone browsers block popups on touch start).
 
+## Portrait sheets (ROADMAP 58)
+
+In portrait the view is only a 180 px high strip, too small for typing. There
+the feedback form, the highscore name entry and "Neu in dieser Version" are
+full-screen DOM sheets over the canvas in the game's colours
+(`ui/portrait-sheets.ts` decides which shows, `sheet-dom.ts` builds them,
+`feedback-sheet.ts`, `entry-sheet.ts`, `whats-new-sheet.ts`): text >= 16 CSS
+px, buttons >= 48 CSS px, a tall text field. They share the state and the
+submission of the canvas forms (`form-surface.ts`), so turning the phone while
+typing keeps the text and the focus. They use a system monospace font on
+purpose: native fields need a system font and the pixel font is drawn from
+sprites. Landscape and desktop keep the canvas forms. In the installed app
+(ROADMAP 54) portrait stays unlocked over the feedback thank-you in portrait
+and locks to landscape again on OK; in landscape it locks right after sending.
+
 ## Player feedback (ROADMAP 50)
 
 - **Contract:** `src/net/feedback-types.ts` (`FeedbackBody`, `FeedbackEntry`,
@@ -1196,6 +1214,21 @@ hidden page `insights.html` shows aggregates to the owner.
   kind badges, meta line, `pre-wrap` text and a `<details>` log. /feedback is
   loaded with /stats; a failure other than 401 only shows "Feedback gerade
   nicht abrufbar" in the card.
+- **Triage (ROADMAP 56):** migration 0007 adds `status`
+  (open/todo/done/rejected), `issue` and `reply` (<= 140 characters, for
+  ROADMAP 57). Routes behind `STATS_TOKEN` (401 before any DB access):
+  `POST /feedback/:id/issue` creates an issue in `marvinmai/cannstatt-cruiser`
+  (labels `feedback` plus `bug` or `idea`) with the title and body the
+  operator edited on the board, stores its number and sets `todo` (409 when
+  it already has one); `PATCH /feedback/:id` sets status and reply;
+  `DELETE /feedback/:id`. GitHub is called with the Wrangler secret
+  `GITHUB_TOKEN` (fine-grained, Issues read/write on that repo only; never in
+  `[vars]` or the board) through an injected fetch (`server/src/github.ts`);
+  its errors become a 502 without the token. The daily prune keeps `todo`
+  rows. The board (`src/insights/triage.ts`, `feedback-triage-ui.ts`) shows
+  per card "Todo" (an editor; the log only when ticked), "Löschen" with a
+  confirm, a status choice with an optional reply, and a status filter;
+  board-side types in `src/insights/triage-types.ts`.
 - `datenschutz.html` describes feedback; keep it true when this changes.
 
 ## Stomp and carried items
@@ -1229,6 +1262,11 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   take-off with the action already released (no hold gravity); jumpsim
   mirrors it (`stompBody`, checked against the real player in
   `jumpsim.test.ts`).
+- **Head jump** (player, ROADMAP 60): a press in that tick or within the jump
+  buffer before it turns the bounce into the normal variable jump from the
+  head (tap = low, full hold = high; no automatic boost, no `jump` event).
+  jumpsim models it (`Body.headJump`) and `Solver.stompsLeadOn` checks the
+  bounce and the head jumps (details in `src/player/CONTRACT.md`).
 - **Toss** (gameplay, `toss.ts`): the item flies from the head in a ballistic
   arc aimed at the hands' position at launch (`x + 3`, half the hitbox
   height up) and, after 55 % of `TOSS_TIME` (0.45 s), eases onto the hands'
@@ -1439,11 +1477,11 @@ milliseconds, so the live game never plans a whole pattern in one tick:
 
 - **People come alone or with room**: the `person` template (zones 1 and 2
   only) holds one person and nothing else; a combination (`mixes.ts`) may hold
-  a person only with >= `PERSON_ROOM_SECONDS` (1 s, measured from the edges of
+  a person only with >= `PERSON_ROOM_SECONDS` (1.15 s since the head jump, measured from the edges of
   the person's sway) of free street to every other piece, and every stomp on
   it must lead on (`Solver.stompsLeadOn`: wherever the bounce lands, the rest
   is fair with the full window). With the pattern lead, runout and the gap
-  between patterns there are >= `PERSON_ROOM_SECONDS` (1 s) of free street
+  between patterns there are >= `PERSON_ROOM_SECONDS` of free street
   before and after every person, and a person never
   walks into another obstacle while visible (walking only carries them
   towards their anchor, from further right).
