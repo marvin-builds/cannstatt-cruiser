@@ -106,9 +106,10 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
-| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)) |
+| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; manifest, pixel-art icons, service worker, GitHub Pages workflow |
-| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
+| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
+| `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game) |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
 creates them in `public/`):
@@ -1036,6 +1037,59 @@ Modules:
   playtests (docs/TESTING.md).
 - The server's name rules are duplicated in `ui/score-rules.ts` (to catch a
   bad name before sending); change both together.
+
+## Play statistics and insights board (ROADMAP 46)
+
+The game sends anonymous play statistics to the highscore worker, and the
+hidden page `insights.html` shows aggregates to the owner.
+
+- **Contract:** `src/net/telemetry-types.ts` (events, allowed values, buckets,
+  limits, the `InsightsStats` answer), mirrored by `server/src/events.ts`
+  (constants, checked by `src/net/telemetry-types.test.ts`) and
+  `server/src/insights-types.ts` (types, checked at type level by
+  `server/test/insights-types.test.ts`). Change all of them together.
+- **Events** (`POST /event`, JSON as `text/plain`, at most 1 KB):
+  - `session` once per page load on the first title screen: version,
+    touch/keys, landscape/portrait, platform (`state.install.platform`), kid.
+  - `run` on game over: run seconds (10 s steps), score bucket, distance in
+    100 m steps, kid. Coarse on purpose, so a run cannot be matched to a named
+    highscore entry.
+  - `end` by `sendBeacon` on `visibilitychange` (hidden) and `pagehide`:
+    active play seconds of the page load; the server keeps the maximum.
+  - The session id is 32 random hex chars in memory only (new per page load).
+- **Client** (`src/net/telemetry.ts`, wired in `src/net/browser.ts` and
+  `src/ui/index.ts`): pure builders plus a `Telemetry` sender that never
+  throws, queues or retries. `telemetryBaseUrl` sends only from
+  `marvinmai.github.io` in a production build and never with Global Privacy
+  Control. `window.__telemetryUrl` sets an explicit endpoint for playtests;
+  there is no fallback to the live worker. The setting `statsOptOut`
+  ("Anonyme Statistik: AN/AUS" on the Bestenliste screen and in the settings
+  menu, also in kid mode) stops sending at once; a session held back by it is
+  sent with the next run or end once the player opts back in.
+  `telemetry.ts` imports `PX_PER_METRE` from `ui/layout`, like `payload.ts`.
+- **Server:** `POST /event` answers 403 without an allowed Origin and 400 for
+  anything outside the contract. It stores the UTC day and hour only, never
+  the IP. Country, region and city come from `request.cf` on `session` rows
+  only. Limits: one `session` and one `end` row per session, at most 200 runs
+  per session, a global cap of 15000 events per UTC day (`event_days`; over
+  it 204 and nothing written), and rows older than 90 days are deleted at
+  most once per UTC day (`event_meta`). Tables come from
+  `server/migrations/0003_play_statistics.sql`.
+- **`GET /stats?days=7|30|90`:** needs `Authorization: Bearer <STATS_TOKEN>`
+  (a Wrangler secret, never in `wrangler.toml` or a `VITE_` variable),
+  compared as SHA-256 digests in constant time; 401 before any database
+  query. Answers aggregates only with `no-store`. `MIN_GROUP_SESSIONS` is 1:
+  every place shows from its first session; only unknown places are
+  `other`. Splits are largest first, so `other` is not always last.
+- **Board** (`insights.html`, `src/insights/`): noindex, no-referrer, never
+  linked from the game. The token sits in a password field (password managers
+  can keep it) and in memory only, never in storage or a URL. Everything is
+  rendered with `createElement`/`createElementNS` and text nodes, never
+  `innerHTML` (player names). `?api=` overrides the worker only on
+  localhost/127.0.0.1.
+- **Service worker:** `public/sw.js` answers only navigations to the scope
+  root or `index.html` with the cached game page, and caches only requests
+  made by the game page; `insights.html` and its assets go to the network.
 
 ## Stomp and carried items
 

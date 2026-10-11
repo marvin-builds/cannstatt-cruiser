@@ -130,6 +130,15 @@ await t.page.route(`${API}/**`, async (route) => {
   timer.
 - Highscore playtest scenario: `scripts/scenarios/highscores.ts` routes the
   worker to a fake server as above (see the playtest scenarios below).
+- The harness (`scripts/playtest-lib.ts`, also `scripts/frametimes.ts`)
+  aborts every request to the live worker host in every browser context
+  (`blockLiveWorkerEverywhere`); a scenario's own `page.route` for the worker
+  takes precedence. Play statistics never go out from localhost anyway; the
+  telemetry scenario (`scripts/scenarios/telemetry.ts`) sets
+  `window.__telemetryUrl` to a fake endpoint and logs the `/event` bodies.
+- The insights board scenario (`scripts/scenarios/insights.ts`) stubs
+  `**/stats**` with a fixture and a 401 case and screenshots the board on
+  desktop and phone, light and dark.
 
 ## Test hook: `window.__game`
 
