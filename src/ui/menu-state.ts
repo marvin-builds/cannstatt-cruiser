@@ -5,7 +5,9 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import type { DisplayInfo, GameState, Rect } from '../types';
 import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout } from './menu-layout';
+import { uiMetrics } from './layout';
 import { installHintKind, reloadOffered } from './notices';
+import { titleTrophy } from './score-layout';
 import { whatsNewLayout } from './whats-new';
 import type { RunResult } from './records';
 
@@ -85,13 +87,14 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     reload: screen !== 'whatsNew' && reloadOffered(state),
     install,
     plate: screen === 'pause' ? view.hud.layout.plate : null,
-    kidButton: screen === 'title' && !state.kidMode,
+    settingsButton: screen === 'title' && !state.kidMode,
+    trophy: trophyShown(state, view) ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
     feedback: feedbackOffered(state, view, screen),
   };
   const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
   const submit = screen === 'gameOver' && !!view.scores?.offered;
-  const key = `${screen}|${input.kidButton}|${input.feedback}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
+  const key = `${screen}|${input.settingsButton}|${!!input.trophy}|${input.feedback}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

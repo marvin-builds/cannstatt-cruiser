@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { Game } from '../core/game';
 import { createMemoryStore } from '../core/storage';
 import type { RenderContext } from '../types';
-import { titleLayout } from './menu-layout';
+import { titleKeys, titleLayout } from './menu-layout';
 import { drawTitle } from './menu-screens';
+import { measureText } from '../core/font';
 import { loadRecords } from './records';
 
 /** Every string the font draws, so a test can tell which texts a screen shows. */
@@ -26,7 +27,7 @@ function titleTexts(kidMode: boolean, touch: boolean): string[] {
   const view = { records: loadRecords(createMemoryStore()), lastRun: null, logoHold: { progress: 0 } };
   const { viewWidth, portrait } = game.display;
   drawn.length = 0;
-  drawTitle(r, view, titleLayout({ viewWidth, touch, portrait, fullscreenAvailable: false, reload: false, install: null, kidButton: !kidMode }));
+  drawTitle(r, view, titleLayout({ viewWidth, touch, portrait, fullscreenAvailable: false, reload: false, install: null, settingsButton: !kidMode }));
   return [...drawn];
 }
 
@@ -38,8 +39,19 @@ describe('title screen', () => {
       expect(texts.join('|')).not.toMatch(/Kindermodus/i);
     });
 
-    it(`adult mode shows the Kindermodus button (touch ${touch}, ROADMAP 43)`, () => {
-      expect(titleTexts(false, touch)).toContain(touch ? 'Kindermodus' : 'Kindermodus (I)');
+    it(`adult mode has no Kindermodus button any more: the settings gear is the one place for it (touch ${touch}, ROADMAP 64)`, () => {
+      expect(titleTexts(false, touch).join('|')).not.toMatch(/Kindermodus/i);
     });
   }
+
+  it('the desktop key line names G for the settings gear in adult mode only', () => {
+    expect(titleTexts(false, false)).toContain('P/Esc = Pause, M = Ton aus, G = Einstellungen');
+    expect(titleTexts(true, false).join('|')).not.toMatch(/Einstellungen/);
+  });
+
+  it('the key line names F and G when both icons show, and fits the narrowest view', () => {
+    expect(titleKeys({ feedback: true, settings: true })).toBe('P/Esc = Pause, M = Ton aus, F = Feedback, G = Einstellungen');
+    expect(titleKeys({ feedback: false, settings: false })).toBe('P/Esc = Pause, M = Ton aus');
+    expect(measureText(titleKeys({ feedback: true, settings: true }))).toBeLessThanOrEqual(320 - 16);
+  });
 });

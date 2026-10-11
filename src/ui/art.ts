@@ -184,6 +184,18 @@ export const ICON_FEEDBACK = new PixelIcon({ w: UI.white, k: UI.ink }, [`
   .w......
 `]);
 
+/** The title's settings button: a gear with a hole in the middle. */
+export const ICON_GEAR = new PixelIcon(ICON, [`
+  ..w..w..
+  .wwwwww.
+  wwwwwwww
+  .ww..ww.
+  .ww..ww.
+  wwwwwwww
+  .wwwwww.
+  ..w..w..
+`]);
+
 /** Frame 0 sound on, frame 1 muted. */
 export const ICON_SOUND = new PixelIcon(ICON, [
   `

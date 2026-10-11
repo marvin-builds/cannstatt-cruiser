@@ -1,14 +1,14 @@
 /**
- * Kid mode switch and the hidden settings menu (ROADMAP 43): with nothing
- * stored the game is in adult mode, the title shows a "Kindermodus" button
- * (tap on touch, I on desktop) and the highscore entry offers the free text
- * field; the button turns kid mode on without starting a run, saves it and
- * shows "Kindermodus ist an" naming the way back, closed by OK (tap, Enter);
- * then the title has no button, also after a reload. The title shows no
- * settings button; a 3 s long press on the logo (touch / mouse) or holding K
- * (keyboard) opens "Einstellungen" without starting a run (progress only
- * after ~1 s); kid mode turns off there at once, which brings the title
- * button back; an explicit choice survives a reload; a kid-mode run shows
+ * Kid mode switch and the settings menu (ROADMAP 43, 64): with nothing
+ * stored the game is in adult mode, the title shows the settings gear (tap
+ * on touch, G on desktop) and the highscore entry offers the free text
+ * field; the gear opens "Einstellungen" without starting a run, and turning
+ * Kindermodus on there saves it and shows "Kindermodus ist an" naming the way
+ * back, closed by OK (tap, Enter); then the title has no gear, also after a
+ * reload. A 3 s long press on the logo (touch / mouse) or holding K
+ * (keyboard) still opens "Einstellungen" without starting a run (progress
+ * only after ~1 s), the only way in kid mode; kid mode turns off there at
+ * once, which brings the gear back; an explicit choice survives a reload; a kid-mode run shows
  * the bubble gum, the pink tint and the gum HUD icon. Also checks that every
  * button's tap area is >= 44 CSS px on touch viewports. The online list is
  * a fake (Playwright route): nothing reaches the live worker.
@@ -27,7 +27,7 @@ const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
 const settings = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.settings());
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());
 const centre = (r: Rect) => ({ x: r.x + Math.floor(r.w / 2), y: r.y + Math.floor(r.h / 2) });
-const kidButton = async (t: PlaytestContext) => (await layout(t)).screen?.kidMode ?? null;
+const gearButton = async (t: PlaytestContext) => (await layout(t)).screen?.settings ?? null;
 const highscores = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.highscores()!);
 const storedKidMode = (t: PlaytestContext) => t.page.evaluate(() => localStorage.getItem('cannstatt-cruiser:kidMode'));
 
@@ -75,15 +75,15 @@ async function checkTapSizes(t: PlaytestContext, label: string, rects: Rect[]): 
   t.check(`${label}: tap areas >= 44 CSS px`, sizes.every((s) => s >= 44), { css, sizes });
 }
 
-/** Nothing stored: adult mode, the title's Kindermodus button, and the free-text name entry. */
+/** Nothing stored: adult mode, the title's settings gear, and the free-text name entry. */
 async function adultDefault(t: PlaytestContext): Promise<void> {
   const { game } = t;
   t.check('adult mode by default, nothing stored', !(await game.state()).kidMode && (await storedKidMode(t)) === null, await storedKidMode(t));
-  const button = await kidButton(t);
-  t.check('the title shows the Kindermodus button in adult mode', button !== null, button);
-  if (button) await checkTapSizes(t, 'Kindermodus button', [button]);
+  const button = await gearButton(t);
+  t.check('the title shows the settings gear in adult mode', button !== null, button);
+  if (button) await checkTapSizes(t, 'settings gear', [button]);
   await game.step(2);
-  await t.canvasShot('title adult with kindermodus button');
+  await t.canvasShot('title adult with gear');
   await t.screenshot('title page');
 
   // Game over with a score the (fake, empty) list takes: "Eintragen" opens the entry with the text field.
@@ -109,26 +109,44 @@ async function adultDefault(t: PlaytestContext): Promise<void> {
   t.check('back on the title after the entry', (await game.state()).mode === 'title', (await game.state()).mode);
 }
 
-/** Presses the Kindermodus button the way this device would (tap / I), checks the notice and closes it with OK (tap / Enter). */
-async function kidModeButton(t: PlaytestContext, shots: boolean): Promise<void> {
+/** Presses the gear the way this device would (tap / G): the settings open, no run. */
+async function pressGear(t: PlaytestContext, shots: boolean): Promise<boolean> {
   const { game } = t;
-  const button = await kidButton(t);
+  const button = await gearButton(t);
   if (!button) {
-    t.check('Kindermodus button there to press', false);
-    return;
+    t.check('settings gear there to press', false);
+    return false;
   }
   const before = (await game.state()).frame;
   if (t.viewport.touch) await tap(t, button);
   else {
-    await t.page.keyboard.press('KeyI');
+    await t.page.keyboard.press('KeyG');
     await game.step(1);
   }
   const s = await game.state();
-  t.check(`Kindermodus ${t.viewport.touch ? 'tap' : 'key I'}: kid mode on and saved, no run`, s.kidMode && (await storedKidMode(t)) === 'true' && s.mode === 'title' && (await game.eventsSince(before, 'runStarted')).length === 0, {
+  t.check(`gear ${t.viewport.touch ? 'tap' : 'key G'}: the settings open, no run`, (await settings(t)).screen === 'menu' && s.mode === 'title' && (await game.eventsSince(before, 'runStarted')).length === 0, {
+    screen: (await settings(t)).screen,
+    mode: s.mode,
+  });
+  if (shots) await t.canvasShot('settings from the gear adult');
+  return true;
+}
+
+/** Gear, then Kindermodus on in the settings (tap / Enter): the notice, closed with OK (tap / Enter); the title has no gear then. */
+async function kidModeFromGear(t: PlaytestContext, shots: boolean): Promise<void> {
+  const { game } = t;
+  if (!(await pressGear(t, shots))) return;
+  if (t.viewport.touch) await tap(t, (await layout(t)).menu.toggle);
+  else {
+    await t.page.keyboard.press('Enter');
+    await game.step(1);
+  }
+  const s = await game.state();
+  t.check('Kindermodus on in the settings: kid mode on and saved, no run', s.kidMode && (await storedKidMode(t)) === 'true' && s.mode === 'title', {
     kidMode: s.kidMode,
     mode: s.mode,
   });
-  t.check('the notice shows', (await settings(t)).screen === 'kidNotice', await settings(t));
+  t.check('the kid notice shows', (await settings(t)).screen === 'kidNotice', await settings(t));
   const ok = (await layout(t)).kidNoticeOk;
   if (shots) {
     await checkTapSizes(t, 'notice OK', [ok]);
@@ -141,12 +159,12 @@ async function kidModeButton(t: PlaytestContext, shots: boolean): Promise<void> 
     await game.step(1);
   }
   const after = await game.state();
-  t.check('OK closes the notice, back on the title without the button', (await settings(t)).screen === 'closed' && after.mode === 'title' && (await kidButton(t)) === null, {
+  t.check('OK closes the notice, back on the title without the gear', (await settings(t)).screen === 'closed' && after.mode === 'title' && (await gearButton(t)) === null, {
     mode: after.mode,
   });
   if (shots) {
     await game.step(2);
-    await t.canvasShot('title kid mode no button');
+    await t.canvasShot('title kid mode no gear');
   }
 }
 
@@ -187,12 +205,12 @@ async function closeMenu(t: PlaytestContext): Promise<void> {
   t.check('menu closes, still on the title', (await settings(t)).screen === 'closed' && (await t.game.state()).mode === 'title');
 }
 
-/** In kid mode (from the button): the hidden menu turns it off, which brings the title button back, and on again. */
+/** In kid mode (from the settings): the hidden menu turns it off, which brings the gear back, and on again (the notice). */
 async function toggleKidMode(t: PlaytestContext): Promise<void> {
   const { game } = t;
   await openMenu(t);
   const l = await layout(t);
-  t.check('kid mode on from the button, the menu opens', (await game.state()).kidMode && (await settings(t)).screen === 'menu');
+  t.check('kid mode on, the long press opens the menu', (await game.state()).kidMode && (await settings(t)).screen === 'menu');
   await t.canvasShot('settings menu kid mode on');
   await t.screenshot('settings menu page');
   await checkTapSizes(t, 'settings menu', [l.menu.toggle, l.menu.back]);
@@ -203,14 +221,16 @@ async function toggleKidMode(t: PlaytestContext): Promise<void> {
   t.check('Kindermodus turns off at once, no question', menu.screen === 'menu' && !(await game.state()).kidMode && (await storedKidMode(t)) === 'false', menu);
   await t.canvasShot('settings menu kid mode off');
   await closeMenu(t);
-  t.check('kid mode off: the title button is back', (await kidButton(t)) !== null);
+  t.check('kid mode off: the gear is back', (await gearButton(t)) !== null);
   await game.step(2);
-  await t.canvasShot('title button back after the menu');
+  await t.canvasShot('title gear back after the menu');
 
-  // On again at once in the menu, off again for the reload check.
+  // On again at once in the menu (the notice, OK), then off again for the reload check.
   await openMenu(t);
   await tap(t, l.menu.toggle);
-  t.check('Kindermodus turns on at once in the menu', (await game.state()).kidMode && (await storedKidMode(t)) === 'true', await storedKidMode(t));
+  t.check('Kindermodus turns on at once in the menu, with the notice', (await game.state()).kidMode && (await storedKidMode(t)) === 'true' && (await settings(t)).screen === 'kidNotice', await storedKidMode(t));
+  await tap(t, (await layout(t)).kidNoticeOk);
+  await openMenu(t);
   await tap(t, l.menu.toggle);
   await closeMenu(t);
 }
@@ -222,15 +242,15 @@ async function reload(t: PlaytestContext): Promise<void> {
   await dismissRotateHint(t);
 }
 
-/** Kid mode from the button survives a reload (no button); an explicit off does too (button back). */
+/** Kid mode from the settings survives a reload (no gear); an explicit off does too (gear back). */
 async function persistsOn(t: PlaytestContext): Promise<void> {
   await reload(t);
-  t.check('kid mode (on) is loaded after a reload, no title button', (await t.game.state()).kidMode && (await kidButton(t)) === null);
+  t.check('kid mode (on) is loaded after a reload, no gear', (await t.game.state()).kidMode && (await gearButton(t)) === null);
 }
 
 async function persistsOff(t: PlaytestContext): Promise<void> {
   await reload(t);
-  t.check('an explicit kid mode off is kept after a reload, with the title button', !(await t.game.state()).kidMode && (await kidButton(t)) !== null, await storedKidMode(t));
+  t.check('an explicit kid mode off is kept after a reload, with the gear', !(await t.game.state()).kidMode && (await gearButton(t)) !== null, await storedKidMode(t));
 }
 
 async function kidRun(t: PlaytestContext): Promise<void> {
@@ -273,11 +293,11 @@ export default async function settingsScenario(t: PlaytestContext): Promise<void
   await adultDefault(t);
   await titleAndLongPress(t);
   await closeMenu(t);
-  await kidModeButton(t, true);
+  await kidModeFromGear(t, true);
   await persistsOn(t);
   await toggleKidMode(t);
   await persistsOff(t);
-  await kidModeButton(t, false);
+  await kidModeFromGear(t, false);
   await kidRun(t);
   t.check('no score was posted', posts === 0, posts);
 }

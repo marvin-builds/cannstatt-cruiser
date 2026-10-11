@@ -72,7 +72,7 @@ import type { FeedbackFlow } from './feedback-flow';
 import { feedbackLayout } from './feedback-layout';
 import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
-import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from './kid-notice';
+import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
@@ -502,7 +502,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
   const { settings } = view;
   fill(r, UI.ink);
   if (settings.screen === 'kidNotice') {
-    drawKidNotice(r);
+    drawKidNotice(r, kidNoticeRestart(settings, r.state));
     return;
   }
   const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
@@ -528,11 +528,12 @@ function drawSettings(r: RenderContext, view: UiView): void {
 /** Desktop key help of the settings menu. */
 export const SETTINGS_KEYS = 'Enter = Kindermodus, A = Statistik, Esc = zurück';
 
-/** "Kindermodus ist an" after the title's button: what it does, the way back, OK. */
-function drawKidNotice(r: RenderContext): void {
-  const l = kidNoticeLayout(r.display);
+/** "Kindermodus ist an" after turning it on in the menu: what it does, the way back, the restart (paused run), OK. */
+function drawKidNotice(r: RenderContext, restart: boolean): void {
+  const l = kidNoticeLayout(r.display, restart);
+  const colors = [UI.muted, UI.white, UI.yellow];
   centred(r, KID_NOTICE_TITLE, l.title, { scale: 2, color: UI.green });
-  kidNoticeLines(r.display.touch).forEach((s, i) => centred(r, s, l.lines + i * l.lineH, { scale: l.scale, color: i === 0 ? UI.muted : UI.white }));
+  kidNoticeLines(r.display.touch, restart).forEach((s, i) => centred(r, s, l.lines + i * l.lineH, { scale: l.scale, color: colors[i] }));
   menuButton(r, l.ok, KID_NOTICE_OK, UI.yellow);
 }
 

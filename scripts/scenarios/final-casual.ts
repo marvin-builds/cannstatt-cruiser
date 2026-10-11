@@ -279,20 +279,14 @@ async function kidMode(t: PlaytestContext): Promise<void> {
   await game.step(1);
   t.check('settings opened', (await settings(t)).screen === 'menu');
   await t.screenshot('settings page');
-  // Adult mode is the default: the toggle turns kid mode on, a second tap off, a third on again.
+  // Adult mode is the default: the toggle turns kid mode on and shows the kid notice (ROADMAP 64); OK closes it.
   const m = l.menu.toggle;
   await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
   await game.step(1);
-  t.check('the toggle turns kid mode on from the adult default', (await game.state()).kidMode);
-  await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
-  await game.step(1);
-  await t.canvasShot('kid mode off');
-  await t.realTapView(m.x + Math.floor(m.w / 2), m.y + Math.floor(m.h / 2));
-  await game.step(1);
-  await t.canvasShot('kid mode on');
-  // Close with Zurück: kid mode stays on for the kid run.
-  const back = l.menu.back;
-  await t.realTapView(back.x + Math.floor(back.w / 2), back.y + Math.floor(back.h / 2));
+  t.check('the toggle turns kid mode on from the adult default, with the notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
+  await t.canvasShot('kid mode notice');
+  const ok = (await layout(t)).kidNoticeOk;
+  await t.realTapView(ok.x + Math.floor(ok.w / 2), ok.y + Math.floor(ok.h / 2));
   await game.step(2);
   t.check('kid mode still on', (await game.state()).kidMode);
   await game.seed(7);

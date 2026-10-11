@@ -7,7 +7,7 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { ARROW_RIGHT, DISMISS_ICON, ICON_FEEDBACK, SHARE_ICON, STAR, UI } from './art';
+import { ARROW_RIGHT, DISMISS_ICON, ICON_FEEDBACK, ICON_GEAR, SHARE_ICON, STAR, UI } from './art';
 import { centred, fill, iconButton, menuButton, ribbon, scrollBar, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
@@ -16,7 +16,7 @@ import {
   feedbackLabel,
   gameOverPrompt,
   installParts,
-  kidModeLabel,
+  titleKeys,
   LINE,
   MENU_TEXT,
   type InstallCard,
@@ -128,7 +128,7 @@ export function drawDismiss(r: RenderContext, rect: Rect): void {
   DISMISS_ICON.draw(r.g, 0, rect.x + Math.floor((rect.w - size) / 2), rect.y + Math.floor((rect.h - size) / 2), scale);
 }
 
-/** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: "Kindermodus", feedback). */
+/** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: the settings gear, feedback). */
 function drawNotices(r: RenderContext, l: MenuLayout): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
@@ -140,7 +140,7 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
     menuButton(r, toTitlePlate(l.buttons.toTitle), label, UI.white, 1);
   }
   if (l.buttons.submit) menuButton(r, l.buttons.submit, submitLabel(display.touch), UI.yellow);
-  if (l.buttons.kidMode) menuButton(r, toTitlePlate(l.buttons.kidMode), kidModeLabel(display.touch), UI.green, 1);
+  if (l.buttons.settings) iconButton(r, uiMetrics(display), l.buttons.settings, ICON_GEAR);
   // Feedback: the title's speech-bubble icon, the pause screen's button.
   const feedback = l.buttons.feedback;
   if (feedback && state.mode === 'title') iconButton(r, uiMetrics(display), feedback, ICON_FEEDBACK);
@@ -165,14 +165,12 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   const help = y('help');
   if (help !== undefined) titleHelp(r.display.touch).forEach((line, i) => centred(r, line, help + i * LINE));
   const keys = y('keys');
-  if (keys !== undefined) centred(r, titleKeys(!!l.buttons.feedback), keys, { color: UI.muted });
+  if (keys !== undefined) centred(r, titleKeys({ feedback: !!l.buttons.feedback, settings: !!l.buttons.settings }), keys, { color: UI.muted });
   drawNotices(r, l);
   const records = y('records');
   if (records !== undefined) drawRecordsRow(r, bestOf(view.records, r.state.kidMode), view.records.starsTotal, records);
 }
 
-/** The title's desktop key line (with F when the feedback icon shows). */
-export const titleKeys = (feedback: boolean) => (feedback ? 'P/Esc = Pause, M = Ton aus, F = Feedback' : 'P/Esc = Pause, M = Ton aus');
 
 /** "Highscore 1.234   ★ 56 gesamt" (the highscore of the mode in play), centred. */
 function drawRecordsRow(r: RenderContext, highscore: number, starsTotal: number, y: number): void {

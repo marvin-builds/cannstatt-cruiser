@@ -8,8 +8,8 @@
  * overlaps the HUD button row, and pause and game over keep the skater
  * visible outside portrait. "Startbildschirm" ends the run, so it is a small
  * corner button at the left under the stats plate, away from where a thumb
- * taps to ride on or start a new run. The title's "Kindermodus" button
- * (adult mode only, ROADMAP 43) sits in the same top-left corner, left of
+ * taps to ride on or start a new run. The title's settings gear (adult mode
+ * only, ROADMAP 64) is an icon button in the same top-left corner, left of
  * the logo. Feedback (ROADMAP 50, adult mode): a speech-bubble icon in the
  * title's bottom-right corner and a "Feedback" button in the pause column.
  */
@@ -37,8 +37,10 @@ export interface MenuInput {
   install: InstallHintKind | null;
   /** The HUD stats plate as drawn now (pause), which the logo keeps clear of. */
   plate?: Rect | null;
-  /** Offer the "Kindermodus" button (title in adult mode only). */
-  kidButton?: boolean;
+  /** Offer the settings gear (title in adult mode only). */
+  settingsButton?: boolean;
+  /** The title's trophy where it shows (titleTrophy), which the panel keeps clear of; null or absent without it. */
+  trophy?: Rect | null;
   /** Offer feedback (adult mode with a feedback sender): the title's icon, the pause screen's button. */
   feedback?: boolean;
 }
@@ -56,8 +58,8 @@ export interface MenuButtons {
   logo: Rect | null;
   /** "Eintragen" on game over (the run makes the online list, see highscore-flow.ts). */
   submit: Rect | null;
-  /** "Kindermodus" on the title (adult mode): turns kid mode on and shows its notice. */
-  kidMode: Rect | null;
+  /** The title's settings gear (adult mode): opens the settings menu. */
+  settings: Rect | null;
   /** Opens the feedback screen: the title's speech-bubble icon or the pause screen's "Feedback" button. */
   feedback: Rect | null;
 }
@@ -99,7 +101,6 @@ export const MENU_TEXT = {
 } as const;
 
 /** Labels that show their key on desktop. */
-export const kidModeLabel = (touch: boolean) => (touch ? 'Kindermodus' : 'Kindermodus (I)');
 export const reloadLabel = (touch: boolean) => (touch ? 'Neu laden' : 'Neu laden (U)');
 /** "Startbildschirm": T on desktop, and Esc where Esc leads there too (game over). */
 export const toTitleLabel = (touch: boolean, escape = false) =>
@@ -120,6 +121,11 @@ export const feedbackLabel = (touch: boolean) => (touch ? 'Feedback' : 'Feedback
 /** Game over's "Eintragen" (E or Enter on desktop). */
 export const submitLabel = (touch: boolean) => (touch ? 'Eintragen' : 'Eintragen (E)');
 export const gameOverPrompt = (touch: boolean) => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde');
+
+/** The title's desktop key line: F and G only while the feedback icon and the settings gear show. */
+export function titleKeys(icons: { feedback: boolean; settings: boolean }): string {
+  return ['P/Esc = Pause, M = Ton aus', ...(icons.feedback ? ['F = Feedback'] : []), ...(icons.settings ? ['G = Einstellungen'] : [])].join(', ');
+}
 
 /** The title's controls help, one line each. */
 export function titleHelp(touch: boolean): string[] {
@@ -146,6 +152,8 @@ const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5];
 const INSTALL_DROP_GAMEOVER = 0.75;
 /** The pause screen's "Feedback" gives way last, and only to the reload card (portrait; the title still offers feedback). */
 const FEEDBACK_DROP = 0.5;
+/** The title's one-line controls give way after every other optional row (the prompt and the notice cards stay). */
+const CONTROLS_DROP = 0.5;
 /** With "Eintragen" on a crowded game over (portrait), the reload card gives way last (the title still shows it). */
 const RELOAD_DROP_SUBMIT = 0.1;
 
@@ -209,12 +217,12 @@ export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 
 }
 
 /**
- * The title's "Kindermodus" button: in the top-left corner like
- * "Startbildschirm" on game over (the logo is centred, so the corner is free),
- * a menu button high with the small label font; drawn with toTitlePlate.
+ * The title's settings gear: a HUD-style icon button in the top-left corner,
+ * mirroring the HUD button row at the right (the logo is centred, so the
+ * corner is free); its tap area is a HUD tap area (~44 CSS px on phones).
  */
-export function kidModeButton(input: MenuInput, m: UiMetrics): Rect {
-  return { x: TALLEST_PLATE.x, y: TALLEST_PLATE.y, w: buttonWidth(kidModeLabel(input.touch), m, 1), h: m.menuButtonH };
+export function settingsGear(m: UiMetrics): Rect {
+  return { x: m.margin, y: m.margin, w: m.hit, h: m.hit };
 }
 
 /** The visible "Startbildschirm" plate: its tap area, at most CORNER_PLATE_H high and vertically centred in it. */
@@ -270,7 +278,7 @@ export function installParts(
 }
 
 export function noButtons(): MenuButtons {
-  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, kidMode: null, feedback: null };
+  return { reload: null, install: null, dismiss: null, toTitle: null, next: null, logo: null, submit: null, settings: null, feedback: null };
 }
 
 /** The install card for the input: compacted where asked (only the prompt kind has a short form). */
@@ -353,22 +361,22 @@ function fitBody(input: MenuInput, blocks: (scale: number) => Block[], column: C
 
 /**
  * The title under the logo: tagline, start prompt, controls help, notices,
- * records; "Kindermodus" in the corner and the feedback icon bottom right. The
- * icon never costs a row: where the full install card would reach it (narrow
- * portrait views) the card shows compact, and where even that collides the
- * icon gives way.
+ * records; the settings gear in the top-left corner, the trophy (placed by
+ * score-layout.ts) and the feedback icon bottom right. The icons never cost a
+ * row: where the full install card would reach one (narrow portrait views)
+ * the card shows compact, and where even that collides the feedback icon
+ * gives way (the trophy's lines are kept narrow by titleMaxWidth).
  */
 export function titleLayout(input: MenuInput): MenuLayout {
   const m = uiMetrics(input);
+  const icon = input.feedback ? feedbackIcon(input.viewWidth, m) : null;
+  const clearOf = (l: MenuLayout, r: Rect) =>
+    ![...l.blocks.values()].some((b) => overlaps(b, r)) && !(l.panel && overlaps(l.panel, buttonPlate(r, m)));
   let layout = titleColumn(input, m, installCard(input, false));
-  if (input.feedback) {
-    const icon = feedbackIcon(input.viewWidth, m);
-    const clear = (l: MenuLayout) =>
-      ![...l.blocks.values()].some((r) => overlaps(r, icon)) && !(l.panel && overlaps(l.panel, buttonPlate(icon, m)));
-    if (!clear(layout) && input.install === 'prompt') layout = titleColumn(input, m, 'compact');
-    if (clear(layout)) layout.buttons.feedback = icon;
-  }
-  if (input.kidButton) layout.buttons.kidMode = kidModeButton(input, m);
+  const crowded = [icon, input.trophy].some((r) => r && !clearOf(layout, r));
+  if (crowded && input.install === 'prompt') layout = titleColumn(input, m, 'compact');
+  if (icon && clearOf(layout, icon)) layout.buttons.feedback = icon;
+  if (input.settingsButton) layout.buttons.settings = settingsGear(m);
   return layout;
 }
 
@@ -381,11 +389,27 @@ function titleColumn(input: MenuInput, m: UiMetrics, install: InstallCard | null
   const tagline = row('tagline', 2, 6);
   const prompt: Block = { id: 'prompt', w: measureText(startPrompt(input.touch)), h: LINE, gap: 2 };
   const tail = [...noticeBlocks(input, m, install), row('records', 3, 3)];
-  const column = { ...bounds(input, TITLE_PANEL_Y + PANEL_PAD - 2), bottom: VIEW_H - 2 - PANEL_PAD, maxWidth: input.viewWidth - 2 * PANEL_PAD - 4 };
-  const help = [row('help', 3, 4, titleHelp(input.touch).length), ...(input.touch ? [] : [row('keys', 1, 5)])];
+  const column = { ...bounds(input, TITLE_PANEL_Y + PANEL_PAD - 2), bottom: VIEW_H - 2 - PANEL_PAD, maxWidth: titleMaxWidth(input, m) };
+  // The key line as wide as its text at the most (both icons offered), so the panel always covers it.
+  const keysW = Math.max(TITLE_PANEL_W - 8, measureText(titleKeys({ feedback: !!input.feedback, settings: !!input.settingsButton })));
+  const keys: Block = { ...row('keys', 1, 5), w: keysW };
+  const help = [row('help', 3, 4, titleHelp(input.touch).length), ...(input.touch ? [] : [keys])];
   let placed = fitColumn([tagline, prompt, ...help, ...tail], column);
   if (!placed.has('help')) placed = condensedTitle([tagline, prompt], tail, input, column);
   return withCards(input, m, placed, install, titlePanel(input.viewWidth, [...placed.values()]));
+}
+
+/**
+ * The widest title line: the view less the panel's padding, and where the
+ * trophy sits under the HUD row (narrow portrait views) narrow enough that
+ * the panel stays left of its plate.
+ */
+function titleMaxWidth(input: MenuInput, m: UiMetrics): number {
+  const max = input.viewWidth - 2 * PANEL_PAD - 4;
+  const trophy = input.trophy;
+  if (!trophy || trophy.y + trophy.h <= TITLE_PANEL_Y) return max;
+  const plate = buttonPlate(trophy, m);
+  return Math.min(max, 2 * (plate.x - centreX(input.viewWidth) - PANEL_PAD - 1));
 }
 
 /**
@@ -393,7 +417,8 @@ function titleColumn(input: MenuInput, m: UiMetrics, install: InstallCard | null
  * the prompt, or beside it when its own line would cost another row.
  */
 function condensedTitle(head: Block[], tail: Block[], input: MenuInput, column: ColumnBounds): Map<string, Rect> {
-  const line: Block = { id: 'controls', w: measureText(controlsLine(input.touch)), h: LINE, gap: 0 };
+  // Gives way last, only where nothing else is left to drop (both cards beside the trophy in narrow portrait views).
+  const line: Block = { id: 'controls', w: measureText(controlsLine(input.touch)), h: LINE, gap: 0, drop: CONTROLS_DROP };
   const below = fitColumn([...head, line, ...tail], column);
   const beside = fitColumn([...head, { ...line, inline: true }, ...tail], column);
   const fits = Math.max(...[...below.values()].map((r) => r.y + r.h)) <= column.bottom;

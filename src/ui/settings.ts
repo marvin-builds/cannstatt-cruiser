@@ -1,9 +1,10 @@
 /**
- * The hidden settings menu ("Einstellungen") with the kid mode
- * (state.kidMode) and the anonymous statistics switch (ROADMAP 46, also on the
- * "Bestenliste"), plus the notice the title's "Kindermodus" button opens
- * (ROADMAP 43). DOM-free logic: the long press that opens the menu (the only
- * guard: 3 s on the logo or K), the toggles and persistence, and whether the
+ * The settings menu ("Einstellungen") with the kid mode (state.kidMode) and
+ * the anonymous statistics switch (ROADMAP 46, also on the "Bestenliste"),
+ * plus the notice that shows when kid mode is turned on (ROADMAP 43, 64).
+ * Adult mode opens it with the title's gear; kid mode only by the hidden long
+ * press (3 s on the logo or K, the only guard there). DOM-free logic: the long
+ * press, the toggles and persistence, and whether the
  * plain "Testgerät" line shows (ROADMAP 55; the game never sets the marker). Hotspots and
  * drawing live in index.ts and screens.ts.
  */
@@ -78,11 +79,11 @@ export const STATS_TEXT = {
   offNote: 'Aus: Es wird keine Statistik gesendet.',
 } as const;
 
-/** 'kidNotice': "Kindermodus ist an" after the title's button, naming the way back. */
+/** 'kidNotice': "Kindermodus ist an" after turning kid mode on in the menu, naming the way back. */
 export type SettingsScreen = 'closed' | 'menu' | 'kidNotice';
 
 /**
- * Whether the hidden menu (or the kid mode notice) is showing, and its Kindermodus switch.
+ * Whether the menu (or the kid mode notice) is showing, and its Kindermodus switch.
  * `onClose(switched)` runs whenever the menu closes: `switched` tells whether
  * kid mode differs from when it opened (a run in progress restarts then).
  */
@@ -115,13 +116,6 @@ export class SettingsMenu {
     this.screen = 'menu';
   }
 
-  /** The title's "Kindermodus" button (adult mode only): kid mode on, saved, and the notice shows. */
-  turnOnFromTitle(state: GameState): void {
-    this.kidModeAtOpen = state.kidMode;
-    this.setKidMode(state, true);
-    this.screen = 'kidNotice';
-  }
-
   /** Closes the menu ("Zurück", Esc) or the notice ("OK"). */
   close(): void {
     if (!this.open) return;
@@ -129,10 +123,12 @@ export class SettingsMenu {
     this.onClose(this.switched);
   }
 
-  /** The Kindermodus button: switches kid mode on or off at once. */
+  /** The Kindermodus button: switches kid mode on or off at once; turning it on shows the kid notice (ROADMAP 64). */
   toggle(state: GameState): void {
     if (this.screen !== 'menu') return;
-    this.setKidMode(state, !state.kidMode);
+    const on = !state.kidMode;
+    this.setKidMode(state, on);
+    if (on) this.screen = 'kidNotice';
   }
 
   /** The statistics switch (settings menu and "Bestenliste"): on or off at once, stored. */

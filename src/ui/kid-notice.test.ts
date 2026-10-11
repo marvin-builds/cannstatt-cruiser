@@ -18,15 +18,25 @@ describe('kid mode notice', () => {
     expect(kidNoticeLines(false).join(' ')).toMatch(/K 3 Sekunden halten/);
   });
 
+  it('switched on in the pause menu, it also says the run restarts (as the menu did), and OK moves down for that line', () => {
+    expect(kidNoticeLines(true, true)).toEqual([...kidNoticeLines(true), 'Lauf wird neu gestartet']);
+    expect(kidNoticeLines(false, false)).toHaveLength(2);
+    for (const d of DEVICES) {
+      const plain = kidNoticeLayout({ viewWidth: 320, ...d });
+      const restart = kidNoticeLayout({ viewWidth: 320, ...d }, true);
+      expect(restart.ok.y).toBe(plain.ok.y + plain.lineH);
+    }
+  });
+
   it('every text fits the narrowest view (big font in portrait) and OK is a full tap target under the text, all devices', () => {
     for (const d of DEVICES) {
-      for (const viewWidth of [320, 427]) {
+      for (const [viewWidth, restart] of [[320, false], [427, false], [320, true], [427, true]] as const) {
         const m = uiMetrics(d);
-        const l = kidNoticeLayout({ viewWidth, ...d });
+        const l = kidNoticeLayout({ viewWidth, ...d }, restart);
         expect(l.scale).toBe(d.portrait ? 2 : 1);
         expect(measureText(KID_NOTICE_TITLE, 2)).toBeLessThanOrEqual(viewWidth - 8);
-        for (const s of kidNoticeLines(d.touch)) expect(measureText(s, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
-        const textBottom = l.lines + kidNoticeLines(d.touch).length * l.lineH;
+        for (const s of kidNoticeLines(d.touch, restart)) expect(measureText(s, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
+        const textBottom = l.lines + kidNoticeLines(d.touch, restart).length * l.lineH;
         expect(l.title + 14).toBeLessThanOrEqual(l.lines);
         expect(l.ok.y).toBeGreaterThanOrEqual(textBottom);
         expect(l.ok.h).toBeGreaterThanOrEqual(m.menuButtonH);

@@ -125,7 +125,10 @@ async function portraitStart(t: PlaytestContext): Promise<void> {
   t.check('adult mode by default', !(await game.state()).kidMode);
   await tapRect(t, l.menu.toggle);
   await t.screenshot('portrait kid mode on');
-  t.check('the toggle turns kid mode on', (await game.state()).kidMode);
+  t.check('the toggle turns kid mode on, with the kid notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
+  await tapRect(t, (await layout(t)).kidNoticeOk);
+  await holdViewWhile(t, logo.x, logo.y, () => game.step(185).then(() => undefined));
+  await game.step(1);
   await tapRect(t, l.menu.toggle);
   await t.screenshot('portrait kid mode off');
   await t.log('after switching back off', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
