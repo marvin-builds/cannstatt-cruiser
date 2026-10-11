@@ -318,3 +318,8 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
       11. Small missions per run ("3 Leute stompen", "4 s grinden", "Stuntlinie schaffen") as goals for calm moments.
       12. Optional: adaptive density, slightly denser while the player keeps full hearts for long; not in kid mode.
     - Order: after the 2026-10-11.5 release (feedback, README, final fix round). Start with Phase 1 (items 1-5); then waves (6) or stars/combo (9-10) depending on how it plays.
+53. **The grind trick becomes a real boardslide (USER):** "Beim Grinden runterwischen = Trick" says neither what happens nor why. Name it "Boardslide" (USER chose it), and make the art match: today only head and body turn to the camera, the board stays along the rail.
+    - `player`: while the grind trick is held, the board turns across the rail together with the skater (front view: a short, wide board seen end-on, wheels at both sides), including the in-between turning frame on the way in and out. The grind itself, hitbox and timing do not change.
+    - `ui`: title line "Auf dem Geländer runterwischen = Boardslide" (touch) / "Auf dem Geländer ↓ = Boardslide" (keyboard, check the game font has the arrow, else "Pfeil runter"); first-grind hint "↓ = Boardslide!" / "Runterwischen = Boardslide!"; popup "Boardslide! +…" instead of "Grind-Trick! +…". Every text must fit at view width 320, landscape and portrait. Kid mode the same.
+    - Docs: SPEC "Grind trick" and README controls/features wording.
+    - Order: after Phase 1 of item 52, released together with it.
