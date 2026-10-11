@@ -9,7 +9,7 @@ import { UI } from './art';
 import { fill, menuButton, text } from './draw-kit';
 import { type HighscoreFlow, SCORE_TEXT } from './highscore-flow';
 import { fitCentred, formatNumber } from './layout';
-import { drawDismiss, drawStatsSwitch } from './menu-screens';
+import { drawDismiss, drawPrivacyLink, drawStatsSwitch } from './menu-screens';
 import { SCROLLBAR_W, type ScoreEntryLayout, type ScoreListLayout } from './score-layout';
 import { STATS_TEXT } from './settings';
 
@@ -40,6 +40,7 @@ export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreLis
   text(r, SCORE_TEXT.title, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
   drawDismiss(r, l.close);
   drawStatsSwitch(r, l.stats, statsOn);
+  drawPrivacyLink(r, l.privacyLink);
   g.fillStyle = UI.panel;
   g.fillRect(l.list.x, l.list.y, l.list.w, l.list.h);
   const note = placeholder(flow);

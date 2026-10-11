@@ -8,6 +8,7 @@ import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { buttonPlate, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
+import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 export interface ScreenInput {
   viewWidth: number;
@@ -49,11 +50,16 @@ export function closeButton(viewWidth: number, m: UiMetrics): Rect {
   return { x: viewWidth - m.margin - s, y: m.margin, w: s, h: s };
 }
 
-/** A headline centred left of the close button, and right of `leftEdge` (e.g. the list's statistics switch). */
+/**
+ * A headline centred left of the close button; where that would come closer
+ * than 2 px to `leftEdge` (the list's statistics switch and privacy link), centred in the
+ * space between `leftEdge` and the close button instead.
+ */
 function headlineRect(text: string, viewWidth: number, close: Rect, y = HEADLINE_Y, leftEdge = 0): Rect {
   const w = measureText(text, 2);
-  const cx = fitCentred(w, viewWidth, close.x);
-  return { x: Math.max(leftEdge, cx - Math.ceil(w / 2)), y, w, h: HEADLINE_H };
+  const x = fitCentred(w, viewWidth, close.x) - Math.ceil(w / 2);
+  if (x >= leftEdge + 2) return { x, y, w, h: HEADLINE_H };
+  return { x: leftEdge + Math.max(0, Math.floor((close.x - leftEdge - w) / 2)), y, w, h: HEADLINE_H };
 }
 
 /** Wide enough for "Anonyme Statistik: AUS" at scale 1. */
@@ -68,6 +74,8 @@ export interface ScoreListLayout {
   close: Rect;
   /** "Anonyme Statistik: AN/AUS" (top left). */
   stats: Rect;
+  /** "Datenschutz" (opens datenschutz.html), right of the statistics switch. */
+  privacyLink: Rect;
   title: Rect;
   /** The visible rows (clip rect); rows scroll inside it. */
   list: Rect;
@@ -97,7 +105,8 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
   const rowH = input.portrait ? 18 : LINE;
   const close = closeButton(input.viewWidth, m);
   const stats = statsSwitch(m);
-  const title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, stats.x + stats.w + 2);
+  const privacyLink: Rect = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PRIVACY_LINK_W };
+  const title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, privacyLink.x + privacyLink.w);
   let y = VIEW_H - 2;
   const line = () => (y -= LINE);
   const keysY = input.touch ? null : line();
@@ -112,6 +121,7 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
   return {
     close,
     stats,
+    privacyLink,
     title,
     list,
     rowH,

@@ -65,7 +65,7 @@ import {
   uiMetrics,
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
-import { drawGameOver, drawPause, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
+import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
 import { currentMenu, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
@@ -512,6 +512,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
   if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, l.kidNoteY, { color: UI.yellow });
   else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', l.kidNoteY, { color: UI.muted });
   drawStatsSwitch(r, l.stats, settings.statsOn);
+  drawPrivacyLink(r, l.privacyLink);
   centred(r, settings.statsOn ? STATS_TEXT.note : STATS_TEXT.offNote, l.statsNoteY, { color: UI.muted });
   if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
   menuButton(r, l.back, 'Zurück');

@@ -74,6 +74,20 @@ describe('layout helpers', () => {
         expect(overlaps(l.toggle, l.back) || overlaps(l.toggle, l.stats) || overlaps(l.stats, l.back)).toBe(false);
       }
     });
+
+    it(`${name}: the "Datenschutz" link sits right of the statistics switch, tappable, inside the view and apart`, () => {
+      const m = uiMetrics(display);
+      for (const width of WIDTHS) {
+        const l = settingsLayout(width, m);
+        const at = `${name} ${width}`;
+        expect(inside(l.privacyLink, width) && whole(l.privacyLink), at).toBe(true);
+        expect(l.privacyLink.y, at).toBe(l.stats.y);
+        expect(l.privacyLink.h, at).toBe(l.stats.h);
+        expect(l.privacyLink.x, at).toBeGreaterThan(l.stats.x + l.stats.w);
+        expect(Math.min(l.privacyLink.w, l.privacyLink.h) * cssPerPx, at).toBeGreaterThanOrEqual(44);
+        for (const r of [l.toggle, l.stats, l.back]) expect(overlaps(l.privacyLink, r), at).toBe(false);
+      }
+    });
   }
 
   it('desktop keeps the small buttons', () => {
