@@ -5,7 +5,10 @@
  * - install: caches the app shell, i.e. the page plus every same-origin
  *   script / style / icon it references (Vite's hashed assets included).
  * - fetch: a navigation to the game page (the scope root or index.html) is
- *   served from the cache at once and refreshed in the background. Other
+ *   served from the cache at once and refreshed in the background. The
+ *   refresh revalidates past the browser's HTTP cache (`cache: 'no-cache'`, a
+ *   cheap 304 when nothing changed): GitHub Pages sends max-age=600, so a
+ *   plain fetch would get the old page for up to ten minutes. Other
  *   navigations (e.g. insights.html) go to the network untouched, so they
  *   never get the game page instead. A changed page (a new deploy) replaces the cached one only
  *   after all of its assets are cached, so an offline start always finds a
@@ -126,7 +129,8 @@ self.addEventListener('activate', (event) => {
 async function fromCacheThenRefreshPage(event) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(SHELL_URL, MATCH);
-  const network = fetch(event.request).catch(() => null);
+  // The URL, not the navigate-mode request: Chrome rejects that one combined with an init.
+  const network = fetch(event.request.url, { cache: 'no-cache' }).catch(() => null);
   if (!cached) return (await network) ?? Response.error();
   event.waitUntil(
     network
