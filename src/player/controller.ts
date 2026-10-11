@@ -3,8 +3,8 @@
  * rail riding, ducking (on the ground only), the grind trick (down on a
  * rail), the air trick (down in the air), the stomp bounce and the kicker
  * launch, crash/invulnerability and the animation state (incl. the catch
- * reach, the item use, the grab pose of big air, the hard landing and the
- * board tilt on a kicker). One instance per player system;
+ * reach, the item use, the high five, the grab pose of big air, the hard
+ * landing and the board tilt on a kicker). One instance per player system;
  * `reset()` at every run start.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
@@ -12,6 +12,7 @@ import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, I
 import { Rng } from '../core/rng';
 import { airTrickTicks, canStartAirTrick, flipMood } from './air-trick';
 import { BinCrash } from './bin';
+import { HIGH_FIVE_TIME, type HighFiveLook, highFiveSide } from './high-five';
 import * as T from './tuning';
 import { ITEM_USE_TIME, MugToss, TOSS_AT } from './use';
 
@@ -46,6 +47,8 @@ export interface AnimView {
   airTrick: number | null;
   /** The item being used (itemUsed) and the seconds since, or null. */
   use: ItemUse | null;
+  /** The high five arm (highFive) and the seconds since, or null. */
+  highFive: HighFiveLook | null;
 }
 
 export type TrickPose = 'turn' | 'front';
@@ -109,6 +112,9 @@ export class SkaterController {
   /** Seconds left of the in-between frame turning back after the trick. */
   private turnBack = 0;
   private use: ItemUse | null = null;
+  private highFiveLook: HighFiveLook | null = null;
+  /** The high fiver the arm reaches for (its side is followed every tick). */
+  private fiverId = -1;
   /** The empty mug tossed away after drinking (read by render.ts). */
   readonly toss = new MugToss();
   /** Bin crash: lid colour and the bin tumbling away after the pop (read by render.ts). */
@@ -148,6 +154,7 @@ export class SkaterController {
     this.trickTime = 0;
     this.turnBack = 0;
     this.use = null;
+    this.highFiveLook = null;
     this.toss.reset();
     this.bin.reset();
   }
@@ -168,6 +175,7 @@ export class SkaterController {
       binCrash: this.bin.diving,
       trick: this.trickPose(p),
       use: this.use,
+      highFive: this.highFiveLook,
       grab: this.bigAir && !(p.vy > 0 && GROUND_Y - p.y < T.GRAB_RELEASE_HEIGHT),
       hardLanding: this.hardLanding && this.anim === 'land',
       onKicker: this.onKicker,
@@ -183,7 +191,22 @@ export class SkaterController {
 
   /** Gameplay: the carried item was used (itemUsed). Plays the use animation; a crash cuts it short. */
   useItem(item: CarriedItem, action: ItemAction): void {
-    if (!this.crashing) this.use = { item, action, time: 0 };
+    if (this.crashing) return;
+    this.use = { item, action, time: 0 };
+    this.highFiveLook = null;
+  }
+
+  /**
+   * Gameplay: a high five with high fiver `entityId` (highFive). The front arm
+   * reaches towards him, following him while the street carries him past,
+   * and replaces a running item use; a crash, an air trick or a grind trick
+   * start cuts it short.
+   */
+  highFive(state: GameState, entityId: number): void {
+    if (this.crashing) return;
+    this.fiverId = entityId;
+    this.highFiveLook = { time: 0, side: highFiveSide(fiverAhead(state, entityId)) };
+    this.use = null;
   }
 
   /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
@@ -249,6 +272,7 @@ export class SkaterController {
     this.launched = false;
     this.catchTimer = 0;
     this.use = null;
+    this.highFiveLook = null;
     this.setTrick(p, false);
     this.endAirTrick(p);
     p.invulnerableTimer = T.INVULNERABLE_TIME;
@@ -298,11 +322,15 @@ export class SkaterController {
     p.hitbox = hitboxFor(p);
     this.bin.update(state, this.crashing ? this.animTime : null, dt);
     this.advanceUse(p, dt);
+    this.advanceHighFive(state, dt);
     this.toss.update(dt, state.speed);
   }
 
   private setTrick(p: PlayerState, on: boolean): void {
-    if (on && !this.tricking) this.trickTime = 0;
+    if (on && !this.tricking) {
+      this.trickTime = 0;
+      this.highFiveLook = null;
+    }
     if (!on && this.tricking) this.turnBack = p.grinding ? T.TRICK_TURN_TIME : 0;
     this.tricking = on;
     p.grindTrick = on;
@@ -322,6 +350,7 @@ export class SkaterController {
     this.airTrickTick = 0;
     this.airTrickLength = airTrickTicks(this.launched, mood, jitter);
     p.airTrick = true;
+    this.highFiveLook = null;
   }
 
   /** Counts the running air trick on; it ends after its length or on the landing (see air-trick.ts). */
@@ -345,6 +374,23 @@ export class SkaterController {
     use.time += dt;
     if (use.action === 'drink' && before < TOSS_AT && use.time >= TOSS_AT) this.toss.start(p.x + TOSS_FROM.dx, p.y + TOSS_FROM.dy);
     if (use.time >= ITEM_USE_TIME[use.action]) this.use = null;
+  }
+
+  /**
+   * Runs the high five clock and turns the arm towards the high fiver's
+   * current place (kept while he is gone); it ends after HIGH_FIVE_TIME (with
+   * a little slack for the summed ticks).
+   */
+  private advanceHighFive(state: GameState, dt: number): void {
+    const look = this.highFiveLook;
+    if (!look) return;
+    look.time += dt;
+    if (look.time >= HIGH_FIVE_TIME - 1e-6) {
+      this.highFiveLook = null;
+      return;
+    }
+    const ahead = fiverAhead(state, this.fiverId);
+    if (ahead !== null) look.side = highFiveSide(ahead);
   }
 
   private setDucking(ducking: boolean): void {
@@ -540,6 +586,12 @@ function lipDrop(height: number, past: number, speed: number): number {
   if (speed <= 0) return 0;
   const t = past / speed;
   return Math.max(0, Math.round(height - 0.5 * T.GRAVITY * t * t));
+}
+
+/** Px the middle of entity `id` (the high fiver) is ahead of the skater, or null when it is gone. */
+function fiverAhead(state: GameState, id: number): number | null {
+  const e = state.entities.find((x) => x.id === id);
+  return e ? e.x + e.w / 2 - state.player.x : null;
 }
 
 function findRail(state: GameState, id: number | null): Entity | undefined {
