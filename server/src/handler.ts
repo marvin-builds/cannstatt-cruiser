@@ -35,11 +35,23 @@ const STATUS: Record<Failure, number> = {
   'bad-request': 400, unauthorized: 401, forbidden: 403, name: 422, implausible: 422, rate: 429, 'not-found': 404,
 };
 
+const jsonResponse = (cors: Record<string, string>, body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, ...extra, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache } });
+
+/** Answers the request; an unexpected error becomes a 500 with CORS headers, so the browser can read it. */
 export async function handleRequest(request: Request, env: Env, now: number): Promise<Response> {
+  try {
+    return await route(request, env, now);
+  } catch (error) {
+    console.error('request failed', error);
+    return jsonResponse(corsHeaders(request.headers.get('Origin')), { error: 'server' }, 500);
+  }
+}
+
+async function route(request: Request, env: Env, now: number): Promise<Response> {
   const origin = request.headers.get('Origin');
   const cors = corsHeaders(origin);
-  const json = (body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) =>
-    new Response(JSON.stringify(body), { status, headers: { ...cors, ...extra, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache } });
+  const json = (body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) => jsonResponse(cors, body, status, cache, extra);
   const fail = (error: Failure) =>
     json({ ok: false, error }, STATUS[error], 'no-store', error === 'unauthorized' ? { 'WWW-Authenticate': 'Bearer' } : {});
 
@@ -68,8 +80,9 @@ export async function handleRequest(request: Request, env: Env, now: number): Pr
     const day = utcDay(now);
     // Over the daily cap the event is dropped silently: the game cannot do anything about it.
     if (await claimDailySlot(env.DB, day)) {
-      await condenseAndPruneOnceADay(env.DB, now);
       await saveEvent(env.DB, event, { day, hour: utcHour(now) }, locationOf(request.cf));
+      // Housekeeping after the event is stored: a failure is logged and retried on a later event.
+      await condenseAndPruneOnceADay(env.DB, now).catch((error: unknown) => console.error('condense and prune failed', error));
     }
     return new Response(null, { status: 204, headers: cors });
   }

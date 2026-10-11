@@ -136,7 +136,7 @@ integer `value` (no session id, no hour, no device id, no IP):
 | `run_seconds`, `run_distance`, `run_score` | the reported bucket value | runs |
 
 Condensing runs on the same trigger as the prune (the first accepted event of
-a UTC day), in one transaction and before it: it summarises the oldest days
+a UTC day, after that event is stored), in one transaction and before it: it summarises the oldest days
 before today that have raw rows and are newer than the last summarised day
 (at most 100 per run; the rest follow on the next days). A day is summarised
 exactly once (`INSERT OR IGNORE` on the primary key), and the prune only
@@ -144,6 +144,14 @@ deletes raw rows of days that are already summarised, so no day is lost. A day
 without events gets no rows. A session that runs across midnight can still
 raise its `end` after its day was summarised; the summary keeps the value it
 had then.
+
+D1 allows at most 5 terms in one compound `SELECT`, so the summary query is a
+list of statements of at most 5 `UNION ALL` parts each (`SUMMARY_SELECTS` in
+`src/day-summary.ts`): condensing runs one `INSERT OR IGNORE` per statement in
+the same batch, and long `GET /stats` ranges run them all for the raw days and
+concatenate the rows. The day is marked as done (`event_meta`) inside that
+batch, so a failed run is retried on the next event; the failure is logged and
+the event is still stored and answered with 204.
 
 ## API
 
@@ -258,6 +266,9 @@ count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count
 - `topScores`: the current top 20 (`name`, `score`, `date`), as `GET /top`.
 
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
+An unexpected server error (for example a failing database) answers
+`500 {"error": "server"}` with the CORS headers of the request, so the browser
+can read it.
 
 ## Privacy
 

@@ -35,24 +35,23 @@ export async function claimDailySlot(db: D1Database, day: string): Promise<boole
 /**
  * On the first call of a UTC day, in one transaction: summarises the finished days not summarised
  * yet (see day-summary.ts), then deletes events older than RAW_RETENTION_DAYS (only of summarised
- * days, so no day is lost) and past day counters.
+ * days, so no day is lost) and past day counters, and marks the day as done. The mark is written in
+ * the same transaction, so a failed run leaves it unset and the next call retries; two calls racing
+ * on the first event of a day are harmless (INSERT OR IGNORE, idempotent deletes).
  */
 export async function condenseAndPruneOnceADay(db: D1Database, now: number): Promise<void> {
   const today = utcDay(now);
-  const { meta } = await db
-    .prepare(
-      `INSERT INTO event_meta (key, value) VALUES (?, ?)
-       ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE value <> excluded.value`,
-    )
-    .bind(PRUNED_KEY, today)
-    .run();
-  if (meta.changes === 0) return;
+  const done = await db.prepare('SELECT value FROM event_meta WHERE key = ?').bind(PRUNED_KEY).first<{ value: string }>();
+  if (done?.value === today) return;
   await db.batch([
     ...(await condenseStatements(db, today)),
     db
       .prepare("DELETE FROM events WHERE day < ? AND day <= COALESCE((SELECT MAX(day) FROM day_summaries), '')")
       .bind(utcDay(now - RAW_RETENTION_DAYS * DAY_MS)),
     db.prepare('DELETE FROM event_days WHERE day < ?').bind(today),
+    db
+      .prepare('INSERT INTO event_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value')
+      .bind(PRUNED_KEY, today),
   ]);
 }
 

@@ -32,29 +32,46 @@ const MEDIAN_PART = `SELECT day, '${TOTAL_METRIC}' AS metric, 'end_median' AS ke
     FROM events WHERE kind = 'end' AND day BETWEEN ?1 AND ?2
   ) WHERE place IN ((n + 1) / 2, (n + 2) / 2) GROUP BY day`;
 
-/**
- * SummaryRow rows computed from the raw events of the days ?1..?2 (inclusive).
- * Every day with raw rows gets all TOTAL_METRIC rows except end_median, which needs an end.
- * Built from fixed column lists only; values are always bound.
- */
-export const SUMMARY_SELECT = [
+/** D1 rejects a compound SELECT of more terms than this ("too many terms in compound SELECT"). */
+export const MAX_COMPOUND_TERMS = 5;
+
+/** One SELECT per part of the summary; every one names all four columns, as the first term of a compound must. */
+const SUMMARY_PARTS = [
   ...(['session', 'run', 'end'] as const).map(
     (kind) => `SELECT day, '${TOTAL_METRIC}' AS metric, '${kind}s' AS key, SUM(kind = '${kind}') AS value FROM events WHERE day BETWEEN ?1 AND ?2 GROUP BY day`,
   ),
-  `SELECT day, '${TOTAL_METRIC}', 'end_seconds', COALESCE(SUM(CASE WHEN kind = 'end' THEN seconds END), 0) FROM events WHERE day BETWEEN ?1 AND ?2 GROUP BY day`,
+  `SELECT day, '${TOTAL_METRIC}' AS metric, 'end_seconds' AS key, COALESCE(SUM(CASE WHEN kind = 'end' THEN seconds END), 0) AS value
+   FROM events WHERE day BETWEEN ?1 AND ?2 GROUP BY day`,
   MEDIAN_PART,
   ...SPLIT_COLUMNS.map(
-    (column) => `SELECT day, '${column}', ${splitKey(column)} AS key, COUNT(*) FROM events WHERE kind = 'session' AND day BETWEEN ?1 AND ?2 GROUP BY day, key`,
+    (column) =>
+      `SELECT day, '${column}' AS metric, ${splitKey(column)} AS key, COUNT(*) AS value FROM events WHERE kind = 'session' AND day BETWEEN ?1 AND ?2 GROUP BY day, key`,
   ),
   ...(Object.entries(RUN_COLUMNS) as [RunHistogram, string][]).map(
     ([histogram, column]) =>
-      `SELECT day, '${runMetric(histogram)}', CAST(${column} AS TEXT) AS key, COUNT(*) FROM events
+      `SELECT day, '${runMetric(histogram)}' AS metric, CAST(${column} AS TEXT) AS key, COUNT(*) AS value FROM events
        WHERE kind = 'run' AND ${column} IS NOT NULL AND day BETWEEN ?1 AND ?2 GROUP BY day, key`,
   ),
-].join('\nUNION ALL ');
+];
 
 /**
- * The statement that summarises the oldest days (before `today`) that have raw rows and are newer
+ * Statements whose rows together are the SummaryRow rows computed from the raw events of the days
+ * ?1..?2 (inclusive), each a compound of at most MAX_COMPOUND_TERMS parts.
+ * Every day with raw rows gets all TOTAL_METRIC rows except end_median, which needs an end.
+ * Built from fixed column lists only; values are always bound.
+ */
+export const SUMMARY_SELECTS: readonly string[] = Array.from({ length: Math.ceil(SUMMARY_PARTS.length / MAX_COMPOUND_TERMS) }, (_, i) =>
+  SUMMARY_PARTS.slice(i * MAX_COMPOUND_TERMS, (i + 1) * MAX_COMPOUND_TERMS).join('\nUNION ALL '),
+);
+
+/** The SummaryRow rows of the raw events of the days `from`..`to` (inclusive). */
+export async function rawSummaryRows(db: D1Database, from: string, to: string): Promise<SummaryRow[]> {
+  const parts = await Promise.all(SUMMARY_SELECTS.map((sql) => db.prepare(sql).bind(from, to).all<SummaryRow>()));
+  return parts.flatMap((part) => part.results);
+}
+
+/**
+ * The statements (one per SUMMARY_SELECTS entry) that summarise the oldest days (before `today`) that have raw rows and are newer
  * than the last summarised day, at most MAX_CONDENSE_DAYS of them; none when nothing is pending.
  * INSERT OR IGNORE keeps a summarised day unchanged even if it were ever offered again.
  */
@@ -70,5 +87,7 @@ export async function condenseStatements(db: D1Database, today: string): Promise
     .bind(today, MAX_CONDENSE_DAYS)
     .first<{ first: string | null; last: string | null }>();
   if (!pending?.first || !pending.last) return [];
-  return [db.prepare(`INSERT OR IGNORE INTO day_summaries (day, metric, key, value) ${SUMMARY_SELECT}`).bind(pending.first, pending.last)];
+  return SUMMARY_SELECTS.map((sql) =>
+    db.prepare(`INSERT OR IGNORE INTO day_summaries (day, metric, key, value) ${sql}`).bind(pending.first, pending.last),
+  );
 }
