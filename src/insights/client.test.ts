@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../net/api';
 import { SCORES_URL } from '../net/api';
 import { ALL_RANGE } from '../net/telemetry-types';
-import { apiBase, fetchStats, isInsightsStats } from './client';
+import { apiBase, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats } from './client';
+import { sampleFeedback } from './sample-feedback';
 import { sampleStats } from './sample-stats';
 
 function fakeFetch(status: number, body: unknown, calls: { url: string; headers?: Record<string, string> }[] = []): FetchLike {
@@ -64,5 +65,52 @@ describe('fetchStats', () => {
     expect(await fetchStats(throwing, { base: 'http://x', token: 'a', days: 7 })).toEqual({ ok: false, error: 'offline' });
     const hanging: FetchLike = () => new Promise(() => {});
     expect(await fetchStats(hanging, { base: 'http://x', token: 'a', days: 7, timeoutMs: 5 })).toEqual({ ok: false, error: 'offline' });
+  });
+});
+
+describe('fetchFeedback', () => {
+  const list = { entries: sampleFeedback() };
+  it('sends the bearer token to /feedback and returns the entries', async () => {
+    const calls: { url: string; headers?: Record<string, string> }[] = [];
+    const result = await fetchFeedback(fakeFetch(200, list, calls), { base: 'http://x', token: 'abc' });
+    expect(calls).toEqual([{ url: 'http://x/feedback', headers: { Authorization: 'Bearer abc' } }]);
+    expect(result).toEqual({ ok: true, entries: list.entries });
+  });
+  it('maps 401 to auth, 404 and 500 to server, a thrown fetch and a timeout to offline', async () => {
+    expect(await fetchFeedback(fakeFetch(401, null), { base: 'http://x', token: 'a' })).toEqual({ ok: false, error: 'auth' });
+    expect(await fetchFeedback(fakeFetch(404, null), { base: 'http://x', token: 'a' })).toEqual({ ok: false, error: 'server' });
+    expect(await fetchFeedback(fakeFetch(500, null), { base: 'http://x', token: 'a' })).toEqual({ ok: false, error: 'server' });
+    const throwing: FetchLike = async () => {
+      throw new Error('down');
+    };
+    expect(await fetchFeedback(throwing, { base: 'http://x', token: 'a' })).toEqual({ ok: false, error: 'offline' });
+    const hanging: FetchLike = () => new Promise(() => {});
+    expect(await fetchFeedback(hanging, { base: 'http://x', token: 'a', timeoutMs: 5 })).toEqual({ ok: false, error: 'offline' });
+  });
+  it('maps a malformed body to server', async () => {
+    expect(await fetchFeedback(fakeFetch(200, { entries: [{ id: 1 }] }), { base: 'http://x', token: 'a' })).toEqual({ ok: false, error: 'server' });
+  });
+});
+
+describe('isFeedbackList', () => {
+  const entry = sampleFeedback()[0]!;
+  it('accepts the sample list and an empty list', () => {
+    expect(isFeedbackList({ entries: sampleFeedback() })).toBe(true);
+    expect(isFeedbackList({ entries: [] })).toBe(true);
+  });
+  it.each([
+    ['no entries array', {}],
+    ['a non-integer id', { entries: [{ ...entry, id: 1.5 }] }],
+    ['a day with time', { entries: [{ ...entry, day: '2026-10-11T12:00' }] }],
+    ['an unknown kind', { entries: [{ ...entry, kind: 'praise' }] }],
+    ['a non-string text', { entries: [{ ...entry, text: 5 }] }],
+    ['an unknown platform', { entries: [{ ...entry, platform: 'windows' }] }],
+    ['an unknown input', { entries: [{ ...entry, input: 'mouse' }] }],
+    ['an unknown orientation', { entries: [{ ...entry, orientation: 'flat' }] }],
+    ['a non-numeric view width', { entries: [{ ...entry, viewWidth: '390' }] }],
+    ['a non-string log line', { entries: [{ ...entry, log: [1] }] }],
+    ['a missing log', { entries: [{ ...entry, log: undefined }] }],
+  ])('rejects %s', (_, body) => {
+    expect(isFeedbackList(body)).toBe(false);
   });
 });
