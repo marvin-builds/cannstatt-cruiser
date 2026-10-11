@@ -783,8 +783,8 @@ picks one (null while riding or while the settings menu covers it):
 | Screen | When | Buttons (key) |
 |---|---|---|
 | "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
-| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)); the logo's long press opens the settings |
-| pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), reload |
+| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)), speech-bubble "Feedback" icon bottom right (F, adult mode only, see [Player feedback](#player-feedback-roadmap-50)); the logo's long press opens the settings |
+| pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), "Feedback" (F, adult mode only), reload |
 | game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Eintragen" (E / Enter, only when the run makes the online top 20), "Zum Startbildschirm" (T), reload, install hint |
 
 - **Reload** (`notices.ts` `reloadOffered`): a card "Neue Version da" with
@@ -808,7 +808,10 @@ picks one (null while riding or while the settings menu covers it):
   `commands.dismissInstallHint()`. On game over the prompt kind shows as a
   **compact card** (`InstallCard` `'compact'`: just the button "App
   installieren" and "×"); on a crowded game over it goes before the stars
-  and distance rows. The title keeps the full card.
+  and distance rows. The title keeps the full card, except in narrow portrait
+  views (< 360 px wide), where the compact card leaves room for the feedback
+  icon (with an update card as well, the icon is hidden there; the pause
+  menu still offers feedback).
 - **"Neu in dieser Version"**: a headline and one bullet line per item of
   `state.whatsNew` (`whatsNewLines`, newest first; core caps them to
   `WHATS_NEW_MAX_ITEMS`).
@@ -1110,6 +1113,43 @@ hidden page `insights.html` shows aggregates to the owner.
   in settings (`privacyLink` rects in `ScoreListLayout`/`SettingsLayout`);
   `ui/privacy-link.ts` opens the page in a new tab on pointer release
   (phone browsers block popups on touch start).
+
+## Player feedback (ROADMAP 50)
+
+- **Contract:** `src/net/feedback-types.ts` (`FeedbackBody`, `FeedbackEntry`,
+  limits), constants mirrored by `server/src/feedback-rules.ts` (checked by
+  `src/net/feedback-types.test.ts`), types by `server/src/feedback-types.ts`
+  (type-level test in `server/test/`).
+- **Game:** "Feedback" in the pause menu and the speech-bubble icon on the
+  title (both hidden in kid mode, key F). `ui/feedback-flow.ts` (state),
+  `feedback-layout.ts`, `feedback-screen.ts` and `feedback-field.ts` (a native
+  `<textarea>` over the canvas like the name field: font >= 16 CSS px, keys
+  stop at it, Esc closes). Kind Fehler / Idee, "Fehlerprotokoll mitsenden"
+  (bug only, default off), "Senden" / "Abbrechen"; results sent / rate
+  (429) / invalid (400/413) / offline, the text is kept unless sent.
+- **Net:** `net/feedback.ts` builds and posts the body (text/plain JSON). It
+  goes to the live worker only from `marvinmai.github.io` in a production
+  build, else only to `window.__feedbackUrl`; the statistics opt-out and GPC
+  do not apply (explicit player action). `browser.ts` makes one session id
+  per page load and shares it with the statistics and feedback.
+  `net/error-log.ts` is an in-memory ring buffer (20 lines x 200 chars) of
+  uncaught errors (file name and line only), unhandled rejections and failed
+  requests of the game's own clients (path and status, never host, query or
+  body); the last line at send time is mode, version and view size.
+- **Worker:** `POST /feedback` (Origin 403, strict validation, an `idea`
+  must send `log: []`, control characters rejected) stores day, kind, text,
+  version, platform, input, orientation, view width and log (migration
+  0005). Rate limits: 3 per SHA-256(session) per UTC day and 200 per day in
+  all (`feedback_counts`, cleared the next day) -> 429. Housekeeping once a
+  day after storing (marker `feedback-pruned`): feedback older than 365 days
+  is deleted. `GET /feedback` (Bearer `STATS_TOKEN`, 401 before any DB
+  access) returns the newest 100.
+- **Board:** `src/insights/feedback.ts` (filter, labels) and
+  `feedback-card.ts`: a full-width card at the end with Alle / Fehler / Ideen,
+  kind badges, meta line, `pre-wrap` text and a `<details>` log. /feedback is
+  loaded with /stats; a failure other than 401 only shows "Feedback gerade
+  nicht abrufbar" in the card.
+- `datenschutz.html` describes feedback; keep it true when this changes.
 
 ## Stomp and carried items
 
