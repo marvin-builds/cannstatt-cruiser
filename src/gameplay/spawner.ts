@@ -27,9 +27,11 @@
  * next pattern is a stunt line, but never while the player may be drunk or
  * in the street the chill effect reaches after a joint: then it waits for the
  * first pattern after it. Its shape comes from a shuffle bag (stairs, hops,
- * mixed, stunt-line.ts drawShape), so a run sees them evenly. A line's street holds only its kickers and its
- * length covers every landing off it, so the next pattern needs no check
- * across the boundary (its pieces are no obstacles or rails).
+ * mixed, stunt-line.ts drawShape), so a run sees them evenly. A line's
+ * street holds its kickers and a few low obstacles under its launch ledges
+ * (line-street.ts), and its length
+ * covers every landing off it; the next pattern is checked across the
+ * boundary with those obstacles like after any pattern.
  *
  * The NorDIY park (ROADMAP 36, park-line.ts): once per Bad Cannstatt visit
  * (`zoneAt` gives PARK_ZONE; any other zone arms the next visit) the next
@@ -48,12 +50,19 @@
  * (`rampDistance`), the next regular stunt line comes STUNT_LINE_INTERVAL[0]
  * seconds after it at the earliest.
  *
+ * Quiet cap (ROADMAP 52): from QUIET_FROM_SECONDS of a run on, the gap
+ * after a pattern is cut so the street never goes longer than QUIET_SECONDS
+ * without something to react to (street.ts), never below the free street
+ * every pattern leaves (effectGap); a planning delay only fills what is left
+ * of it (`slack`), and the empty street before a park gets star arcs
+ * (leadStars).
+ *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
  * planSteps), so no tick stalls on a hard pattern. If a pattern is due before
- * its plan is done, empty street comes first (up to PLAN_DELAY_MAX, after
- * that it finishes at once). The units are deterministic, so runs replay
- * exactly. Without `workPerTick` every pattern is planned when it is due.
+ * its plan is done, empty street comes first (up to PLAN_DELAY_MAX and the
+ * quiet cap's slack, after that it finishes at once). The units are
+ * deterministic, so runs replay exactly. Without `workPerTick` every pattern is planned when it is due.
  */
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { CHILL_DURATION } from '../core/chill';
@@ -65,9 +74,10 @@ import { takeoffWindowAt } from './fairness';
 import { isObstacle, isRail } from './catalogue';
 import { itemOf } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
-import { jointPattern, type Pattern, type Piece, planSteps } from './patterns';
-import { PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
+import { jointPattern, jumpArcStars, leadFor, type Pattern, type Piece, planSteps } from './patterns';
+import { HIGH_FIVER_X, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
 import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
+import { lastThreatEnd } from './street';
 import type { WorkBudget } from './solver';
 
 /** Street distance from the player to the first pattern (a few empty seconds). */
@@ -137,6 +147,15 @@ export const BEER_REACH = VIEW_MAX_W + SPAWN_MARGIN + 100;
  * gap, patterns.test.ts), so a person still has PERSON_ROOM_SECONDS.
  */
 const EFFECT_FREE_SECONDS = 1.1;
+/**
+ * ROADMAP 52: from QUIET_FROM_SECONDS of a run on, the sober street has
+ * something to react to (street.ts) at least every QUIET_SECONDS of riding
+ * (planned at the pattern's slowest speed; the quiet-time test allows 2.5 s
+ * for a faster next lead).
+ */
+export const QUIET_SECONDS = 2.2;
+const QUIET_FROM_SECONDS = 15;
+
 /** Highest pattern tier while chilled: lone pieces and pairs, no combos. */
 const CHILLED_TIER = 1;
 
@@ -187,6 +206,8 @@ interface Planned {
   pattern: Pattern;
   /** Street from this pattern's start to the next one's (length plus gap). */
   advance: number;
+  /** Empty street that may still come before the next pattern while its plan finishes (the quiet cap's room left). */
+  slack: number;
   drunk: boolean;
   /** The cursor before this plan. */
   before: Cursor;
@@ -214,8 +235,12 @@ export class Spawner {
   private queue: Planned[] = [];
   /** The plan in progress (the pattern after the queue). */
   private job: Job | null = null;
-  /** Empty street inserted before the next pattern while its plan finished. */
+  /** Empty street inserted before the next pattern while its plan finished... */
   private delayed = 0;
+  /** ...at most this much (the last materialised pattern's slack). */
+  private slack = Infinity;
+  /** Street distance from which the quiet cap holds (null: not drawn yet, set at the run's first plan). */
+  private quietFrom: number | null = null;
   private readonly budget: WorkBudget = { left: UNLIMITED };
   private readonly workPerTick: number | null;
   private work = 0;
@@ -280,6 +305,8 @@ export class Spawner {
     this.queue = [];
     this.job = null;
     this.delayed = 0;
+    this.slack = Infinity;
+    this.quietFrom = null;
   }
 
   /** The street moved left by dx (call together with moving the entities). */
@@ -309,9 +336,9 @@ export class Spawner {
       const planned = this.queue.shift();
       if (planned) {
         this.materialise(planned, entities);
-      } else if (this.workPerTick !== null && this.delayed < PLAN_DELAY_MAX && this.job?.park == null) {
+      } else if (this.workPerTick !== null && this.delayed < this.delayLimit() && this.job?.park == null) {
         // Not planned yet: a little more empty street while the plan goes on.
-        const wait = Math.min(PLAN_DELAY_MAX - this.delayed, edge + 1 - this.nextStart);
+        const wait = Math.min(this.delayLimit() - this.delayed, edge + 1 - this.nextStart);
         this.nextStart += wait;
         this.delayed += wait;
       } else {
@@ -329,6 +356,12 @@ export class Spawner {
     }
     this.nextStart += planned.advance;
     this.delayed = 0;
+    this.slack = planned.slack;
+  }
+
+  /** The most empty street to put before the next pattern while its plan finishes. */
+  private delayLimit(): number {
+    return Math.min(PLAN_DELAY_MAX, this.slack);
   }
 
   /** Spends this tick's budget on the plans ahead. */
@@ -402,14 +435,16 @@ export class Spawner {
     const lead = start - street;
     const end = start + line.length;
     const c = this.cursor;
-    const pattern: Pattern = { name: line.name, pieces: line.pieces.map((p) => ({ ...p, x: p.x + lead })), length: line.length + lead };
-    const advance = pattern.length + gapAt(street);
+    const pieces = [...leadStars(lead, speed), ...line.pieces.map((p) => ({ ...p, x: p.x + lead }))];
+    const pattern: Pattern = { name: line.name, pieces, length: line.length + lead };
+    const { gap, slack } = this.gapAfter(street, pattern, speed, speed, speedOverride, false);
+    const advance = pattern.length + gap;
     c.previous = pattern.pieces.map((p) => shifted(p, -advance));
     c.parkArmed = false;
     c.pauses = [...c.pauses, [start, end]];
     c.lineEnd = end;
     c.nextStunt = Math.max(c.nextStunt ?? rideStreet(this.runStart ?? street, STUNT_FIRST_SECONDS, speedOverride), rideStreet(end, STUNT_LINE_INTERVAL[0], speedOverride));
-    return { pattern, advance, drunk: false, before, park: { start, end, pieces: parkPiecesOf(line, start) } };
+    return { pattern, advance, slack, drunk: false, before, park: { start, end, pieces: parkPiecesOf(line, start) } };
   }
 
   private hasSoberPlans(): boolean {
@@ -464,16 +499,37 @@ export class Spawner {
       const tier = chilled ? Math.min(tierAt(street), CHILLED_TIER) : tierAt(street);
       pattern = yield* planSteps(rng, tier, speeds, options);
     }
-    // After a joint too: the next pattern is ridden chilled.
-    const gap = drunk || street < this.cursor.chilledUntil ? effectGap(pattern, fast, gapAt(street)) : gapAt(street);
-    const advance = pattern.length + gap;
-    this.cursor.previous = pattern.pieces.map((p) => shifted(p, -advance));
     if (!kidMode) {
       for (const p of pattern.pieces) {
         if (p.kind === 'wasenGuest' && itemOf(p, false) === 'beer') this.cursor.drunkUntil = Math.max(this.cursor.drunkUntil, street + p.x + BEER_REACH);
       }
     }
-    return { pattern, advance, drunk, before, park: null };
+    // After a joint too: the next pattern is ridden chilled.
+    const { gap, slack } = this.gapAfter(street, pattern, Math.min(...speeds), fast, pace, drunk || street < this.cursor.chilledUntil);
+    const advance = pattern.length + gap;
+    this.cursor.previous = pattern.pieces.map((p) => shifted(p, -advance));
+    return { pattern, advance, slack, drunk, before, park: null };
+  }
+
+  /**
+   * The gap after the pattern at `street` (speeds `slow`..`fast`) and the
+   * empty street a planning delay may still add after it (`slack`). Once the
+   * quiet cap holds, the free street after its last threat, the gap, any delay
+   * and the next pattern's lead fit QUIET_SECONDS. A sober pattern gets the
+   * difficulty's gap, cut to that; while an effect may be on (`effect`) only
+   * the least free street every pattern leaves (effectGap), which a sober one
+   * never goes below.
+   */
+  private gapAfter(street: number, pattern: Pattern, slow: number, fast: number, pace: number | null, effect: boolean): { gap: number; slack: number } {
+    const full = gapAt(street);
+    const least = effectGap(pattern, fast, full);
+    this.quietFrom ??= rideStreet(this.runStart ?? street, QUIET_FROM_SECONDS, pace);
+    if (street + pattern.length < this.quietFrom) return { gap: effect ? least : full, slack: Infinity };
+    // The next pattern's lead: longer when it may be ridden drunk (after a Wasen visitor's Maßkrug).
+    const lead = leadFor(fast, street + pattern.length < this.cursor.drunkUntil);
+    const room = Math.floor(QUIET_SECONDS * slow) - (pattern.length - lastThreatEnd(pattern.pieces)) - lead;
+    const gap = effect ? least : Math.max(least, Math.min(full, room));
+    return { gap, slack: Math.max(0, room - gap) };
   }
 }
 
@@ -489,11 +545,39 @@ function rideStreet(street: number, seconds: number, pinned: number | null): num
   return at;
 }
 
-/** The gap after a pattern while an effect is on: just enough for EFFECT_FREE_SECONDS of free street after its last piece, never more than `gap`. */
+/** The gap after a pattern while an effect is on (and the least after any): just enough for EFFECT_FREE_SECONDS of free street after its last piece, never more than `gap`. */
 function effectGap(pattern: Pattern, fast: number, gap: number): number {
   const ends = pattern.pieces.filter((p) => isObstacle(p.kind) || isRail(p.kind)).map((p) => p.x + p.w);
   const free = pattern.length - Math.max(0, ...ends);
   return Math.min(gap, Math.max(0, Math.ceil(EFFECT_FREE_SECONDS * fast) - free));
+}
+
+/** Street kept free of lead stars before the high fiver (his high five stays readable). */
+const FIVER_ROOM = 40;
+
+/**
+ * Star arcs over the empty street `lead` px long before a park (planPark):
+ * the first where the gap before it expects the next threat, then one at
+ * least every QUIET_SECONDS of riding at `speed` until the high fiver, none
+ * within FIVER_ROOM of him. Stars are always fair (nothing to crash into).
+ */
+function leadStars(lead: number, speed: number): Piece[] {
+  const quiet = Math.floor(QUIET_SECONDS * speed);
+  const fiver = lead + HIGH_FIVER_X;
+  const span = (stars: Piece[]) => [stars[0]!.x, stars[stars.length - 1]!.x + stars[stars.length - 1]!.w] as const;
+  const [first, last] = span(jumpArcStars(0, speed));
+  const out: Piece[] = [];
+  // As if a threat had just ended here: the next one is due by the lead the gap before the park left.
+  let end = leadFor(speed) - quiet;
+  while (fiver - end > quiet) {
+    // Take-off so the arc's first star comes a little before the quiet cap, its last one clear of the high fiver.
+    const from = Math.max(0, Math.min(end + Math.round(0.85 * quiet) - first, fiver - FIVER_ROOM - last));
+    const arc = jumpArcStars(from, speed);
+    if (span(arc)[0] <= end) break;
+    out.push(...arc);
+    end = span(arc)[1];
+  }
+  return out;
 }
 
 /** The piece moved by dx along the street (its motion anchor too). */

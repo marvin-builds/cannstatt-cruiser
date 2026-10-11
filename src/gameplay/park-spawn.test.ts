@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
-import type { Entity, ParkPlan } from '../types';
+import type { Entity, ObstacleKind, ParkPlan } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { speedAt } from './difficulty';
+import { isObstacle, isRail } from './catalogue';
+import { LINE_STREET_KINDS } from './line-street';
 import { anchorOf } from './motion';
 import { PARK_MAX_LENGTH, PARK_MIN_SPEED } from './park-line';
-import { CHILL_REACH, PARK_ANNOUNCE, PARK_FIRST_SECONDS, Spawner, type SpawnSituation } from './spawner';
+import { CHILL_REACH, PARK_ANNOUNCE, PARK_FIRST_SECONDS, QUIET_SECONDS, Spawner, type SpawnSituation } from './spawner';
 
 const CANNSTATT = 2;
 
@@ -100,13 +102,15 @@ describe('the NorDIY park in the spawner', { timeout: 120_000 }, () => {
     for (const r of RIDES) for (const { plan, shownAt } of r.parks) expect(plan.start - shownAt).toBeGreaterThanOrEqual(PARK_ANNOUNCE);
   });
 
-  it('lays the park line, the high fiver and stars only in [start, end): no obstacle, person, rail, joint or other line', () => {
+  it('lays the park line, the high fiver, stars and its low street obstacles only in [start, end): no person, rail, joint or other line', () => {
     for (const r of RIDES) {
       for (const { plan } of r.parks) {
         const inside = r.seen.filter((s) => inPark(s, plan));
         expect(inside.some((s) => s.e.kind === 'highFiver')).toBe(true);
         for (const s of inside) {
-          const ok = s.e.kind === 'star' || s.e.kind === 'highFiver' || ((s.e.kind === 'kicker' || s.e.kind === 'ledge') && s.e.data?.park !== undefined);
+          // The park's own low obstacles stand under its containers (line-street.ts).
+          const low = LINE_STREET_KINDS.includes(s.e.kind as ObstacleKind) && plan.pieces.some((p) => p.kind === 'container' && s.street >= p.from && s.street + s.e.w <= p.to);
+          const ok = s.e.kind === 'star' || s.e.kind === 'highFiver' || low || ((s.e.kind === 'kicker' || s.e.kind === 'ledge') && s.e.data?.park !== undefined);
           expect(ok, `${s.e.kind} at ${s.street} in park ${plan.start}-${plan.end}`).toBe(true);
         }
         // The park's pieces are its entities, 1:1 in run distance.
@@ -116,6 +120,24 @@ describe('the NorDIY park in the spawner', { timeout: 120_000 }, () => {
         );
       }
     }
+  });
+
+  // ROADMAP 52: the empty street the park's start is pushed out by (the run's first seconds, the announcement) gets star arcs.
+  it(`never leaves more than QUIET_SECONDS (${QUIET_SECONDS} s) of empty street before the high fiver, and no star right at him`, () => {
+    let parks = 0;
+    for (const r of RIDES) {
+      for (const { plan } of r.parks) {
+        const fiver = r.seen.find((s) => s.e.kind === 'highFiver' && inPark(s, plan));
+        if (!fiver) continue;
+        parks++;
+        const speed = r.speeds.find((x) => x.distance >= plan.start)!.speed;
+        const before = r.seen.filter((s) => s !== fiver && s.street + s.e.w <= fiver.street && s.street + s.e.w > fiver.street - 2000);
+        const lastEnd = Math.max(...before.filter((s) => s.e.kind === 'star' || isObstacle(s.e.kind) || isRail(s.e.kind)).map((s) => s.street + s.e.w));
+        expect(fiver.street - lastEnd, `park at ${Math.round(plan.start)}`).toBeLessThanOrEqual(QUIET_SECONDS * speed);
+        for (const star of r.seen.filter((s) => s.e.kind === 'star')) expect(Math.abs(star.street - fiver.street) >= 30 || !inPark(star, plan)).toBe(true);
+      }
+    }
+    expect(parks).toBeGreaterThanOrEqual(6);
   });
 
   it('keeps other stunt lines apart from the park', () => {

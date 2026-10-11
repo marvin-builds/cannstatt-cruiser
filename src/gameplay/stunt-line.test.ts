@@ -6,6 +6,7 @@ import { isObstacle, isRail, KICKER, LEDGE, ledgeRect } from './catalogue';
 import { HUMAN_HOLDS } from './fairness';
 import { HITBOX_H } from '../player/tuning';
 import { groundBody, stepBody } from './jumpsim';
+import { LINE_STREET_KINDS } from './line-street';
 import type { Pattern, Piece } from './patterns';
 import { kickerWindow, KICKER_LIP, launchVelocityFor } from './rules';
 import { drawShape, gapHolds, planStuntLine, shapeOf, STUNT_APEX_MAX, STUNT_SHAPES, STUNT_TAKEOFF_WINDOW, stuntWorstLanding, type StuntShape } from './stunt-line';
@@ -43,7 +44,7 @@ const launchesOf = (kicker: Piece, ledge: Rect, speed: number, phase: number, ho
   launchWindow(kicker, Number(kicker.data!.velocity), ledge, stepOf(speed), hold, phase);
 
 describe('stunt line planner', { timeout: 60_000 }, () => {
-  it('lays 3-6 stunt pieces in order: a kicker first, ledges 40-60 px up, 40-120 px long, themed by the zone, never an obstacle or rail', () => {
+  it('lays 3-6 stunt pieces in order: a kicker first, ledges 40-60 px up, 40-120 px long, themed by the zone, never a rail, on the street only low obstacles (line-street.test.ts)', () => {
     const lengths = new Set<number>();
     for (const seed of SEEDS) {
       for (const range of RANGES) {
@@ -54,7 +55,7 @@ describe('stunt line planner', { timeout: 60_000 }, () => {
         expect(pieces.length).toBeGreaterThanOrEqual(3);
         expect(pieces.length).toBeLessThanOrEqual(6);
         expect(pieces[0]!.kind).toBe('kicker');
-        expect(p.pieces.every((x) => !isObstacle(x.kind) && !isRail(x.kind))).toBe(true);
+        expect(p.pieces.every((x) => !isRail(x.kind) && (!isObstacle(x.kind) || LINE_STREET_KINDS.includes(x.kind)))).toBe(true);
         pieces.forEach((piece, i) => {
           expect(piece.data).toMatchObject({ line: seed, step: i + 1, steps: pieces.length });
           if (i > 0) expect(piece.x).toBeGreaterThan(pieces[i - 1]!.x + pieces[i - 1]!.w);

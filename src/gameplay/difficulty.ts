@@ -1,13 +1,14 @@
 /**
  * Difficulty as pure functions of the distance travelled, so it plays the
  * same on every screen width: scroll speed, the gap between spawn patterns
- * and which pattern tiers are unlocked. The speed eases out: it picks up
+ * and which pattern tiers are unlocked. The spawner may lay patterns closer
+ * than the gap (spawner.ts quiet cap), never further apart. The speed eases out: it picks up
  * noticeably in the first minute and creeps into TOP_SPEED at the end.
  */
 import { BASE_SPEED } from '../core/config';
 
-/** Distance (view px) over which density and pattern tiers ramp to full difficulty (~3.5 min of riding). */
-export const RAMP_DISTANCE = 24000;
+/** Distance (view px) over which the gap between patterns ramps to full density (~2.5 min of riding, ROADMAP 52). */
+export const RAMP_DISTANCE = 17400;
 /** Distance over which the speed eases from BASE_SPEED to TOP_SPEED (~5.3 min). */
 export const SPEED_RAMP_DISTANCE = 46000;
 /**
@@ -20,8 +21,8 @@ const SPEED_EASE = 1.6;
 /** Empty pavement between patterns at the start and at full difficulty. */
 const GAP_START = 208;
 const GAP_END = 73;
-/** Ramp progress at which pattern tiers 1, 2 and 3 unlock (~12 s, ~50 s, ~1.5 min). */
-const TIER_STEPS = [0.05, 0.2, 0.4];
+/** Street distances at which pattern tiers 1, 2 and 3 unlock (~8 s, ~50 s, ~1.5 min of riding). */
+const TIER_DISTANCES = [740, 4800, 9600];
 
 function progress(distance: number, ramp = RAMP_DISTANCE): number {
   return Math.min(1, Math.max(0, distance / ramp));
@@ -38,6 +39,5 @@ export function gapAt(distance: number): number {
 }
 
 export function tierAt(distance: number): number {
-  const p = progress(distance);
-  return TIER_STEPS.filter((step) => p >= step).length;
+  return TIER_DISTANCES.filter((step) => distance >= step).length;
 }
