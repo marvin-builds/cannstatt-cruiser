@@ -79,14 +79,15 @@ describe('combo patterns (ROADMAP 33)', () => {
   }, 60_000);
 
   it('come with a modest weight at full difficulty, never in tier 0 or 1, never while drunk or chilled', () => {
-    // About 2 % each (weight 0.5 of ~30 at tier 3), the pure grind lines (pipeUp, pipeStairs) about 0.5 % since
-    // ROADMAP 52 (late in a run fewer patterns without anything to jump), together well under a tenth of the street.
+    // About 1 % each (weight 0.5 of ~50 at tier 3 since the combinations of ROADMAP 52 6a, mixes.ts), the pure grind
+    // lines (pipeUp, pipeStairs) about 0.5 % since ROADMAP 52 (late in a run fewer patterns without anything to jump),
+    // together well under a tenth of the street.
     const rng = new Rng(21);
     const names = Array.from({ length: 1200 }, (_, i) => planPattern(rng, 3, [i % 2 ? BASE_SPEED : TOP_SPEED], { zone: i % 3 }).name);
     const pureGrind = ['pipeUp', 'pipeStairs'];
     for (const name of COMBO_NAMES) {
       const share = names.filter((n) => n === name).length / names.length;
-      expect(share, name).toBeGreaterThan(pureGrind.includes(name) ? 0.002 : 0.007);
+      expect(share, name).toBeGreaterThan(pureGrind.includes(name) ? 0.002 : 0.005);
       expect(share, name).toBeLessThan(pureGrind.includes(name) ? 0.012 : 0.04);
     }
     expect(names.filter((n) => COMBO_NAMES.includes(n)).length / names.length).toBeLessThan(0.1);

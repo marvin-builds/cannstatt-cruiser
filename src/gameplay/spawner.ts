@@ -169,6 +169,8 @@ export interface SpawnSituation {
 export interface SpawnerOptions {
   /** Solver units of planning per tick (PLAN_WORK_PER_TICK in the game); unset: plan each pattern when due. */
   workPerTick?: number;
+  /** Called with every pattern as it comes onto the street and the street distance of its start (tests, the debug hook). */
+  onSpawn?: (pattern: Pattern, street: number) => void;
 }
 
 const SOBER: SpawnSituation = { drunk: false, kidMode: false };
@@ -243,6 +245,7 @@ export class Spawner {
   private quietFrom: number | null = null;
   private readonly budget: WorkBudget = { left: UNLIMITED };
   private readonly workPerTick: number | null;
+  private readonly onSpawn: SpawnerOptions['onSpawn'];
   private work = 0;
   /** The distance the last spawn() call got (the player's run distance matching the entities). */
   private distance = 0;
@@ -255,6 +258,7 @@ export class Spawner {
     options: SpawnerOptions = {},
   ) {
     this.workPerTick = options.workPerTick ?? null;
+    this.onSpawn = options.onSpawn;
   }
 
   /** Solver units spent planning in the last spawn() call. */
@@ -348,6 +352,7 @@ export class Spawner {
   }
 
   private materialise(planned: Planned, entities: Entity[]): void {
+    this.onSpawn?.(planned.pattern, this.distance + this.nextStart - PLAYER_X);
     for (const piece of planned.pattern.pieces) {
       const e: Entity = { ...piece, id: this.nextId++, x: this.nextStart + piece.x, done: false };
       const motion = motionOf(e);

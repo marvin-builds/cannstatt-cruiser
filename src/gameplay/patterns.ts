@@ -8,14 +8,18 @@
  * be passed, or if any take-off on the way (also across the boundary) leaves
  * a human less than the take-off window of fairness.ts (`options.window`).
  * Gaps and the runout after the last piece leave room for a human landing a
- * little early or late. People come alone. While the player may be drunk
+ * little early or late. People come alone, or inside a combination
+ * (mixes.ts) with PERSON_ROOM_SECONDS of free street around them, where
+ * every stomp must also lead on fairly. While the player may be drunk
  * (`options.drunk`) only DRUNK_TEMPLATES come, checked with the drunk margin
  * (fairness.ts drunkFairness). While an effect may be on (`options.effect`)
  * no empty star pattern comes. The fallback is a lone low obstacle
  * (FALLBACK_KINDS), and only when even that is not fair a star arc: never
  * empty street (ROADMAP 52: always something to react to). Combo templates
  * (combos.ts) are grind lines: also fair from a grind on each of their
- * pieces, and their stars follow the line (line-guide.ts).
+ * pieces, and their stars follow the line (line-guide.ts). Combination
+ * templates (mixes.ts) chain jumps, ducks, people and rails into longer
+ * mixed sequences from tier 2 on.
  *
  * planSteps is the same planning as a resumable generator: with a work
  * budget (`options.budget`) it yields whenever the solvers run out of it and
@@ -26,15 +30,16 @@ import { GROUND_Y, TICK_DT } from '../core/config';
 import type { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
-import { COMBO_TEMPLATES, type PieceBuilder } from './combos';
-import { isGrindable, isObstacle, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
+import { COMBO_TEMPLATES } from './combos';
+import { isGrindable, isObstacle, isPerson, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
 import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
 import { PROPS } from './items';
 import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
 import { lineGuide, type Point, spreadStars } from './line-guide';
-import type { Motion } from './motion';
-import { constantPace, type Course, HOLDS, resumable, type Solver, type WorkBudget } from './solver';
+import { MIX_TEMPLATES, type MixBuilder } from './mixes';
+import { anchorOf, type Motion } from './motion';
+import { constantPace, type Course, HOLDS, resumable, Solver, type WorkBudget } from './solver';
 
 export type { Piece };
 
@@ -77,7 +82,7 @@ interface Template {
   build(b: Builder): void;
 }
 
-/** Ground obstacles a random pick chooses from (people never: they come alone, see the person template). */
+/** Ground obstacles a random pick chooses from (people never: they come alone or inside a combination, mixes.ts). */
 const PICKABLE: ObstacleKind[] = ['bin', 'barrier', 'bench', 'planter', 'curbGap'];
 /** The people of a zone: VfB fans at the Neckar, Wasen visitors in Bad Cannstatt. */
 const ZONE_PEOPLE: Record<number, ObstacleKind> = { 1: 'vfbFan', 2: 'wasenGuest' };
@@ -124,7 +129,7 @@ export function runoutFor(speed: number): number {
   return Math.round(32 + 0.55 * speed);
 }
 
-class Builder implements PieceBuilder {
+class Builder implements MixBuilder {
   readonly pieces: Piece[] = [];
 
   readonly lead: number;
@@ -146,6 +151,11 @@ class Builder implements PieceBuilder {
    */
   spacing(): number {
     return this.rng.chance(CLOSE_CHANCE) ? this.rng.int(...CLOSE_GAP) : this.openGap();
+  }
+
+  /** Street ridden in `seconds` at this speed. */
+  seconds(seconds: number): number {
+    return Math.round(seconds * this.speed);
   }
 
   /** Street between two ground obstacles open enough to land in between and take off again. */
@@ -202,12 +212,13 @@ class Builder implements PieceBuilder {
 /**
  * From this tier on the late weights apply (ROADMAP 52): templates with
  * nothing that can crash (an empty star arc, pure grind lines) come rarely,
- * people, ducking and obstacle + rail more often.
+ * people, ducking and obstacle + rail more often, and the combinations
+ * (mixes.ts) take over from lone obstacles (ROADMAP 52 6a).
  */
 const LATE_MIX_TIER = 2;
 
 const TEMPLATES: Template[] = [
-  { name: 'single', tier: 0, weight: 5, build: (b) => void b.obstacle(b.pick(), b.lead) },
+  { name: 'single', tier: 0, weight: 5, late: 3, build: (b) => void b.obstacle(b.pick(), b.lead) },
   { name: 'person', tier: 0, weight: 4, late: 6, people: true, build: (b) => void b.person(b.lead) },
   { name: 'stars', tier: 0, weight: 1, late: 0.3, build: () => {} },
   {
@@ -276,6 +287,7 @@ const TEMPLATES: Template[] = [
     },
   },
   ...COMBO_TEMPLATES.map((t) => ({ ...t, line: true })),
+  ...MIX_TEMPLATES,
 ];
 
 export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
@@ -373,13 +385,25 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
     }
     return found;
   }
+  /** Whether every stomp on a person inside a combination comes down where the rest is fair, from the street before the person (a lone person's run-up). */
+  function* stompsFair(pattern: Pattern): Generator<void, boolean> {
+    if (pattern.pieces.filter((p) => isObstacle(p.kind) || isRail(p.kind)).length < 2) return true;
+    for (const person of pattern.pieces.filter((p) => isPerson(p.kind))) {
+      const course = courseOf(pattern, anchorOf(person) - leadFor(fast, drunk));
+      for (const pace of paces) {
+        const solver = new Solver(course, pace, { stomps: true, budget });
+        if (!(yield* resumable(() => solver.stompsLeadOn(margin.holds, margin.window)))) return false;
+      }
+    }
+    return true;
+  }
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone, drunk, effect, options.template);
     const builder = new Builder(rng, fast, zone, drunk);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = yield* fairSolvers(pattern);
-    if (!solvers) continue;
+    if (!solvers || !(yield* stompsFair(pattern))) continue;
     const slowest = paces.indexOf(slow);
     if (template.line) {
       const grinds = yield* grindsFair(pattern);

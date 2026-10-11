@@ -69,6 +69,9 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/street.ts    what counts as something to react to on the street (shared by the quiet cap and quiet-time.ts)
   gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line or the park (ROADMAP 52)
   gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
+  gameplay/mixes.ts     combination templates from tier 2 on (ROADMAP 52 6a): jump+duck mixes, rail sandwiches, people inside combinations, route choices, 4-5 element chains at tier 3
+  gameplay/pattern-log.ts  small log of laid patterns (spawner onSpawn), for the debug hook patterns()
+  gameplay/variety.ts   variety meter: templates laid, elements per pattern, distinct templates per ride
   gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
   gameplay/combos.ts    combo templates (COMBO_TEMPLATES, COMBO_NAMES): grind lines of rails, benches and low obstacles (see Combo patterns)
   gameplay/line-guide.ts  lineGuide() / spreadStars(): the guide stars along a combo's human line (see Combo patterns)
@@ -1401,7 +1404,11 @@ as "something to react to" is `gameplay/street.ts` (obstacles, people, rails,
 stars, kickers, the joint, the high fiver; not the stars above a ledge deck).
 `quiet-time.test.ts` pins at most 2.5 s from 20 s on over 20 seeds x 6 min.
 Take-off windows are unchanged. From tier 2 on, threat-free templates (stars,
-rail, pipeUp, pipeStairs) weigh about 5 % of the mix.
+rail, pipeUp, pipeStairs) weigh about 2-5 % of the mix. Combinations
+(`mixes.ts`, ROADMAP 52 6a) are about 30 % of patterns at tier 2 and about
+42 % at tier 3, each step with the full take-off window (solver-checked at
+90 and 190 px/s after every kind of previous pattern tail); drunk, chilled and
+tier 0/1 never get them.
 
 No joint comes while the player may be drunk: it waits until sober. Test
 tooling `effect-street.ts` `rideEffect(seed, from, 'drunk' | 'chill')` rides
@@ -1430,10 +1437,14 @@ milliseconds, so the live game never plans a whole pattern in one tick:
 
 ### Fair people
 
-- **People come alone**: the `person` template (zones 1 and 2 only) holds one
-  person and nothing else; no other template picks people. With the pattern
-  lead, runout and the gap between patterns there are >= `PERSON_ROOM_SECONDS`
-  (1 s) of free street before and after every person, and a person never
+- **People come alone or with room**: the `person` template (zones 1 and 2
+  only) holds one person and nothing else; a combination (`mixes.ts`) may hold
+  a person only with >= `PERSON_ROOM_SECONDS` (1 s, measured from the edges of
+  the person's sway) of free street to every other piece, and every stomp on
+  it must lead on (`Solver.stompsLeadOn`: wherever the bounce lands, the rest
+  is fair with the full window). With the pattern lead, runout and the gap
+  between patterns there are >= `PERSON_ROOM_SECONDS` (1 s) of free street
+  before and after every person, and a person never
   walks into another obstacle while visible (walking only carries them
   towards their anchor, from further right).
 - Their take-off window is the same `takeoffWindowAt(street)` as above.

@@ -51,11 +51,25 @@ describe('human take-off window', () => {
 });
 
 describe('fair people: patterns', () => {
-  it('a person always comes alone: no other obstacle or rail in its pattern', () => {
-    for (const p of personPatterns([BASE_SPEED, TOP_SPEED], undefined, 100)) {
-      expect(p.pieces.filter(blocking).map((x) => x.kind), p.name).toHaveLength(1);
+  // ROADMAP 52 6a: people may come inside a combination (mixes.ts) instead of alone, still with
+  // PERSON_ROOM_SECONDS of free street to every other piece (measured from the swaying edges).
+  it(`a person comes alone or with >= ${PERSON_ROOM_SECONDS} s of free street to every other obstacle or rail in its pattern`, () => {
+    let inside = 0;
+    for (const speed of [BASE_SPEED, TOP_SPEED]) {
+      for (const p of personPatterns([speed], undefined, 60)) {
+        const others = p.pieces.filter(blocking);
+        if (others.length > 1) inside++;
+        for (const person of others.filter((x) => isPerson(x.kind))) {
+          const sway = motionOf(person)!.sway;
+          for (const o of others.filter((x) => x !== person)) {
+            const gap = o.x > person.x ? o.x - (person.x + person.w + sway) : person.x - sway - (o.x + o.w);
+            expect(gap, `${p.name}: ${o.kind} next to ${person.kind}`).toBeGreaterThanOrEqual(PERSON_ROOM_SECONDS * speed);
+          }
+        }
+      }
     }
-  }, 30_000);
+    expect(inside).toBeGreaterThan(10);
+  }, 60_000);
 
   for (const { name, pace } of PACES) {
     it(`every person pattern leaves a human take-off window of >= ${LATE_TAKEOFF_WINDOW} ticks (${name} speed)`, () => {
@@ -66,8 +80,9 @@ describe('fair people: patterns', () => {
       const patterns = chill ? personPatterns([v], [v], 40, LATE_TAKEOFF_WINDOW, name === 'chill min' ? 6 : 40) : personPatterns([v], undefined, 40);
       if (name !== 'chill min') expect(patterns.length).toBeGreaterThan(20);
       for (const p of patterns) {
-        const window = new Solver(courseOf(p), pace).takeoffWindow(HUMAN_HOLDS);
-        expect(window, JSON.stringify(p.pieces)).toBeGreaterThanOrEqual(LATE_TAKEOFF_WINDOW);
+        // fair(): every take-off, not only the first (a person may come inside a combination with rails, whose
+        // first take-off run may mix grind and ground landings, which takeoffWindow splits).
+        expect(new Solver(courseOf(p), pace).fair(HUMAN_HOLDS, LATE_TAKEOFF_WINDOW), JSON.stringify(p.pieces)).toBe(true);
       }
     }, 30_000);
   }

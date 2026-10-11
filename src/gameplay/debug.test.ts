@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GROUND_Y, PLAYER_X, VIEW_MAX_W } from '../core/config';
+import { Game } from '../core/game';
 import { tick } from '../player/testing';
 import { KICKER } from './catalogue';
 import { installGameplayDebug } from './debug';
 import { DroppedItems } from './drop';
+import { tierAt } from './difficulty';
+import type { LaidPattern } from './pattern-log';
 import { StuntLines } from './stunts';
 import { quietGame, record } from './test-kit';
 
@@ -104,5 +107,27 @@ describe('gameplay debug hook (window.__gameplay)', () => {
     expect(reserved).toHaveLength(1);
     expect(reserved[0]![0]).toBe(game.state.distance);
     expect(() => hook.pattern('nope')).toThrow();
+  });
+
+  it('shows the patterns the spawner laid, read-only (ROADMAP 52 6a: which combinations a run gets)', () => {
+    vi.stubGlobal('window', {});
+    const log: LaidPattern[] = [{ name: 'railSandwich', street: 5000, elements: 3 }];
+    installGameplayDebug(quietGame().ctx, new DroppedItems(), new StuntLines(), undefined, () => log);
+    const seen = window.__gameplay!.patterns();
+    expect(seen).toEqual(log);
+    seen[0]!.name = 'x';
+    expect(log[0]!.name).toBe('railSandwich');
+  });
+
+  it('starts a fresh run further down the street (tier 2-3 distances), only before its first tick', () => {
+    vi.stubGlobal('window', {});
+    const game = new Game({ systems: [] });
+    game.commands.startRun();
+    installGameplayDebug(game.ctx, new DroppedItems(), new StuntLines());
+    window.__gameplay!.startAt(12_000);
+    expect(game.state.distance).toBe(12_000);
+    expect(tierAt(game.state.distance)).toBe(3);
+    game.tick();
+    expect(() => window.__gameplay!.startAt(20_000)).toThrow();
   });
 });

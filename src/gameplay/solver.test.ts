@@ -211,6 +211,28 @@ describe('stomps in the solver', () => {
     });
   }
 
+  // ROADMAP 52 6a: people inside combinations. A stomp bounces the skater on; wherever any stomp comes down,
+  // the rest must still be fair (stompsLeadOn), else a person between obstacles would be a stomp trap.
+  describe('every stomp leads on fairly (stompsLeadOn)', () => {
+    const withAfter = (x: number): Course => {
+      const after = block(x, 10, 18);
+      return { obstacles: [after], overhead: [], rails: [], movers: [person], goal: after.x + after.w, limit: after.x + after.w + 400 };
+    };
+    for (const speed of [BASE_SPEED, TOP_SPEED]) {
+      it(`holds for a lone person and for a bin far after it, not for a bin right behind its head (${speed} px/s)`, () => {
+        const holds = [3, 10, 20];
+        expect(new Solver(personCourse(), speed, { stomps: true }).stompsLeadOn(holds, 12)).toBe(true);
+        expect(new Solver(withAfter(89 + Math.round(1.2 * speed)), speed, { stomps: true }).stompsLeadOn(holds, 12)).toBe(true);
+        // The bounce comes down on or right before the bin: no take-off window left.
+        expect(new Solver(withAfter(89 + Math.round(0.25 * speed)), speed, { stomps: true }).stompsLeadOn(holds, 12)).toBe(false);
+      });
+    }
+
+    it('needs stomps on', () => {
+      expect(() => new Solver(personCourse(), BASE_SPEED).stompsLeadOn([20], 12)).toThrow();
+    });
+  });
+
   it('stomps are off by default: patterns are checked without them, so they never require one', () => {
     const s = new Solver(personCourse(), BASE_SPEED);
     expect(s.solvable()).toBe(true);
