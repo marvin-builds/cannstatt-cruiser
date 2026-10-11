@@ -66,6 +66,7 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
   }
   const bodies: Record<string, unknown>[] = [];
   const posts: string[] = [];
+  let listAnswers = 0;
   // tsx keeps function names with a __name helper, which page.evaluate bodies then call.
   await page.context().addInitScript('window.__name = (f) => f;');
   await page.context().addInitScript((url) => {
@@ -90,6 +91,8 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
       posts.push(route.request().postData() ?? '');
       return route.fulfill({ status: 503, headers });
     }
+    // The first list request fails: the game logs it, so the error log has a line to send (ROADMAP 70).
+    if (listAnswers++ === 0) return route.fulfill({ status: 503, headers });
     return route.fulfill({ headers, json: { entries: [] } });
   });
   await turn(t, 844, 390);
@@ -97,7 +100,14 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
   await page.waitForFunction(() => Boolean(window.__game));
   await t.game.pause();
   await adultMode(t);
-  await t.game.step(3);
+  // A run start asks for the online list (the failing first answer), then back to the title.
+  await t.game.startRun();
+  await t.game.step(10);
+  await t.wait(200);
+  await t.game.endRun();
+  await t.game.step(60);
+  await page.keyboard.press('Escape');
+  await t.game.step(5);
   t.check('the installed app is faked', (await t.game.state()).install.standalone);
 
   // Landscape: the canvas form, typed into.

@@ -9,7 +9,7 @@
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { ChangelogEntry, Rect } from '../types';
-import { wrapText } from './feedback-screen';
+import { wrapText } from './wrap-text';
 import { centreX, uiMetrics } from './layout';
 import { buttonLabelScale, BULLET_W, headline, hudBand, LINE, MENU_TEXT, type MenuInput, type MenuLayout, noButtons } from './menu-layout';
 import { SCROLLBAR_W } from './score-layout';

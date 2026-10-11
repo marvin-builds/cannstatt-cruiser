@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { type FetchLike, SCORES_URL } from './api';
-import { feedbackBaseUrl, feedbackBody, type FeedbackInput, FeedbackSender, stateLine } from './feedback';
-import { MAX_FEEDBACK_TEXT, MAX_LOG_LINES, MAX_VIEW_WIDTH, MIN_VIEW_WIDTH } from './feedback-types';
+import { feedbackBaseUrl, feedbackBody, type FeedbackDraft, type FeedbackInput, FeedbackSender, stateLine } from './feedback';
+import { type SentReport, sentReport } from './feedback-reports';
+import { FEEDBACK_KEY_PATTERN, MAX_FEEDBACK_TEXT, MAX_LOG_LINES, MAX_VIEW_WIDTH, MIN_VIEW_WIDTH } from './feedback-types';
 import { PRODUCTION_HOST } from './telemetry';
 
 const SESSION = 'b'.repeat(32);
+const KEY = 'c'.repeat(32);
 
 const INPUT: FeedbackInput = {
   session: SESSION,
@@ -16,6 +18,7 @@ const INPUT: FeedbackInput = {
   portrait: false,
   viewWidth: 422,
   log: ['error: boom (index.js:1)'],
+  key: KEY,
 };
 
 describe('feedback body', () => {
@@ -30,6 +33,7 @@ describe('feedback body', () => {
       orientation: 'landscape',
       viewWidth: 422,
       log: ['error: boom (index.js:1)'],
+      key: KEY,
     });
     const keys = feedbackBody({ ...INPUT, touch: false, portrait: true });
     expect(keys.input).toBe('keys');
@@ -57,7 +61,7 @@ describe('feedback body', () => {
 
   it('has no name, device id or time in it', () => {
     expect(Object.keys(feedbackBody(INPUT)).sort()).toEqual(
-      ['kind', 'input', 'log', 'orientation', 'platform', 'session', 'text', 'version', 'viewWidth'].sort(),
+      ['key', 'kind', 'input', 'log', 'orientation', 'platform', 'session', 'text', 'version', 'viewWidth'].sort(),
     );
   });
 
@@ -90,72 +94,97 @@ interface Call {
   body: unknown;
 }
 
-function fakeFetch(answer: number | 'reject' | 'hang') {
+function fakeFetch(answer: number | 'reject' | 'hang', reply: unknown = {}) {
   const calls: Call[] = [];
   const fetchFn: FetchLike = (url, init) => {
     calls.push({ url, method: init?.method, headers: init?.headers, body: JSON.parse(init?.body ?? 'null') });
     if (answer === 'reject') return Promise.reject(new Error('offline'));
     if (answer === 'hang') return new Promise(() => {});
-    return Promise.resolve({ ok: answer < 300, status: answer, json: () => Promise.resolve({}) });
+    return Promise.resolve({ ok: answer < 300, status: answer, json: () => Promise.resolve(reply) });
   };
   return { calls, fetchFn };
 }
 
 const DRAFT = { kind: 'bug', text: 'Hängt beim Grinden', withLog: true } as const;
 const CONTEXT = { platform: 'ios', touch: true, portrait: true, viewWidth: 390, mode: 'paused' } as const;
+const NOON = Date.parse('2026-10-11T12:00:00Z');
 
-function sender(net: ReturnType<typeof fakeFetch>, baseUrl: string | null = 'https://fb.test', lines: string[] = ['error: x (a.js:1)']) {
+function sender(
+  net: { fetchFn: FetchLike },
+  { baseUrl = 'https://fb.test' as string | null, lines = ['error: x (a.js:1)'], kept = [] as SentReport[] } = {},
+) {
+  let keys = 0;
   return new FeedbackSender({
     baseUrl,
     fetch: net.fetchFn,
     session: SESSION,
     version: '2026-10-11.4',
-    log: { snapshot: (extra) => [...lines, extra] },
+    log: { lines: () => [...lines], snapshot: (extra) => [...lines, extra] },
     timeoutMs: 20,
+    newKey: () => String(++keys).padStart(32, '0'),
+    now: () => NOON,
+    onSent: (report) => kept.push(report),
   });
 }
 
+/** Prepares and sends `draft` like the form does. */
+const prepareAndSend = (s: FeedbackSender, draft: FeedbackDraft = DRAFT) => s.send(s.prepare(draft, CONTEXT));
+
 describe('feedback sender', () => {
-  it('posts the body as text/plain JSON to /feedback and answers sent', async () => {
-    const net = fakeFetch(201);
-    expect(await sender(net).send(DRAFT, CONTEXT)).toBe('sent');
-    expect(net.calls).toHaveLength(1);
-    const [call] = net.calls;
-    expect(call!.url).toBe('https://fb.test/feedback');
-    expect(call!.method).toBe('POST');
-    expect(call!.headers).toEqual({ 'Content-Type': 'text/plain' });
-    expect(call!.body).toMatchObject({
+  it('prepares the whole body: a new key per report, the log snapshot with the state line', () => {
+    const s = sender(fakeFetch(201));
+    const body = s.prepare(DRAFT, CONTEXT);
+    expect(body).toEqual({
       session: SESSION,
       kind: 'bug',
       text: 'Hängt beim Grinden',
+      version: '2026-10-11.4',
       platform: 'ios',
       input: 'touch',
       orientation: 'portrait',
       viewWidth: 390,
       log: ['error: x (a.js:1)', 'state: mode paused, version 2026-10-11.4, view 390x180'],
+      key: '0'.repeat(31) + '1',
     });
+    expect(s.prepare(DRAFT, CONTEXT).key).toBe('0'.repeat(31) + '2');
   });
 
-  it('sends no log when the box is not ticked or for an idea', async () => {
-    const off = fakeFetch(204);
-    await sender(off).send({ ...DRAFT, withLog: false }, CONTEXT);
-    expect((off.calls[0]!.body as { log: string[] }).log).toEqual([]);
-    const idea = fakeFetch(204);
-    await sender(idea).send({ ...DRAFT, kind: 'idea' }, CONTEXT);
-    expect((idea.calls[0]!.body as { log: string[] }).log).toEqual([]);
+  it('makes a 32 hex key with crypto.getRandomValues by default', () => {
+    const s = new FeedbackSender({ baseUrl: null, fetch: fakeFetch(201).fetchFn, session: SESSION, version: 'v', log: null });
+    expect(s.prepare(DRAFT, CONTEXT).key).toMatch(FEEDBACK_KEY_PATTERN);
+  });
+
+  it('posts exactly the prepared body as text/plain JSON to /feedback, even when the log changed since', async () => {
+    const net = fakeFetch(201, { ok: true, id: 9 });
+    const lines = ['error: x (a.js:1)'];
+    const s = sender(net, { lines });
+    const snapshot = s.prepare(DRAFT, CONTEXT);
+    lines.push('error: later (b.js:2)');
+    expect(await s.send(snapshot)).toBe('sent');
+    expect(net.calls).toEqual([{ url: 'https://fb.test/feedback', method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: snapshot }]);
+  });
+
+  it('sends no log when the box is not ticked, for an idea, or when nothing was recorded', async () => {
+    expect(sender(fakeFetch(204)).prepare({ ...DRAFT, withLog: false }, CONTEXT).log).toEqual([]);
+    expect(sender(fakeFetch(204)).prepare({ ...DRAFT, kind: 'idea' }, CONTEXT).log).toEqual([]);
+    const empty = sender(fakeFetch(204), { lines: [] });
+    expect(empty.hasLog).toBe(false);
+    expect(empty.prepare(DRAFT, CONTEXT).log).toEqual([]);
+    expect(sender(fakeFetch(204)).hasLog).toBe(true);
+    expect(new FeedbackSender({ baseUrl: null, fetch: fakeFetch(201).fetchFn, session: SESSION, version: 'v', log: null }).hasLog).toBe(false);
   });
 
   it('maps the answers: 429 rate, 400 invalid, 5xx / network / timeout offline', async () => {
-    expect(await sender(fakeFetch(429)).send(DRAFT, CONTEXT)).toBe('rate');
-    expect(await sender(fakeFetch(400)).send(DRAFT, CONTEXT)).toBe('invalid');
-    expect(await sender(fakeFetch(503)).send(DRAFT, CONTEXT)).toBe('offline');
-    expect(await sender(fakeFetch('reject')).send(DRAFT, CONTEXT)).toBe('offline');
-    expect(await sender(fakeFetch('hang')).send(DRAFT, CONTEXT)).toBe('offline');
+    expect(await prepareAndSend(sender(fakeFetch(429)))).toBe('rate');
+    expect(await prepareAndSend(sender(fakeFetch(400)))).toBe('invalid');
+    expect(await prepareAndSend(sender(fakeFetch(503)))).toBe('offline');
+    expect(await prepareAndSend(sender(fakeFetch('reject')))).toBe('offline');
+    expect(await prepareAndSend(sender(fakeFetch('hang')))).toBe('offline');
   });
 
   it('without a base URL nothing goes out and the answer is offline', async () => {
     const net = fakeFetch(204);
-    expect(await sender(net, null).send(DRAFT, CONTEXT)).toBe('offline');
+    expect(await prepareAndSend(sender(net, { baseUrl: null }))).toBe('offline');
     expect(net.calls).toHaveLength(0);
   });
 
@@ -169,41 +198,34 @@ describe('feedback sender', () => {
       version: 'v',
       log: null,
     });
-    expect(await throwing.send(DRAFT, CONTEXT)).toBe('offline');
+    expect(await prepareAndSend(throwing)).toBe('offline');
   });
 });
 
-describe('feedback sender keeps the new id', () => {
-  function answering(status: number, body: unknown) {
-    const fetchFn: FetchLike = () => Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(body) });
-    return fetchFn;
-  }
-  function keeping(fetchFn: FetchLike) {
-    const kept: number[] = [];
-    const s = new FeedbackSender({ baseUrl: 'https://fb.test', fetch: fetchFn, session: SESSION, version: 'v', log: null, onSent: (id) => kept.push(id) });
-    return { s, kept };
-  }
-
-  it('passes the id of {ok: true, id} on', async () => {
-    const { s, kept } = keeping(answering(201, { ok: true, id: 42 }));
-    expect(await s.send(DRAFT, CONTEXT)).toBe('sent');
-    expect(kept).toEqual([42]);
+describe('feedback sender keeps the sent report', () => {
+  it('passes what was sent with the new id and the UTC day on, without the session id', async () => {
+    const kept: SentReport[] = [];
+    const s = sender(fakeFetch(201, { ok: true, id: 42 }), { kept });
+    const body = s.prepare(DRAFT, CONTEXT);
+    expect(await s.send(body)).toBe('sent');
+    expect(kept).toEqual([sentReport(body, 42, '2026-10-11')]);
   });
 
   it('still counts as sent without a valid id (older worker, junk), but keeps nothing', async () => {
-    for (const body of [{ ok: true }, { ok: true, id: 0 }, { ok: true, id: '7' }, { ok: true, id: 1.5 }, null]) {
-      const { s, kept } = keeping(answering(201, body));
-      expect(await s.send(DRAFT, CONTEXT)).toBe('sent');
-      expect(kept, JSON.stringify(body)).toEqual([]);
+    for (const reply of [{ ok: true }, { ok: true, id: 0 }, { ok: true, id: '7' }, { ok: true, id: 1.5 }, null]) {
+      const kept: SentReport[] = [];
+      expect(await prepareAndSend(sender(fakeFetch(201, reply), { kept }))).toBe('sent');
+      expect(kept, JSON.stringify(reply)).toEqual([]);
     }
-    const broken = keeping(() => Promise.resolve({ ok: true, status: 201, json: () => Promise.reject(new Error('not json')) }));
-    expect(await broken.s.send(DRAFT, CONTEXT)).toBe('sent');
-    expect(broken.kept).toEqual([]);
+    const kept: SentReport[] = [];
+    const broken = sender({ fetchFn: () => Promise.resolve({ ok: true, status: 201, json: () => Promise.reject(new Error('not json')) }) }, { kept });
+    expect(await prepareAndSend(broken)).toBe('sent');
+    expect(kept).toEqual([]);
   });
 
   it('keeps nothing when the report was refused', async () => {
-    const { s, kept } = keeping(answering(429, { ok: false, error: 'rate', id: 5 }));
-    expect(await s.send(DRAFT, CONTEXT)).toBe('rate');
+    const kept: SentReport[] = [];
+    expect(await prepareAndSend(sender(fakeFetch(429, { ok: false, error: 'rate', id: 5 }), { kept }))).toBe('rate');
     expect(kept).toEqual([]);
   });
 });

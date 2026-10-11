@@ -10,8 +10,7 @@ import type { ChangelogEntry } from '../types';
 import { UI } from './art';
 import { MENU_TEXT } from './menu-layout';
 import { SHEET_STYLE, whatsNewSections } from './portrait-sheets';
-import { scrollThumb } from './score-layout';
-import { createSheet, line, row, sheetButton, styled, title } from './sheet-dom';
+import { createSheet, line, row, scrollPanel, sheetButton, styled, title } from './sheet-dom';
 import { sheetScrollTo } from './whats-new';
 
 export interface WhatsNewSheet {
@@ -28,41 +27,17 @@ export interface WhatsNewSheetHandlers {
   onDone(): void;
 }
 
-const BAR_W = 6;
-/** The shortest thumb in CSS px. */
-const THUMB_MIN = 24;
-
 export function createDomWhatsNewSheet(handlers: WhatsNewSheetHandlers): WhatsNewSheet {
   let parts: ReturnType<typeof build> | null = null;
   let shownEntries: readonly ChangelogEntry[] | null = null;
 
   function build() {
     const sheet = createSheet(MENU_TEXT.whatsNew, () => handlers.onDone());
-    const frame = styled(document.createElement('div'), { position: 'relative', flex: '1 1 auto', minHeight: '0', background: UI.panel, borderRadius: '3px' });
-    const list = styled(document.createElement('div'), {
-      height: '100%',
-      boxSizing: 'border-box',
-      padding: `4px ${SHEET_STYLE.padPx + BAR_W}px 8px ${SHEET_STYLE.padPx}px`,
-      overflowY: 'auto',
-      overscrollBehavior: 'contain',
-      scrollbarWidth: 'none',
-    });
-    list.setAttribute('aria-label', MENU_TEXT.whatsNew);
-    const track = styled(document.createElement('div'), { position: 'absolute', top: '6px', bottom: '6px', right: '6px', width: `${BAR_W}px`, background: UI.empty });
-    const thumb = styled(document.createElement('div'), { position: 'absolute', left: '0', width: '100%', background: UI.muted });
-    track.append(thumb);
-    frame.append(list, track);
+    const { frame, list, placeThumb } = scrollPanel(MENU_TEXT.whatsNew);
     const next = sheetButton(MENU_TEXT.next, () => handlers.onDone());
     next.style.color = UI.yellow;
     sheet.root.style.overflowY = 'hidden';
     sheet.root.append(row(title(MENU_TEXT.whatsNew)), frame, row(next));
-    const placeThumb = () => {
-      const t = scrollThumb(track.clientHeight, list.clientHeight, list.scrollHeight, list.scrollTop, THUMB_MIN);
-      track.style.display = t ? 'block' : 'none';
-      if (t) styled(thumb, { top: `${t.y}px`, height: `${t.h}px` });
-    };
-    list.addEventListener('scroll', placeThumb, { passive: true });
-    new ResizeObserver(placeThumb).observe(list);
     return { sheet, list, placeThumb };
   }
 

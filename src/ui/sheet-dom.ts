@@ -8,6 +8,7 @@
  */
 import { UI } from './art';
 import { SHEET_STYLE } from './portrait-sheets';
+import { scrollThumb } from './score-layout';
 
 /** Events that stop at the sheet. */
 const STOPPED_EVENTS = ['keydown', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'touchmove', 'mousedown', 'click', 'contextmenu', 'selectstart', 'dblclick', 'wheel'];
@@ -152,3 +153,41 @@ export const FIELD_STYLE: Partial<CSSStyleDeclaration> = {
   userSelect: 'text',
   webkitUserSelect: 'text',
 };
+
+const BAR_W = 6;
+/** The shortest scroll thumb in CSS px. */
+const THUMB_MIN = 24;
+
+export interface ScrollPanel {
+  /** The panel to put into the sheet (it takes the free height). */
+  frame: HTMLDivElement;
+  /** The scrolling content: fill it, then call placeThumb. */
+  list: HTMLDivElement;
+  placeThumb(): void;
+}
+
+/** A panel whose content scrolls natively (touch drag, wheel) with a scroll bar like the canvas lists. */
+export function scrollPanel(label: string): ScrollPanel {
+  const frame = styled(document.createElement('div'), { position: 'relative', flex: '1 1 auto', minHeight: '0', background: UI.panel, borderRadius: '3px' });
+  const list = styled(document.createElement('div'), {
+    height: '100%',
+    boxSizing: 'border-box',
+    padding: `4px ${SHEET_STYLE.padPx + BAR_W}px 8px ${SHEET_STYLE.padPx}px`,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+    scrollbarWidth: 'none',
+  });
+  list.setAttribute('aria-label', label);
+  const track = styled(document.createElement('div'), { position: 'absolute', top: '6px', bottom: '6px', right: '6px', width: `${BAR_W}px`, background: UI.empty });
+  const thumb = styled(document.createElement('div'), { position: 'absolute', left: '0', width: '100%', background: UI.muted });
+  track.append(thumb);
+  frame.append(list, track);
+  const placeThumb = () => {
+    const t = scrollThumb(track.clientHeight, list.clientHeight, list.scrollHeight, list.scrollTop, THUMB_MIN);
+    track.style.display = t ? 'block' : 'none';
+    if (t) styled(thumb, { top: `${t.y}px`, height: `${t.h}px` });
+  };
+  list.addEventListener('scroll', placeThumb, { passive: true });
+  new ResizeObserver(placeThumb).observe(list);
+  return { frame, list, placeThumb };
+}

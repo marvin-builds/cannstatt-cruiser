@@ -70,3 +70,12 @@ export function scrollBar(r: RenderContext, list: Rect, contentH: number, scroll
   g.fillStyle = UI.muted;
   g.fillRect(x, list.y + 2 + thumb.y, w, thumb.h);
 }
+
+/** The red "something new" dot (ROADMAP 70): a `size` px square with an ink rim, its top-left at (x, y). */
+export function redDot(r: RenderContext, x: number, y: number, size: number): void {
+  const { g } = r;
+  g.fillStyle = UI.ink;
+  g.fillRect(x - 1, y - 1, size + 2, size + 2);
+  g.fillStyle = UI.red;
+  g.fillRect(x, y, size, size);
+}

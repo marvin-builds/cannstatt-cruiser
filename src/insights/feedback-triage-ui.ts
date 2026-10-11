@@ -1,13 +1,13 @@
 /**
  * Triage actions of one feedback card item (ROADMAP 56): 'Todo' opens the
- * GitHub issue editor, 'Status' the status and reply editor, 'Löschen' a
- * confirm step. One panel at a time; a failure shows a short note in the item.
+ * GitHub issue editor, 'Status' the status and reply editor (with
+ * 'umgesetzt in Version' for Erledigt, ROADMAP 70), 'Löschen' a confirm step. One panel at a time; a failure shows a short note in the item.
  * Player text only ever goes in as text nodes and form values.
  */
 import type { TriageResult } from './client';
 import { h } from './dom';
 import { logSummary } from './feedback';
-import { issueBody, issueTitle, STATUS_FILTERS, toggleLog, triageErrorText } from './triage';
+import { issueBody, issueTitle, parseDoneVersion, STATUS_FILTERS, toggleLog, triageErrorText } from './triage';
 import {
   FEEDBACK_STATUSES, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE,
   type FeedbackStatus, type FeedbackTriage, type IssueDraft, type TriagedFeedbackEntry, type TriagePatch,
@@ -75,7 +75,7 @@ function issueEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outcom
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const draft = { title: title.value, body: body.value };
-    void submit(form, note, () => actions.createIssue(entry.id, draft), ({ issue }) => outcome.changed(entry.id, { status: 'todo', issue, reply: entry.reply }));
+    void submit(form, note, () => actions.createIssue(entry.id, draft), ({ issue }) => outcome.changed(entry.id, { status: 'todo', issue, reply: entry.reply, doneVersion: null }));
   });
   return form;
 }
@@ -83,6 +83,15 @@ function issueEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outcom
 function statusEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outcome: TriageOutcome, close: () => void): HTMLElement {
   const note = h('p', { class: 'fb-error', role: 'alert' });
   const status = h('select', { name: 'status' }, ...STATUS_CHOICES.map(({ value, label }) => h('option', { value, selected: value === entry.status }, label)));
+  const version = h('input', {
+    type: 'text', name: 'doneVersion', autocomplete: 'off', spellcheck: 'false', maxlength: 13, placeholder: 'z. B. 2026-10-12.1',
+  });
+  version.value = entry.doneVersion ?? '';
+  version.addEventListener('input', () => (note.textContent = ''));
+  const versionField = field('Umgesetzt in Version (optional)', version);
+  const showVersion = () => (versionField.hidden = status.value !== 'done');
+  status.addEventListener('change', showVersion);
+  showVersion();
   const reply = h('input', { type: 'text', name: 'reply', maxlength: MAX_REPLY_CHARS, autocomplete: 'off', placeholder: 'z. B. Kommt in der nächsten Version' });
   reply.value = entry.reply ?? '';
   const save = h('button', { type: 'submit' }, 'Speichern');
@@ -90,13 +99,24 @@ function statusEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outco
     'form',
     { class: 'fb-panel', 'aria-label': 'Status ändern' },
     field('Status', status),
-    field('Kurze Antwort (optional; der Spieler sieht sie im Spiel auf seinem Gerät)', reply),
+    versionField,
+    field('Kurze Antwort (optional; der Spieler sieht sie im Spiel unter „Mein Feedback“ auf seinem Gerät)', reply),
     buttonRow(save, close),
     note,
   );
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const patch: TriagePatch = { status: FEEDBACK_STATUSES.find((s) => s === status.value) ?? entry.status, reply: reply.value.trim() || null };
+    const chosen = FEEDBACK_STATUSES.find((s) => s === status.value) ?? entry.status;
+    const patch: TriagePatch = { status: chosen, reply: reply.value.trim() || null };
+    if (chosen === 'done') {
+      const doneVersion = parseDoneVersion(version.value);
+      if (doneVersion === undefined) {
+        note.textContent = 'Version im Format JJJJ-MM-TT.n, z. B. 2026-10-12.1 (oder leer lassen).';
+        version.focus();
+        return;
+      }
+      patch.doneVersion = doneVersion;
+    }
     void submit(form, note, () => actions.patch(entry.id, patch), ({ triage }) => outcome.changed(entry.id, triage));
   });
   return form;

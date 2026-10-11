@@ -201,10 +201,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .fb-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .fb-item { padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
 .fb-item:first-child { border-top: 0; padding-top: 4px; }
-.fb-head { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.85rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .fb-kind { font-weight: 650; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; }
 .fb-kind.bug { background: var(--danger-bg); color: var(--danger); }
 .fb-kind.idea { background: var(--idea-bg); color: var(--idea); }
+.fb-has-log { font-size: 0.75rem; color: var(--danger); }
 .fb-text { margin: 6px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .fb-meta { margin: 0; font-size: 0.78rem; color: var(--ink-3); overflow-wrap: anywhere; }
 .fb-log { margin-top: 6px; font-size: 0.85rem; }
@@ -265,6 +266,7 @@ button.danger { background: var(--danger); color: var(--card); }
   display: grid; gap: 10px; min-width: 0;
 }
 .fb-field { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); min-width: 0; }
+.fb-field[hidden] { display: none; }
 .fb-field input, .fb-field textarea, .fb-field select { font-weight: 400; width: 100%; color: var(--ink); }
 .fb-field textarea { resize: vertical; min-height: 9em; font: 0.85rem/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
 .fb-check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; }

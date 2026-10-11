@@ -1,33 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { parseStatusIds } from '../src/feedback-status-parse';
-import { MAX_STATUS_IDS } from '../src/feedback-rules';
+import { FEEDBACK_KEY_PATTERN, MAX_STATUS_ITEMS } from '../src/feedback-rules';
+import { parseStatusItems } from '../src/feedback-status-parse';
 
-const params = (query: string) => new URL(`https://worker.example/feedback/status${query}`).searchParams;
+const KEY = '0123456789abcdef0123456789abcdef';
+const OTHER_KEY = 'fedcba9876543210fedcba9876543210';
+const body = (items: unknown) => JSON.stringify({ items });
 
-describe('parseStatusIds', () => {
-  it('reads one comma-separated list of positive ids, without duplicates', () => {
-    expect(parseStatusIds(params('?ids=1'))).toEqual([1]);
-    expect(parseStatusIds(params('?ids=12,3,4711'))).toEqual([12, 3, 4711]);
-    expect(parseStatusIds(params('?ids=5,5,6'))).toEqual([5, 6]);
+describe('status contract (ROADMAP 70)', () => {
+  it('has the documented values', () => {
+    expect(MAX_STATUS_ITEMS).toBe(20);
+    expect(FEEDBACK_KEY_PATTERN.source).toBe('^[0-9a-f]{32}$');
+    expect(FEEDBACK_KEY_PATTERN.flags).toBe('');
+  });
+});
+
+describe('parseStatusItems', () => {
+  it('reads {items: [{id, key}]} with positive ids and 32-hex keys', () => {
+    expect(parseStatusItems(body([{ id: 1, key: KEY }]))).toEqual([{ id: 1, key: KEY }]);
+    expect(parseStatusItems(body([{ id: 12, key: KEY }, { id: 3, key: OTHER_KEY }]))).toEqual([
+      { id: 12, key: KEY },
+      { id: 3, key: OTHER_KEY },
+    ]);
   });
 
-  it(`accepts at most ${MAX_STATUS_IDS} ids`, () => {
-    const ids = Array.from({ length: MAX_STATUS_IDS }, (_, i) => i + 1);
-    expect(parseStatusIds(params(`?ids=${ids.join(',')}`))).toEqual(ids);
-    expect(parseStatusIds(params(`?ids=${[...ids, 11].join(',')}`))).toBeNull();
+  it(`accepts 1 to ${MAX_STATUS_ITEMS} items`, () => {
+    const items = Array.from({ length: MAX_STATUS_ITEMS }, (_, i) => ({ id: i + 1, key: KEY }));
+    expect(parseStatusItems(body(items))).toEqual(items);
+    expect(parseStatusItems(body([...items, { id: 99, key: KEY }]))).toBeNull();
+    expect(parseStatusItems(body([]))).toBeNull();
   });
 
-  it('rejects anything but digits and commas', () => {
-    for (const query of [
-      '', '?ids=', '?ids=,', '?ids=1,', '?ids=,1', '?ids=1,,2', '?ids=0', '?ids=01', '?ids=-1', '?ids=1.5', '?ids=1e3', '?ids=abc',
-      '?ids=1%202', '?ids=%201', '?ids=1;2', '?ids=9007199254740993', `?ids=${'1'.repeat(400)}`,
-    ]) {
-      expect(parseStatusIds(params(query)), query).toBeNull();
+  it('rejects bad ids', () => {
+    for (const id of [0, -1, 1.5, '1', null, 9007199254740992, 1e300]) {
+      expect(parseStatusItems(body([{ id, key: KEY }])), String(id)).toBeNull();
     }
   });
 
-  it('rejects a repeated ids parameter and any other parameter', () => {
-    expect(parseStatusIds(params('?ids=1&ids=2'))).toBeNull();
-    expect(parseStatusIds(params('?ids=1&device=abc'))).toBeNull();
+  it('rejects bad keys', () => {
+    for (const key of [KEY.toUpperCase(), KEY.slice(1), `${KEY}0`, `${KEY.slice(0, 31)}g`, ` ${KEY.slice(1)}`, `${KEY}\n`, null, 1]) {
+      expect(parseStatusItems(body([{ id: 1, key }])), String(key)).toBeNull();
+    }
+  });
+
+  it('rejects any other shape', () => {
+    for (const json of [
+      '', 'x', '{', 'null', '[]', '{}', '{"items":{}}', '{"items":null}', body([{ id: 1 }]), body([{ key: KEY }]),
+      body([{ id: 1, key: KEY, text: 'x' }]), body([[1, KEY]]), body([null]),
+      JSON.stringify({ items: [{ id: 1, key: KEY }], ids: [1] }),
+    ]) {
+      expect(parseStatusItems(json), json).toBeNull();
+    }
   });
 });

@@ -184,7 +184,7 @@ describe('PATCH /feedback/:id', () => {
     const id = seed();
     const res = await call('PATCH', `/feedback/${id}`, { body: { status: 'rejected', reply: '  Passt nicht ins Spiel.  ' } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, status: 'rejected', issue: null, reply: 'Passt nicht ins Spiel.' });
+    expect(await res.json()).toEqual({ ok: true, status: 'rejected', issue: null, reply: 'Passt nicht ins Spiel.', doneVersion: null });
     expect(row(id)).toEqual({ status: 'rejected', issue: null, reply: 'Passt nicht ins Spiel.' });
   });
 
@@ -213,6 +213,55 @@ describe('PATCH /feedback/:id', () => {
 
   it('answers 404 for an unknown id', async () => {
     expect((await call('PATCH', '/feedback/42', { body: { status: 'done' } })).status).toBe(404);
+  });
+});
+
+describe('PATCH /feedback/:id with doneVersion (ROADMAP 70)', () => {
+  const doneVersion = (id: number) => (db.sqlite.prepare('SELECT done_version FROM feedback WHERE id = ?').get(id) as { done_version: string | null }).done_version;
+
+  it('stores the version together with status done and answers it', async () => {
+    const id = seed();
+    const res = await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: '2026-10-12.1', reply: 'Ist drin!' } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, status: 'done', issue: null, reply: 'Ist drin!', doneVersion: '2026-10-12.1' });
+    expect(doneVersion(id)).toBe('2026-10-12.1');
+  });
+
+  it('keeps the version on a reply-only patch, clears it with status done without a version or null', async () => {
+    const id = seed();
+    await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: '2026-10-12.1' } });
+    await call('PATCH', `/feedback/${id}`, { body: { reply: 'Danke' } });
+    expect(doneVersion(id)).toBe('2026-10-12.1');
+    await call('PATCH', `/feedback/${id}`, { body: { status: 'done' } });
+    expect(doneVersion(id)).toBeNull();
+    await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: '2026-10-12.2' } });
+    await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: null } });
+    expect(doneVersion(id)).toBeNull();
+  });
+
+  it('clears the version when the status leaves done, also by creating an issue', async () => {
+    const id = seed();
+    for (const status of ['open', 'todo', 'rejected']) {
+      await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: '2026-10-12.1' } });
+      const res = await call('PATCH', `/feedback/${id}`, { body: { status } });
+      expect(((await res.json()) as { doneVersion: unknown }).doneVersion, status).toBeNull();
+      expect(doneVersion(id), status).toBeNull();
+    }
+    await call('PATCH', `/feedback/${id}`, { body: { status: 'done', doneVersion: '2026-10-12.1' } });
+    expect((await call('POST', `/feedback/${id}/issue`, { body: draft, github: fakeGitHub().fetch })).status).toBe(201);
+    expect(doneVersion(id)).toBeNull();
+  });
+
+  it('rejects a malformed version, a version without status done, and changes nothing', async () => {
+    const id = seed();
+    const bodies = [
+      { status: 'done', doneVersion: '2026-10-12' }, { status: 'done', doneVersion: 'v2026-10-12.1' }, { status: 'done', doneVersion: '2026-10-12.123' },
+      { status: 'done', doneVersion: ' 2026-10-12.1' }, { status: 'done', doneVersion: 20261012 }, { status: 'todo', doneVersion: '2026-10-12.1' },
+      { doneVersion: '2026-10-12.1' }, { reply: 'x', doneVersion: null },
+    ];
+    for (const body of bodies) expect((await call('PATCH', `/feedback/${id}`, { body })).status, JSON.stringify(body)).toBe(400);
+    expect(row(id)?.status).toBe('open');
+    expect(doneVersion(id)).toBeNull();
   });
 });
 
@@ -253,16 +302,17 @@ describe('CORS for the board', () => {
 });
 
 describe('GET /feedback with triage', () => {
-  it('returns status, issue and reply', async () => {
+  it('returns status, issue, reply and doneVersion, never the key hash', async () => {
     const id = seed();
     seed('idea');
-    db.sqlite.prepare("UPDATE feedback SET status = 'todo', issue = 12, reply = 'Danke!' WHERE id = ?").run(id);
+    db.sqlite.prepare("UPDATE feedback SET status = 'done', issue = 12, reply = 'Danke!', done_version = '2026-10-12.1', key_hash = 'abc123' WHERE id = ?").run(id);
     const res = await call('GET', '/feedback');
     const { entries } = (await res.json()) as TriagedFeedbackList;
-    expect(entries.map(({ id: entryId, status, issue, reply }) => ({ id: entryId, status, issue, reply }))).toEqual([
-      { id: 2, status: 'open', issue: null, reply: null },
-      { id: 1, status: 'todo', issue: 12, reply: 'Danke!' },
+    expect(entries.map(({ id: entryId, status, issue, reply, doneVersion }) => ({ id: entryId, status, issue, reply, doneVersion }))).toEqual([
+      { id: 2, status: 'open', issue: null, reply: null, doneVersion: null },
+      { id: 1, status: 'done', issue: 12, reply: 'Danke!', doneVersion: '2026-10-12.1' },
     ]);
+    expect(JSON.stringify(entries)).not.toMatch(/abc123|key/i);
   });
 });
 

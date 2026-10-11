@@ -94,7 +94,10 @@ CREATE TABLE IF NOT EXISTS feedback (
   -- Triage on the insights board (migrations/0007_feedback_triage.sql documents them).
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'todo', 'done', 'rejected')),
   issue INTEGER,
-  reply TEXT
+  reply TEXT,
+  -- The player's status check (migrations/0008_feedback_keys.sql documents them).
+  key_hash TEXT,
+  done_version TEXT
 );
 CREATE INDEX IF NOT EXISTS feedback_day ON feedback (day, id);
 

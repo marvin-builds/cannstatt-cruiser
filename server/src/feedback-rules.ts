@@ -1,5 +1,5 @@
 /**
- * Limits for player feedback (`POST /feedback`, `GET /feedback`).
+ * Limits for player feedback (`POST /feedback`, `GET /feedback`, `POST /feedback/status`).
  * Mirror of src/net/feedback-types.ts in the game; a game test keeps both equal.
  */
 
@@ -14,5 +14,9 @@ export const MAX_VIEW_WIDTH = 427;
 export const FEEDBACK_PER_SESSION_PER_DAY = 3;
 export const FEEDBACK_RETENTION_DAYS = 365;
 export const FEEDBACK_LIST_LIMIT = 100;
-/** `GET /feedback/status` answers for at most this many ids (the game keeps as many). */
-export const MAX_STATUS_IDS = 10;
+/** `POST /feedback/status` takes 1 to this many {id, key} items (the game keeps as many reports, ROADMAP 70). */
+export const MAX_STATUS_ITEMS = 20;
+/** A report's secret key: 128 random bits as lowercase hex, made by the game; the worker stores only its SHA-256. */
+export const FEEDBACK_KEY_PATTERN = /^[0-9a-f]{32}$/;
+/** A `POST /feedback/status` body is never larger than this (MAX_STATUS_ITEMS items of about 60 characters). */
+export const MAX_STATUS_BYTES = 2048;

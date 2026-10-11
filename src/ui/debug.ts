@@ -9,9 +9,8 @@ import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
-import { currentMenu, menuScreen, trophyShown } from './menu-state';
-import { type FeedbackNoteLayout, feedbackNoteLayout } from './feedback-note';
-import type { FeedbackStatusEntry } from '../net/feedback-types';
+import { currentMenu, trophyShown } from './menu-state';
+import type { FeedbackBody } from '../net/feedback-types';
 import { kidNoticeLayout, kidNoticeRestart } from './kid-notice';
 import { type InstallGuideLayout, installGuideLayout } from './install-guide';
 import { installable } from './install-offer';
@@ -21,8 +20,10 @@ import type { UiView } from './screens';
 import type { SettingsScreen } from './settings';
 import type { ScoreScreen } from './highscore-flow';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
-import type { FeedbackStatus } from './feedback-flow';
+import type { FeedbackPage, FeedbackStatus, FeedbackTab } from './feedback-flow';
 import { type FeedbackLayout, feedbackLayout } from './feedback-layout';
+import { listRowRect, type PageLayout, pageLayout, pageMaxScroll } from './feedback-page-layout';
+import type { PageSection, ReportDetail, ReportRow } from './feedback-pages';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -88,8 +89,6 @@ export interface UiDebugHook {
    * px), else null. On the portrait sheet (`sheet` true) offset and overflow are the sheet's, in CSS px.
    */
   whatsNew(): WhatsNewDebug | null;
-  /** The note about the player's own feedback while it covers the title (ROADMAP 57): the report and the note's layout (view px), else null. */
-  feedbackNote(): { note: FeedbackStatusEntry; layout: FeedbackNoteLayout } | null;
   /**
    * The install offer (ROADMAP 68): whether the game-over card is offered now, whether the manual
    * steps show, and their layout (view px; its OK closes them).
@@ -113,7 +112,23 @@ export interface FeedbackDebug {
   withLog: boolean;
   status: FeedbackStatus;
   message: string | null;
+  /** The log box can be ticked (the error log has lines). */
+  logAvailable: boolean;
+  /** ROADMAP 70: the tab and page, the red dot, the "Mein Feedback" rows, the open page's scroll (view px). */
+  tab: FeedbackTab;
+  page: FeedbackPage;
+  dot: boolean;
+  rows: ReportRow[];
+  scroll: number;
+  maxScroll: number;
+  /** The "Ansehen" snapshot while it shows, its sections (also of a sent report), a report's details. */
+  preview: FeedbackBody | null;
+  sections: PageSection[];
+  detail: ReportDetail | null;
   form: FeedbackLayout;
+  /** The open page's layout (list and text pages; null on the form) and the list rows' tap areas. */
+  pageLayout: PageLayout | null;
+  rowRects: (Rect | null)[];
 }
 
 export interface HighscoresDebug {
@@ -268,12 +283,15 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
     feedback() {
       const flow = view.feedback;
       if (!flow) return null;
-      const { open, kind, text, withLog, status, message } = flow;
-      return { open, kind, text, withLog, status, message, form: feedbackLayout(ctx.display) };
-    },
-    feedbackNote() {
-      const note = menuScreen(ctx.state, view) === 'feedbackNote' ? view.feedbackStatus?.note : null;
-      return note ? { note, layout: feedbackNoteLayout(ctx.display, note) } : null;
+      const { open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail } = flow;
+      const layout = page === 'form' ? null : pageLayout(ctx.display, page);
+      return {
+        ...{ open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail },
+        maxScroll: layout ? pageMaxScroll(flow, layout) : 0,
+        form: feedbackLayout(ctx.display),
+        pageLayout: layout,
+        rowRects: page === 'list' && layout ? rows.map((_, i) => listRowRect(layout, i, scroll)) : [],
+      };
     },
     install() {
       const { state, display } = ctx;

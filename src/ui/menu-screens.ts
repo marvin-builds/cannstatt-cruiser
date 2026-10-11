@@ -8,8 +8,8 @@ import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
 import { DISMISS_ICON, ICON_FEEDBACK, ICON_GEAR, STAR, UI } from './art';
-import { centred, fill, iconButton, menuButton, ribbon, scrollBar, text } from './draw-kit';
-import { blinkOn, centreX, formatNumber, metres, uiMetrics } from './layout';
+import { centred, fill, iconButton, menuButton, redDot, ribbon, scrollBar, text } from './draw-kit';
+import { blinkOn, centreX, formatNumber, iconOnPlate, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
 import {
   controlsLine,
@@ -44,6 +44,8 @@ export interface MenuScreensView {
   lastRun: RunResult | null;
   /** The logo long press (progress 0..1). */
   logoHold: { progress: number };
+  /** The feedback dialog: `dot` puts the red dot on the title icon and the pause button (ROADMAP 70). Null without one. */
+  feedback: { dot: boolean } | null;
 }
 
 /** Text centred on a layout block (a line may sit right of the skater instead of at the view centre). */
@@ -111,7 +113,7 @@ export function drawDismiss(r: RenderContext, rect: Rect): void {
 }
 
 /** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: the settings gear, feedback). */
-function drawNotices(r: RenderContext, l: MenuLayout): void {
+function drawNotices(r: RenderContext, l: MenuLayout, feedbackDot: boolean): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
   const install = l.blocks.get('install');
@@ -127,6 +129,22 @@ function drawNotices(r: RenderContext, l: MenuLayout): void {
   const feedback = l.buttons.feedback;
   if (feedback && state.mode === 'title') iconButton(r, uiMetrics(display), feedback, ICON_FEEDBACK);
   else if (feedback) menuButton(r, feedback, feedbackLabel(display.touch));
+  if (feedback && feedbackDot) feedbackButtonDot(r, feedback, state.mode === 'title');
+}
+
+/**
+ * The red dot on the title's speech bubble (top right of its plate) or the pause menu's "Feedback"
+ * (top right inside the button): a report sent from this device changed (ROADMAP 70).
+ */
+function feedbackButtonDot(r: RenderContext, button: Rect, icon: boolean): void {
+  const m = uiMetrics(r.display);
+  const size = 3 * m.iconScale;
+  if (!icon) {
+    redDot(r, button.x + button.w - size - 3, button.y + 3, size);
+    return;
+  }
+  const { plate } = iconOnPlate(button, m, ICON_FEEDBACK.width);
+  redDot(r, plate.x + plate.w - size, plate.y, size);
 }
 
 export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {
@@ -148,7 +166,7 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   if (help !== undefined) titleHelp(r.display.touch).forEach((line, i) => centred(r, line, help + i * LINE));
   const keys = y('keys');
   if (keys !== undefined) centred(r, titleKeys({ feedback: !!l.buttons.feedback, settings: !!l.buttons.settings }), keys, { color: UI.muted });
-  drawNotices(r, l);
+  drawNotices(r, l, !!view.feedback?.dot);
   const records = y('records');
   if (records !== undefined) drawRecordsRow(r, bestOf(view.records, r.state.kidMode), view.records.starsTotal, records);
 }
@@ -223,7 +241,7 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
   if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted, scale });
   const trick = l.blocks.get('trick');
   if (trick) centredIn(r, trickKeysHint(r.display.touch, scale === 2), trick, { color: UI.muted, scale });
-  drawNotices(r, l);
+  drawNotices(r, l, !!view.feedback?.dot);
 }
 
 /** One "label  value" row of the game-over table, split at the centre line `cx`. */
@@ -279,5 +297,5 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
     textPlate(r, prompt);
     centredIn(r, gameOverPrompt(r.display.touch), prompt, { color: UI.yellow, scale: l.textScale });
   }
-  drawNotices(r, l);
+  drawNotices(r, l, !!view.feedback?.dot);
 }

@@ -24,7 +24,7 @@ function titleTexts(kidMode: boolean, touch: boolean): string[] {
   game.state.kidMode = kidMode;
   game.display.touch = touch;
   const r: RenderContext = { g: nullContext, state: game.state, alpha: 0, display: game.display, scroll: 0, scrollLead: 0 };
-  const view = { records: loadRecords(createMemoryStore()), lastRun: null, logoHold: { progress: 0 } };
+  const view = { records: loadRecords(createMemoryStore()), lastRun: null, logoHold: { progress: 0 }, feedback: null };
   const { viewWidth, portrait } = game.display;
   drawn.length = 0;
   drawTitle(r, view, titleLayout({ viewWidth, touch, portrait, fullscreenAvailable: false, reload: false, install: false, settingsButton: !kidMode }));

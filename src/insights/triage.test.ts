@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { VERSION_PATTERN } from '../../server/src/events';
 import * as server from '../../server/src/feedback-triage-rules';
 import { sampleFeedback } from './sample-feedback';
 import {
-  STATUS_FILTERS, issueBody, issueTitle, issueUrl, logSection, statusLabel, toggleLog, triageErrorText,
+  STATUS_FILTERS, issueBody, issueTitle, issueUrl, logNote, logSection, parseDoneVersion, statusLabel, statusText, toggleLog, triageErrorText,
 } from './triage';
 import * as rules from './triage-types';
 import type { TriagedFeedbackEntry } from './triage-types';
@@ -17,6 +18,33 @@ describe('triage rules', () => {
     expect(rules.MAX_ISSUE_TITLE).toBe(server.MAX_ISSUE_TITLE);
     expect(rules.MAX_ISSUE_BODY).toBe(server.MAX_ISSUE_BODY);
     expect(rules.MAX_REPLY_CHARS).toBe(server.MAX_REPLY_CHARS);
+    expect(rules.DONE_VERSION_PATTERN.source).toBe(VERSION_PATTERN.source);
+  });
+});
+
+describe('parseDoneVersion', () => {
+  it('reads an empty field as no version and trims a valid one', () => {
+    expect(parseDoneVersion('')).toBeNull();
+    expect(parseDoneVersion('   ')).toBeNull();
+    expect(parseDoneVersion(' 2026-10-12.1 ')).toBe('2026-10-12.1');
+  });
+  it('rejects anything but YYYY-MM-DD.n', () => {
+    for (const raw of ['2026-10-12', 'v2026-10-12.1', '2026-10-12.123', '12.10.2026', 'bald']) expect(parseDoneVersion(raw), raw).toBeUndefined();
+  });
+});
+
+describe('statusText', () => {
+  it('names the version of a done entry', () => {
+    expect(statusText({ status: 'done', doneVersion: '2026-10-12.1' })).toBe('Erledigt in 2026-10-12.1');
+    expect(statusText({ status: 'done', doneVersion: null })).toBe('Erledigt');
+    expect(statusText({ status: 'todo', doneVersion: null })).toBe('Todo');
+  });
+});
+
+describe('logNote', () => {
+  it('says whether a log was attached', () => {
+    expect(logNote(bugWithLog)).toBe('mit Fehlerprotokoll');
+    expect(logNote(idea)).toBeNull();
   });
 });
 

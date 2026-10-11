@@ -5,8 +5,6 @@
  * rendering: all state comes in through `UiView` (records, popups, banner)
  * and the RenderContext.
  */
-import type { FeedbackStatusLike } from '../net/feedback-status';
-import type { FeedbackStatusEntry } from '../net/feedback-types';
 import { chillStrength } from '../core/chill';
 import { PLAYER_X } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
@@ -72,10 +70,8 @@ import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, d
 import { currentMenu, menuScreen, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import type { FeedbackFlow } from './feedback-flow';
-import { feedbackLayout } from './feedback-layout';
 import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
-import { FEEDBACK_NOTE_TEXT, feedbackNoteLayout } from './feedback-note';
 import { guideLines, guideLineWidth, ICON_GAP, INSTALL_GUIDE_TEXT, installGuideLayout, partIcon, partWidth } from './install-guide';
 import { installable, type InstallOffer } from './install-offer';
 import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
@@ -132,10 +128,8 @@ export interface UiView {
   scores: HighscoreFlow | null;
   /** Scroll offset of the "Neu in dieser Version" list. */
   whatsNew: ListScroll;
-  /** The feedback screen (title icon, pause button); null without a feedback sender (tests, headless). */
+  /** The feedback dialog (title icon, pause button, ROADMAP 50 and 70); null without a feedback sender (tests, headless). */
   feedback: FeedbackFlow | null;
-  /** What happened to the player's own feedback: its note covers the title once; null without a status check. */
-  feedbackStatus: FeedbackStatusLike | null;
   /** The install card's timing and snooze, and the manual install steps (install-offer.ts). */
   install: InstallOffer;
 }
@@ -548,16 +542,6 @@ function drawKidNotice(r: RenderContext, restart: boolean): void {
   menuButton(r, l.ok, KID_NOTICE_OK, UI.yellow);
 }
 
-/** "Dein Feedback: umgesetzt!" and the like: headline, the reply or a default line, OK (feedback-note.ts). */
-function drawFeedbackNote(r: RenderContext, note: FeedbackStatusEntry): void {
-  const l = feedbackNoteLayout(r.display, note);
-  fill(r, UI.ink);
-  centred(r, l.headline, l.headlineY, { scale: 2, color: l.headlineColor });
-  const color = l.reply ? UI.white : UI.muted;
-  l.lines.forEach((s, i) => centred(r, s, l.linesY + i * l.lineH, { scale: l.scale, color }));
-  menuButton(r, l.ok, FEEDBACK_NOTE_TEXT.ok, UI.yellow);
-}
-
 /** The manual install steps (install-guide.ts): headline, why, the platform's steps with their icons, OK. */
 function drawInstallGuide(r: RenderContext): void {
   const platform = r.state.install.platform;
@@ -590,9 +574,8 @@ export function drawUi(r: RenderContext, view: UiView): void {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
       else if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
-      else if (view.feedback?.open) drawFeedback(r, view.feedback, feedbackLayout(r.display));
+      else if (view.feedback?.open) drawFeedback(r, view.feedback);
       else if (screen === 'whatsNew') drawWhatsNew(r, menu!, view.whatsNew.offset);
-      else if (screen === 'feedbackNote') drawFeedbackNote(r, view.feedbackStatus!.note!);
       else drawTitle(r, view, menu!);
       break;
     case 'playing':
@@ -612,7 +595,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
         break;
       }
       if (view.feedback?.open) {
-        drawFeedback(r, view.feedback, feedbackLayout(r.display));
+        drawFeedback(r, view.feedback);
         break;
       }
       drawDrunk(r, view);
@@ -631,5 +614,5 @@ export function drawUi(r: RenderContext, view: UiView): void {
     return;
   }
   // Modal screens hide the HUD buttons (only M mutes there).
-  if (!view.settings.open && !view.scores?.open && !view.feedback?.open && screen !== 'feedbackNote') drawButtons(r, view);
+  if (!view.settings.open && !view.scores?.open && !view.feedback?.open) drawButtons(r, view);
 }

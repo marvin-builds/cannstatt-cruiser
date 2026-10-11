@@ -43,10 +43,9 @@ import { fullscreenSupported } from '../core/fullscreen';
 import type { InputHotspot } from '../core/game';
 import { store as defaultStore, type Store } from '../core/storage';
 import { testHookEnabled } from '../core/testhook';
-import { createBrowserFeedback, createBrowserFeedbackStatus, createBrowserScoreService, createBrowserTelemetry } from '../net/browser';
-import type { FeedbackContext, FeedbackSenderLike } from '../net/feedback';
-import type { FeedbackStatusLike } from '../net/feedback-status';
-import type { FeedbackStatusEntry } from '../net/feedback-types';
+import { createBrowserFeedback, createBrowserScoreService, createBrowserTelemetry } from '../net/browser';
+import type { FeedbackSenderLike } from '../net/feedback';
+import type { FeedbackInboxLike } from '../net/feedback-status';
 import type { TelemetryLike } from '../net/telemetry';
 import type { GameContext, Rect, System } from '../types';
 import { AirTrickHint } from './air-trick-hint';
@@ -54,10 +53,9 @@ import { UI } from './art';
 import { Banner, zoneName } from './banner';
 import { chillLook } from './chill-look';
 import { createDomEntrySheet, type EntrySheet, type EntrySheetHandlers } from './entry-sheet';
+import { FeedbackDialog } from './feedback-dialog';
 import { createDomFeedbackField, type FeedbackField } from './feedback-field';
-import { FeedbackFlow } from './feedback-flow';
-import { feedbackLayout } from './feedback-layout';
-import { feedbackPlaceholder } from './feedback-screen';
+import type { FeedbackFlow } from './feedback-flow';
 import { createDomFeedbackSheet, type FeedbackSheet, type FeedbackSheetHandlers } from './feedback-sheet';
 import { installGuideLayout } from './install-guide';
 import { installable, InstallOffer } from './install-offer';
@@ -71,7 +69,7 @@ import { kidNoticeLayout, kidNoticeRestart } from './kid-notice';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { HighscoreFlow, type ScoreServiceLike } from './highscore-flow';
-import { hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
+import { EVERYWHERE, hudButtons, popupScale, riding, settingsLayout, uiMetrics } from './layout';
 import { bindListScroll } from './list-scroll';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
@@ -80,7 +78,7 @@ import { bailCause, PopupFeed, type PopupSpec } from './popup-feed';
 import { popupHeight, PopupPool } from './popups';
 import { loadRecords, recordRun, saveRecords } from './records';
 import { createDomNameField, type NameField } from './name-field';
-import { entrySheetModel, feedbackSheetModel, sheetShown } from './portrait-sheets';
+import { entrySheetModel, sheetShown } from './portrait-sheets';
 import type { SheetFactory } from './sheet-dom';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { loadKidMode, LongPress, SettingsMenu } from './settings';
@@ -119,10 +117,11 @@ export interface UiSystemOptions {
    */
   feedback?: FeedbackSenderLike | null;
   /**
-   * Asks for the status of the player's own feedback (default: the browser's, gated like the sender, in a
-   * browser; none elsewhere). null = no notes; tests pass a fake.
+   * The reports sent from this device and their status ("Mein Feedback", the red dot; default: the
+   * browser's, gated like the sender, in a browser; none elsewhere). null = an empty list and no checks;
+   * tests pass a fake.
    */
-  feedbackStatus?: FeedbackStatusLike | null;
+  feedbackInbox?: FeedbackInboxLike | null;
   /** The feedback screen's native textarea (default: an HTML textarea in a browser, none elsewhere). */
   feedbackField?: FeedbackField | null;
   /** The feedback form's portrait sheet (default: a DOM sheet in a browser, none elsewhere); tests pass a fake. */
@@ -140,14 +139,10 @@ export interface UiSystemOptions {
   now?: () => number;
 }
 
-/**
- * The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback screen's
- * (null without a sender), `feedbackNote` the note about the player's own feedback showing now (or null).
- */
+/** The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback dialog's (null without a sender). */
 export type UiSystem = System & {
   highscores: HighscoreFlow | null;
   feedback: FeedbackFlow | null;
-  readonly feedbackNote: FeedbackStatusEntry | null;
   whatsNew: ListScroll;
   settings: SettingsMenu;
   /** The install card's timing and snooze and the manual install steps. */
@@ -173,12 +168,6 @@ const DEFAULT_DRUNK_DURATION = 6;
 /** Arrow keys held on the "Bestenliste" scroll this many rows per second (a press moves one row at once). */
 const LIST_KEY_ROWS_PER_SECOND = 10;
 
-/**
- * A modal layer's tap area: every pointer position, also outside the view (the letterbox around the
- * canvas, the page beside it), so no press reaches the game behind an open screen.
- */
-const EVERYWHERE: Rect = { x: -1e6, y: -1e6, w: 2e6, h: 2e6 };
-
 const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSupported();
 
 export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
@@ -187,35 +176,24 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
   const flow = scores ? new HighscoreFlow({ service: scores, store }) : null;
   const telemetry = options.telemetry !== undefined ? options.telemetry : browser ? createBrowserTelemetry(store) : null;
-  const feedbackSender = options.feedback !== undefined ? options.feedback : browser ? createBrowserFeedback(store) : null;
-  const feedbackStatus = options.feedbackStatus !== undefined ? options.feedbackStatus : browser ? createBrowserFeedbackStatus(store) : null;
-  /** The mode of the last tick: the status check runs when the title shows (again). */
-  let statusMode: string | null = null;
-  const feedback = feedbackSender ? new FeedbackFlow(feedbackSender) : null;
-  const feedbackField =
-    options.feedbackField !== undefined
-      ? options.feedbackField
-      : browser && feedback
-        ? createDomFeedbackField({ onInput: (v) => feedback.setText(v), onCancel: () => feedback.close() }, () => document.getElementById('game'))
-        : null;
+  const browserFeedback = browser && (options.feedback === undefined || options.feedbackInbox === undefined) ? createBrowserFeedback(store) : null;
+  const feedbackSender = options.feedback !== undefined ? options.feedback : (browserFeedback?.sender ?? null);
+  const feedbackInbox = options.feedbackInbox !== undefined ? options.feedbackInbox : (browserFeedback?.inbox ?? null);
   /** Set in init: the context the portrait sheets' actions run in. */
   let uiCtx: GameContext | null = null;
   const feedbackSheetFactory = options.feedbackSheet !== undefined ? options.feedbackSheet : browser ? createDomFeedbackSheet : null;
-  const feedbackSheet =
-    feedback && feedbackSheetFactory
-      ? feedbackSheetFactory({
-          onInput: (v) => feedback.setText(v),
-          onKind: (k) => feedback.setKind(k),
-          onToggleLog: () => feedback.toggleLog(),
-          onSend: () => void (uiCtx && feedback.send(feedbackContext(uiCtx))),
-          onCancel: () => feedback.close(),
-        })
-      : null;
-  const feedbackSurface = new FormSurface({ field: feedbackField, sheet: feedbackSheet });
-  /** Focus the textarea on the next tick (desktop): focusing inside the opening key press would type its letter. */
-  let focusFeedback = false;
-  /** The mode the feedback form was opened in (title or paused): it never outlives that screen. */
-  let feedbackMode: string | null = null;
+  const dialog = feedbackSender
+    ? new FeedbackDialog({
+        sender: feedbackSender,
+        inbox: feedbackInbox,
+        field: (handlers) =>
+          options.feedbackField !== undefined ? options.feedbackField : browser ? createDomFeedbackField(handlers, () => document.getElementById('game')) : null,
+        sheet: feedbackSheetFactory,
+        bindScroll: browser,
+        covered: () => !!uiCtx && portraitHintShown(uiCtx, view),
+      })
+    : null;
+  const feedback = dialog?.flow ?? null;
   const privacyLink = new PrivacyLink(options.openPage !== undefined ? options.openPage : browser ? browserOpenPage : null);
   /** The session event goes out once per page load, when the title first shows. */
   let sessionReported = false;
@@ -276,7 +254,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     logoHold: new LongPress(),
     scores: flow,
     feedback,
-    feedbackStatus,
     whatsNew: new ListScroll(),
     install: new InstallOffer(store, options.now ?? Date.now),
   };
@@ -304,7 +281,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.popups.spawn(text, PLAYER_X, rise === undefined ? aboveHead(ctx, scale) : state.player.y - rise, color, scale);
     };
     bus.on('runStarted', () => {
-      feedback?.dismiss();
+      dialog?.dismiss();
       runSeconds = 0;
       runKidMode = state.kidMode;
       flow?.runStarted(!runKidMode);
@@ -380,7 +357,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });
     bus.on('gameOver', (e) => {
-      feedback?.dismiss();
+      dialog?.dismiss();
       const run = { score: e.score, distance: e.distance, seconds: runSeconds };
       if (!runKidMode) flow?.runEnded(run);
       telemetry?.run(run, runKidMode);
@@ -395,19 +372,18 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const { state, display, commands } = ctx;
     const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode));
     const whenButtons = (pick: () => Rect | null) => () =>
-      portraitHintShown(ctx, view) || view.settings.open || view.install.guideOpen || feedbackNoteShown(ctx) ? null : pick();
+      portraitHintShown(ctx, view) || view.settings.open || view.install.guideOpen ? null : pick();
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? EVERYWHERE : null), onPress: () => commands.resume() });
     addWhatsNewHotspot(ctx);
-    addFeedbackNoteHotspot(ctx);
     const pauseButton: InputHotspot = {
       rect: whenButtons(() => (riding(state.mode) ? buttons().pause : null)),
       onPress: () => (state.mode === 'playing' ? commands.pause() : commands.resume()),
       // F while riding (adult mode): pause and open the feedback form, as the title hint says.
       onKeyDown: (code) => {
-        if (code !== 'KeyF' || state.mode !== 'playing' || state.kidMode || !feedback) return false;
+        if (code !== 'KeyF' || state.mode !== 'playing' || state.kidMode || !dialog) return false;
         commands.pause();
-        openFeedback(ctx);
+        dialog.open(ctx);
         return true;
       },
     };
@@ -429,7 +405,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     addMenuHotspots(ctx);
     addSettingsHotspots(ctx);
     addScoreHotspots(ctx);
-    addFeedbackHotspots(ctx);
+    dialog?.init(ctx);
     addInstallGuideHotspots(ctx);
     ctx.addHotspot({
       rect: () => (portraitHintShown(ctx, view) ? EVERYWHERE : null),
@@ -502,30 +478,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     view.whatsNew.clamp(list.maxScroll);
   }
 
-  /** The note about the player's own feedback covers the title (not under the rotate hint). */
-  const feedbackNoteShown = (ctx: GameContext) => menuScreen(ctx.state, view) === 'feedbackNote' && !portraitHintShown(ctx, view);
-
-  /** The note is modal: a tap anywhere (its OK, too) or any key but M closes it for good, and the title (or the next note) shows. */
-  function addFeedbackNoteHotspot(ctx: GameContext): void {
-    const note: InputHotspot = {
-      rect: () => (feedbackNoteShown(ctx) ? EVERYWHERE : null),
-      onPress: () => feedbackStatus?.dismiss(),
-      onKeyDown: (code) => {
-        if (code === 'KeyM') return false;
-        feedbackStatus?.dismiss();
-        return true;
-      },
-    };
-    ctx.addHotspot(note);
-  }
-
-  /** Each time the title shows in adult mode, the status of the player's own feedback may be asked (at most once a day, see feedback-status.ts). */
-  function checkFeedbackStatus(ctx: GameContext): void {
-    const { mode, kidMode } = ctx.state;
-    if (mode === 'title' && statusMode !== 'title' && !kidMode) void feedbackStatus?.checkIfDue();
-    statusMode = mode;
-  }
-
   /** Ends the run in progress (its score and stars still count, for the mode it was played in) and shows the title. */
   function leaveRun(ctx: GameContext): void {
     const { state } = ctx;
@@ -562,7 +514,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.dismiss, () => view.install.snooze(state.install)));
     ctx.addHotspot(button((b) => b.next, () => commands.markVersionSeen()));
     ctx.addHotspot(button((b) => b.settings, () => view.settings.openMenu(state.kidMode), ['KeyG']));
-    ctx.addHotspot(button((b) => b.feedback, () => openFeedback(ctx), ['KeyF']));
+    ctx.addHotspot(button((b) => b.feedback, () => dialog?.open(ctx), ['KeyF']));
   }
 
   /**
@@ -599,87 +551,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     };
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (shown() ? installGuideLayout(display, state.install.platform).ok : null), onPress: () => view.install.closeGuide() });
-  }
-
-  /**
-   * The title's speech-bubble icon or the pause menu's "Feedback": the form. Desktop types into it
-   * from the next tick on (placeFeedbackField focuses it then, outside the opening key press).
-   */
-  function openFeedback(ctx: GameContext): void {
-    if (!feedback) return;
-    feedback.openForm();
-    feedbackMode = ctx.state.mode;
-    focusFeedback = !ctx.display.touch;
-  }
-
-  /** The form closes as soon as the screen it was opened on is gone (any path out of title or pause), so all ui comes back. */
-  function keepFeedbackOnItsScreen(ctx: GameContext): void {
-    if (!feedback?.open) return;
-    const { mode } = ctx.state;
-    const menu = mode === 'title' || mode === 'paused';
-    if (!menu || (feedbackMode !== null && mode !== feedbackMode)) feedback.dismiss();
-  }
-
-  /** What the feedback sender adds to the report. */
-  function feedbackContext(ctx: GameContext): FeedbackContext {
-    const { state, display } = ctx;
-    return { platform: state.install.platform, touch: display.touch, portrait: display.portrait, viewWidth: display.viewWidth, mode: state.mode };
-  }
-
-  /** The feedback form shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
-  const feedbackOnSheet = (ctx: GameContext) => !!feedbackSheet && sheetShown(ctx.display, true);
-
-  /**
-   * While the form shows: the native textarea over the canvas form's field, or the portrait sheet;
-   * else both hidden. A pending desktop focus goes to the one shown.
-   */
-  function placeFeedbackField(ctx: GameContext): void {
-    if (!feedback) return;
-    const shown = feedback.open && !portraitHintShown(ctx, view);
-    const where = !shown ? null : feedbackOnSheet(ctx) ? 'sheet' : feedback.done ? null : 'field';
-    feedbackSurface.update(where, (surface) => {
-      feedbackField?.place(surface === 'field' ? feedbackLayout(ctx.display).field : null, feedback.text, feedbackPlaceholder(feedback));
-      feedbackSheet?.show(surface === 'sheet' ? feedbackSheetModel(feedback) : null);
-    });
-    if (!feedback.open) focusFeedback = false;
-    if (where && focusFeedback) {
-      focusFeedback = false;
-      feedbackSurface.focus();
-    }
-  }
-
-  /**
-   * The feedback screen: modal over the title or pause screen (every tap anywhere, also outside the
-   * canvas, and every key but M stays there, so nothing starts or resumes behind it); a tap beside the
-   * form blurs the field. Its buttons, Esc closes it, other keys type into the field.
-   */
-  function addFeedbackHotspots(ctx: GameContext): void {
-    if (!feedback) return;
-    const { display } = ctx;
-    const shown = () => feedback.open && !portraitHintShown(ctx, view);
-    // The canvas form's buttons; on the portrait sheet its own buttons take the taps.
-    const form = (pick: (l: ReturnType<typeof feedbackLayout>) => Rect | null) => () =>
-      shown() && !feedback.done && !feedbackOnSheet(ctx) ? pick(feedbackLayout(display)) : null;
-    const send = () => void feedback.send(feedbackContext(ctx));
-    const modal: InputHotspot = {
-      rect: () => (shown() ? EVERYWHERE : null),
-      onPress: () => feedbackSurface.blur(),
-      onKeyDown: (code) => {
-        if (code === 'KeyM') return false;
-        const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
-        if (code === 'Escape' || (feedback.done && confirm)) feedback.close();
-        else if (!feedback.done) feedbackSurface.focus();
-        return true;
-      },
-    };
-    ctx.addHotspot(modal);
-    ctx.addHotspot({ rect: form((l) => l.field), onPress: () => feedbackField?.focus() });
-    ctx.addHotspot({ rect: form((l) => l.bug), onPress: () => feedback.setKind('bug') });
-    ctx.addHotspot({ rect: form((l) => l.idea), onPress: () => feedback.setKind('idea') });
-    ctx.addHotspot({ rect: form((l) => (feedback.logShown ? l.log : null)), onPress: () => feedback.toggleLog() });
-    ctx.addHotspot({ rect: form((l) => l.cancel), onPress: () => feedback.close() });
-    ctx.addHotspot({ rect: form((l) => l.send), onPress: send });
-    ctx.addHotspot({ rect: () => (shown() && feedback.done && !feedbackOnSheet(ctx) ? feedbackLayout(display).ok : null), onPress: () => feedback.close() });
   }
 
   /** The logo's long press (pointer or K) on the title and pause screens, the menu's (or kid notice's) modal layer and its buttons. */
@@ -825,7 +696,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
    * closed them this tick; the portrait sheet's thank-you keeps it until its OK.
    */
   function updateOrientation(ctx: GameContext): void {
-    const typing = (!!feedback?.open && (!feedback.done || feedbackOnSheet(ctx))) || flow?.screen === 'entry';
+    const typing = !!dialog?.typing(ctx) || flow?.screen === 'entry';
     typingOrientation.update(typing);
     view.portraitFree = typingOrientation.free;
   }
@@ -888,9 +759,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     whatsNew: view.whatsNew,
     settings: view.settings,
     install: view.install,
-    get feedbackNote() {
-      return uiCtx && menuScreen(uiCtx.state, view) === 'feedbackNote' ? feedbackStatus!.note : null;
-    },
 
     init(ctx) {
       uiCtx = ctx;
@@ -951,13 +819,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
-      keepFeedbackOnItsScreen(ctx);
+      dialog?.keepOnItsScreen(ctx);
       updateOrientation(ctx);
       updateScores(ctx, dt);
       updateWhatsNew(ctx, dt);
-      placeFeedbackField(ctx);
+      dialog?.update(ctx, dt);
       reportSession(ctx);
-      checkFeedbackStatus(ctx);
       if (state.mode !== 'playing') return;
       runSeconds += dt;
       telemetry?.played(dt);

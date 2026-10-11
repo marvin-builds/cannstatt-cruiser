@@ -139,21 +139,23 @@ describe('isFeedbackList', () => {
 
 describe('feedback triage fields', () => {
   const entry = sampleFeedback()[0]!;
-  it('accepts status, issue and reply', () => {
+  it('accepts status, issue, reply and doneVersion', () => {
     expect(isFeedbackList({ entries: [{ ...entry, status: 'todo', issue: 12, reply: 'Kommt' }] })).toBe(true);
+    expect(isFeedbackList({ entries: [{ ...entry, status: 'done', doneVersion: '2026-10-12.1' }] })).toBe(true);
   });
   it.each([
     ['an unknown status', { status: 'later' }],
     ['a non-integer issue', { issue: 1.5 }],
     ['a string issue', { issue: '12' }],
     ['a non-string reply', { reply: 3 }],
+    ['a non-string doneVersion', { doneVersion: 20261012 }],
   ])('rejects %s', (_, triage) => {
     expect(isFeedbackList({ entries: [{ ...entry, ...triage }] })).toBe(false);
   });
-  it('reads entries of a worker without triage as open, without issue or reply', async () => {
-    const { status: _s, issue: _i, reply: _r, ...old } = entry;
+  it('reads entries of a worker without triage as open, without issue, reply or version', async () => {
+    const { status: _s, issue: _i, reply: _r, doneVersion: _v, ...old } = entry;
     const result = await fetchFeedback(fakeFetch(200, { entries: [old] }), { base: 'http://x', token: 'a' });
-    expect(result).toEqual({ ok: true, entries: [{ ...old, status: 'open', issue: null, reply: null }] });
+    expect(result).toEqual({ ok: true, entries: [{ ...old, status: 'open', issue: null, reply: null, doneVersion: null }] });
   });
 });
 
@@ -193,7 +195,16 @@ describe('patchFeedback', () => {
       url: 'http://x/feedback/3', method: 'PATCH', headers: { Authorization: 'Bearer abc', 'Content-Type': 'application/json' },
       body: '{"status":"rejected","reply":"Zu schwer"}',
     });
-    expect(result).toEqual({ ok: true, triage: { status: 'rejected', issue: null, reply: 'Zu schwer' } });
+    expect(result).toEqual({ ok: true, triage: { status: 'rejected', issue: null, reply: 'Zu schwer', doneVersion: null } });
+  });
+  it('sends and returns the done version', async () => {
+    const calls: Call[] = [];
+    const answer = { ok: true, status: 'done', issue: 4, reply: null, doneVersion: '2026-10-12.1' };
+    const patch = { status: 'done' as const, reply: null, doneVersion: '2026-10-12.1' };
+    const result = await patchFeedback(fakeFetch(200, answer, calls), { base: 'http://x', token: 'abc', id: 3, patch });
+    expect(calls[0]!.body).toBe('{"status":"done","reply":null,"doneVersion":"2026-10-12.1"}');
+    expect(result).toEqual({ ok: true, triage: { status: 'done', issue: 4, reply: null, doneVersion: '2026-10-12.1' } });
+    expect(await patchFeedback(fakeFetch(200, { ...answer, doneVersion: 7 }), { base: 'http://x', token: 'a', id: 3, patch })).toEqual({ ok: false, error: 'server' });
   });
   it('maps 404 and a malformed answer', async () => {
     const request = { base: 'http://x', token: 'a', id: 3, patch: { status: 'done' as const } };

@@ -12,23 +12,25 @@
  * with text typed, taps beside the open form (the letterbox, the page
  * corners, the form's background) on the title and in pause only blur the
  * field, never start or resume a run; game over and restart work after it.
+ * Each body carries its own secret key (ROADMAP 70).
  * In portrait the form is the full-screen sheet (ROADMAP 58), pressed through
  * its DOM controls.
  *
  *   npm run playtest -- --scenario scripts/scenarios/feedback.ts --viewports desktop,phone-landscape,phone-portrait --name feedback
  */
 import type { Route } from 'playwright';
+import { SCORES_URL } from '../../src/net/api';
 import type {} from '../../src/player/debug';
 import type { Rect } from '../../src/types';
 import type { FeedbackDebug, UiDebugHook } from '../../src/ui/debug';
 import { adultMode, dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
 const FAKE = 'https://feedback.example.test';
-const FIELDS = ['input', 'kind', 'log', 'orientation', 'platform', 'session', 'text', 'version', 'viewWidth'];
+const FIELDS = ['input', 'key', 'kind', 'log', 'orientation', 'platform', 'session', 'text', 'version', 'viewWidth'];
 type UiWindow = Window & { __ui?: UiDebugHook };
 /** The portrait sheet (ROADMAP 58) and its controls by label; the log box has none. */
 const FEEDBACK_SHEET = '[role=dialog][aria-label="Feedback"]';
-const SHEET_LABELS = { log: null, idea: 'Idee', send: 'Senden', ok: 'OK', cancel: 'Abbrechen' } as const;
+const SHEET_LABELS = { log: null, idea: 'Idee', send: 'Senden', ok: 'OK', close: 'Schließen' } as const;
 
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const mid = (r: Rect) => [Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2)] as const;
@@ -45,13 +47,26 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     if (answer === 'abort') return route.abort('internetdisconnected');
     return route.fulfill({ status: answer, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
   });
+  // The online list fails (a fake route, never the live worker): the game logs the failed request, so the
+  // error log has a line and "Fehlerprotokoll mitsenden" can be ticked (ROADMAP 70: disabled while empty).
+  await page.route(`${SCORES_URL}/**`, (route) => {
+    const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
+    return route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers }) : route.fulfill({ status: 503, headers });
+  });
   if (t.viewport.name === 'phone-landscape') await page.setViewportSize({ width: 640, height: 360 });
   await page.reload();
   await page.waitForFunction(() => Boolean(window.__game));
   await t.game.pause();
   await dismissRotateHint(t);
   await adultMode(t);
-  await t.game.step(3);
+  // A run start asks for the online list (failing), then back to the title.
+  await t.game.startRun();
+  await t.game.step(10);
+  await t.wait(200);
+  await t.game.endRun();
+  await t.game.step(60);
+  await page.keyboard.press('Escape');
+  await t.game.step(5);
 
   const fb = () => page.evaluate(() => (window as UiWindow).__ui!.feedback()) as Promise<FeedbackDebug>;
   const screen = () => page.evaluate(() => (window as UiWindow).__ui!.layout());
@@ -136,7 +151,7 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   t.check('bug body: contract fields only, text/plain to /feedback', JSON.stringify(Object.keys(bug).filter((k) => !k.startsWith('__')).sort()) === JSON.stringify(FIELDS) && bug.__path === '/feedback' && String(bug.__type).startsWith('text/plain'), bug);
   const log = bug.log as string[];
   t.check('bug body with the ticked log, its last line the game state', Array.isArray(log) && log.length >= 1 && /^state: mode title, version .+, view \d+x180$/.test(log[log.length - 1] ?? ''), log);
-  t.check('bug body values', bug.kind === 'bug' && /^[0-9a-f]{32}$/.test(String(bug.session)) && bug.viewWidth === viewWidth && bug.input === (t.viewport.touch ? 'touch' : 'keys'), bug);
+  t.check('bug body values', bug.kind === 'bug' && /^[0-9a-f]{32}$/.test(String(bug.session)) && /^[0-9a-f]{32}$/.test(String(bug.key)) && bug.viewWidth === viewWidth && bug.input === (t.viewport.touch ? 'touch' : 'keys'), bug);
   t.check('thank-you shows', state.status === 'sent' && state.message === 'Danke für dein Feedback!', state);
   await t.screenshot('thank you');
   await press(state.form, 'ok');
@@ -189,8 +204,8 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   t.check('offline message, text kept', state.status === 'offline' && state.text === 'Noch ein Fehler', state);
   await t.canvasShot('offline');
 
-  // Esc closes (on touch the cancel button), the run resumes as before.
-  if (t.viewport.touch) await press(state.form, 'cancel');
+  // Esc closes (on touch the close button), the run resumes as before.
+  if (t.viewport.touch) await press(state.form, 'close');
   else {
     await page.keyboard.press('Escape');
     await t.game.step(2);
@@ -247,8 +262,8 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     t.check(`${where}: taps beside the form start or resume nothing`, now.mode === mode && state.open, { mode: now.mode, open: state.open, points: await besideForm() });
     t.check(`${where}: the field lost the focus, still shown with the text`, !(await fieldFocused()) && (await page.locator('textarea').isVisible()) && state.text.includes('und noch mehr'), state.text);
     await t.screenshot(`${where} after taps beside the form`);
-    await press(state.form, 'cancel');
-    t.check(`${where}: Abbrechen closes the form`, !(await fb()).open && (await t.game.state()).mode === mode);
+    await press(state.form, 'close');
+    t.check(`${where}: the close button closes the form`, !(await fb()).open && (await t.game.state()).mode === mode);
   };
   await t.game.pauseGame();
   await t.game.step(3);

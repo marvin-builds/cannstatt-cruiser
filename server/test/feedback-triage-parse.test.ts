@@ -50,6 +50,17 @@ describe('parseTriagePatch', () => {
     expect(parseTriagePatch(JSON.stringify({ reply: 'x'.repeat(MAX_REPLY_CHARS + 1) }))).toBeNull();
     expect(parseTriagePatch(JSON.stringify({ reply: 'a\nb' }))).toBeNull();
   });
+  it('takes a doneVersion (YYYY-MM-DD.n or null) only together with status done', () => {
+    expect(parseTriagePatch('{"status":"done","doneVersion":"2026-10-12.1"}')).toEqual({ status: 'done', doneVersion: '2026-10-12.1' });
+    expect(parseTriagePatch('{"status":"done","doneVersion":null}')).toEqual({ status: 'done', doneVersion: null });
+    for (const json of [
+      '{"status":"done","doneVersion":"2026-10-12"}', '{"status":"done","doneVersion":""}', '{"status":"done","doneVersion":1}',
+      '{"status":"todo","doneVersion":"2026-10-12.1"}', '{"doneVersion":"2026-10-12.1"}', '{"reply":"x","doneVersion":null}',
+    ]) {
+      expect(parseTriagePatch(json), json).toBeNull();
+    }
+  });
+
   it('rejects unknown statuses, unknown fields and an empty patch', () => {
     for (const json of ['{"status":"later"}', '{"status":null}', '{"issue":1}', '{}', '[]', 'null', '{"reply":3}', 'x']) {
       expect(parseTriagePatch(json), json).toBeNull();

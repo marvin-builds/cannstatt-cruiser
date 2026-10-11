@@ -1,4 +1,5 @@
 /** Strict parsing of the triage routes' path id and bodies (`POST /feedback/:id/issue`, `PATCH /feedback/:id`). */
+import { VERSION_PATTERN } from './events';
 import { FEEDBACK_STATUSES, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE } from './feedback-triage-rules';
 import type { FeedbackStatus, IssueDraft, TriagePatch } from './feedback-triage-types';
 
@@ -45,10 +46,16 @@ function parseReply(value: unknown): string | null | undefined {
   return reply || null;
 }
 
-/** A patch of status and/or reply, or null for anything else (also an empty patch). */
+/** A game version (YYYY-MM-DD.n) or null, or undefined when invalid. */
+function parseDoneVersion(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === 'string' && VERSION_PATTERN.test(value) ? value : undefined;
+}
+
+/** A patch of status, reply and (with status done) doneVersion, or null for anything else (also an empty patch). */
 export function parseTriagePatch(json: string): TriagePatch | null {
   const body = parseObject(json);
-  if (!body || !Object.keys(body).length || !onlyKeys(body, ['status', 'reply'])) return null;
+  if (!body || !Object.keys(body).length || !onlyKeys(body, ['status', 'reply', 'doneVersion'])) return null;
   const patch: TriagePatch = {};
   if (Object.hasOwn(body, 'status')) {
     if (!FEEDBACK_STATUSES.includes(body.status as FeedbackStatus)) return null;
@@ -58,6 +65,11 @@ export function parseTriagePatch(json: string): TriagePatch | null {
     const reply = parseReply(body.reply);
     if (reply === undefined) return null;
     patch.reply = reply;
+  }
+  if (Object.hasOwn(body, 'doneVersion')) {
+    const doneVersion = parseDoneVersion(body.doneVersion);
+    if (doneVersion === undefined || patch.status !== 'done') return null;
+    patch.doneVersion = doneVersion;
   }
   return patch;
 }

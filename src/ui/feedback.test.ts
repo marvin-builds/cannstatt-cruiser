@@ -5,12 +5,16 @@ import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
 import type { OrientationEnv } from '../core/orientation';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
+import { type KeptReport, reportSignature } from '../net/feedback-reports';
+import type { FeedbackInboxLike } from '../net/feedback-status';
+import type { FeedbackBody } from '../net/feedback-types';
 import type { Rect } from '../types';
 import type { FeedbackField } from './feedback-field';
 import type { FeedbackSheet, FeedbackSheetHandlers } from './feedback-sheet';
 import type { FeedbackSheetModel } from './portrait-sheets';
 import { feedbackIcon, feedbackLayout } from './feedback-layout';
 import { createUiSystem } from './index';
+import { listRowRect, pageLayout } from './feedback-page-layout';
 import { uiMetrics } from './layout';
 import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
 
@@ -21,16 +25,71 @@ function memoryStore(): Store {
 
 const centre = (r: Rect) => [r.x + r.w / 2, r.y + r.h / 2] as const;
 
-function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult; hold?: boolean; installed?: boolean } = {}) {
+interface AppOptions {
+  touch?: boolean;
+  portrait?: boolean;
+  kid?: boolean;
+  result?: FeedbackResult;
+  hold?: boolean;
+  installed?: boolean;
+  /** The reports sent from this device (default: an inbox without any). */
+  inbox?: FeedbackInboxLike & { checks?: number };
+}
+
+/** A fake inbox over `reports` (newest first) that counts its status checks; markSeen clears the changes. */
+function fakeInbox(reports: KeptReport[]) {
+  const inbox = {
+    reports,
+    checks: 0,
+    get changed(): boolean {
+      return inbox.changedIds().length > 0;
+    },
+    changedIds: (): number[] => reports.filter((r) => r.seen !== reportSignature(r)).map((r) => r.id),
+    markSeen() {
+      for (const r of reports) r.seen = reportSignature(r);
+    },
+    checkIfDue() {
+      inbox.checks++;
+      return Promise.resolve();
+    },
+  } satisfies FeedbackInboxLike & Record<string, unknown>;
+  return inbox;
+}
+
+/** A report kept on the device; `seen` 'old' makes it a change the player has not seen. */
+function keptReport(id: number, extra: Partial<KeptReport> = {}): KeptReport {
+  const r = {
+    ...{ id, key: 'k'.repeat(32), day: '2026-10-11', kind: 'bug', text: `Bericht Nummer ${id}`, version: '2026-10-11.10' },
+    ...{ platform: 'android', input: 'touch', orientation: 'landscape', viewWidth: 320, log: [] },
+    ...{ status: 'open', reply: null, doneVersion: null },
+    ...extra,
+  } as KeptReport;
+  return { ...r, seen: extra.seen ?? reportSignature(r) };
+}
+
+function app(options: AppOptions = {}) {
   let answer: (r: FeedbackResult) => void = () => {};
-  const sent: { draft: FeedbackDraft; context: FeedbackContext }[] = [];
+  const sent: { draft: FeedbackDraft; context: FeedbackContext; body: FeedbackBody }[] = [];
+  /** What each prepared body was made from. */
+  const made = new Map<FeedbackBody, { draft: FeedbackDraft; context: FeedbackContext }>();
   const sender = {
-    send: (draft: FeedbackDraft, context: FeedbackContext) => {
-      sent.push({ draft: { ...draft }, context: { ...context } });
+    hasLog: true,
+    prepare: (draft: FeedbackDraft, context: FeedbackContext): FeedbackBody => {
+      const body: FeedbackBody = {
+        ...{ session: 's'.repeat(32), kind: draft.kind, text: draft.text, version: '2026-10-11.10', platform: context.platform },
+        ...{ input: context.touch ? 'touch' : 'keys', orientation: context.portrait ? 'portrait' : 'landscape', viewWidth: context.viewWidth },
+        ...{ log: draft.withLog ? ['error: x'] : [], key: 'k'.repeat(32) },
+      };
+      made.set(body, { draft: { ...draft }, context: { ...context } });
+      return body;
+    },
+    send: (body: FeedbackBody) => {
+      sent.push({ ...made.get(body)!, body });
       if (options.hold) return new Promise<FeedbackResult>((resolve) => (answer = resolve));
       return Promise.resolve(options.result ?? 'sent');
     },
   };
+  const inbox = options.inbox ?? fakeInbox([]);
   const field = {
     rect: null as Rect | null,
     value: '',
@@ -62,6 +121,8 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     focused: 0,
     hasFocus: false,
     actions: null as FeedbackSheetHandlers | null,
+    /** The scroll keys passed on to the sheet's list. */
+    scrollKeys: [] as string[],
     show(model: FeedbackSheetModel | null) {
       sheet.model = model;
       if (!model) sheet.hasFocus = false;
@@ -76,6 +137,11 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     isFocused(): boolean {
       return sheet.hasFocus;
     },
+    scrollKey(code: string): boolean {
+      if (!code.startsWith('Arrow') && !code.startsWith('Page') && code !== 'Home' && code !== 'End') return false;
+      sheet.scrollKeys.push(code);
+      return true;
+    },
   } satisfies FeedbackSheet & Record<string, unknown>;
   const store = memoryStore();
   if (options.kid) store.set('kidMode', true);
@@ -83,7 +149,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
   const locks: string[] = [];
   const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
   const feedbackSheet = (handlers: FeedbackSheetHandlers) => ((sheet.actions = handlers), sheet);
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field, feedbackSheet, orientation });
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackInbox: inbox, feedbackField: field, feedbackSheet, orientation });
   const game = new Game({ systems: [ui] });
   game.display.touch = options.touch ?? false;
   game.display.portrait = options.portrait ?? false;
@@ -113,7 +179,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     for (let i = 0; i < 8; i++) game.tick();
   };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, sheet, locks, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
+  return { game, ui, flow: ui.feedback!, sent, field, sheet, locks, input, press, key, form, icon, tap, inbox, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -139,14 +205,14 @@ describe('feedback in the game', () => {
     expect(t.game.state.mode).toBe('playing');
   });
 
-  it('the title icon (and F) opens it, no run starts behind it; "Abbrechen" closes it', () => {
+  it('the title icon (and F) opens it, no run starts behind it; "×" closes it', () => {
     const t = app();
     expect(t.press(t.icon())).toBe(true);
     expect(t.flow.open).toBe(true);
     t.key('Space');
     t.key('Enter');
     expect(t.game.state.mode).toBe('title');
-    expect(t.press(t.form().cancel)).toBe(true);
+    expect(t.press(t.form().close)).toBe(true);
     expect(t.flow.open).toBe(false);
     t.key('KeyF');
     expect(t.flow.open).toBe(true);
@@ -259,7 +325,7 @@ describe('feedback in the game', () => {
     expect(t.sent[0]!.draft).toEqual({ kind: 'bug', text: 'Die Bank ist zu hoch', withLog: true });
     expect(t.sent[0]!.context).toMatchObject({ touch: true, portrait: true });
     expect(t.sheet.model!.done).toBe(true);
-    a.onCancel();
+    a.onClose();
     t.game.tick();
     expect(t.flow.open).toBe(false);
     expect(t.sheet.model).toBeNull();
@@ -434,13 +500,13 @@ describe('the open feedback form is modal everywhere (phone bug of 2026-10-11.5)
 });
 
 describe('portrait while typing feedback in the installed app (ROADMAP 54)', () => {
-  it('opening the form frees portrait, "Abbrechen" locks landscape again', () => {
+  it('opening the form frees portrait, "×" locks landscape again', () => {
     const t = app({ installed: true, touch: true });
     expect(t.locks).toEqual([]);
     t.press(t.icon());
     t.game.tick();
     expect(t.locks).toEqual(['any']);
-    t.press(t.form().cancel);
+    t.press(t.form().close);
     t.game.tick();
     expect(t.locks).toEqual(['any', 'landscape']);
   });
@@ -473,7 +539,7 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.flow.done).toBe(true);
     expect(t.sheet.model!.done).toBe(true);
     expect(t.locks).toEqual(['any']);
-    t.sheet.actions!.onCancel();
+    t.sheet.actions!.onClose();
     t.game.tick();
     expect(t.locks).toEqual(['any', 'landscape']);
   });
@@ -537,3 +603,162 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.locks).toEqual([]);
   });
 });
+
+describe('"Mein Feedback" and "Ansehen" in the game (ROADMAP 70)', () => {
+  const reports = () => [keptReport(5, { status: 'done', doneVersion: '2026-10-12.1', reply: 'Ist drin!', seen: 'old' }), keptReport(3)];
+  const page = (t: ReturnType<typeof app>) => pageLayout(t.game.display, t.flow.page as 'list');
+  const tapRect = (t: ReturnType<typeof app>, r: { x: number; y: number; w: number; h: number } | null) => {
+    expect(r).not.toBeNull();
+    t.tap(...centre(r!));
+  };
+
+  it('asks for the status each time the title shows in adult mode (the inbox keeps to once a minute), never in kid mode', () => {
+    const t = app();
+    expect(t.inbox.checks).toBe(1);
+    t.game.tick();
+    expect(t.inbox.checks).toBe(1);
+    t.game.commands.startRun();
+    t.game.tick();
+    t.game.commands.gameOver();
+    t.game.commands.toTitle();
+    t.game.tick();
+    expect(t.inbox.checks).toBe(2);
+    const kid = app({ kid: true });
+    kid.game.tick();
+    expect(kid.inbox.checks).toBe(0);
+  });
+
+  it('the dot shows on the dialog while a report changed; the tab clears it, the changed row keeps its dot', () => {
+    const t = app({ inbox: fakeInbox(reports()) });
+    expect(t.flow.dot).toBe(true);
+    t.press(t.icon());
+    t.game.tick();
+    expect([t.flow.tab, t.flow.page]).toEqual(['new', 'form']);
+    expect(t.press(t.form().mineTab)).toBe(true);
+    t.game.tick();
+    expect([t.flow.tab, t.flow.page, t.flow.dot]).toEqual(['mine', 'list', false]);
+    expect(t.flow.rows.map((r) => r.changed)).toEqual([true, false]);
+    // The textarea hides on the list (nothing to type there).
+    expect(t.field.rect).toBeNull();
+  });
+
+  it('a tap on a row opens its details, "Ansehen" what was sent, "Zurück" and Esc walk back, then Esc closes', () => {
+    const t = app({ inbox: fakeInbox(reports()) });
+    t.key('KeyF');
+    t.press(t.form().mineTab);
+    t.game.tick();
+    tapRect(t, listRowRect(page(t), 0, 0));
+    expect(t.flow.page).toBe('detail');
+    expect(t.flow.detail?.headline).toBe('Umgesetzt in Version 2026-10-12.1');
+    tapRect(t, pageLayout(t.game.display, 'detail').view);
+    expect(t.flow.page).toBe('sent');
+    tapRect(t, pageLayout(t.game.display, 'sent').back);
+    expect(t.flow.page).toBe('detail');
+    t.key('Escape');
+    expect(t.flow.page).toBe('list');
+    t.key('Escape');
+    expect(t.flow.open).toBe(false);
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('a drag over the list scrolls it and opens nothing', () => {
+    const many = Array.from({ length: 12 }, (_, i) => keptReport(20 - i));
+    const t = app({ inbox: fakeInbox(many) });
+    t.key('KeyF');
+    t.press(t.form().mineTab);
+    t.game.tick();
+    const row = listRowRect(page(t), 1, 0)!;
+    const pointers = new PointerControls(t.game);
+    pointers.down(1, ...centre(row), false);
+    t.flow.scrollBy(20);
+    pointers.up(1);
+    t.game.tick();
+    expect(t.flow.page).toBe('list');
+    expect(t.flow.scroll).toBe(20);
+    // Keys scroll too, kept within the list.
+    t.key('End');
+    t.game.tick();
+    expect(t.flow.scroll).toBe(12 * page(t).rowH - page(t).content.h);
+    t.key('Home');
+    expect(t.flow.scroll).toBe(0);
+  });
+
+  it('"Ansehen" on the form shows the snapshot, and "Senden" sends exactly that body', async () => {
+    const t = app();
+    t.key('KeyF');
+    t.flow.setText('Hängt im Tunnel');
+    t.press(t.form().log);
+    expect(t.press(t.form().view)).toBe(true);
+    expect(t.flow.page).toBe('preview');
+    const shown = t.flow.preview;
+    t.game.tick();
+    expect(t.field.rect).toBeNull();
+    tapRect(t, pageLayout(t.game.display, 'preview').back);
+    expect(t.flow.page).toBe('form');
+    t.game.tick();
+    expect(t.field.rect).toEqual(t.form().field);
+    t.press(t.form().send);
+    await Promise.resolve();
+    expect(t.sent).toHaveLength(1);
+    expect(t.sent[0]!.body).toBe(shown);
+  });
+
+  it('portrait: the sheet carries the tabs and pages and acts on them', () => {
+    const t = app({ touch: true, portrait: true, inbox: fakeInbox(reports()) });
+    t.game.hitHotspot(10, 10); // the rotate hint
+    t.press(t.icon());
+    t.game.tick();
+    expect(t.sheet.model).toMatchObject({ tab: 'new', page: 'form', dot: true });
+    const a = t.sheet.actions!;
+    a.onTab('mine');
+    t.game.tick();
+    expect(t.sheet.model).toMatchObject({ tab: 'mine', page: 'list', dot: false });
+    a.onOpenReport(5);
+    t.game.tick();
+    expect(t.sheet.model!.detail?.reply).toBe('Antwort: „Ist drin!“');
+    a.onSentLog();
+    a.onBack();
+    a.onBack();
+    t.game.tick();
+    expect(t.sheet.model?.page).toBe('list');
+    a.onTab('new');
+    a.onInput('Mehr Brezeln');
+    a.onPreview();
+    t.game.tick();
+    expect(t.sheet.model).toMatchObject({ page: 'preview', title: 'Das wird gesendet' });
+    a.onBack();
+    a.onBack();
+    t.game.tick();
+    expect(t.flow.open).toBe(false);
+    expect(t.sheet.model).toBeNull();
+  });
+
+  it('portrait: the scroll keys move the sheet\'s list and text pages, not the canvas page', () => {
+    const t = app({ touch: true, portrait: true, inbox: fakeInbox(reports()) });
+    t.game.hitHotspot(10, 10); // the rotate hint
+    t.press(t.icon());
+    t.game.tick();
+    t.key('ArrowDown');
+    expect(t.sheet.scrollKeys).toEqual([]); // the form: keys type into the field
+    t.sheet.actions!.onTab('mine');
+    t.game.tick();
+    t.key('ArrowDown');
+    t.key('PageDown');
+    t.sheet.actions!.onOpenReport(5);
+    t.game.tick();
+    t.key('End');
+    expect(t.sheet.scrollKeys).toEqual(['ArrowDown', 'PageDown', 'End']);
+    expect(t.flow.scroll).toBe(0);
+  });
+
+  it('frees portrait only while the form takes text, not on the list', () => {
+    const t = app({ installed: true });
+    t.key('KeyF');
+    t.game.tick();
+    expect(t.locks.at(-1)).toBe('any');
+    t.press(t.form().mineTab);
+    t.game.tick();
+    expect(t.locks.at(-1)).toBe('landscape');
+  });
+});
+

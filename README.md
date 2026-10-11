@@ -63,6 +63,9 @@ On phones, landscape is the play orientation.
   Without the browser's install dialog it shows the steps (Android menu, iOS "Teilen"). After
   updates a "Neu in dieser Version" screen shows.
 - **Feedback:** send a bug report ("Fehler") or an idea ("Idee") from inside the game (not in kid mode).
+  "Ansehen" shows exactly what will be sent. "Mein Feedback" lists what this device sent and what
+  became of it (planned, done in which version, the reply); a red dot marks news. The texts stay on
+  the device; only each report's id and a random secret key go out to ask for its status.
 
 ## Privacy
 

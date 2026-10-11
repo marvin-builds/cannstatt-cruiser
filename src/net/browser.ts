@@ -4,7 +4,8 @@
  * queue when the page comes online again or becomes visible; and the
  * anonymous statistics (Telemetry) with the real gate, fetch and beacon,
  * sending `end` whenever the page is hidden or left; and the feedback sender
- * (ROADMAP 50) with the status check of the player's own reports (ROADMAP 57). The error log (error-log.ts) is installed once on the window
+ * (ROADMAP 50) with "Mein Feedback", the reports sent from this device and
+ * their status (ROADMAP 70). The error log (error-log.ts) is installed once on the window
  * here and records the failed requests of all three; statistics and feedback
  * share this page load's session id (memory only, never stored).
  */
@@ -14,7 +15,7 @@ import { type FetchLike, ScoresApi } from './api';
 import { loadDeviceId } from './device';
 import { ErrorLog, installErrorLog, loggedFetch } from './error-log';
 import { feedbackBaseUrl, FeedbackSender } from './feedback';
-import { FeedbackStatusCheck, rememberFeedbackId } from './feedback-status';
+import { FeedbackInbox } from './feedback-status';
 import { hadGameData } from './returning';
 import { ScoreService } from './service';
 import { newSessionId, Telemetry, telemetryBaseUrl } from './telemetry';
@@ -112,19 +113,22 @@ export function createBrowserTelemetry(store: Store): Telemetry {
 /** Feedback goes to the live worker only from the production host in a production build, or to an injected test URL. */
 const browserFeedbackUrl = () => feedbackBaseUrl({ hostname: location.hostname, dev: import.meta.env.DEV, baseUrl: window.__feedbackUrl });
 
-/** The sender keeps each new report's id on the device for the status check. */
-export function createBrowserFeedback(store: Store): FeedbackSender {
-  return new FeedbackSender({
-    baseUrl: browserFeedbackUrl(),
+export interface BrowserFeedback {
+  sender: FeedbackSender;
+  inbox: FeedbackInbox;
+}
+
+/** The sender keeps each stored report in the inbox, which asks the same endpoint for their status. */
+export function createBrowserFeedback(store: Store): BrowserFeedback {
+  const baseUrl = browserFeedbackUrl();
+  const inbox = new FeedbackInbox({ baseUrl, fetch: netFetch(), store, now: () => Date.now(), online: () => navigator.onLine !== false });
+  const sender = new FeedbackSender({
+    baseUrl,
     fetch: netFetch(),
     session: browserSession(),
     version: BUILD_VERSION,
     log: browserErrorLog(),
-    onSent: (id) => rememberFeedbackId(store, id),
+    onSent: (report) => inbox.add(report),
   });
-}
-
-/** What happened to the reports sent from this device, asked from the same endpoint as the sender's. */
-export function createBrowserFeedbackStatus(store: Store): FeedbackStatusCheck {
-  return new FeedbackStatusCheck({ baseUrl: browserFeedbackUrl(), fetch: netFetch(), store, now: () => Date.now(), online: () => navigator.onLine !== false });
+  return { sender, inbox };
 }
