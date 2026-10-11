@@ -1,5 +1,5 @@
 /**
- * HTTP API: GET /top, POST /score, POST /event, GET /stats, OPTIONS preflight.
+ * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback, OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
  * session events, Cloudflare's coarse location (request.cf); never the client IP.
  */
@@ -9,6 +9,9 @@ import { corsHeaders, isAllowedOrigin } from './cors';
 import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-store';
 import { parseEvent } from './event-parse';
 import { MAX_EVENT_BYTES, STATS_RANGES } from './events';
+import { parseFeedback } from './feedback-parse';
+import { MAX_FEEDBACK_BYTES } from './feedback-rules';
+import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
 import { locationOf } from './location';
 import { rankRows } from './ranking';
 import { isRateLimited } from './rate-limit';
@@ -18,7 +21,7 @@ import { isDeviceId, parseSubmission } from './submission';
 
 export interface Env {
   DB: D1Database;
-  /** Bearer token for GET /stats (Wrangler secret). Without it /stats always answers 401. */
+  /** Bearer token for GET /stats and GET /feedback (Wrangler secret). Without it both always answer 401. */
   STATS_TOKEN?: string;
 }
 
@@ -27,8 +30,8 @@ const MAX_BODY = 2048;
 const TOP_CACHE = 'public, max-age=30';
 /** GET /top?device= answers per device, so shared caches must not keep it. */
 const OWN_TOP_CACHE = 'private, max-age=30';
-/** sendBeacon sends text/plain; fetch may send JSON. */
-const EVENT_TYPES = ['text/plain', 'application/json'];
+/** sendBeacon sends text/plain; fetch may send JSON. Same for feedback. */
+const BODY_TYPES = ['text/plain', 'application/json'];
 
 type Failure = 'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found';
 const STATUS: Record<Failure, number> = {
@@ -65,9 +68,10 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const { entries, rank } = rankRows(await topRows(env.DB), own?.id ?? null);
     return json({ entries, own: own && { rank, score: own.score } }, 200, OWN_TOP_CACHE);
   }
+  // The token is checked before anything else, so an unauthorized call never reaches the database.
+  const authorized = () => isAuthorized(request.headers.get('Authorization'), env.STATS_TOKEN);
   if (request.method === 'GET' && pathname === '/stats') {
-    // The token is checked before anything else, so an unauthorized call never reaches the database.
-    if (!(await isAuthorized(request.headers.get('Authorization'), env.STATS_TOKEN))) return fail('unauthorized');
+    if (!(await authorized())) return fail('unauthorized');
     const values = searchParams.getAll('days');
     const days = STATS_RANGES.find((range) => values.length === 1 && String(range) === values[0]);
     if (days === undefined) return fail('bad-request');
@@ -75,7 +79,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   }
   if (request.method === 'POST' && pathname === '/event') {
     if (!isAllowedOrigin(origin)) return fail('forbidden');
-    const event = parseEvent((await readEventText(request)) ?? '');
+    const event = parseEvent((await readLimitedText(request, MAX_EVENT_BYTES)) ?? '');
     if (event === null) return fail('bad-request');
     const day = utcDay(now);
     // Over the daily cap the event is dropped silently: the game cannot do anything about it.
@@ -85,6 +89,20 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
       await condenseAndPruneOnceADay(env.DB, now).catch((error: unknown) => console.error('condense and prune failed', error));
     }
     return new Response(null, { status: 204, headers: cors });
+  }
+  if (request.method === 'GET' && pathname === '/feedback') {
+    if (!(await authorized())) return fail('unauthorized');
+    return json({ entries: await listFeedback(env.DB) }, 200);
+  }
+  if (request.method === 'POST' && pathname === '/feedback') {
+    if (!isAllowedOrigin(origin)) return fail('forbidden');
+    const feedback = parseFeedback((await readLimitedText(request, MAX_FEEDBACK_BYTES)) ?? '');
+    if (feedback === null) return fail('bad-request');
+    // The session id only rate-limits, as a hash in the day's counter table; it is never stored with the text.
+    if (!(await saveFeedback(env.DB, feedback, await hashDevice(feedback.session), utcDay(now)))) return fail('rate');
+    // Housekeeping after the feedback is stored: a failure is logged and retried on a later request.
+    await pruneFeedbackOnceADay(env.DB, now).catch((error: unknown) => console.error('feedback prune failed', error));
+    return json({ ok: true }, 201);
   }
   if (request.method !== 'POST' || pathname !== '/score') return fail('not-found');
 
@@ -110,11 +128,11 @@ async function readJson(request: Request): Promise<unknown> {
   }
 }
 
-/** The event body as text, or null for another content type or more than MAX_EVENT_BYTES. */
-async function readEventText(request: Request): Promise<string | null> {
+/** The body as text, or null for another content type than BODY_TYPES or more than `maxBytes`. */
+async function readLimitedText(request: Request, maxBytes: number): Promise<string | null> {
   const type = (request.headers.get('Content-Type') ?? '').split(';')[0]!.trim().toLowerCase();
-  if (!EVENT_TYPES.includes(type)) return null;
-  if (Number(request.headers.get('Content-Length') ?? 0) > MAX_EVENT_BYTES) return null;
+  if (!BODY_TYPES.includes(type)) return null;
+  if (Number(request.headers.get('Content-Length') ?? 0) > maxBytes) return null;
   const bytes = await request.arrayBuffer();
-  return bytes.byteLength > MAX_EVENT_BYTES ? null : new TextDecoder().decode(bytes);
+  return bytes.byteLength > maxBytes ? null : new TextDecoder().decode(bytes);
 }
