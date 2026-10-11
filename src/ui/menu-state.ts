@@ -3,6 +3,7 @@
  * view: shared by the hotspots (index.ts) and the drawing (menu-screens.ts).
  */
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
+import type { FeedbackStatusEntry } from '../net/feedback-types';
 import type { DisplayInfo, GameState, Rect } from '../types';
 import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout } from './menu-layout';
 import { uiMetrics } from './layout';
@@ -25,9 +26,11 @@ export interface MenuView {
   scores: { open: boolean; offered: boolean } | null;
   /** The feedback screen (feedback-flow.ts): it covers the title and pause screens, which offer it in adult mode. Null without one. */
   feedback: { open: boolean } | null;
+  /** What happened to the player's own feedback (feedback-note.ts): its note covers the title once. Null without a status check. */
+  feedbackStatus: { note: FeedbackStatusEntry | null } | null;
 }
 
-export type MenuScreen = 'whatsNew' | 'title' | 'pause' | 'gameOver';
+export type MenuScreen = 'whatsNew' | 'feedbackNote' | 'title' | 'pause' | 'gameOver';
 
 interface Source {
   state: GameState;
@@ -41,12 +44,14 @@ export function portraitHintShown(
   return r.display.portrait && r.display.touch && !view.portraitDismissed && !view.portraitFree;
 }
 
-/** The menu screen of this mode, or null while riding or while the settings menu or a highscore screen covers it. */
+/** The menu screen of this mode, or null while riding or while the settings menu, a highscore or the feedback screen covers it. */
 export function menuScreen(state: GameState, view: MenuView): MenuScreen | null {
   if (view.settings.open || view.scores?.open || view.feedback?.open) return null;
   switch (state.mode) {
     case 'title':
-      return state.whatsNew.length > 0 ? 'whatsNew' : 'title';
+      if (state.whatsNew.length > 0) return 'whatsNew';
+      // Kid mode has no feedback, so no notes about it either.
+      return !state.kidMode && view.feedbackStatus?.note ? 'feedbackNote' : 'title';
     case 'paused':
       return 'pause';
     case 'gameover':
@@ -73,10 +78,10 @@ export function gameOverReady(state: GameState): boolean {
 
 let cache: { key: string; layout: MenuLayout } | null = null;
 
-/** The current menu screen's layout (cached while nothing it depends on changes), or null. */
+/** The current menu screen's layout (cached while nothing it depends on changes), or null (also for the feedback note, laid out by feedback-note.ts). */
 export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
   const screen = menuScreen(r.state, view);
-  if (!screen) return null;
+  if (!screen || screen === 'feedbackNote') return null;
   const { state, display } = r;
   const install = screen === 'title' || screen === 'gameOver' ? installHintKind(state.install, display.touch) : null;
   const input: MenuInput = {

@@ -14,3 +14,5 @@ export const MAX_VIEW_WIDTH = 427;
 export const FEEDBACK_PER_SESSION_PER_DAY = 3;
 export const FEEDBACK_RETENTION_DAYS = 365;
 export const FEEDBACK_LIST_LIMIT = 100;
+/** `GET /feedback/status` answers for at most this many ids (the game keeps as many). */
+export const MAX_STATUS_IDS = 10;

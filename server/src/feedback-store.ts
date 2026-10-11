@@ -19,11 +19,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Stores the feedback unless the session (by `sessionHash`) or all sessions together reached the
- * day's limit; false when it was not stored. One transaction: the session counter always counts
+ * day's limit; the new row's id, or null when it was not stored. One transaction: the session counter always counts
  * the attempt, the global counter only attempts within the session limit (so one session cannot
  * use up the global cap), and the row is inserted only while both counters are within their limits.
  */
-export async function saveFeedback(db: D1Database, feedback: FeedbackBody, sessionHash: string, day: string): Promise<boolean> {
+export async function saveFeedback(db: D1Database, feedback: FeedbackBody, sessionHash: string, day: string): Promise<number | null> {
   const sessionCount = 'SELECT count FROM feedback_counts WHERE day = ?1 AND session_hash = ?2';
   const results = await db.batch([
     db
@@ -47,7 +47,8 @@ export async function saveFeedback(db: D1Database, feedback: FeedbackBody, sessi
       .bind(day, sessionHash, ALL_SESSIONS, FEEDBACK_PER_SESSION_PER_DAY, feedback.kind, feedback.text, feedback.version,
         feedback.platform, feedback.input, feedback.orientation, feedback.viewWidth, JSON.stringify(feedback.log), FEEDBACK_DAILY_CAP),
   ]);
-  return (results[2] as D1Result).meta.changes > 0;
+  const { meta } = results[2] as D1Result;
+  return meta.changes > 0 ? meta.last_row_id : null;
 }
 
 /**

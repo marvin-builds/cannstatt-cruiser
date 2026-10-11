@@ -172,3 +172,38 @@ describe('feedback sender', () => {
     expect(await throwing.send(DRAFT, CONTEXT)).toBe('offline');
   });
 });
+
+describe('feedback sender keeps the new id', () => {
+  function answering(status: number, body: unknown) {
+    const fetchFn: FetchLike = () => Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(body) });
+    return fetchFn;
+  }
+  function keeping(fetchFn: FetchLike) {
+    const kept: number[] = [];
+    const s = new FeedbackSender({ baseUrl: 'https://fb.test', fetch: fetchFn, session: SESSION, version: 'v', log: null, onSent: (id) => kept.push(id) });
+    return { s, kept };
+  }
+
+  it('passes the id of {ok: true, id} on', async () => {
+    const { s, kept } = keeping(answering(201, { ok: true, id: 42 }));
+    expect(await s.send(DRAFT, CONTEXT)).toBe('sent');
+    expect(kept).toEqual([42]);
+  });
+
+  it('still counts as sent without a valid id (older worker, junk), but keeps nothing', async () => {
+    for (const body of [{ ok: true }, { ok: true, id: 0 }, { ok: true, id: '7' }, { ok: true, id: 1.5 }, null]) {
+      const { s, kept } = keeping(answering(201, body));
+      expect(await s.send(DRAFT, CONTEXT)).toBe('sent');
+      expect(kept, JSON.stringify(body)).toEqual([]);
+    }
+    const broken = keeping(() => Promise.resolve({ ok: true, status: 201, json: () => Promise.reject(new Error('not json')) }));
+    expect(await broken.s.send(DRAFT, CONTEXT)).toBe('sent');
+    expect(broken.kept).toEqual([]);
+  });
+
+  it('keeps nothing when the report was refused', async () => {
+    const { s, kept } = keeping(answering(429, { ok: false, error: 'rate', id: 5 }));
+    expect(await s.send(DRAFT, CONTEXT)).toBe('rate');
+    expect(kept).toEqual([]);
+  });
+});

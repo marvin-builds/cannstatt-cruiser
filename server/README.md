@@ -28,7 +28,8 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
 | `src/feedback-parse.ts` | Strict `POST /feedback` body check and text normalisation |
-| `src/feedback-store.ts` | Per-session and daily feedback limits, storing, once-a-day 365-day prune, the `GET /feedback` list |
+| `src/feedback-store.ts` | Per-session and daily feedback limits, storing (returns the new id), once-a-day 365-day prune, the `GET /feedback` list |
+| `src/feedback-status-parse.ts` | Strict `ids` check of `GET /feedback/status` (ROADMAP 57); its query is `feedbackStatuses` in `src/feedback-triage-store.ts` |
 | `src/feedback-triage-rules.ts`, `src/feedback-triage-types.ts` | Triage contract (ROADMAP 56): statuses, issue draft and reply limits, shapes (board copy: the game's `src/insights/triage-types.ts`) |
 | `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply patch) and D1 access |
 | `src/github.ts` | Creates the GitHub issue (REST API, injected `fetch`) |
@@ -383,7 +384,8 @@ have exactly these fields (`FeedbackBody` in `src/feedback-types.ts`, limits in
 
 Responses:
 
-- `201 {"ok": true}`: stored.
+- `201 {"ok": true, "id": 42}`: stored; `id` is the new entry's id (`FeedbackSent`). The game keeps it on the
+  device to ask for the entry's status later (`GET /feedback/status`). Older games ignore it.
 - `400 {"ok": false, "error": "bad-request"}`: other content type, too large,
   not JSON, unknown or missing fields, values outside the rules.
 - `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
@@ -410,6 +412,21 @@ latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
 and the triage fields `status` (`open`, `todo`, `done`, `rejected`), `issue`
 (GitHub issue number or `null`) and `reply` (string or `null`).
 
+### `GET /feedback/status`
+
+What happened to the player's own feedback (ROADMAP 57). No token: the game
+asks for the ids it got from `POST /feedback` on this device, at most once a
+day. `?ids=1,2,3` exactly once and no other parameter: 1-10 ids
+(`MAX_STATUS_IDS`), each a positive integer in plain decimal, separated by
+single commas (duplicates count once). Only reads: no write, no counter, no
+housekeeping. Needs a game `Origin` like `POST /feedback`.
+
+- `200 {"entries": [{"id": 3, "status": "done", "reply": null}, ...]}`
+  (`FeedbackStatusList`), ascending by id: only `id`, `status` and `reply`,
+  never the text, the log or anything else; unknown (deleted or pruned) ids
+  are left out. `Cache-Control: private, max-age=300`.
+- `400` bad `ids`; `403` missing or foreign `Origin` (both before any database access).
+
 ### Feedback triage (ROADMAP 56)
 
 All three routes need `Authorization: Bearer <STATS_TOKEN>` and check it first:
@@ -432,7 +449,7 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
     Nothing of GitHub's answer is passed on, and nothing is stored.
 - `PATCH /feedback/:id`, body with `status` and/or `reply` (no other fields):
   `status` one of the four; `reply` a single line of at most 140 chars after
-  trimming (`MAX_REPLY_CHARS`, shown to players later, ROADMAP 57), `""` or
+  trimming (`MAX_REPLY_CHARS`, shown to the player on the title, see `GET /feedback/status`), `""` or
   `null` clears it. Only the given fields change; the issue number stays.
   `200 {"ok": true, "status", "issue", "reply"}`, `400`, `404`.
 - `DELETE /feedback/:id`: deletes the entry. `204`, `404`.

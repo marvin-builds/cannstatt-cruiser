@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { VIEW_MAX_W, VIEW_W } from '../core/config';
 import * as client from './feedback-types';
 import * as server from '../../server/src/feedback-rules';
+import * as serverTriage from '../../server/src/feedback-triage-rules';
 
 describe('feedback contract', () => {
   it('offers a bug report and an idea', () => {
@@ -33,5 +34,8 @@ describe('feedback contract', () => {
     expect(server.FEEDBACK_PER_SESSION_PER_DAY).toBe(client.FEEDBACK_PER_SESSION_PER_DAY);
     expect(server.FEEDBACK_RETENTION_DAYS).toBe(client.FEEDBACK_RETENTION_DAYS);
     expect(server.FEEDBACK_LIST_LIMIT).toBe(client.FEEDBACK_LIST_LIMIT);
+    expect(server.MAX_STATUS_IDS).toBe(client.MAX_STATUS_IDS);
+    expect(serverTriage.FEEDBACK_STATUSES).toEqual(client.FEEDBACK_STATUSES);
+    expect(serverTriage.MAX_REPLY_CHARS).toBe(client.MAX_REPLY_CHARS);
   });
 });
