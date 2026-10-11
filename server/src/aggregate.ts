@@ -14,6 +14,12 @@ export function dayRange(now: number, days: number): string[] {
   return Array.from({ length: days }, (_, i) => utcDay(now - (days - 1 - i) * DAY_MS));
 }
 
+/** The UTC day after `day` (YYYY-MM-DD). */
+export const dayAfter = (day: string): string => utcDay(Date.parse(day) + DAY_MS);
+
+/** Days from `day` to the day of `now`, both counted (1 when `day` is today). */
+export const daysSince = (day: string, now: number): number => Math.round((Date.parse(utcDay(now)) - Date.parse(day)) / DAY_MS) + 1;
+
 /**
  * Counts of raw values summed into the largest of the ascending lower `bounds`
  * at or below each value; one entry per bound, zero-filled, keys as strings.

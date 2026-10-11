@@ -6,7 +6,7 @@
 import { utcDay, utcHour } from './aggregate';
 import { isAuthorized } from './auth';
 import { corsHeaders, isAllowedOrigin } from './cors';
-import { claimDailySlot, pruneOnceADay, saveEvent } from './event-store';
+import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-store';
 import { parseEvent } from './event-parse';
 import { MAX_EVENT_BYTES, STATS_RANGES } from './events';
 import { locationOf } from './location';
@@ -68,7 +68,7 @@ export async function handleRequest(request: Request, env: Env, now: number): Pr
     const day = utcDay(now);
     // Over the daily cap the event is dropped silently: the game cannot do anything about it.
     if (await claimDailySlot(env.DB, day)) {
-      await pruneOnceADay(env.DB, now);
+      await condenseAndPruneOnceADay(env.DB, now);
       await saveEvent(env.DB, event, { day, hour: utcHour(now) }, locationOf(request.cf));
     }
     return new Response(null, { status: 204, headers: cors });

@@ -1,16 +1,16 @@
 /**
  * D1 writes for the play statistics: the global daily cap, the once-a-day
- * retention prune and storing one event (day and hour only, never a timestamp).
+ * condense and retention prune and storing one event (day and hour only, never a timestamp).
  */
 import { utcDay } from './aggregate';
+import { condenseStatements } from './day-summary';
+import { RAW_RETENTION_DAYS } from './events';
 import type { TelemetryEvent } from './insights-types';
 import type { Location } from './location';
 
 /** Accepted events per UTC day across all sessions; more are answered but not stored. */
 export const DAILY_EVENT_CAP = 15_000;
 export const RUNS_PER_SESSION = 200;
-/** Events older than this many days are deleted. */
-export const RETENTION_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PRUNED_KEY = 'pruned';
 
@@ -32,8 +32,12 @@ export async function claimDailySlot(db: D1Database, day: string): Promise<boole
   return meta.changes > 0;
 }
 
-/** On the first call of a UTC day: deletes events older than RETENTION_DAYS and past day counters. */
-export async function pruneOnceADay(db: D1Database, now: number): Promise<void> {
+/**
+ * On the first call of a UTC day, in one transaction: summarises the finished days not summarised
+ * yet (see day-summary.ts), then deletes events older than RAW_RETENTION_DAYS (only of summarised
+ * days, so no day is lost) and past day counters.
+ */
+export async function condenseAndPruneOnceADay(db: D1Database, now: number): Promise<void> {
   const today = utcDay(now);
   const { meta } = await db
     .prepare(
@@ -44,7 +48,10 @@ export async function pruneOnceADay(db: D1Database, now: number): Promise<void> 
     .run();
   if (meta.changes === 0) return;
   await db.batch([
-    db.prepare('DELETE FROM events WHERE day < ?').bind(utcDay(now - RETENTION_DAYS * DAY_MS)),
+    ...(await condenseStatements(db, today)),
+    db
+      .prepare("DELETE FROM events WHERE day < ? AND day <= COALESCE((SELECT MAX(day) FROM day_summaries), '')")
+      .bind(utcDay(now - RAW_RETENTION_DAYS * DAY_MS)),
     db.prepare('DELETE FROM event_days WHERE day < ?').bind(today),
   ]);
 }

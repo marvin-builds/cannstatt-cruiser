@@ -54,8 +54,20 @@ CREATE TABLE IF NOT EXISTS event_days (
   accepted INTEGER NOT NULL
 );
 
--- Small key-value store; 'pruned' holds the UTC day of the last retention prune.
+-- Small key-value store; 'pruned' holds the UTC day of the last condense + retention prune.
 CREATE TABLE IF NOT EXISTS event_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- Daily summaries of the play statistics, kept for good after the raw events are
+-- pruned. Databases created before this table get it from
+-- migrations/0004_day_summaries.sql (same statement, which documents the rows).
+-- Counts only: no session id, no hour.
+CREATE TABLE IF NOT EXISTS day_summaries (
+  day TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value INTEGER NOT NULL,
+  PRIMARY KEY (day, metric, key)
 );

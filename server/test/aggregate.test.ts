@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayRange, histogram, largestFirst, mergeSmallGroups, utcDay, utcHour } from '../src/aggregate';
+import { dayAfter, dayRange, daysSince, histogram, largestFirst, mergeSmallGroups, utcDay, utcHour } from '../src/aggregate';
 
 describe('UTC day helpers', () => {
   it('gives the UTC day and hour of a time', () => {
@@ -12,6 +12,15 @@ describe('UTC day helpers', () => {
   it('lists the days of a range ending today, oldest first', () => {
     expect(dayRange(Date.parse('2026-03-02T08:00:00Z'), 4)).toEqual(['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']);
     expect(dayRange(Date.parse('2026-10-11T08:00:00Z'), 90)).toHaveLength(90);
+  });
+
+  it('gives the next UTC day and the days from a day up to now, both days counted', () => {
+    expect(dayAfter('2026-02-28')).toBe('2026-03-01');
+    expect(dayAfter('2026-12-31')).toBe('2027-01-01');
+    const now = Date.parse('2026-10-11T23:00:00Z');
+    expect(daysSince('2026-10-11', now)).toBe(1);
+    expect(daysSince('2026-10-01', now)).toBe(11);
+    expect(daysSince('2025-10-11', now)).toBe(366);
   });
 });
 
