@@ -611,8 +611,13 @@ npm run playtest -- --headed
   points, a wave ridden through, both sounds logged; desktop also stomps the
   rider. `__gameplay.pattern('scooter' | 'pigeons' | 'wave', x)` lays one
   (the hook honours kid mode and places movers at their screen anchor).
-- `scripts/scenarios/feedback-note.ts` (ROADMAP 57): a faked status answer
-  shows the done and rejected notes once on the title at several widths.
+- `scripts/scenarios/feedback-inbox.ts` (ROADMAP 70, all three viewports, also
+  320 px): five kept reports answered by a fake `POST /feedback/status` (ids
+  and keys in the body, never the URL): the red dot on the title and the pause
+  menu, "Neu" with "Ansehen", "Das wird gesendet" (the online list is routed
+  to a 503 so the log has a line; `feedback.ts` and `portrait-forms.ts` do the
+  same), "Senden" posting exactly that snapshot, the list with every status,
+  a detail with reply and version, the empty state, nothing in kid mode.
 
 - `scripts/scenarios/duck-swipe.ts` (ROADMAP 66, `phone-landscape`): sign
   mixes at 90 and 190 px/s ridden by the touch bot (swipe ducks): at most 2
