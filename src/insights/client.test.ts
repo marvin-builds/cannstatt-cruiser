@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../net/api';
 import { SCORES_URL } from '../net/api';
 import { ALL_RANGE } from '../net/telemetry-types';
-import { apiBase, createIssue, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
+import { apiBase, createIssue, createSession, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
 import { sampleFeedback } from './sample-feedback';
 import { sampleStats } from './sample-stats';
 
@@ -222,5 +222,27 @@ describe('deleteFeedback', () => {
   it('maps 401 and 404', async () => {
     expect(await deleteFeedback(fakeFetch(401, null), { base: 'http://x', token: 'a', id: 7 })).toEqual({ ok: false, error: 'auth' });
     expect(await deleteFeedback(fakeFetch(404, { ok: false, error: 'not-found' }), { base: 'http://x', token: 'a', id: 7 })).toEqual({ ok: false, error: 'not-found' });
+  });
+});
+
+describe('createSession', () => {
+  it('posts the real token as bearer to /board/session and returns the session', async () => {
+    const calls: Call[] = [];
+    const answer = { token: 'v1.1760799441000.abc', expiresAt: 1_760_799_441_000 };
+    const result = await createSession(fakeFetch(200, answer, calls), { base: 'http://x', token: 'abc' });
+    expect(calls).toEqual([{ url: 'http://x/board/session', method: 'POST', headers: { Authorization: 'Bearer abc' } }]);
+    expect(result).toEqual({ ok: true, session: answer });
+  });
+  it('maps 401 to auth and a missing key (503), an older worker (404) or a broken answer to server', async () => {
+    expect(await createSession(fakeFetch(401, { error: 'unauthorized' }), { base: 'http://x', token: 'abc' })).toEqual({ ok: false, error: 'auth' });
+    for (const [status, body] of [[503, { error: 'session-key-missing' }], [404, null], [200, { token: 5, expiresAt: 1 }], [200, { token: 'v1.1.a' }]] as const) {
+      expect(await createSession(fakeFetch(status, body), { base: 'http://x', token: 'abc' }), String(status)).toEqual({ ok: false, error: 'server' });
+    }
+  });
+  it('maps a network error to offline', async () => {
+    const failing: FetchLike = async () => {
+      throw new Error('offline');
+    };
+    expect(await createSession(failing, { base: 'http://x', token: 'abc' })).toEqual({ ok: false, error: 'offline' });
   });
 });

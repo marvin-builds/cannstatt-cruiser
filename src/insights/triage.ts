@@ -99,7 +99,9 @@ export function triageErrorText(failure: TriageError): string {
     case 'not-found': return 'Diesen Eintrag gibt es nicht mehr.';
     case 'bad-request': return 'Eingabe ungültig (Länge oder Zeichen prüfen).';
     case 'github-token-missing': return 'Im Worker fehlt das Secret GITHUB_TOKEN.';
-    case 'github': return failure.status ? `GitHub hat abgelehnt (Status ${failure.status}).` : 'GitHub nicht erreichbar.';
+    case 'github':
+      if (failure.status === 401) return 'GitHub-Token ungültig, neu setzen';
+      return failure.status ? `GitHub hat abgelehnt (Status ${failure.status}).` : 'GitHub nicht erreichbar.';
     case 'exists': return `Hat schon Issue #${failure.issue}.`;
   }
 }

@@ -31,6 +31,8 @@ export interface BoardView {
   testDevice: boolean;
   /** The numbers include test devices. */
   testers: boolean;
+  /** Signed in with a kept board session: the lock button reads "Abmelden" (ROADMAP 74). */
+  remembered: boolean;
 }
 
 const SPLITS: { title: string; field: keyof InsightsStats['split']; keys: SplitKey[] }[] = [
@@ -84,7 +86,7 @@ function header(view: BoardView, handlers: BoardHandlers): HTMLElement {
   );
   const reload = h('button', { type: 'button', class: 'ghost', disabled: view.loading }, view.loading ? 'Lädt …' : 'Neu laden');
   reload.addEventListener('click', handlers.onReload);
-  const lock = h('button', { type: 'button', class: 'ghost' }, 'Sperren');
+  const lock = h('button', { type: 'button', class: 'ghost' }, view.remembered ? 'Abmelden' : 'Sperren');
   lock.addEventListener('click', handlers.onLock);
   return h(
     'header',

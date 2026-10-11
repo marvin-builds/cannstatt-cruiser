@@ -19,4 +19,9 @@ describe('isAuthorized', () => {
     expect(await isAuthorized('Bearer ', '')).toBe(false);
     expect(await isAuthorized('Bearer undefined', undefined)).toBe(false);
   });
+
+  it('ignores whitespace around the configured token, but a blank one still rejects everything', async () => {
+    expect(await isAuthorized(`Bearer ${TOKEN}`, `  ${TOKEN}\n`)).toBe(true);
+    expect(await isAuthorized('Bearer ', ' \n')).toBe(false);
+  });
 });

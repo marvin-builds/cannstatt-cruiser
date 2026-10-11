@@ -1,5 +1,5 @@
 /**
- * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback,
+ * HTTP API: GET /top, POST /score, POST /event, POST /board/session, GET /stats, POST /feedback, GET /feedback,
  * POST /feedback/status (the game asks for its own reports by id and secret key, no token), the feedback triage
  * routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
@@ -7,6 +7,7 @@
  */
 import { utcDay, utcHour } from './aggregate';
 import { isAuthorized } from './auth';
+import { isBoardAuthorized, issueSession } from './board-session';
 import { corsHeaders, isAllowedOrigin } from './cors';
 import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-store';
 import { parseEvent } from './event-parse';
@@ -31,6 +32,8 @@ export interface Env {
   DB: D1Database;
   /** Bearer token for GET /stats and the feedback routes of the board (Wrangler secret). Without it they always answer 401. */
   STATS_TOKEN?: string;
+  /** HMAC key for board session tokens (Wrangler secret, ROADMAP 74). Without it POST /board/session answers 503 and no session token is accepted. */
+  BOARD_SESSION_KEY?: string;
   /** Fine-grained GitHub token, Issues read/write on ISSUE_REPO only (Wrangler secret). Without it no issue can be made. */
   GITHUB_TOKEN?: string;
 }
@@ -44,10 +47,11 @@ const OWN_TOP_CACHE = 'private, max-age=30';
 const BODY_TYPES = ['text/plain', 'application/json'];
 
 type Failure =
-  'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found' | 'exists' | 'github' | 'github-token-missing';
+  | 'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found' | 'exists' | 'github' | 'github-token-missing'
+  | 'session-key-missing';
 const STATUS: Record<Failure, number> = {
   'bad-request': 400, unauthorized: 401, forbidden: 403, name: 422, implausible: 422, rate: 429, 'not-found': 404, exists: 409,
-  github: 502, 'github-token-missing': 503,
+  github: 502, 'github-token-missing': 503, 'session-key-missing': 503,
 };
 /** `/feedback/<id>` and `/feedback/<id>/issue`; the id is checked by parseFeedbackId. */
 const TRIAGE_PATH = /^\/feedback\/([^/]+)(\/issue)?$/;
@@ -86,7 +90,14 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     return json({ entries, own: own && { rank, score: own.score } }, 200, OWN_TOP_CACHE);
   }
   // The token is checked before anything else, so an unauthorized call never reaches the database.
-  const authorized = () => isAuthorized(request.headers.get('Authorization'), env.STATS_TOKEN);
+  // Board routes take the real token or a board session token; only the real token opens a session.
+  const authorized = () => isBoardAuthorized(request.headers.get('Authorization'), env, now);
+  if (pathname === '/board/session') {
+    if (request.method !== 'POST') return fail('not-found');
+    if (!(await isAuthorized(request.headers.get('Authorization'), env.STATS_TOKEN))) return fail('unauthorized');
+    if (!env.BOARD_SESSION_KEY?.trim()) return fail('session-key-missing');
+    return json(await issueSession(env.BOARD_SESSION_KEY, now), 200);
+  }
   if (request.method === 'GET' && pathname === '/stats') {
     if (!(await authorized())) return fail('unauthorized');
     const values = searchParams.getAll('days');
@@ -154,11 +165,12 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     }
     const draft = parseIssueDraft(text);
     if (draft === null) return fail('bad-request');
-    if (!env.GITHUB_TOKEN) return fail('github-token-missing');
+    const githubToken = env.GITHUB_TOKEN?.trim();
+    if (!githubToken) return fail('github-token-missing');
     const row = await feedbackForIssue(env.DB, id);
     if (!row) return fail('not-found');
     if (row.issue !== null) return fail('exists', { issue: row.issue });
-    const created = await createIssue(github, env.GITHUB_TOKEN, { ...draft, labels: [ISSUE_LABEL, row.kind] });
+    const created = await createIssue(github, githubToken, { ...draft, labels: [ISSUE_LABEL, row.kind] });
     if (!created.ok) return fail('github', { status: created.status });
     await storeIssue(env.DB, id, created.number);
     return json({ ok: true, issue: created.number }, 201);

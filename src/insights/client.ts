@@ -1,6 +1,7 @@
 /**
  * Reads GET /stats and GET /feedback of the highscore worker with the admin token and sends the
- * feedback triage (issue, status and reply, delete; ROADMAP 56). The token is passed in per call and never stored. Every failure maps to an error code,
+ * feedback triage (issue, status and reply, delete; ROADMAP 56), and trades the token for a board session
+ * (ROADMAP 74). The token is passed in per call and never stored here. Every failure maps to an error code,
  * nothing throws; `fetch` is passed in so tests never reach the live worker.
  */
 import { type FetchLike, REQUEST_TIMEOUT_MS, SCORES_URL } from '../net/api';
@@ -161,6 +162,27 @@ export async function deleteFeedback(fetchFn: FetchLike, request: TriageRequest)
   const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}`, request, 'DELETE');
   if (!r.ok) return r;
   return r.status === 204 ? { ok: true } : { ok: false, ...triageFailure(r.status, r.body) };
+}
+
+/** A board session from POST /board/session: a signed token that carries only its expiry (ms since the epoch). */
+export interface BoardSession {
+  token: string;
+  expiresAt: number;
+}
+
+export type SessionResult = { ok: true; session: BoardSession } | { ok: false; error: StatsError };
+
+const isSession = (v: unknown): v is BoardSession =>
+  isRecord(v) && typeof v.token === 'string' && v.token.length > 0 && typeof v.expiresAt === 'number' && Number.isFinite(v.expiresAt);
+
+/**
+ * POST /board/session with the real token. 401 is 'auth'; a worker without BOARD_SESSION_KEY (503),
+ * an older worker (404) or a broken answer is 'server'.
+ */
+export async function createSession(fetchFn: FetchLike, request: FeedbackRequest): Promise<SessionResult> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/board/session`, request, 'POST');
+  if (!r.ok) return r;
+  return r.status === 200 && isSession(r.body) ? { ok: true, session: { token: r.body.token, expiresAt: r.body.expiresAt } } : { ok: false, error: 'server' };
 }
 
 type Answer = { ok: true; status: number; body: unknown } | { ok: false; error: 'auth' | 'offline' };

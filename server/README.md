@@ -24,7 +24,8 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/event-parse.ts` | Strict `POST /event` body check |
 | `src/event-store.ts`, `src/location.ts` | Daily cap, once-a-day condense + 90-day prune, storing events; coarse location from `request.cf` |
 | `src/day-summary.ts` | Condensing finished days into `day_summaries` (kept for good) |
-| `src/auth.ts` | Bearer token check for `GET /stats` and the feedback routes of the board (SHA-256 + constant-time compare) |
+| `src/auth.ts` | Bearer token check for `GET /stats` and the feedback routes of the board (SHA-256 + constant-time compare; the secret is trimmed) |
+| `src/board-session.ts` | Board session tokens (ROADMAP 74): `POST /board/session` signs a 7-day expiry with HMAC-SHA-256 under `BOARD_SESSION_KEY`; every board route accepts the real token or a valid session token |
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
 | `src/feedback-parse.ts` | Strict `POST /feedback` body check (with the optional secret key) and text normalisation |
@@ -102,6 +103,42 @@ Labels), so the new issues are labelled as intended. Like `STATS_TOKEN`, the
 GitHub token never goes into `wrangler.toml` (`[vars]`), a `VITE_` variable,
 the board, the game or git; the worker sends it only to `api.github.com`, and
 no answer ever contains it. Revoking it on GitHub stops issue creation at once.
+
+### Board session key (secret)
+
+The insights board's "Angemeldet bleiben" (ROADMAP 74) trades the real
+`STATS_TOKEN` once for a **board session token** that the board may keep in
+`localStorage` for 7 days (`BOARD_SESSION_DAYS`); the real token is never
+stored. The worker signs the session's expiry with HMAC-SHA-256 under the
+Wrangler secret `BOARD_SESSION_KEY` and stores nothing about sessions. Without
+the secret, `POST /board/session` answers `503 {"ok": false, "error":
+"session-key-missing"}`, no session token is ever accepted, and the board falls
+back to asking for the token after each reload. Create and set it once:
+
+```sh
+cd server
+openssl rand -base64 32 | npx wrangler secret put BOARD_SESSION_KEY
+```
+
+The key never needs to be known by anyone, so it goes straight from `openssl`
+into the secret (no password manager, never in `wrangler.toml` `[vars]`, a
+`VITE_` variable, the board, the game or git).
+
+**Rotation signs out every device at once:** running the same command again
+makes every kept session invalid (the board then asks for the token again with
+"Anmeldung abgelaufen"). Do it when a device with a kept session is lost, or
+when in doubt. Rotating `STATS_TOKEN` alone does **not** end kept sessions;
+rotate both if the token may have leaked.
+
+**Release order** for the first release with board sessions: 1. set the secret
+(above), 2. deploy the worker (`npx wrangler deploy`), 3. release the game (tag).
+A board from before step 3 simply never asks for a session; a board after it
+against a worker without the secret gets the 503 and keeps the token in memory
+only, with a short note.
+
+Secrets are trimmed before use (`STATS_TOKEN`, `GITHUB_TOKEN`,
+`BOARD_SESSION_KEY`), so a line break pasted into `wrangler secret put` does no
+harm.
 
 ## Migrations
 
@@ -349,9 +386,36 @@ Responses:
 - `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
   not one of the game origins above.
 
+### `POST /board/session`
+
+Starts a board session (ROADMAP 74). Needs `Authorization: Bearer <STATS_TOKEN>`
+(the real token only: a session token cannot extend itself); otherwise `401`
+before anything else. No body. Not cached.
+
+- `200 {"token": "v1.<expiresAt>.<signature>", "expiresAt": <ms since epoch>}`:
+  the token carries only its expiry (7 days from now, `BOARD_SESSION_MS`) and
+  its HMAC-SHA-256 signature (base64url) under `BOARD_SESSION_KEY`.
+- `503 {"ok": false, "error": "session-key-missing"}` without the secret.
+- Other methods answer `404`.
+
+A session token is accepted, in the same `Authorization: Bearer` header, by
+every route that accepts `STATS_TOKEN` (`GET /stats`, `GET /feedback`, the
+triage routes) while it has not expired, its signature matches the current
+key (compared in constant time) and its expiry is at most 7 days ahead.
+
+Rate limiting: failed attempts are not counted. Both tokens are 256-bit random
+values (`openssl rand -base64 32`), so online guessing is hopeless at any
+request rate the free plan allows (100,000 requests a day would need about
+10^69 years on average), and every failure answers 401 before any database
+access, so a flood of wrong tokens costs no database reads or writes. A counter
+would need either the database on every failed request (turning a flood into
+database writes) or the client IP, which the worker never reads. The session
+route adds nothing to guess that `GET /stats` did not already offer.
+
 ### `GET /stats?days=7|30|90|365|0[&testers=1]`
 
-The insights board's data. Needs `Authorization: Bearer <STATS_TOKEN>`;
+The insights board's data. Needs `Authorization: Bearer <STATS_TOKEN>` or a
+valid board session token (see `POST /board/session`);
 without the secret, without the header or with a wrong token it answers
 `401 {"ok": false, "error": "unauthorized"}` before any database access.
 `days` other than exactly `7`, `30`, `90`, `365` or `0` ("Alles": every day
@@ -430,7 +494,7 @@ answered with 201, and the next feedback retries.
 ### `GET /feedback`
 
 The insights board's feedback list. Needs `Authorization: Bearer <STATS_TOKEN>`
-like `GET /stats` (401 before any database access otherwise). Not cached
+(or a board session token) like `GET /stats` (401 before any database access otherwise). Not cached
 (`Cache-Control: no-store`). `200 {"entries": [...]}` (`FeedbackList`): the
 newest 100 (`FEEDBACK_LIST_LIMIT`), newest day first and, within a day, the
 latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
@@ -465,7 +529,7 @@ counter, no housekeeping. Needs a game `Origin` like `POST /feedback`.
 
 ### Feedback triage (ROADMAP 56)
 
-All three routes need `Authorization: Bearer <STATS_TOKEN>` and check it first:
+All three routes need `Authorization: Bearer <STATS_TOKEN>` (or a board session token) and check it first:
 without it they answer `401` before any database access or GitHub call. The id
 is the entry's `id` (a positive integer; anything else is 400). JSON bodies
 (`application/json` or `text/plain`) of at most 32 KB. Not cached.
@@ -534,7 +598,7 @@ the data is anonymous and coarse, so a person cannot be identified from it.
 - Daily counts are kept for good (table `day_summaries`, see "Daily
   summaries"): per UTC day only totals and per-value counts, no session id, no
   hour, no device id, no IP.
-- Access: only with the `STATS_TOKEN` secret.
+- Access: only with the `STATS_TOKEN` secret or a board session made with it.
 
 ### Feedback
 
@@ -558,7 +622,14 @@ and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
 - Triage: the operator may publish an entry as an anonymous GitHub issue
   after reviewing and editing the text on the board (the log only when it is
   needed), and store a status, a short reply and the version it was done in on the row.
-- Access: only with the `STATS_TOKEN` secret (`GET /feedback` and the triage routes).
+- Access: only with the `STATS_TOKEN` secret or a board session made with it (`GET /feedback` and the triage routes).
+
+### Board sessions
+
+A board session token holds only its expiry and a signature: no name, no
+device, no IP. The worker stores nothing about sessions; the board keeps the
+token and its expiry in the operator's `localStorage` until it expires, a
+request answers 401, or the operator presses "Abmelden".
 
 ## Keeping it in sync with the game
 
