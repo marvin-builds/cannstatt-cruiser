@@ -61,8 +61,16 @@ export type Cue =
 export type LoopName = 'grind';
 
 export interface AudioBackend {
-  /** Creates / resumes the audio context. Called inside every user gesture. */
+  /**
+   * Creates / resumes the audio context and sets the master gain from the mute
+   * flag again. Called inside every user gesture.
+   */
   unlock(): void;
+  /**
+   * Like unlock, but never creates the context (no gesture): resumes it if it
+   * stopped and sets the gain again. Called when the page becomes visible again.
+   */
+  wake(): void;
   /**
    * Plays a one-shot cue; `intensity` 0..1 scales its volume, `delay` (seconds,
    * default 0) starts it later, `pitch` (default 1) multiplies the frequency of
@@ -88,4 +96,6 @@ export interface AudioBackend {
   setPark(ambience: number, boombox: number): void;
   /** Short state for debugging, e.g. the AudioContext state ('running', 'unavailable'). */
   status?(): string;
+  /** Current master gain for debugging (0 while muted), or null before the context exists. */
+  masterGain?(): number | null;
 }

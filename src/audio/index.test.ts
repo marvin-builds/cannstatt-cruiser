@@ -27,6 +27,9 @@ class FakeBackend implements AudioBackend {
   unlock(): void {
     this.calls.push('unlock');
   }
+  wake(): void {
+    this.calls.push('wake');
+  }
   play(cue: Cue, intensity: number, delay = 0, pitch = 1): void {
     this.played.push({ cue, intensity, delay, pitch });
   }
@@ -60,8 +63,12 @@ class MemoryStorage {
 function setup(storage = new MemoryStorage()) {
   const backend = new FakeBackend();
   const store = createStore(storage as unknown as Storage);
-  const game = new Game({ systems: [createAudioSystem({ backend, store })] });
-  return { game, backend, storage, cues: () => backend.played.map((p) => p.cue) };
+  let visible = () => {};
+  const watchVisible = (fn: () => void) => {
+    visible = fn;
+  };
+  const game = new Game({ systems: [createAudioSystem({ backend, store, watchVisible })] });
+  return { game, backend, storage, cues: () => backend.played.map((p) => p.cue), visible: () => visible() };
 }
 
 /** A running game in kid mode; `adult` switches it off for the adult variants. */
@@ -167,6 +174,23 @@ describe('audio system: unlock and mute', () => {
     const { game, backend } = setup();
     game.notifyUserGesture();
     expect(backend.calls).toEqual(['unlock']);
+  });
+
+  it('wakes the backend when the page becomes visible again', () => {
+    const { backend, visible } = setup();
+    visible();
+    expect(backend.calls).toEqual(['wake']);
+  });
+
+  it('takes the mute flag of the button (game state) on every gesture', () => {
+    const { game, backend, storage } = setup();
+    game.state.muted = true;
+    game.notifyUserGesture();
+    expect(backend.muted).toBe(true);
+    expect(storage.data.get('cannstatt-cruiser:muted')).toBe('true');
+    game.state.muted = false;
+    game.notifyUserGesture();
+    expect(backend.muted).toBe(false);
   });
 
   it('follows the mute event and persists it', () => {
@@ -303,6 +327,9 @@ describe('audio system: robustness', () => {
   it('never lets a failing backend break the game', () => {
     const broken: AudioBackend = {
       unlock: () => {
+        throw new Error('no audio');
+      },
+      wake: () => {
         throw new Error('no audio');
       },
       play: () => {

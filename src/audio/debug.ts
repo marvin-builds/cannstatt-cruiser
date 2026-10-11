@@ -12,8 +12,10 @@ export interface AudioDebug {
    * Muted sounds are logged too (`muted: true`) although nothing was audible.
    */
   log: { at: number; sound: string; muted: boolean }[];
-  /** Backend status, e.g. the AudioContext state. */
+  /** Backend status, e.g. the AudioContext state ('locked' before the first gesture, 'running'). */
   status(): string;
+  /** Master gain now (0 while muted, null before the context exists or without a backend that tells). */
+  gain(): number | null;
   /** NorDIY park levels last sent to the backend (0 = silent), see audio/park.ts. */
   park(): { ambience: number; boombox: number };
 }
@@ -30,6 +32,7 @@ export function exposeAudioDebug(backend: AudioBackend, park: ParkSound): ((soun
   const debug: AudioDebug = {
     log: [],
     status: () => backend.status?.() ?? 'unknown',
+    gain: () => backend.masterGain?.() ?? null,
     park: () => ({ ambience: park.ambience, boombox: park.boombox }),
   };
   window.__audio = debug;
