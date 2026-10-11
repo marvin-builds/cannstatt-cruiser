@@ -24,6 +24,27 @@ describe('ScoresApi.top', () => {
     expect(calls[0]!.url).toBe(`${SCORES_URL}/top`);
   });
 
+  it('asks for the own entry with the URL-encoded device id and parses it', async () => {
+    const { fetch, calls } = answer(200, { entries: [ENTRY], own: { rank: 1, score: 4200 } });
+    expect(await new ScoresApi(fetch).top('abc def+1')).toEqual({ ok: true, entries: [ENTRY], own: { rank: 1, score: 4200 } });
+    expect(calls[0]!.url).toBe(`${SCORES_URL}/top?device=abc%20def%2B1`);
+  });
+
+  it('keeps own null (no row) and a null rank (outside the top 20)', async () => {
+    expect(await new ScoresApi(answer(200, { entries: [], own: null }).fetch).top('device-1234')).toEqual({ ok: true, entries: [], own: null });
+    const outside = answer(200, { entries: [], own: { rank: null, score: 12 } }).fetch;
+    expect(await new ScoresApi(outside).top('device-1234')).toEqual({ ok: true, entries: [], own: { rank: null, score: 12 } });
+  });
+
+  it('leaves own unknown when an older worker does not send it', async () => {
+    const result = await new ScoresApi(answer(200, { entries: [ENTRY] }).fetch).top('device-1234');
+    expect(result).toEqual({ ok: true, entries: [ENTRY] });
+  });
+
+  it.each([{ rank: 'x', score: 1 }, { rank: 1 }, { rank: 1, score: -3 }, 'mine', 7])('maps a malformed own %j to server', async (own) => {
+    expect(await new ScoresApi(answer(200, { entries: [], own }).fetch).top('device-1234')).toEqual({ ok: false, error: 'server' });
+  });
+
   it('drops malformed entries', async () => {
     const { fetch } = answer(200, { entries: [ENTRY, { rank: 'x' }, null, { ...ENTRY, score: 1.5 }] });
     expect(await new ScoresApi(fetch).top()).toEqual({ ok: true, entries: [ENTRY] });
@@ -58,9 +79,9 @@ describe('ScoresApi.top', () => {
 });
 
 describe('ScoresApi.submit', () => {
-  it('posts the run as JSON and returns rank and list', async () => {
-    const { fetch, calls } = answer(200, { ok: true, rank: 3, entries: [ENTRY] });
-    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, rank: 3, entries: [ENTRY] });
+  it('posts the run as JSON and returns stored, rank, best and list', async () => {
+    const { fetch, calls } = answer(200, { ok: true, stored: true, rank: 3, best: 1200, entries: [ENTRY] });
+    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, stored: true, rank: 3, best: 1200, entries: [ENTRY] });
     expect(calls[0]!.url).toBe(`${SCORES_URL}/score`);
     expect(calls[0]!.init?.method).toBe('POST');
     expect(calls[0]!.init?.headers).toEqual({ 'Content-Type': 'application/json' });
@@ -68,8 +89,18 @@ describe('ScoresApi.submit', () => {
   });
 
   it('keeps a null rank (stored outside the top 20)', async () => {
-    const { fetch } = answer(200, { ok: true, rank: null, entries: [] });
-    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, rank: null, entries: [] });
+    const { fetch } = answer(200, { ok: true, stored: true, rank: null, best: 1200, entries: [] });
+    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, stored: true, rank: null, best: 1200, entries: [] });
+  });
+
+  it('passes on a run that was not stored with the kept best', async () => {
+    const { fetch } = answer(200, { ok: true, stored: false, rank: 2, best: 5000, entries: [ENTRY] });
+    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, stored: false, rank: 2, best: 5000, entries: [ENTRY] });
+  });
+
+  it('reads an answer of an older worker (no stored, no best) as stored with the run as best', async () => {
+    const { fetch } = answer(200, { ok: true, rank: 3, entries: [ENTRY] });
+    expect(await new ScoresApi(fetch).submit(RUN)).toEqual({ ok: true, stored: true, rank: 3, best: 1200, entries: [ENTRY] });
   });
 
   it.each([
@@ -82,6 +113,10 @@ describe('ScoresApi.submit', () => {
     [502, { whatever: true }, 'server'],
     [422, { ok: false, error: 'something' }, 'server'],
     [200, { ok: true }, 'server'],
+    [200, { ok: true, stored: 'yes', rank: 1, best: 5, entries: [] }, 'server'],
+    [200, { ok: true, stored: true, rank: 1, best: 1.5, entries: [] }, 'server'],
+    [200, { ok: true, stored: false, rank: 1, entries: [] }, 'server'],
+    [200, { ok: true, rank: 1, best: 5, entries: [] }, 'server'],
   ])('maps status %i %j to %s', async (status, body, error) => {
     expect(await new ScoresApi(answer(status, body).fetch).submit(RUN)).toEqual({ ok: false, error });
   });

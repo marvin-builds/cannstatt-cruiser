@@ -388,8 +388,9 @@ The art is recognisable but stylised.
   The title has a trophy button in the top-right row (key B) that opens it;
   on phones the list scrolls. Offline the list is hidden behind a short
   note.
-- After game over an "Eintragen" button appears only when the score would
-  make the top 20. It asks for a name (on-screen keyboard on touch); the name
+- One entry per player (device): after game over an "Eintragen" button
+  appears only when the score beats the own entry and would make the top 20;
+  the new entry replaces the old one. It asks for a name (on-screen keyboard on touch); the name
   is remembered, so later entries take one tap. Then the list shows with the
   own entry highlighted. Nothing in the pause menu.
 - Kid mode has no online list: no trophy, no list and no "Eintragen". Game

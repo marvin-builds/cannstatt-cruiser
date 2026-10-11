@@ -265,7 +265,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Trick!") shows now |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
-| `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
+| `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown, ownBest}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
 | `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
@@ -532,8 +532,12 @@ npm run playtest -- --headed
   phones); the native input is visible over the field and takes the typed
   name; the POST body (name, integer score, metres, seconds, version,
   device); the input hides after sending, the list shows the own entry
-  highlighted, and game over offers no second "Eintragen"; a new run starts
-  as before; the remembered name is prefilled next time; kid mode
+  highlighted (from the server rank), and game over offers no second
+  "Eintragen"; the fake server keeps one row per device and answers `own`,
+  `stored`, `best`: a lower top-20 run then offers no "Eintragen", a higher
+  one does and replaces the row (one row, new name), a stale client gets
+  `stored: false` and "Dein Eintrag bleibt", offline a run below the known
+  best is not offered; a new run starts as before; the remembered name is prefilled next time; kid mode
   (`__player.kidMode(true)`) shows no trophy (tap and B open nothing), a kid
   game over offers no "Eintragen" and posts or queues nothing, the kid record
   (`kidHighscore`) is kept apart from the adult `highscore`, and the adult

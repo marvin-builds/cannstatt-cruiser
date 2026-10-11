@@ -1,19 +1,24 @@
 /**
- * The highscore service the ui talks to: the last fetched top list, run
+ * The highscore service the ui talks to: the last fetched top list, the
+ * device's own online entry (one row per device: its best run), run
  * submission and the offline queue (queue.ts). Never blocks: every call
  * returns a promise the caller may ignore. Clock, connectivity and timers are
  * passed in, so tests run without a browser and without the network.
  */
 import type { Store } from '../core/storage';
-import type { ScoreEntry, ScoreSubmission, ScoresApi } from './api';
+import type { OwnEntry, ScoreEntry, ScoreSubmission, ScoresApi, SubmitResult } from './api';
 import { type RunStats, scorePayload } from './payload';
 import { ScoreQueue, SEND_SPACING_MS } from './queue';
+
+/** Store key: the device's own online best (a number; 0 or absent = no entry), known offline and before the list loads. */
+export const OWN_BEST_KEY = 'scoreOwnBest';
 
 /** idle: never asked; offline: the last attempt found no connection (an older list may still be kept). */
 export type TopState = 'idle' | 'loading' | 'ready' | 'offline';
 
 export type SubmitOutcome =
-  | { kind: 'ok'; rank: number | null; entries: ScoreEntry[] }
+  /** Accepted; `stored` false when the run did not beat the device's row (`best` is that row's score). */
+  | { kind: 'ok'; stored: boolean; rank: number | null; best: number; entries: ScoreEntry[] }
   /** Kept in the offline queue, sent later. */
   | { kind: 'queued'; reason: 'offline' | 'server' }
   /** Refused by the server; a 'rate' refusal may be retried by the player a little later. */
@@ -36,6 +41,9 @@ export interface ScoreServiceOptions {
 export class ScoreService {
   top: ScoreEntry[] | null = null;
   topState: TopState = 'idle';
+  /** The own row's place in `top`, or null (outside the top 20, no row, or not known). */
+  ownRank: number | null = null;
+  private best: number;
   private readonly queue: ScoreQueue;
   private lastSend = -Infinity;
   private retryScheduled = false;
@@ -43,6 +51,13 @@ export class ScoreService {
 
   constructor(private readonly options: ScoreServiceOptions) {
     this.queue = new ScoreQueue(options.store);
+    const stored = options.store.get<unknown>(OWN_BEST_KEY, 0);
+    this.best = typeof stored === 'number' && Number.isInteger(stored) && stored > 0 ? stored : 0;
+  }
+
+  /** The device's own online best (0 = no entry), the freshest the server told. */
+  get ownBest(): number {
+    return this.best;
   }
 
   /** The run waiting in the offline queue, or null. */
@@ -57,9 +72,13 @@ export class ScoreService {
       return;
     }
     this.topState = 'loading';
-    const result = await this.options.api.top();
-    if (result.ok) this.setTop(result.entries);
-    else this.topState = 'offline';
+    const result = await this.options.api.top(this.options.device);
+    if (!result.ok) {
+      this.topState = 'offline';
+      return;
+    }
+    this.setTop(result.entries);
+    if (result.own !== undefined) this.setOwn(result.own);
   }
 
   /** Sends a run under `name`; offline or on a server error it goes into the queue instead. */
@@ -70,7 +89,7 @@ export class ScoreService {
       return { kind: 'queued', reason: 'offline' };
     }
     const result = await this.send(payload);
-    if (result.ok) return { kind: 'ok', rank: result.rank, entries: result.entries };
+    if (result.ok) return { kind: 'ok', stored: result.stored, rank: result.rank, best: result.best, entries: result.entries };
     if (result.error === 'offline' || result.error === 'server') {
       this.queue.keep(payload);
       return { kind: 'queued', reason: result.error };
@@ -94,15 +113,17 @@ export class ScoreService {
     }
     const result = await this.send(pending);
     if (result.ok || (result.error !== 'offline' && result.error !== 'server' && result.error !== 'rate')) this.queue.clear();
-    if (result.ok) this.setTop(result.entries);
   }
 
-  private async send(payload: ScoreSubmission) {
+  private async send(payload: ScoreSubmission): Promise<SubmitResult> {
     this.sending = true;
     this.lastSend = this.options.now();
     try {
       const result = await this.options.api.submit(payload);
-      if (result.ok) this.setTop(result.entries);
+      if (result.ok) {
+        this.setTop(result.entries);
+        this.setOwn({ rank: result.rank, score: result.best });
+      }
       return result;
     } finally {
       this.sending = false;
@@ -121,5 +142,12 @@ export class ScoreService {
   private setTop(entries: ScoreEntry[]): void {
     this.top = entries;
     this.topState = 'ready';
+  }
+
+  /** A fresher server answer about the own row always replaces what was known (null = no row). */
+  private setOwn(own: OwnEntry | null): void {
+    this.ownRank = own?.rank ?? null;
+    this.best = own?.score ?? 0;
+    this.options.store.set(OWN_BEST_KEY, this.best);
   }
 }

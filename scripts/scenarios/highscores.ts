@@ -1,11 +1,14 @@
 /**
- * Online highscore list (ROADMAP 34) end to end, against a FAKE worker
- * (Playwright route; nothing reaches the live list): the title's trophy
- * opens the "Bestenliste" (scrolling by drag on phones, wheel on desktop),
- * game over offers "Eintragen" only for a top-20 score, name entry and submit
- * show the own entry highlighted, kid mode has no trophy, list or entry
- * (only its own local record, ROADMAP 45), and
- * offline shows the notes and queues the run (resent once online, desktop).
+ * Online highscore list (ROADMAP 34, 44) end to end, against a FAKE worker
+ * (Playwright route; nothing reaches the live list) that keeps one row per
+ * device like the real one: the title's trophy opens the "Bestenliste"
+ * (scrolling by drag on phones, wheel on desktop), game over offers
+ * "Eintragen" only for a top-20 score that beats the device's own entry,
+ * name entry and submit show the own entry highlighted (by the server's
+ * rank), a higher run replaces the row (one row per device), a stale client
+ * gets the "Dein Eintrag bleibt" note, kid mode has no trophy, list or entry
+ * (only its own local record, ROADMAP 45), and offline shows the notes and
+ * queues the run (resent once online, desktop).
  *
  *   npm run playtest -- --scenario <this file> --viewports desktop,phone-landscape,phone-portrait --name highscores
  */
@@ -19,15 +22,17 @@ const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
 type UiWindow = Window & { __ui?: UiDebugHook };
 
 interface FakeEntry {
+  device: string;
   name: string;
   score: number;
   distance: number;
   date: string;
 }
 
-/** A fake worker with a full list (20 runs, 20.000 down to 1.000 points). */
+/** A fake worker with a full list (20 devices, 20.000 down to 1.000 points) and the real contract: one row per device, only a higher score replaces it. */
 class FakeServer {
   rows: FakeEntry[] = Array.from({ length: 20 }, (_, i) => ({
+    device: `fake-device-${i + 1}`,
     name: ['Ada', 'Bob', 'Cleo', 'Dana', 'Emil'][i % 5]! + ` ${i + 1}`,
     score: 20000 - i * 1000,
     distance: 3000 - i * 100,
@@ -35,12 +40,26 @@ class FakeServer {
   }));
   posts: Record<string, unknown>[] = [];
   gets = 0;
+  /** The device ids the list was asked with. */
+  asked: string[] = [];
 
   top() {
     return [...this.rows]
       .sort((a, b) => b.score - a.score)
       .slice(0, 20)
-      .map((e, i) => ({ rank: i + 1, ...e }));
+      .map(({ name, score, distance, date }, i) => ({ rank: i + 1, name, score, distance, date }));
+  }
+
+  row(device: string): FakeEntry | undefined {
+    return this.rows.find((r) => r.device === device);
+  }
+
+  /** The device's row as `own` (rank within the top 20 or null), null without one. */
+  own(device: string) {
+    const row = this.row(device);
+    if (!row) return null;
+    const place = [...this.rows].sort((a, b) => b.score - a.score).indexOf(row);
+    return { rank: place < 20 ? place + 1 : null, score: row.score };
   }
 
   async handle(route: Route): Promise<void> {
@@ -50,14 +69,20 @@ class FakeServer {
     if (req.method() === 'POST') {
       const body = req.postDataJSON() as Record<string, unknown>;
       this.posts.push(body);
-      const row = { name: String(body.name), score: Number(body.score), distance: Number(body.distance), date: new Date().toISOString() };
-      this.rows.push(row);
-      const entries = this.top();
-      const rank = entries.find((e) => e.name === row.name && e.score === row.score)?.rank ?? null;
-      return route.fulfill({ headers, json: { ok: true, rank, entries } });
+      const device = String(body.device);
+      const run = { device, name: String(body.name), score: Number(body.score), distance: Number(body.distance), date: new Date().toISOString() };
+      const old = this.row(device);
+      const stored = !old || run.score > old.score;
+      if (stored && old) Object.assign(old, run);
+      else if (stored) this.rows.push(run);
+      const own = this.own(device)!;
+      return route.fulfill({ headers, json: { ok: true, stored, rank: own.rank, best: own.score, entries: this.top() } });
     }
     this.gets++;
-    return route.fulfill({ headers, json: { entries: this.top() } });
+    const device = new URL(req.url()).searchParams.get('device');
+    if (device === null) return route.fulfill({ headers, json: { entries: this.top() } });
+    this.asked.push(device);
+    return route.fulfill({ headers, json: { entries: this.top(), own: this.own(device) } });
   }
 }
 
@@ -162,6 +187,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   t.check('trophy opens the Bestenliste', (await hs(t)).screen === 'list');
   await waitFor(t, 'list loaded from the fake server', (h) => h.topState === 'ready' && h.entries === 20);
   t.check('list GET reached the fake server', server.gets > 0);
+  t.check('list GET carries the device id', server.asked.length > 0 && /^[A-Za-z0-9-]{8,64}$/.test(server.asked[0]!), server.asked);
   await t.game.step(1);
   await t.canvasShot('bestenliste');
   await t.screenshot('bestenliste page');
@@ -222,6 +248,8 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   const after = await waitFor(t, 'submit shows the list with the own entry highlighted', (h) => h.screen === 'list' && h.highlight !== null);
   const post = server.posts[server.posts.length - 1] ?? {};
   t.check('POST body: name, integer score, metres and seconds, version and device', post.name === name && post.score === 5000 && Number.isInteger(post.distance) && Number.isInteger(post.duration) && (post.duration as number) >= 1 && typeof post.version === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(String(post.device)), post);
+  const device = String(post.device);
+  t.check('the highlight is the server rank of the own row', after.highlight === server.own(device)?.rank && after.ownBest === 5000, after);
   t.check('input hidden after submit', !(await t.page.locator('input').isVisible()));
   await t.game.step(1);
   await t.canvasShot('bestenliste own entry');
@@ -235,13 +263,50 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   await t.game.step(2);
   t.check('a new run starts from game over as before', (await t.game.state()).mode === 'playing');
 
-  // Remembered name: one tap ("Als <Name> eintragen").
+  // A lower run (still top-20 worthy) after the own entry: no Eintragen.
+  await crash(t, 4000);
+  const lower = await waitFor(t, 'lower run: the list with the own best loaded', (h) => h.topState === 'ready' && h.ownBest === 5000);
+  t.check('lower run (top-20 worthy): no Eintragen', !lower.offered && (await menuButtons(t))?.submit === null, lower);
+  t.check('own best persisted', (await stored(t, 'scoreOwnBest')) === '5000', await stored(t, 'scoreOwnBest'));
+  await t.canvasShot('game over below own entry');
+
+  // A higher run: Eintragen again, the remembered name prefilled (one tap), the row is replaced.
   await crash(t, 6000);
+  await waitFor(t, 'higher run: Eintragen offered again', (h) => h.offered);
   if (t.viewport.touch) await tap(t, (await menuButtons(t))!.submit!);
   else await t.page.keyboard.press('KeyE');
   await t.game.step(1);
   t.check('remembered name prefilled', (await hs(t)).name === name);
   await t.canvasShot('name entry remembered');
+  const newName = `${name} II`;
+  await typeName(t, newName);
+  if (t.viewport.touch) await tap(t, (await hs(t)).submit);
+  else await t.page.keyboard.press('Enter');
+  const replaced = await waitFor(t, 'higher run: list with the replaced own entry', (h) => h.screen === 'list' && h.ownBest === 6000 && h.highlight !== null);
+  const mine = server.rows.filter((r) => r.device === device);
+  t.check('one row for this device with the new score and name', mine.length === 1 && mine[0]!.score === 6000 && mine[0]!.name === newName, mine);
+  const shown = server.top().filter((e) => e.name === name || e.name === newName);
+  t.check('the list shows only the new row, highlighted', shown.length === 1 && shown[0]!.rank === replaced.highlight && replaced.entries === 20, { shown, replaced });
+  await t.game.step(1);
+  await t.canvasShot('bestenliste replaced entry');
+  await t.page.keyboard.press('Escape');
+  await tap(t, replaced.close);
+
+  // A stale client: the server already holds a better run of this device, so it keeps that one.
+  await crash(t, 7000);
+  await waitFor(t, 'stale: Eintragen offered for a run above the known best', (h) => h.offered && h.topState === 'ready');
+  server.row(device)!.score = 9000;
+  if (t.viewport.touch) await tap(t, (await menuButtons(t))!.submit!);
+  else await t.page.keyboard.press('KeyE');
+  await t.game.step(1);
+  if (t.viewport.touch) await tap(t, (await hs(t)).submit);
+  else await t.page.keyboard.press('Enter');
+  const kept = await waitFor(t, 'stale: the kept entry note and the new best', (h) => h.screen === 'list' && h.message === 'Dein Eintrag bleibt: 9.000 Punkte' && h.ownBest === 9000);
+  t.check('stale: still one row for this device', server.rows.filter((r) => r.device === device).length === 1 && server.row(device)!.score === 9000, kept);
+  await t.game.step(1);
+  await t.canvasShot('bestenliste entry kept');
+  await t.screenshot('bestenliste entry kept page');
+  await tap(t, kept.close);
 
   // Kid mode (ROADMAP 45): no trophy, no list, no Eintragen; only the local kid record.
   await t.page.keyboard.press('Escape');
@@ -267,7 +332,9 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   await t.canvasShot('bestenliste offline');
   await tap(t, (await hs(t)).close);
   await crash(t, 8000);
-  t.check('offline: Eintragen still offered', (await hs(t)).offered);
+  t.check('offline: a run below the known best offers nothing', !(await hs(t)).offered);
+  await crash(t, 10000);
+  t.check('offline: Eintragen still offered above the known best', (await hs(t)).offered);
   if (t.viewport.touch) await tap(t, (await menuButtons(t))!.submit!);
   else await t.page.keyboard.press('KeyE');
   await t.game.step(1);
@@ -277,7 +344,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   const queued = await waitFor(t, 'offline: entry queued with the note', (h) => h.screen === 'list' && h.message === 'Wird gesendet, sobald du online bist');
   t.check('offline: nothing was sent', server.posts.length === posts, queued);
   const pending = await t.page.evaluate(() => localStorage.getItem('cannstatt-cruiser:pendingScore'));
-  t.check('offline: the run waits in the store', !!pending && JSON.parse(pending).score === 8000, pending);
+  t.check('offline: the run waits in the store', !!pending && JSON.parse(pending).score === 10000, pending);
   await t.game.step(1);
   await t.canvasShot('bestenliste queued offline');
 
@@ -286,7 +353,7 @@ export default async function highscores(t: PlaytestContext): Promise<void> {
   if (tag === 'desktop') {
     const start = Date.now();
     while (server.posts.length === posts && Date.now() - start < 25000) await t.wait(500);
-    t.check('online again: the queued run is sent', server.posts.length === posts + 1 && server.posts[posts]!.score === 8000, server.posts.length);
+    t.check('online again: the queued run is sent', server.posts.length === posts + 1 && server.posts[posts]!.score === 10000, server.posts.length);
     t.check('online again: the queue is empty', (await t.page.evaluate(() => localStorage.getItem('cannstatt-cruiser:pendingScore'))) === 'null');
   }
 }

@@ -35,8 +35,26 @@ export interface ScoreSubmission {
 /** offline = no connection or timeout; server = any answer outside the contract (5xx, 404, junk). */
 export type ScoreError = 'offline' | 'name' | 'implausible' | 'rate' | 'bad-request' | 'server';
 
-export type TopResult = { ok: true; entries: ScoreEntry[] } | { ok: false; error: ScoreError };
-export type SubmitResult = { ok: true; rank: number | null; entries: ScoreEntry[] } | { ok: false; error: ScoreError };
+/** The device's own row (GET /top?device=...): `rank` within the top 20, or null outside it. */
+export interface OwnEntry {
+  rank: number | null;
+  score: number;
+}
+
+/**
+ * `own`: null when the device has no row; absent when the list was asked
+ * without a device or an older worker does not send it (unknown).
+ */
+export type TopResult = { ok: true; entries: ScoreEntry[]; own?: OwnEntry | null } | { ok: false; error: ScoreError };
+
+/**
+ * `stored`: the run replaced the device's row (it beat it) or created it.
+ * `best`: the device's stored score after the request. `rank`: its row's
+ * place in the top 20, or null.
+ */
+export type SubmitResult =
+  | { ok: true; stored: boolean; rank: number | null; best: number; entries: ScoreEntry[] }
+  | { ok: false; error: ScoreError };
 
 /** The part of a fetch Response the client reads. */
 export interface FetchResponse {
@@ -57,6 +75,7 @@ export interface ScoresApiOptions {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+const isRank = (v: unknown): v is number | null => v === null || isCount(v);
 
 function parseEntry(v: unknown): ScoreEntry | null {
   if (!isRecord(v)) return null;
@@ -68,6 +87,20 @@ function parseEntry(v: unknown): ScoreEntry | null {
 function parseEntries(v: unknown): ScoreEntry[] | null {
   if (!isRecord(v) || !Array.isArray(v.entries)) return null;
   return v.entries.map(parseEntry).filter((e): e is ScoreEntry => e !== null);
+}
+
+/** `own` of a GET /top answer: null, a valid row, or undefined when the answer is malformed. */
+function parseOwn(v: unknown): OwnEntry | null | undefined {
+  if (v === null) return null;
+  if (!isRecord(v) || !isRank(v.rank) || !isCount(v.score)) return undefined;
+  return { rank: v.rank, score: v.score };
+}
+
+/** `stored` and `best` of a POST answer; an older worker sends neither (it stored every run). */
+function parseStored(body: Record<string, unknown>, score: number): { stored: boolean; best: number } | null {
+  const { stored, best } = body;
+  if (stored === undefined && best === undefined) return { stored: true, best: score };
+  return typeof stored === 'boolean' && isCount(best) ? { stored, best } : null;
 }
 
 /** Error codes the server sends with 422. */
@@ -98,11 +131,16 @@ export class ScoresApi {
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
-  async top(): Promise<TopResult> {
-    const answer = await this.request('/top');
+  /** The top list; with `device` also that device's own row (`own`). */
+  async top(device?: string): Promise<TopResult> {
+    const answer = await this.request(device === undefined ? '/top' : `/top?device=${encodeURIComponent(device)}`);
     if (!answer) return { ok: false, error: 'offline' };
     const entries = answer.status === 200 ? parseEntries(answer.body) : null;
-    return entries ? { ok: true, entries } : { ok: false, error: 'server' };
+    if (!entries) return { ok: false, error: 'server' };
+    const raw = isRecord(answer.body) ? answer.body.own : undefined;
+    if (raw === undefined) return { ok: true, entries };
+    const own = parseOwn(raw);
+    return own === undefined ? { ok: false, error: 'server' } : { ok: true, entries, own };
   }
 
   async submit(run: ScoreSubmission): Promise<SubmitResult> {
@@ -115,9 +153,10 @@ export class ScoresApi {
     const { status, body } = answer;
     if (status !== 200) return { ok: false, error: submitError(status, body) };
     const entries = parseEntries(body);
-    const rank = isRecord(body) ? body.rank : undefined;
-    if (!entries || !isRecord(body) || body.ok !== true || !(rank === null || isCount(rank))) return { ok: false, error: 'server' };
-    return { ok: true, rank, entries };
+    if (!entries || !isRecord(body) || body.ok !== true || !isRank(body.rank)) return { ok: false, error: 'server' };
+    const kept = parseStored(body, run.score);
+    if (!kept) return { ok: false, error: 'server' };
+    return { ok: true, stored: kept.stored, rank: body.rank, best: kept.best, entries };
   }
 
   /** The status and parsed JSON body (null when not JSON), or null when offline or timed out. */

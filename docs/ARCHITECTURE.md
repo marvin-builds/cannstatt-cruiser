@@ -918,10 +918,18 @@ enough for friends and family.
 - **API** (JSON, CORS for `https://marvinmai.github.io` and
   `http://localhost:*` / `http://127.0.0.1:*`):
   - `GET /top` -> `200 {entries: [{rank, name, score, distance, date}]}`, top
-    20 by score (a tie goes to the earlier entry), cached 30 s.
+    20 by score (a tie goes to the earlier entry), cached 30 s. With
+    `?device=<id>` it adds `own: {rank, score} | null` (this device's row;
+    `rank` null outside the top 20) and is cached privately.
   - `POST /score` with `{name, score, distance, duration, version, device}`
-    -> `200 {ok: true, rank, entries}` (`rank` 1-based or `null` outside the
-    top 20), `400 bad-request`, `422 name`, `422 implausible`, `429 rate`.
+    -> `200 {ok: true, stored, rank, best, entries}` (`rank` of the device's
+    row, 1-based or `null` outside the top 20; `best` the device's stored
+    score), `400 bad-request`, `422 name`, `422 implausible`, `429 rate`.
+  - **One row per device (ROADMAP 44)**: the hashed device id is unique in
+    `scores`; a run replaces the row (name included) only with a higher
+    score, otherwise `stored: false`. Migration
+    `server/migrations/0002_one_row_per_device.sql` (deploy order in
+    server/README.md: backup, migration, schema, deploy).
   - `distance` is in metres (game px / 10), `duration` in whole seconds of
     play, `version` the build string (`BUILD_VERSION`), `device` a random id
     kept per install (8-64 of `A-Z a-z 0-9 -`).
@@ -958,11 +966,14 @@ Placement approved by the user (ROADMAP 34):
 - **Title**: a trophy button in the top-right button row (key B) opens the
   "Bestenliste" screen: the top 20 (scrollable on phones), an offline note
   instead of the list when there is no connection, and a short privacy note.
-- **Game over**: an "Eintragen" button only when the score would reach the
-  top 20 (compared with the last fetched list). It leads to a name entry
+- **Game over**: an "Eintragen" button only when the score beats this
+  device's own online best (`ScoreService.ownBest`, and a queued run) and
+  would reach the top 20 (compared with the last fetched list). It leads to a name entry
   (on-screen keyboard on touch). The remembered name makes
   later entries one tap. Afterwards the list shows with the own entry
-  highlighted.
+  highlighted (from the server's rank, `ScoreService.ownRank`). If the
+  server keeps an older, higher entry (`stored: false`) the list notes
+  "Dein Eintrag bleibt: N Punkte".
 - Nothing in the pause menu.
 - `src/net/`: a small network module that talks to the worker (`GET /top`,
   `POST /score`) and keeps an **offline queue**: an entry made offline is
@@ -973,13 +984,13 @@ Modules:
 
 | Module | Content |
 |---|---|
-| `net/api.ts` | `ScoresApi(fetch, {baseUrl, timeoutMs})`: `top()` / `submit(run)`; `SCORES_URL` (the live worker), `REQUEST_TIMEOUT_MS` (6 s, then it counts as offline). Never throws: failures map to `ScoreError` `'offline' \| 'name' \| 'implausible' \| 'rate' \| 'bad-request' \| 'server'`. Answers are validated (`parseEntries`) |
+| `net/api.ts` | `ScoresApi(fetch, {baseUrl, timeoutMs})`: `top(device?)` (with `own`) / `submit(run)` (with `stored`, `best`; an older worker's answer without them counts as stored); `SCORES_URL` (the live worker), `REQUEST_TIMEOUT_MS` (6 s, then it counts as offline). Never throws: failures map to `ScoreError` `'offline' \| 'name' \| 'implausible' \| 'rate' \| 'bad-request' \| 'server'`. Answers are validated (`parseEntries`) |
 | `net/payload.ts` | `scorePayload(run, name, version, device)`: `RunStats {score, distance (px), seconds}` -> the POST body (integers, metres via `PX_PER_METRE` from `ui/layout.ts`, duration >= 1 s) |
 | `net/device.ts` | `loadDeviceId(store)`: random id (`crypto.randomUUID` or random hex), store key `deviceId` |
 | `net/queue.ts` | `ScoreQueue`: the offline queue, store key `pendingScore`, keeps only the best pending run; `SEND_SPACING_MS` 20 s (the server's rate limit) |
-| `net/service.ts` | `ScoreService`: `top` (last fetched list) and `topState` (`'idle' \| 'loading' \| 'ready' \| 'offline'`), `refreshTop()`, `submit(run, name)` -> `SubmitOutcome` (`ok` with rank / `queued` offline or on a server error / `failed` name, implausible, rate, bad-request), `retryPending()` (spaced by `SEND_SPACING_MS`). Clock, `online()`, timers, store and api are injected |
+| `net/service.ts` | `ScoreService`: `top` (last fetched list) and `topState` (`'idle' \| 'loading' \| 'ready' \| 'offline'`), `ownBest` / `ownRank` (this device's online entry, learned from `own` and from each accepted POST, best persisted), `refreshTop()`, `submit(run, name)` -> `SubmitOutcome` (`ok` with rank, `stored`, `best` / `queued` offline or on a server error / `failed` name, implausible, rate, bad-request), `retryPending()` (spaced by `SEND_SPACING_MS`). Clock, `online()`, timers, store and api are injected |
 | `net/browser.ts` | `createBrowserScoreService(store)`: real `fetch`, `navigator.onLine`, `BUILD_VERSION`; retries the queue on `online` and when the page becomes visible |
-| `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store key `scoreName`), last entry (`scoreLastEntry`) and `ownRank` for the highlight |
+| `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store key `scoreName`) |
 | `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `SCORE_TEXT` (all German texts incl. the privacy note), `offered`, `openList()`, `openEntry()`, `setName`, `submit()`, scroll. `runStarted(fetchList)`: an adult run start fetches the list in the background so `offered` is known at game over; a kid run start only resets the flow |
 | `ui/score-layout.ts` / `ui/score-screens.ts` | pure layouts (title trophy left of mute / fullscreen, moved below the row where it would touch the logo; list rows and scroll; entry field and buttons) and their drawing |
 | `ui/name-field.ts` | the native `<input>` over the drawn field in adult mode, so phones open their own keyboard; its key and touch events stop there and never reach the game |
@@ -1001,7 +1012,7 @@ Modules:
   | `deviceId` | `net/device.ts` | the random install id sent as `device` |
   | `pendingScore` | `net/queue.ts` | the best run waiting to be sent (`null` when empty) |
   | `scoreName` | `ui/score-rules.ts` | the remembered free-text name (adult mode) |
-  | `scoreLastEntry` | `ui/score-rules.ts` | `{name, score}` of the last entry sent, for the highlighted own row (`ownRank`) |
+  | `scoreOwnBest` | `net/service.ts` | this device's online best (0 or absent = no entry); replaced by every fresher server answer |
 - **Keys** (a highscore screen takes every key but M, so nothing starts a
   run behind it): B opens the list on the title; on the list B or Esc
   closes it, ↑ / ↓ (and W / S) scroll one row per press and keep scrolling
