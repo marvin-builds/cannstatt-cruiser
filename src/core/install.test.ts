@@ -105,6 +105,18 @@ describe('InstallController', () => {
     expect(state.install.canPrompt).toBe(false);
   });
 
+  it('offers no second browser prompt in the same page load (Chrome re-sends one after a cancel but shows nothing)', () => {
+    const { state, install } = setup();
+    install.capturePrompt(fakePrompt());
+    install.promptInstall();
+    const again = fakePrompt();
+    install.capturePrompt(again);
+    expect(again.preventDefault).toHaveBeenCalledOnce();
+    expect(state.install.canPrompt).toBe(false);
+    install.promptInstall();
+    expect(again.prompt).not.toHaveBeenCalled();
+  });
+
   it('ignores promptInstall without a kept prompt', () => {
     const { install } = setup();
     expect(() => install.promptInstall()).not.toThrow();

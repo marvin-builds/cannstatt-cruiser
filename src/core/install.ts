@@ -56,6 +56,8 @@ export function detectInstallEnvironment(b: BrowserFacts): InstallEnvironment {
 /** Keeps `state.install` and the captured browser prompt; DOM-free (app.ts forwards the window events). */
 export class InstallController {
   private promptEvent: InstallPromptEvent | null = null;
+  /** The browser prompt was shown in this page load. */
+  private prompted = false;
 
   constructor(
     private readonly state: GameState,
@@ -73,9 +75,14 @@ export class InstallController {
     });
   }
 
-  /** `beforeinstallprompt`: keep the event for a later button press instead of the browser's own banner. */
+  /**
+   * `beforeinstallprompt`: keep the event for a later button press instead of the browser's own banner.
+   * Only the first one per page load: after a cancel Chrome sends another whose prompt() shows nothing,
+   * so the button falls back to the manual steps (ui) instead of silently doing nothing.
+   */
   capturePrompt(e: InstallPromptEvent): void {
     e.preventDefault();
+    if (this.prompted) return;
     this.promptEvent = e;
     this.state.install.canPrompt = true;
   }
@@ -91,6 +98,7 @@ export class InstallController {
     const e = this.promptEvent;
     if (!e) return;
     this.dropPrompt();
+    this.prompted = true;
     const refused = () => {
       // The browser refused (e.g. no user gesture); the hint just stays without a button.
     };
