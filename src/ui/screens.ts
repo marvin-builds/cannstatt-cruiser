@@ -65,7 +65,7 @@ import {
   uiMetrics,
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
-import { drawGameOver, drawPause, drawTitle, drawWhatsNew } from './menu-screens';
+import { drawGameOver, drawPause, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
 import { currentMenu, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
@@ -73,7 +73,7 @@ import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
-import type { LongPress, SettingsMenu } from './settings';
+import { type LongPress, type SettingsMenu, STATS_TEXT } from './settings';
 import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
@@ -182,8 +182,8 @@ function drawButtons(r: RenderContext, view: UiView): void {
 }
 
 /** The "Bestenliste" or the name entry over the title or game over. */
-function drawScores(r: RenderContext, flow: HighscoreFlow): void {
-  if (flow.screen === 'list') drawScoreList(r, flow, scoreListLayout(r.display, flow.entries.length, flow.message !== null));
+function drawScores(r: RenderContext, flow: HighscoreFlow, statsOn: boolean): void {
+  if (flow.screen === 'list') drawScoreList(r, flow, scoreListLayout(r.display, flow.entries.length, flow.message !== null), statsOn);
   else drawScoreEntry(r, flow, scoreEntryLayout(r.display));
 }
 
@@ -506,15 +506,19 @@ function drawSettings(r: RenderContext, view: UiView): void {
   }
   const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
   const on = r.state.kidMode;
-  centred(r, 'Einstellungen', 12, { scale: 2, color: UI.yellow });
+  centred(r, 'Einstellungen', l.titleY, { scale: 2, color: UI.yellow });
   menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
-  const note = l.toggle.y + l.toggle.h + 6;
   // Switched during a run: closing the menu restarts it.
-  if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, note, { color: UI.yellow });
-  else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', note, { color: UI.muted });
-  if (!r.display.touch) centred(r, 'Enter = umschalten, Esc = schließen', l.back.y - 14, { color: UI.muted });
+  if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, l.kidNoteY, { color: UI.yellow });
+  else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', l.kidNoteY, { color: UI.muted });
+  drawStatsSwitch(r, l.stats, settings.statsOn);
+  centred(r, settings.statsOn ? STATS_TEXT.note : STATS_TEXT.offNote, l.statsNoteY, { color: UI.muted });
+  if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
   menuButton(r, l.back, 'Zurück');
 }
+
+/** Desktop key help of the settings menu. */
+export const SETTINGS_KEYS = 'Enter = Kindermodus, A = Statistik, Esc = zurück';
 
 /** "Kindermodus ist an" after the title's button: what it does, the way back, OK. */
 function drawKidNotice(r: RenderContext): void {
@@ -529,7 +533,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
   switch (r.state.mode) {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
-      else if (view.scores?.open) drawScores(r, view.scores);
+      else if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
       else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!);
       else drawTitle(r, view, menu!);
       break;
@@ -556,7 +560,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawPause(r, view, menu!);
       break;
     case 'gameover':
-      if (view.scores?.open) drawScores(r, view.scores);
+      if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
       else drawGameOver(r, view, menu!);
       break;
   }

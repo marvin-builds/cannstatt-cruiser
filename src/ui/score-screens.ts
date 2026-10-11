@@ -9,10 +9,11 @@ import { UI } from './art';
 import { fill, menuButton, text } from './draw-kit';
 import { type HighscoreFlow, SCORE_TEXT } from './highscore-flow';
 import { fitCentred, formatNumber } from './layout';
-import { drawDismiss } from './menu-screens';
+import { drawDismiss, drawStatsSwitch } from './menu-screens';
 import { SCROLLBAR_W, type ScoreEntryLayout, type ScoreListLayout } from './score-layout';
+import { STATS_TEXT } from './settings';
 
-export const LIST_KEYS = 'Pfeiltasten = blättern, Esc/B = schließen';
+export const LIST_KEYS = 'Pfeiltasten = blättern, A = Statistik, Esc/B = schließen';
 export const ENTRY_KEYS = 'Enter = eintragen, Esc = zurück';
 
 /** The bigger scale where `s` fits `maxW`, else 1. */
@@ -33,11 +34,12 @@ function placeholder(flow: HighscoreFlow): string | null {
   return flow.topState === 'ready' ? SCORE_TEXT.empty : SCORE_TEXT.loading;
 }
 
-export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout): void {
+export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout, statsOn: boolean): void {
   const { g } = r;
   fill(r, UI.ink);
   text(r, SCORE_TEXT.title, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
   drawDismiss(r, l.close);
+  drawStatsSwitch(r, l.stats, statsOn);
   g.fillStyle = UI.panel;
   g.fillRect(l.list.x, l.list.y, l.list.w, l.list.h);
   const note = placeholder(flow);
@@ -50,6 +52,7 @@ export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreLis
   // The lines under the list are one small text row each.
   if (l.messageY !== null && flow.message) centredLine(r, flow.message, l.messageY, UI.yellow, 1);
   centredLine(r, SCORE_TEXT.privacy, l.privacyY, UI.muted, 1);
+  centredLine(r, statsOn ? STATS_TEXT.listNote : STATS_TEXT.offNote, l.statsNoteY, UI.muted, 1);
   if (l.keysY !== null) centredLine(r, LIST_KEYS, l.keysY, UI.muted, 1);
 }
 

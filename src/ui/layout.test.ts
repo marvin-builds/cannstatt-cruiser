@@ -65,13 +65,13 @@ describe('layout helpers', () => {
       const m = uiMetrics(display);
       for (const width of WIDTHS) {
         const l = settingsLayout(width, m);
-        const menu = [l.toggle, l.back];
+        const menu = [l.toggle, l.stats, l.back];
         for (const r of menu) {
           expect(inside(r, width), `${name} ${width}`).toBe(true);
           expect(whole(r)).toBe(true);
           expect(Math.min(r.w, r.h) * cssPerPx).toBeGreaterThanOrEqual(44);
         }
-        expect(overlaps(l.toggle, l.back)).toBe(false);
+        expect(overlaps(l.toggle, l.back) || overlaps(l.toggle, l.stats) || overlaps(l.stats, l.back)).toBe(false);
       }
     });
   }
@@ -102,14 +102,20 @@ describe('layout helpers', () => {
     }
   });
 
-  it('settings: Zurück sits right under the toggle, leaving room for its note and the key hint', () => {
+  it('settings: title, Kindermodus and its note, the statistics switch and its note, key hint, Zurück stacked top down', () => {
     for (const { display } of DEVICES) {
       const m = uiMetrics(display);
       const l = settingsLayout(390, m);
-      expect(Object.keys(l).sort()).toEqual(['back', 'toggle']);
-      const toggleBottom = l.toggle.y + l.toggle.h;
-      expect(l.back.y - toggleBottom).toBeGreaterThanOrEqual(28);
-      expect(l.back.y - toggleBottom).toBeLessThanOrEqual(36);
+      const line = 7;
+      expect(l.titleY + 14).toBeLessThanOrEqual(l.toggle.y);
+      expect(l.kidNoteY).toBeGreaterThanOrEqual(l.toggle.y + l.toggle.h);
+      expect(l.kidNoteY + line).toBeLessThanOrEqual(l.stats.y);
+      expect(l.statsNoteY).toBeGreaterThanOrEqual(l.stats.y + l.stats.h);
+      expect(l.keysY !== null).toBe(!display.touch);
+      const lastLine = l.keysY ?? l.statsNoteY;
+      if (l.keysY !== null) expect(l.statsNoteY + line).toBeLessThanOrEqual(l.keysY);
+      expect(lastLine + line).toBeLessThanOrEqual(l.back.y);
+      expect(l.back.y + l.back.h).toBeLessThanOrEqual(180);
     }
   });
 

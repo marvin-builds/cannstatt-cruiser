@@ -59,8 +59,8 @@ export interface UiDebugHook {
   previewKickerHint(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over); `kidHighscore` is kid mode's record. */
   setRecords(highscore?: number, starsTotal?: number, kidHighscore?: number): void;
-  /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen and the logo hold progress (0..1). */
-  settings(): { screen: SettingsScreen; holdProgress: number };
+  /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen, the logo hold progress (0..1) and the statistics switch. */
+  settings(): { screen: SettingsScreen; holdProgress: number; statsOn: boolean };
   /**
    * Current tap areas (view px) for this display: HUD buttons, settings buttons, the kid notice's OK, the logo
    * (title, or the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter,
@@ -91,6 +91,8 @@ export interface HighscoresDebug {
   trophy: Rect;
   trophyShown: boolean;
   close: Rect;
+  /** The list's "Anonyme Statistik" switch. */
+  stats: Rect;
   field: Rect;
   submit: Rect;
 }
@@ -175,7 +177,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       view.records = { highscore, kidHighscore, starsTotal };
     },
     settings() {
-      return { screen: view.settings.screen, holdProgress: view.logoHold.progress };
+      return { screen: view.settings.screen, holdProgress: view.logoHold.progress, statsOn: view.settings.statsOn };
     },
     layout() {
       const { display } = ctx;
@@ -209,6 +211,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         trophy: titleTrophy(display.viewWidth, view.fullscreenAvailable, metrics),
         trophyShown: trophyShown(ctx.state, view),
         close: closeButton(display.viewWidth, metrics),
+        stats: scoreListLayout(display, flow.entries.length, flow.message !== null).stats,
         field: entry.field,
         submit: entry.submit,
       };

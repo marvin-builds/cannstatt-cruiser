@@ -78,24 +78,43 @@ export function buttonPlate(hit: Rect, m: UiMetrics): Rect {
   return { x: hit.x + inset, y: hit.y + inset, w: m.plate, h: m.plate };
 }
 
-/** Buttons of the settings menu: the Kindermodus toggle and Zurück. */
+/** The settings menu top down: title, Kindermodus and its note, the statistics switch and its note, the desktop key hint, Zurück. */
 export interface SettingsLayout {
+  /** Top of the scale-2 title. */
+  titleY: number;
   toggle: Rect;
+  kidNoteY: number;
+  stats: Rect;
+  statsNoteY: number;
+  /** Desktop key help; null on touch. */
+  keysY: number | null;
   back: Rect;
 }
 
-const TOGGLE_W = 170;
-const TOGGLE_Y = 44;
+/** Wide enough for "Anonyme Statistik: AUS" at scale 2. */
+const TOGGLE_W = 200;
 const BACK_W = 100;
-/** Gap between the toggle and Zurück: room for the toggle's note and, on desktop, the key hint. */
-const BACK_GAP = 32;
+const TITLE_H = 14;
+/** One scale-1 text line with its spacing. */
+const NOTE_LINE = 11;
 
-/** The settings screens as one compact block: Zurück sits right under the content, not at the bottom. */
+/** The settings screens as one compact block; with portrait's 44 px buttons it fills the view height. */
 export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout {
   const cx = centreX(viewWidth);
   const h = m.menuButtonH;
+  const tall = h >= 44;
+  const gap = tall ? 0 : 4;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
-  return { toggle: centred(TOGGLE_W, TOGGLE_Y), back: centred(BACK_W, TOGGLE_Y + h + BACK_GAP) };
+  const titleY = tall ? 4 : 12;
+  const toggle = centred(TOGGLE_W, titleY + TITLE_H + (tall ? 2 : 8));
+  const kidNoteY = toggle.y + h + 2;
+  const stats = centred(TOGGLE_W, kidNoteY + NOTE_LINE + gap);
+  const statsNoteY = stats.y + h + 2;
+  const below = statsNoteY + NOTE_LINE + gap;
+  // Touch (bigger buttons) has no key help line.
+  const keysY = h > DESKTOP.menuButtonH ? null : below;
+  const back = centred(BACK_W, keysY === null ? below : keysY + NOTE_LINE + gap);
+  return { titleY, toggle, kidNoteY, stats, statsNoteY, keysY, back };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */

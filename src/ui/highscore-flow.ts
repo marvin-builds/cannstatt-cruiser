@@ -23,7 +23,7 @@ export const SCORE_TEXT = {
   loading: 'Lade Bestenliste ...',
   offline: 'Offline – Bestenliste nicht verfügbar',
   empty: 'Noch keine Einträge – fahr los!',
-  privacy: 'Gespeichert werden nur Name, Punkte, Strecke und Datum.',
+  privacy: 'Die Bestenliste speichert Name, Punkte, Strecke, Datum.',
   sending: 'Wird gesendet ...',
   queued: 'Wird gesendet, sobald du online bist',
   queuedLater: 'Wird später gesendet',

@@ -170,7 +170,7 @@ async function checkDeployUpdate(t: PlaytestContext): Promise<void> {
   const context = t.page.context();
   const shellUrl = new URL('./', t.page.url()).href;
   const html = await (await context.request.get(shellUrl)).text();
-  const oldBundle = /assets\/index-[\w-]+\.js/.exec(html)?.[0];
+  const oldBundle = /assets\/(?:index|main)-[\w-]+\.js/.exec(html)?.[0];
   if (!oldBundle) {
     t.check('deploy simulation finds the bundle', false, { html });
     return;
@@ -181,7 +181,8 @@ async function checkDeployUpdate(t: PlaytestContext): Promise<void> {
   await context.route(isShell, (route) =>
     route.fulfill({ contentType: 'text/html', body: html.replace(oldBundle, newBundle) }),
   );
-  await context.route(`**/${newBundle}`, (route) => route.fulfill({ contentType: 'text/javascript', body: bundle }));
+  const bundleUrl = `**/${newBundle}`;
+  await context.route(bundleUrl, (route) => route.fulfill({ contentType: 'text/javascript', body: bundle }));
   try {
     await t.page.reload();
     await t.page.waitForFunction(() => Boolean(window.__game));
@@ -208,7 +209,9 @@ async function checkDeployUpdate(t: PlaytestContext): Promise<void> {
     t.check('deploy: new bundle is precached with the page', result?.fresh === true, result);
     t.check('deploy: old bundle is removed from the cache', result?.stale === false, result);
   } finally {
-    await context.unrouteAll();
+    // Only these two: the harness's live-worker block must stay.
+    await context.unroute(isShell);
+    await context.unroute(bundleUrl);
   }
 }
 

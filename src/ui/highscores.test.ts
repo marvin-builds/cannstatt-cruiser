@@ -12,7 +12,8 @@ import { createUiSystem } from './index';
 import { uiMetrics } from './layout';
 import { gameOverLayout } from './menu-layout';
 import type { NameField } from './name-field';
-import { closeButton, scoreEntryLayout, titleTrophy } from './score-layout';
+import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
+import { loadStatsOptOut } from '../net/telemetry';
 
 const entry = (rank: number, score: number): ScoreEntry => ({ rank, name: `P${rank}`, score, distance: 100, date: '2026-10-09T10:00:00.000Z' });
 const fullList = () => Array.from({ length: 20 }, (_, i) => entry(i + 1, 5000 - i * 100));
@@ -305,5 +306,21 @@ describe('without an online list', () => {
     expect(ui.highscores).toBeNull();
     const trophy = titleTrophy(game.display.viewWidth, false, uiMetrics(game.display));
     expect(game.hitHotspot(...centre(trophy))).toBe(false);
+  });
+});
+
+describe('statistics switch on the Bestenliste', () => {
+  it('a tap on the switch (or A) stores the opt-out and keeps the list open', () => {
+    const t = setup();
+    t.game.tick();
+    t.key('KeyB');
+    expect(t.flow.screen).toBe('list');
+    const l = scoreListLayout(t.game.display, t.flow.entries.length, t.flow.message !== null);
+    expect(t.game.hitHotspot(...centre(l.stats))).toBe(true);
+    expect(loadStatsOptOut(t.store)).toBe(true);
+    expect(t.flow.screen).toBe('list');
+    t.key('KeyA');
+    expect(loadStatsOptOut(t.store)).toBe(false);
+    expect(t.flow.screen).toBe('list');
   });
 });

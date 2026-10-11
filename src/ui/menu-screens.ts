@@ -37,6 +37,7 @@ import {
 import { gameOverReady } from './menu-state';
 import { whatsNewLines } from './notices';
 import { bestOf, type Records, type RunResult } from './records';
+import { STATS_TEXT } from './settings';
 
 /** What the menu screens read from the ui view. */
 export interface MenuScreensView {
@@ -103,6 +104,13 @@ function drawInstallCard(r: RenderContext, card: Rect, kind: InstallCard): void 
   ARROW_RIGHT.draw(r.g, 0, x, y + 1);
   x += ARROW_RIGHT.width + STEP_GAP;
   text(r, MENU_TEXT.iosHome, x, y, { color: UI.yellow });
+}
+
+/** The "Anonyme Statistik: AN/AUS" button (settings menu and "Bestenliste"); scale 1 where scale 2 would not fit. */
+export function drawStatsSwitch(r: RenderContext, rect: Rect, on: boolean): void {
+  const label = STATS_TEXT.label(on);
+  const scale = rect.h >= 24 && measureText(label, 2) <= rect.w - 8 ? 2 : 1;
+  menuButton(r, rect, label, on ? UI.white : UI.muted, scale);
 }
 
 /** A "×" button (install hint, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
