@@ -10,6 +10,7 @@ import { fill, menuButton, text } from './draw-kit';
 import { type HighscoreFlow, SCORE_TEXT } from './highscore-flow';
 import { fitCentred, formatNumber } from './layout';
 import { drawDismiss, drawPrivacyLink, drawStatsSwitch } from './menu-screens';
+import { fittingNote } from './note-text';
 import { SCROLLBAR_W, type ScoreEntryLayout, type ScoreListLayout } from './score-layout';
 import { STATS_TEXT } from './settings';
 
@@ -43,17 +44,21 @@ export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreLis
   drawPrivacyLink(r, l.privacyLink);
   g.fillStyle = UI.panel;
   g.fillRect(l.list.x, l.list.y, l.list.w, l.list.h);
-  const note = placeholder(flow);
-  if (note) {
-    const scale = fitScale(note, l.list.w - 8, l.textScale);
-    text(r, note, l.list.x + Math.floor(l.list.w / 2), l.list.y + Math.floor((l.list.h - 7 * scale) / 2), { align: 'center', color: UI.muted, scale });
+  const empty = placeholder(flow);
+  if (empty) {
+    const scale = fitScale(empty, l.list.w - 8, l.textScale);
+    text(r, empty, l.list.x + Math.floor(l.list.w / 2), l.list.y + Math.floor((l.list.h - 7 * scale) / 2), { align: 'center', color: UI.muted, scale });
   } else {
     drawRows(r, flow, l);
   }
-  // The lines under the list are one small text row each.
-  if (l.messageY !== null && flow.message) centredLine(r, flow.message, l.messageY, UI.yellow, 1);
-  centredLine(r, SCORE_TEXT.privacy, l.privacyY, UI.muted, 1);
-  centredLine(r, statsOn ? STATS_TEXT.listNote : STATS_TEXT.offNote, l.statsNoteY, UI.muted, 1);
+  // The lines under the list are one text row each (scale 2 in portrait, a shorter wording where needed).
+  const note = (texts: readonly string[], y: number, color: string) => {
+    const fit = fittingNote(texts, l.noteScale, r.display.viewWidth - 8);
+    centredLine(r, fit.text, y, color, fit.scale);
+  };
+  if (l.messageY !== null && flow.message) note([flow.message], l.messageY, UI.yellow);
+  note([SCORE_TEXT.privacy, SCORE_TEXT.privacyShort], l.privacyY, UI.muted);
+  note(statsOn ? [STATS_TEXT.listNote, STATS_TEXT.listNoteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
   if (l.keysY !== null) centredLine(r, LIST_KEYS, l.keysY, UI.muted, 1);
 }
 

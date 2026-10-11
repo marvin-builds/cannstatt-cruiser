@@ -75,6 +75,7 @@ import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
+import { fittingNote, KID_NOTE } from './note-text';
 import { type LongPress, type SettingsMenu, STATS_TEXT } from './settings';
 import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
@@ -502,12 +503,17 @@ function drawSettings(r: RenderContext, view: UiView): void {
   const on = r.state.kidMode;
   centred(r, 'Einstellungen', l.titleY, { scale: 2, color: UI.yellow });
   menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
+  // The notes at the layout's scale (2 in portrait), in a shorter wording where the long one does not fit.
+  const note = (texts: readonly string[], y: number, color: string) => {
+    const fit = fittingNote(texts, l.noteScale, r.display.viewWidth - 8);
+    centred(r, fit.text, y, { color, scale: fit.scale });
+  };
   // Switched during a run: closing the menu restarts it.
-  if (settings.switched && r.state.mode === 'paused') centred(r, MENU_TEXT.restartNote, l.kidNoteY, { color: UI.yellow });
-  else centred(r, on ? 'Kindgerechte Bilder und Texte sind an.' : 'Für Kinder: freundliche Bilder und Texte.', l.kidNoteY, { color: UI.muted });
+  if (settings.switched && r.state.mode === 'paused') note([MENU_TEXT.restartNote], l.kidNoteY, UI.yellow);
+  else note(on ? KID_NOTE.on : KID_NOTE.off, l.kidNoteY, UI.muted);
   drawStatsSwitch(r, l.stats, settings.statsOn);
   drawPrivacyLink(r, l.privacyLink);
-  centred(r, settings.statsOn ? STATS_TEXT.note : STATS_TEXT.offNote, l.statsNoteY, { color: UI.muted });
+  note(settings.statsOn ? [STATS_TEXT.note, STATS_TEXT.noteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
   if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
   menuButton(r, l.back, 'Zurück');
 }

@@ -24,7 +24,9 @@
  * (privacy-link.ts) right beside it. Player feedback (ROADMAP 50, adult mode:
  * the title's speech-bubble icon and the pause menu's "Feedback") is
  * feedback-flow.ts over src/net/feedback.ts, laid out in feedback-layout.ts,
- * drawn in feedback-screen.ts, typed into the textarea of feedback-field.ts.
+ * drawn in feedback-screen.ts, typed into the textarea of feedback-field.ts;
+ * F opens it on the title and pause screens and, while riding, pauses first.
+ * Menu notes fall back to shorter wordings at portrait's scale 2 (note-text.ts).
  */
 import { CHILL_DURATION } from '../core/chill';
 import { GROUND_Y, PLAYER_X } from '../core/config';
@@ -301,10 +303,18 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? full() : null), onPress: () => commands.resume() });
     addWhatsNewHotspot(ctx, full);
-    ctx.addHotspot({
+    const pauseButton: InputHotspot = {
       rect: whenButtons(() => (riding(state.mode) ? buttons().pause : null)),
       onPress: () => (state.mode === 'playing' ? commands.pause() : commands.resume()),
-    });
+      // F while riding (adult mode): pause and open the feedback form, as the title hint says.
+      onKeyDown: (code) => {
+        if (code !== 'KeyF' || state.mode !== 'playing' || state.kidMode || !feedback) return false;
+        commands.pause();
+        openFeedback(ctx);
+        return true;
+      },
+    };
+    ctx.addHotspot(pauseButton);
     ctx.addHotspot({ rect: whenButtons(() => buttons().mute), onPress: () => commands.setMuted(!state.muted) });
     ctx.addHotspot({ rect: whenButtons(() => buttons().fullscreen), onPress: () => commands.toggleFullscreen() });
     // The item button (touch) or the E key cap chip (desktop): uses the carried item, never jumps.
@@ -385,12 +395,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.feedback, () => openFeedback(ctx), ['KeyF']));
   }
 
-  /** The title's speech-bubble icon or the pause menu's "Feedback": the form; desktop types into it at once. */
+  /**
+   * The title's speech-bubble icon or the pause menu's "Feedback": the form. Desktop types into it
+   * from the next tick on (placeFeedbackField focuses it then, outside the opening key press).
+   */
   function openFeedback(ctx: GameContext): void {
     if (!feedback) return;
     feedback.openForm();
     focusFeedback = !ctx.display.touch;
-    placeFeedbackField(ctx);
   }
 
   /** What the feedback sender adds to the report. */

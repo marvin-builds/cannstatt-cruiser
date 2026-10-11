@@ -6,7 +6,9 @@
  * reaches the game (letters like P, E, M, W, S and Space); a bug report
  * with "Fehlerprotokoll mitsenden" sends the log, an idea and an unticked bug
  * report send none; the thank-you, rate-limit and offline states; kid mode
- * offers neither entry. Phone landscape runs at 320 view px wide (640 x 360).
+ * offers neither entry. On desktop F opens the form on the title and while
+ * riding (pausing the run) without typing an 'f' into the field. Phone
+ * landscape runs at 320 view px wide (640 x 360).
  *
  *   npm run playtest -- --scenario scripts/scenarios/feedback.ts --viewports desktop,phone-landscape,phone-portrait --name feedback
  */
@@ -72,6 +74,26 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   t.check('icon clear of the other title buttons', others.every(([, r]) => !overlap(icon, r)), { icon, others });
   t.check('icon in the bottom-right corner', icon.x + icon.w >= viewWidth - 4 && icon.y + icon.h >= 176, { icon, viewWidth });
   await t.canvasShot('title with feedback icon');
+
+  // Desktop: F opens the form with an empty field (the opening key types nothing), also on reopen with a kept draft.
+  if (!t.viewport.touch) {
+    const area = () => page.locator('textarea').inputValue();
+    await page.keyboard.press('KeyF');
+    await t.game.step(2);
+    t.check('F opens the form on the title', (await fb()).open);
+    t.check('F types no letter into the field', (await area()) === '' && (await fb()).text === '', await area());
+    await page.keyboard.type('ab', { delay: 5 });
+    await page.keyboard.press('Escape');
+    await t.game.step(2);
+    await page.keyboard.press('KeyF');
+    await t.game.step(2);
+    t.check('reopening with F keeps the draft as it was', (await area()) === 'ab' && (await fb()).text === 'ab', await area());
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Escape');
+    await t.game.step(2);
+    t.check('draft cleared, form closed', !(await fb()).open && (await fb()).text === '');
+  }
 
   // Open from the title; type a bug report with game keys in it.
   await tap(icon);
@@ -162,6 +184,20 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   await t.game.resumeGame();
   await t.game.step(5);
   t.check('resume works', (await t.game.state()).mode === 'playing');
+
+  // Desktop: F while riding pauses and opens the form (as the title hint says), the kept draft without an extra letter.
+  if (!t.viewport.touch) {
+    await page.keyboard.press('KeyF');
+    await t.game.step(2);
+    state = await fb();
+    t.check('F while riding pauses and opens the form', (await t.game.state()).mode === 'paused' && state.open, { mode: (await t.game.state()).mode, open: state.open });
+    t.check('F while riding types no letter', (await page.locator('textarea').inputValue()) === 'Noch ein Fehler' && state.text === 'Noch ein Fehler', state.text);
+    await t.canvasShot('f while riding');
+    await page.keyboard.press('Escape');
+    await t.game.step(2);
+    await t.game.resumeGame();
+    await t.game.step(5);
+  }
 
   // Kid mode: neither the title icon nor the pause button nor F.
   await page.evaluate(() => {

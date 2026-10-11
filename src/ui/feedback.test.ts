@@ -104,6 +104,25 @@ describe('feedback in the game', () => {
     expect(t.game.state.mode).toBe('title');
   });
 
+  it('F while riding pauses the run and opens the form; not in kid mode', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.tick();
+    t.key('KeyF');
+    expect(t.game.state.mode).toBe('paused');
+    expect(t.flow.open).toBe(true);
+    t.key('Escape');
+    expect(t.flow.open).toBe(false);
+    expect(t.game.state.mode).toBe('paused');
+
+    const kid = app({ kid: true });
+    kid.game.commands.startRun();
+    kid.game.tick();
+    kid.key('KeyF');
+    expect(kid.game.state.mode).toBe('playing');
+    expect(kid.flow.open).toBe(false);
+  });
+
   it('is not offered on game over', () => {
     const t = app();
     t.game.commands.startRun();
@@ -132,7 +151,11 @@ describe('feedback in the game', () => {
   it('the native field lies on the drawn field while the form shows, with the kind as placeholder; desktop focuses it on the next tick', () => {
     const t = app();
     expect(t.field.rect).toBeNull();
-    t.key('KeyF');
+    keyDown(t.game, 'KeyF');
+    // Not inside the opening key press: a focused textarea would get its 'f' typed into it.
+    expect(t.field.focused).toBe(0);
+    keyUp(t.game, 'KeyF');
+    t.game.tick();
     expect(t.field.rect).toEqual(t.form().field);
     expect(t.field.focused).toBe(1);
     expect(t.field.placeholder).toBe('Was ist passiert?');

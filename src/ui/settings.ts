@@ -70,8 +70,10 @@ export function saveKidMode(store: Store, on: boolean): void {
 export const STATS_TEXT = {
   label: (on: boolean) => `Anonyme Statistik: ${on ? 'AN' : 'AUS'}`,
   note: 'Ohne Namen. Ort grob (Stadt), keine IP gespeichert.',
+  noteShort: 'Ohne Namen und IP, Ort nur grob.',
   /** The Bestenliste's line under its own privacy line. */
   listNote: 'Statistik: anonym, Ort grob (Stadt), keine IP.',
+  listNoteShort: 'Statistik: anonym, ohne IP.',
   offNote: 'Aus: Es wird keine Statistik gesendet.',
 } as const;
 

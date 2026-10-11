@@ -8,7 +8,7 @@ import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { buttonPlate, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
-import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
+import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 export interface ScreenInput {
   viewWidth: number;
@@ -80,8 +80,10 @@ export interface ScoreListLayout {
   /** The visible rows (clip rect); rows scroll inside it. */
   list: Rect;
   rowH: number;
-  /** Font scale of the rows and notes: 2 in portrait, where a view pixel is ~1 CSS px. */
+  /** Font scale of the rows: 2 in portrait, where a view pixel is ~1 CSS px. */
   textScale: number;
+  /** Font scale of the lines under the list (message, privacy, statistics note): 2 in portrait. */
+  noteScale: number;
   /** Rank text ends here (right aligned), the name starts at nameX, the score ends at scoreRight. */
   rankRight: number;
   nameX: number;
@@ -98,22 +100,48 @@ export interface ScoreListLayout {
   keysY: number | null;
 }
 
-/** The "Bestenliste" screen for `rows` entries; `message` reserves a status line under the list. */
+/** Portrait: the switch and the link with room for their labels at scale 2, centred as one bottom row. */
+const PORTRAIT_STATS_W = measureText('Anonyme Statistik: AUS', 2) + 12;
+const PORTRAIT_LINK_W = measureText(PRIVACY_LABEL, 2) + 12;
+/** A text line at scale 2 with its spacing. */
+const BIG_LINE = 16;
+
+/**
+ * The "Bestenliste" screen for `rows` entries; `message` reserves a status line under the list.
+ * Portrait (about 1 CSS px per view px) has no room for the switch, the link and the title in one
+ * row at a readable scale: the title sits beside the close button, the switch and the link go to
+ * a bottom row, and the lines under the list are scale 2.
+ */
 export function scoreListLayout(input: ScreenInput, rows: number, message: boolean): ScoreListLayout {
   const m = uiMetrics(input);
-  const textScale = input.portrait ? 2 : 1;
-  const rowH = input.portrait ? 18 : LINE;
+  const portrait = input.portrait;
+  const textScale = portrait ? 2 : 1;
+  const noteScale = portrait ? 2 : 1;
+  const rowH = portrait ? 18 : LINE;
   const close = closeButton(input.viewWidth, m);
-  const stats = statsSwitch(m);
-  const privacyLink: Rect = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PRIVACY_LINK_W };
-  const title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, privacyLink.x + privacyLink.w);
-  let y = VIEW_H - 2;
-  const line = () => (y -= LINE);
+  let stats: Rect;
+  let privacyLink: Rect;
+  let title: Rect;
+  let y: number;
+  if (portrait) {
+    const rowW = PORTRAIT_STATS_W + PRIVACY_LINK_GAP + PORTRAIT_LINK_W;
+    stats = { x: Math.floor((input.viewWidth - rowW) / 2), y: VIEW_H - m.menuButtonH, w: PORTRAIT_STATS_W, h: m.menuButtonH };
+    privacyLink = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PORTRAIT_LINK_W };
+    title = headlineRect('Bestenliste', input.viewWidth, close, close.y + Math.floor((close.h - HEADLINE_H) / 2));
+    // Clear of the row's top edge, descenders included.
+    y = stats.y - 3;
+  } else {
+    stats = statsSwitch(m);
+    privacyLink = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PRIVACY_LINK_W };
+    title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, privacyLink.x + privacyLink.w);
+    y = VIEW_H - 2;
+  }
+  const line = () => (y -= portrait ? BIG_LINE : LINE);
   const keysY = input.touch ? null : line();
   const statsNoteY = line();
   const privacyY = line();
   const messageY = message ? line() : null;
-  const top = Math.max(title.y + title.h + 4, close.y + close.h + 2);
+  const top = Math.max(title.y + title.h + 4, close.y + close.h + (portrait ? 1 : 2));
   const w = Math.min(input.viewWidth - 8, input.portrait ? input.viewWidth : LIST_MAX_W);
   const list: Rect = { x: Math.floor((input.viewWidth - w) / 2), y: top, w, h: y - 2 - top };
   const rankRight = list.x + LIST_PAD + measureText('20.', textScale);
@@ -126,6 +154,7 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
     list,
     rowH,
     textScale,
+    noteScale,
     rankRight,
     nameX: rankRight + 3 * textScale + 2,
     scoreRight: list.x + list.w - LIST_PAD - SCROLLBAR_W - 2,

@@ -17,6 +17,9 @@ export const FEEDBACK_TEXT = {
   bug: 'Fehler',
   idea: 'Idee',
   log: 'Fehlerprotokoll mitsenden',
+  /** The log label broken in two where one line is too wide, and its short form for the narrowest views. */
+  logLong: ['Fehlerprotokoll', 'mitsenden'],
+  logShort: ['Protokoll', 'mitsenden'],
   send: 'Senden',
   cancel: 'Abbrechen',
   ok: 'OK',
@@ -26,8 +29,8 @@ export const FEEDBACK_TEXT = {
   sending: 'Wird gesendet ...',
   sent: 'Danke für dein Feedback!',
   rate: 'Heute schon genug Feedback – danke!',
-  offline: 'Gerade keine Verbindung. Bitte später nochmal.',
-  invalid: 'Das ging leider nicht. Bitte Text ändern.',
+  offline: 'Keine Verbindung. Später nochmal.',
+  invalid: 'Ging leider nicht. Text ändern.',
   short: `Bitte mindestens ${MIN_FEEDBACK_TEXT} Zeichen schreiben.`,
 } as const;
 
