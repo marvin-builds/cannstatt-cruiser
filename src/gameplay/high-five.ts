@@ -5,7 +5,10 @@
  *
  * - `reach` (within HIGH_FIVE_REACH, either side, on the ground or in the
  *   air): the press is his. The first gives a high five (`highFive`, a
- *   bonus, `data.slapped` = the frame for the slap pose in park-art.ts).
+ *   bonus, `data.slapped` = the frame for the high fiver's reaction in
+ *   park-art.ts, `data.klatschDx` / `data.klatschY` = where the hands meet
+ *   for the burst in klatsch.ts, `data.slapRight` = he slaps to the right,
+ *   towards a skater who has passed him by the contact).
  * - `approach` (further ahead, up to HIGH_FIVE_APPROACH): a slightly early
  *   press is his too. It is buffered (`data.queued`) and gives the high five
  *   on the first tick he is in reach.
@@ -15,6 +18,7 @@
  * ui imports the window (ui/high-five.ts) instead of duplicating it.
  */
 import type { Entity, GameContext } from '../types';
+import { atContact, klatschPoint, slapsRight } from './klatsch';
 import { addBonus } from './scoring';
 
 /** Half the high five window: px between the high fiver's middle and the skater (generous: ~0.25 s at top speed either side). */
@@ -64,7 +68,11 @@ export function highFive(ctx: GameContext, pressed: boolean): boolean {
     return pressed;
   }
   if (!given && (pressed || fiver.data?.queued === true)) {
-    fiver.data = { ...fiver.data, slapped: ctx.state.frame };
+    const { player, speed } = ctx.state;
+    const contact = atContact(fiver, speed);
+    const klatsch = klatschPoint(contact, player);
+    const slapRight = slapsRight(contact, player);
+    fiver.data = { ...fiver.data, slapped: ctx.state.frame, klatschDx: klatsch.dx, klatschY: klatsch.y, slapRight };
     const points = addBonus(ctx.state, ctx.bus, HIGH_FIVE_POINTS);
     ctx.bus.emit('highFive', { entityId: fiver.id, points });
   }
