@@ -606,6 +606,14 @@ npm run playtest -- --headed
   and kid mode): every star gives +10, a whole arc one +50, a short hop no
   bonus; shots of the merged "Stern! +N" and "Sternenbogen! +N" popups.
 
+- `scripts/scenarios/hazards.ts` (ROADMAP 52 Phase 2, `desktop,phone-landscape`):
+  the scooter rider and pigeons in adult and kid mode without a crash, pigeon
+  points, a wave ridden through, both sounds logged; desktop also stomps the
+  rider. `__gameplay.pattern('scooter' | 'pigeons' | 'wave', x)` lays one
+  (the hook honours kid mode and places movers at their screen anchor).
+- `scripts/scenarios/feedback-note.ts` (ROADMAP 57): a faked status answer
+  shows the done and rejected notes once on the title at several widths.
+
 ### Quiet time (ROADMAP 52)
 
 `src/gameplay/quiet-time.test.ts` rides the spawner for 20 seeds x 6 min (slow,
