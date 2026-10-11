@@ -15,6 +15,14 @@ describe('parseFeedback', () => {
     expect(parse({ ...valid, kind: 'idea', log: [] })).toEqual({ ...valid, kind: 'idea', log: [] });
   });
 
+  it('accepts an optional 32-hex key and rejects a malformed one (ROADMAP 70)', () => {
+    const key = 'fedcba9876543210fedcba9876543210';
+    expect(parse({ ...valid, key })).toEqual({ ...valid, key });
+    for (const bad of [key.toUpperCase(), key.slice(1), `${key}0`, 'z'.repeat(32), '', null, 5, [key]]) {
+      expect(parse({ ...valid, key: bad }), String(bad)).toBeNull();
+    }
+  });
+
   it('rejects non-JSON, arrays and null', () => {
     expect(parseFeedback('nope')).toBeNull();
     expect(parse([valid])).toBeNull();

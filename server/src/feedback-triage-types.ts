@@ -14,6 +14,8 @@ export interface FeedbackTriage {
   issue: number | null;
   /** The operator's short reply for the player, or null. */
   reply: string | null;
+  /** The game version (YYYY-MM-DD.n) the report was done in; only with status done, else null (ROADMAP 70). */
+  doneVersion: string | null;
 }
 
 export type TriagedFeedbackEntry = FeedbackEntry & FeedbackTriage;
@@ -28,8 +30,12 @@ export interface IssueDraft {
   body: string;
 }
 
-/** Body of `PATCH /feedback/:id`: at least one field; a null reply clears it. */
+/**
+ * Body of `PATCH /feedback/:id`: at least one field; a null reply clears it. doneVersion only with status done;
+ * any status patch without it stores null.
+ */
 export interface TriagePatch {
   status?: FeedbackStatus;
   reply?: string | null;
+  doneVersion?: string | null;
 }

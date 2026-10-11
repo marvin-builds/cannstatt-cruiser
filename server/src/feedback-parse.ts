@@ -1,15 +1,17 @@
 /**
- * Strict parsing of a `POST /feedback` body: exactly the FeedbackBody fields,
- * allow-listed values, the text normalised and checked for length and control
+ * Strict parsing of a `POST /feedback` body: exactly the FeedbackBody fields
+ * (the secret key optional), allow-listed values, the text normalised and checked for length and control
  * characters, and a log only on a bug report.
  */
 import { INPUTS, ORIENTATIONS, PLATFORMS, SESSION_ID_PATTERN, VERSION_PATTERN } from './events';
 import {
-  FEEDBACK_KINDS, MAX_FEEDBACK_TEXT, MAX_LOG_LINE_CHARS, MAX_LOG_LINES, MAX_VIEW_WIDTH, MIN_FEEDBACK_TEXT, MIN_VIEW_WIDTH,
+  FEEDBACK_KEY_PATTERN, FEEDBACK_KINDS, MAX_FEEDBACK_TEXT, MAX_LOG_LINE_CHARS, MAX_LOG_LINES, MAX_VIEW_WIDTH, MIN_FEEDBACK_TEXT, MIN_VIEW_WIDTH,
 } from './feedback-rules';
-import type { FeedbackBody } from './feedback-types';
+import type { FeedbackBody, ReceivedFeedback } from './feedback-types';
 
-const FIELDS: readonly (keyof FeedbackBody)[] = ['session', 'kind', 'text', 'version', 'platform', 'input', 'orientation', 'viewWidth', 'log'];
+const FIELDS: readonly (keyof ReceivedFeedback)[] = ['session', 'kind', 'text', 'version', 'platform', 'input', 'orientation', 'viewWidth', 'log'];
+/** Sent by games since ROADMAP 70; older games leave it out. */
+const OPTIONAL_KEY: keyof FeedbackBody = 'key';
 /** Control characters (C0, DEL, C1); newline is allowed in the text only. */
 const CONTROL = /\p{Cc}/u;
 const CONTROL_EXCEPT_NEWLINE = /(?!\n)\p{Cc}/u;
@@ -30,7 +32,7 @@ const isViewWidth = (width: unknown): width is number =>
   Number.isSafeInteger(width) && (width as number) >= MIN_VIEW_WIDTH && (width as number) <= MAX_VIEW_WIDTH;
 
 /** The body with its text normalised, or null when the JSON text is not valid feedback. */
-export function parseFeedback(json: string): FeedbackBody | null {
+export function parseFeedback(json: string): ReceivedFeedback | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -39,8 +41,9 @@ export function parseFeedback(json: string): FeedbackBody | null {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const body = parsed as Record<string, unknown>;
-  const keys = Object.keys(body);
-  if (keys.length !== FIELDS.length || !FIELDS.every((field) => Object.hasOwn(body, field))) return null;
+  const hasKey = Object.hasOwn(body, OPTIONAL_KEY);
+  if (Object.keys(body).length !== FIELDS.length + (hasKey ? 1 : 0) || !FIELDS.every((field) => Object.hasOwn(body, field))) return null;
+  if (hasKey && !(typeof body.key === 'string' && FEEDBACK_KEY_PATTERN.test(body.key))) return null;
   if (typeof body.text !== 'string' || CONTROL_EXCEPT_NEWLINE.test(body.text.replace(/\r\n?/g, '\n'))) return null;
   const text = normaliseFeedbackText(body.text);
   const valid =
@@ -51,5 +54,5 @@ export function parseFeedback(json: string): FeedbackBody | null {
     oneOf(PLATFORMS, body.platform) && oneOf(INPUTS, body.input) && oneOf(ORIENTATIONS, body.orientation) &&
     isViewWidth(body.viewWidth) &&
     isLog(body.log) && (body.kind === 'bug' || body.log.length === 0);
-  return valid ? ({ ...body, text } as unknown as FeedbackBody) : null;
+  return valid ? ({ ...body, text } as unknown as ReceivedFeedback) : null;
 }

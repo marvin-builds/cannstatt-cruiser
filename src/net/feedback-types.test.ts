@@ -22,6 +22,13 @@ describe('feedback contract', () => {
     expect(client.FEEDBACK_RETENTION_DAYS).toBe(365);
   });
 
+  it('asks the status of at most 20 reports, each with a 32 hex key (ROADMAP 70)', () => {
+    expect(client.MAX_STATUS_ITEMS).toBe(20);
+    expect(client.FEEDBACK_KEY_PATTERN.source).toBe('^[0-9a-f]{32}$');
+    expect(client.FEEDBACK_KEY_PATTERN.test('0123456789abcdef0123456789abcdef')).toBe(true);
+    expect(client.FEEDBACK_KEY_PATTERN.test('0123456789ABCDEF0123456789abcdef')).toBe(false);
+  });
+
   it('is mirrored exactly by the server', () => {
     expect(server.FEEDBACK_KINDS).toEqual(client.FEEDBACK_KINDS);
     expect(server.MIN_FEEDBACK_TEXT).toBe(client.MIN_FEEDBACK_TEXT);
@@ -34,7 +41,8 @@ describe('feedback contract', () => {
     expect(server.FEEDBACK_PER_SESSION_PER_DAY).toBe(client.FEEDBACK_PER_SESSION_PER_DAY);
     expect(server.FEEDBACK_RETENTION_DAYS).toBe(client.FEEDBACK_RETENTION_DAYS);
     expect(server.FEEDBACK_LIST_LIMIT).toBe(client.FEEDBACK_LIST_LIMIT);
-    expect(server.MAX_STATUS_IDS).toBe(client.MAX_STATUS_IDS);
+    expect(server.MAX_STATUS_ITEMS).toBe(client.MAX_STATUS_ITEMS);
+    expect(server.FEEDBACK_KEY_PATTERN.source).toBe(client.FEEDBACK_KEY_PATTERN.source);
     expect(serverTriage.FEEDBACK_STATUSES).toEqual(client.FEEDBACK_STATUSES);
     expect(serverTriage.MAX_REPLY_CHARS).toBe(client.MAX_REPLY_CHARS);
   });

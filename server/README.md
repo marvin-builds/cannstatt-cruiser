@@ -27,11 +27,11 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/auth.ts` | Bearer token check for `GET /stats` and the feedback routes of the board (SHA-256 + constant-time compare) |
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
-| `src/feedback-parse.ts` | Strict `POST /feedback` body check and text normalisation |
-| `src/feedback-store.ts` | Per-session and daily feedback limits, storing (returns the new id), once-a-day 365-day prune, the `GET /feedback` list |
-| `src/feedback-status-parse.ts` | Strict `ids` check of `GET /feedback/status` (ROADMAP 57); its query is `feedbackStatuses` in `src/feedback-triage-store.ts` |
+| `src/feedback-parse.ts` | Strict `POST /feedback` body check (with the optional secret key) and text normalisation |
+| `src/feedback-store.ts` | Per-session and daily feedback limits, storing (with the key hash; returns the new id), once-a-day 365-day prune, the `GET /feedback` list |
+| `src/feedback-status-parse.ts` | Strict `{items: [{id, key}]}` check of `POST /feedback/status` (ROADMAP 70); its query is `feedbackStatuses` in `src/feedback-triage-store.ts` |
 | `src/feedback-triage-rules.ts`, `src/feedback-triage-types.ts` | Triage contract (ROADMAP 56): statuses, issue draft and reply limits, shapes (board copy: the game's `src/insights/triage-types.ts`) |
-| `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply patch) and D1 access |
+| `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply/done-version patch) and D1 access |
 | `src/github.ts` | Creates the GitHub issue (REST API, injected `fetch`) |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
@@ -208,6 +208,31 @@ npx wrangler deploy   # 5. new worker
 
 Locally: `npx wrangler d1 execute cannstatt-cruiser-scores --local --file=migrations/0007_feedback_triage.sql`.
 
+`0008_feedback_keys.sql` ("Mein Feedback", ROADMAP 70): adds the nullable
+columns `feedback.key_hash` (SHA-256 of the report's secret key) and
+`feedback.done_version` (the game version a done report shipped in). Existing
+rows get `NULL` in both, so reports sent before it never get a status (the
+game drops them). Like 0007 it is **not** safe to apply twice: a second run
+fails at its first statement ("duplicate column name: key_hash") and changes
+nothing. The new worker writes `key_hash` on every `POST /feedback` and reads
+both columns, and the game release that sends keys and uses
+`POST /feedback/status` needs the new worker (the old one rejects the `key`
+field and has no `POST /feedback/status`), so the order is:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0008.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0008_feedback_keys.sql   # 2. migrate, once
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler deploy   # 4. new worker, before the game release
+```
+
+Then release the game (tag). Between steps 4 and the release, the live game
+still sends reports without a key (accepted, never get a status) and its old
+`GET /feedback/status` gets a 404, which it treats as a failed check.
+
+Locally: `npx wrangler d1 execute cannstatt-cruiser-scores --local --file=migrations/0008_feedback_keys.sql`.
+
 ## Daily summaries
 
 Raw events live for 90 days; the daily counts are kept for good in
@@ -369,7 +394,7 @@ count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count
 
 A bug report or an idea from the game. `Content-Type` `text/plain` or
 `application/json`, at most 16384 bytes (`MAX_FEEDBACK_BYTES`). The body must
-have exactly these fields (`FeedbackBody` in `src/feedback-types.ts`, limits in
+have exactly these fields, `key` optional (`FeedbackBody` in `src/feedback-types.ts`, limits in
 `src/feedback-rules.ts`):
 
 | Field | Rule |
@@ -381,13 +406,14 @@ have exactly these fields (`FeedbackBody` in `src/feedback-types.ts`, limits in
 | `platform`, `input`, `orientation` | as in `POST /event` |
 | `viewWidth` | integer 320..427 |
 | `log` | array of at most 20 strings of at most 200 chars without control characters; must be `[]` for an `idea` |
+| `key` | optional: the report's secret key, exactly 32 lowercase hex chars (`FEEDBACK_KEY_PATTERN`, 128 random bits made by the game); only its SHA-256 is stored (`key_hash`), the key itself never. Games before ROADMAP 70 send none |
 
 Responses:
 
-- `201 {"ok": true, "id": 42}`: stored; `id` is the new entry's id (`FeedbackSent`). The game keeps it on the
-  device to ask for the entry's status later (`GET /feedback/status`). Older games ignore it.
+- `201 {"ok": true, "id": 42}`: stored; `id` is the new entry's id (`FeedbackSent`). The game keeps it with the
+  key on the device to ask for the entry's status later (`POST /feedback/status`). Older games ignore it.
 - `400 {"ok": false, "error": "bad-request"}`: other content type, too large,
-  not JSON, unknown or missing fields, values outside the rules.
+  not JSON, unknown or missing fields, values outside the rules, a malformed `key`.
 - `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
   not one of the game origins.
 - `429 {"ok": false, "error": "rate"}`: this session already sent 3 today
@@ -410,22 +436,32 @@ newest 100 (`FEEDBACK_LIST_LIMIT`), newest day first and, within a day, the
 latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
 `version`, `platform`, `input`, `orientation`, `viewWidth` and `log` (array),
 and the triage fields `status` (`open`, `todo`, `done`, `rejected`), `issue`
-(GitHub issue number or `null`) and `reply` (string or `null`).
+(GitHub issue number or `null`), `reply` (string or `null`) and `doneVersion`
+(`YYYY-MM-DD.n` or `null`). Never the key hash.
 
-### `GET /feedback/status`
+### `POST /feedback/status`
 
-What happened to the player's own feedback (ROADMAP 57). No token: the game
-asks for the ids it got from `POST /feedback` on this device, at most once a
-day. `?ids=1,2,3` exactly once and no other parameter: 1-10 ids
-(`MAX_STATUS_IDS`), each a positive integer in plain decimal, separated by
-single commas (duplicates count once). Only reads: no write, no counter, no
-housekeeping. Needs a game `Origin` like `POST /feedback`.
+What happened to the player's own feedback (ROADMAP 57, 70, "Mein Feedback").
+No token: the game asks for the reports it sent from this device, each by the
+id it got from `POST /feedback` and the secret key it sent with the report, so
+nobody can read another report's status or reply by trying ids. A POST, so the
+keys never appear in a URL or a log. `Content-Type` `text/plain` or
+`application/json`, at most 2048 bytes (`MAX_STATUS_BYTES`), body exactly
+`{"items": [{"id": 3, "key": "<32 lowercase hex>"}, ...]}` (`FeedbackStatusQuery`)
+with 1-20 items (`MAX_STATUS_ITEMS`), each with exactly `id` (positive integer)
+and `key` (`FEEDBACK_KEY_PATTERN`). The worker hashes every key (the same work
+per item) and reads the matching rows in one query. Only reads: no write, no
+counter, no housekeeping. Needs a game `Origin` like `POST /feedback`.
 
-- `200 {"entries": [{"id": 3, "status": "done", "reply": null}, ...]}`
-  (`FeedbackStatusList`), ascending by id: only `id`, `status` and `reply`,
-  never the text, the log or anything else; unknown (deleted or pruned) ids
-  are left out. `Cache-Control: private, max-age=300`.
-- `400` bad `ids`; `403` missing or foreign `Origin` (both before any database access).
+- `200 {"entries": [{"id": 3, "status": "done", "reply": null, "doneVersion": "2026-10-12.1"}, ...]}`
+  (`FeedbackStatusList`), ascending by id: only `id`, `status`, `reply` and
+  `doneVersion`, never the text, the log or anything else. Rows that are
+  unknown (deleted or pruned), have no key hash (sent before 0008) or whose
+  key does not match are left out; the game shows a left-out report as
+  "Entfernt". `Cache-Control: no-store`.
+- `400` bad body; `403` missing or foreign `Origin` (both before any database access).
+- Any other method on `/feedback/status` answers `404`; the old
+  `GET /feedback/status?ids=` of ROADMAP 57 is gone.
 
 ### Feedback triage (ROADMAP 56)
 
@@ -447,11 +483,15 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
   - `502 {"ok": false, "error": "github", "status": 403}` when GitHub refuses
     (its HTTP status) or cannot be reached / answers unusably (`status` 0).
     Nothing of GitHub's answer is passed on, and nothing is stored.
-- `PATCH /feedback/:id`, body with `status` and/or `reply` (no other fields):
+- `PATCH /feedback/:id`, body with `status`, `reply` and/or `doneVersion` (no other fields):
   `status` one of the four; `reply` a single line of at most 140 chars after
-  trimming (`MAX_REPLY_CHARS`, shown to the player on the title, see `GET /feedback/status`), `""` or
-  `null` clears it. Only the given fields change; the issue number stays.
-  `200 {"ok": true, "status", "issue", "reply"}`, `400`, `404`.
+  trimming (`MAX_REPLY_CHARS`, shown to the player in "Mein Feedback", see `POST /feedback/status`), `""` or
+  `null` clears it; `doneVersion` (`YYYY-MM-DD.n` or `null`) only together
+  with `status: "done"`. Every patch with a `status` sets the done version:
+  the given one with `done` (none given: `null`), `null` for any other status
+  (creating an issue, which sets `todo`, clears it too). Only the given fields
+  change; the issue number stays.
+  `200 {"ok": true, "status", "issue", "reply", "doneVersion"}`, `400`, `404`.
 - `DELETE /feedback/:id`: deletes the entry. `204`, `404`.
 
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
@@ -503,8 +543,12 @@ and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
 
 - Stored per feedback (table `feedback`): kind, the text (normalised), game
   version, platform, input, orientation, view width, the UTC **day** (no time) and, only when the player
-  ticked "Fehlerprotokoll mitsenden" on a bug report, up to 20 error log lines.
-  No name, no device id, no session id, no IP address.
+  ticked "Fehlerprotokoll mitsenden" on a bug report, up to 20 error log lines,
+  and the SHA-256 hash of the report's secret key (the key itself is never
+  stored). No name, no device id, no session id, no IP address.
+- Status check: the game keeps what it sent (text, details, log) on the device
+  and sends only report ids with their secret keys to `POST /feedback/status`;
+  the answer holds only status, reply and done version of reports whose key matches.
 - Rate limit (table `feedback_counts`): per UTC day the SHA-256 hash of the
   session id with a count, and one count for all sessions. It is not linked to
   any feedback row and is deleted on the first feedback of the next day.
@@ -513,7 +557,7 @@ and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
   kept until their status changes.
 - Triage: the operator may publish an entry as an anonymous GitHub issue
   after reviewing and editing the text on the board (the log only when it is
-  needed), and store a status and a short reply on the row.
+  needed), and store a status, a short reply and the version it was done in on the row.
 - Access: only with the `STATS_TOKEN` secret (`GET /feedback` and the triage routes).
 
 ## Keeping it in sync with the game

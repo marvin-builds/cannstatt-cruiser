@@ -1,6 +1,7 @@
 /**
  * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback,
- * GET /feedback/status (the game asks for its own reports, no token), the feedback triage routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
+ * POST /feedback/status (the game asks for its own reports by id and secret key, no token), the feedback triage
+ * routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
  * session events, Cloudflare's coarse location (request.cf); never the client IP.
  */
@@ -11,10 +12,10 @@ import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-sto
 import { parseEvent } from './event-parse';
 import { MAX_EVENT_BYTES, STATS_RANGES, STATS_TESTERS_PARAM } from './events';
 import { parseFeedback } from './feedback-parse';
-import { MAX_FEEDBACK_BYTES } from './feedback-rules';
+import { MAX_FEEDBACK_BYTES, MAX_STATUS_BYTES } from './feedback-rules';
 import type { FeedbackSent, FeedbackStatusList } from './feedback-types';
 import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
-import { parseStatusIds } from './feedback-status-parse';
+import { parseStatusItems } from './feedback-status-parse';
 import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from './feedback-triage-parse';
 import { ISSUE_LABEL, MAX_TRIAGE_BYTES } from './feedback-triage-rules';
 import { deleteFeedback, feedbackForIssue, feedbackStatuses, storeIssue, updateTriage } from './feedback-triage-store';
@@ -23,7 +24,7 @@ import { locationOf } from './location';
 import { rankRows } from './ranking';
 import { isRateLimited } from './rate-limit';
 import { loadStats } from './stats';
-import { deviceRow, hashDevice, recentSubmissions, saveBestRun, topRows } from './store';
+import { deviceRow, recentSubmissions, saveBestRun, sha256Hex, topRows } from './store';
 import { isDeviceId, parseSubmission } from './submission';
 
 export interface Env {
@@ -37,8 +38,6 @@ export interface Env {
 /** Larger bodies are rejected unread beyond this many characters. */
 const MAX_BODY = 2048;
 const TOP_CACHE = 'public, max-age=30';
-/** GET /feedback/status answers per player; a status changes rarely, so the browser may keep it a few minutes. */
-const STATUS_CACHE = 'private, max-age=300';
 /** GET /top?device= answers per device, so shared caches must not keep it. */
 const OWN_TOP_CACHE = 'private, max-age=30';
 /** sendBeacon sends text/plain; fetch may send JSON. Same for feedback. */
@@ -82,7 +81,7 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     if (!searchParams.has('device')) return json({ entries: rankRows(await topRows(env.DB), null).entries }, 200, TOP_CACHE);
     const rawDevice = searchParams.get('device');
     if (!isDeviceId(rawDevice)) return fail('bad-request');
-    const own = await deviceRow(env.DB, await hashDevice(rawDevice));
+    const own = await deviceRow(env.DB, await sha256Hex(rawDevice));
     const { entries, rank } = rankRows(await topRows(env.DB), own?.id ?? null);
     return json({ entries, own: own && { rank, score: own.score } }, 200, OWN_TOP_CACHE);
   }
@@ -119,19 +118,24 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     const feedback = parseFeedback((await readLimitedText(request, MAX_FEEDBACK_BYTES)) ?? '');
     if (feedback === null) return fail('bad-request');
     // The session id only rate-limits, as a hash in the day's counter table; it is never stored with the text.
-    const id = await saveFeedback(env.DB, feedback, await hashDevice(feedback.session), utcDay(now));
+    // Of the secret key only its hash is stored, so the database alone cannot answer a status query (ROADMAP 70).
+    const hashes = { session: await sha256Hex(feedback.session), key: feedback.key === undefined ? null : await sha256Hex(feedback.key) };
+    const id = await saveFeedback(env.DB, feedback, hashes, utcDay(now));
     if (id === null) return fail('rate');
     // Housekeeping after the feedback is stored: a failure is logged and retried on a later request.
     await pruneFeedbackOnceADay(env.DB, now).catch((error: unknown) => console.error('feedback prune failed', error));
-    // The id lets the game ask for its own report's status later (ROADMAP 57).
+    // The id (with the game's key) lets the game ask for its own report's status later (ROADMAP 57, 70).
     return json({ ok: true, id } satisfies FeedbackSent, 201);
   }
-  // Before the triage routes, whose path would take "status" for a row id. Only reads: status and reply, never the text.
-  if (request.method === 'GET' && pathname === '/feedback/status') {
+  // Before the triage routes, whose path would take "status" for a row id. Only POST (keys never in URLs); only reads,
+  // and only status, reply and done version of rows whose key matches, never the text.
+  if (pathname === '/feedback/status') {
+    if (request.method !== 'POST') return fail('not-found');
     if (!isAllowedOrigin(origin)) return fail('forbidden');
-    const ids = parseStatusIds(searchParams);
-    if (ids === null) return fail('bad-request');
-    return json({ entries: await feedbackStatuses(env.DB, ids) } satisfies FeedbackStatusList, 200, STATUS_CACHE);
+    const items = parseStatusItems((await readLimitedText(request, MAX_STATUS_BYTES)) ?? '');
+    if (items === null) return fail('bad-request');
+    const hashed = await Promise.all(items.map(async ({ id, key }) => ({ id, keyHash: await sha256Hex(key) })));
+    return json({ entries: await feedbackStatuses(env.DB, hashed) } satisfies FeedbackStatusList, 200);
   }
   const triage = TRIAGE_PATH.exec(pathname);
   if (triage) {
@@ -163,7 +167,7 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
 
   const parsed = parseSubmission(await readJson(request));
   if (!parsed.ok) return fail(parsed.error);
-  const device = await hashDevice(parsed.value.device);
+  const device = await sha256Hex(parsed.value.device);
   if (isRateLimited(await recentSubmissions(env.DB, device, now), now)) return fail('rate');
   const written = await saveBestRun(env.DB, parsed.value, device, now);
   const own = await deviceRow(env.DB, device);

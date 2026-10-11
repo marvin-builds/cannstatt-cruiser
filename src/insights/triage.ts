@@ -6,7 +6,9 @@
  */
 import { kindLabel, metaLine } from './feedback';
 import { formatDate } from './format';
-import { FEEDBACK_STATUSES, ISSUE_REPO, MAX_ISSUE_TITLE, type FeedbackStatus, type TriagedFeedbackEntry } from './triage-types';
+import {
+  DONE_VERSION_PATTERN, FEEDBACK_STATUSES, ISSUE_REPO, MAX_ISSUE_TITLE, type FeedbackStatus, type FeedbackTriage, type TriagedFeedbackEntry,
+} from './triage-types';
 
 export type StatusFilter = 'all' | FeedbackStatus;
 
@@ -14,6 +16,23 @@ const STATUSES: Record<FeedbackStatus, string> = { open: 'Offen', todo: 'Todo', 
 
 export function statusLabel(status: FeedbackStatus): string {
   return STATUSES[status];
+}
+
+/** 'Erledigt in 2026-10-12.1' for a done entry with a version, else the status label. */
+export function statusText({ status, doneVersion }: Pick<FeedbackTriage, 'status' | 'doneVersion'>): string {
+  return status === 'done' && doneVersion ? `${STATUSES.done} in ${doneVersion}` : STATUSES[status];
+}
+
+/** The 'umgesetzt in Version' field: empty is no version (null), a valid version trimmed, anything else undefined. */
+export function parseDoneVersion(raw: string): string | null | undefined {
+  const value = raw.trim();
+  if (!value) return null;
+  return DONE_VERSION_PATTERN.test(value) ? value : undefined;
+}
+
+/** 'mit Fehlerprotokoll' when the player attached the log, else null. */
+export function logNote(entry: TriagedFeedbackEntry): string | null {
+  return entry.log.length ? 'mit Fehlerprotokoll' : null;
 }
 
 export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [

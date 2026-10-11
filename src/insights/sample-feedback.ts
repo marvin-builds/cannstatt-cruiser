@@ -13,6 +13,7 @@ const LONG_TEXT =
 export function sampleFeedback(): TriagedFeedbackEntry[] {
   const base = {
     version: '2026-10-11.4', platform: 'android', input: 'touch', orientation: 'portrait', viewWidth: 390, status: 'open', issue: null, reply: null,
+    doneVersion: null,
   } as const;
   return [
     { ...base, id: 14, day: '2026-10-11', kind: 'idea', text: 'Bitte mehr Hunde im Park!\nUnd eine Brezel als Bonus.', log: [] },

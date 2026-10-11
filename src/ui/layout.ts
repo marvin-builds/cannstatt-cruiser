@@ -238,3 +238,9 @@ export function metres(distance: number): number {
 export function blinkOn(seconds: number): boolean {
   return seconds % BLINK_PERIOD < BLINK_PERIOD * 0.6;
 }
+
+/**
+ * A modal layer's tap area: every pointer position, also outside the view (the letterbox around the
+ * canvas, the page beside it), so no press reaches the game behind an open screen.
+ */
+export const EVERYWHERE: Rect = { x: -1e6, y: -1e6, w: 2e6, h: 2e6 };

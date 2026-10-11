@@ -81,14 +81,17 @@ function isFeedbackEntry(v: unknown): v is FeedbackEntry {
 
 const isIssue = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 
-/** The triage fields; each may be missing (a worker before ROADMAP 56), but never of the wrong type. */
+const isOptionalText = (v: unknown) => v === undefined || v === null || typeof v === 'string';
+
+/** The triage fields; each may be missing (a worker before ROADMAP 56 or 70), but never of the wrong type. */
 function hasValidTriage(v: unknown): boolean {
   return isRecord(v) && (v.status === undefined || isIn(FEEDBACK_STATUSES, v.status)) &&
     (v.issue === undefined || v.issue === null || isIssue(v.issue)) &&
-    (v.reply === undefined || v.reply === null || typeof v.reply === 'string');
+    isOptionalText(v.reply) && isOptionalText(v.doneVersion);
 }
 
-const withTriage = (v: FeedbackEntry & Partial<FeedbackTriage>): TriagedFeedbackEntry => ({ ...v, status: v.status ?? 'open', issue: v.issue ?? null, reply: v.reply ?? null });
+const withTriage = (v: FeedbackEntry & Partial<FeedbackTriage>): TriagedFeedbackEntry =>
+  ({ ...v, status: v.status ?? 'open', issue: v.issue ?? null, reply: v.reply ?? null, doneVersion: v.doneVersion ?? null });
 
 /** Checks the GET /feedback answer (the triage fields optional); anything else counts as a server error. */
 export function isFeedbackList(v: unknown): v is { entries: (FeedbackEntry & Partial<FeedbackTriage>)[] } {
@@ -138,17 +141,19 @@ export async function createIssue(fetchFn: FetchLike, request: TriageRequest & {
   return isIssue(issue) ? { ok: true, issue } : { ok: false, error: 'server' };
 }
 
-const isTriage = (v: unknown): v is FeedbackTriage =>
-  isRecord(v) && isIn(FEEDBACK_STATUSES, v.status) && (v.issue === null || isIssue(v.issue)) && (v.reply === null || typeof v.reply === 'string');
+/** The PATCH answer's triage fields; doneVersion may be missing (a worker before ROADMAP 70). */
+const isTriage = (v: unknown): v is Omit<FeedbackTriage, 'doneVersion'> & Partial<FeedbackTriage> =>
+  isRecord(v) && isIn(FEEDBACK_STATUSES, v.status) && (v.issue === null || isIssue(v.issue)) && (v.reply === null || typeof v.reply === 'string') &&
+  isOptionalText(v.doneVersion);
 
-/** PATCH /feedback/:id with status and/or reply; the row's triage fields afterwards. */
+/** PATCH /feedback/:id with status, reply and/or doneVersion; the row's triage fields afterwards. */
 export async function patchFeedback(fetchFn: FetchLike, request: TriageRequest & { patch: TriagePatch }): Promise<TriageResult<{ triage: FeedbackTriage }>> {
   const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}`, request, 'PATCH', request.patch);
   if (!r.ok) return r;
   if (r.status !== 200) return { ok: false, ...triageFailure(r.status, r.body) };
   if (!isTriage(r.body)) return { ok: false, error: 'server' };
-  const { status, issue, reply } = r.body;
-  return { ok: true, triage: { status, issue, reply } };
+  const { status, issue, reply, doneVersion } = r.body;
+  return { ok: true, triage: { status, issue, reply, doneVersion: doneVersion ?? null } };
 }
 
 /** DELETE /feedback/:id. */

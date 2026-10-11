@@ -7,7 +7,7 @@
 import { utcDay } from './aggregate';
 import { FEEDBACK_LIST_LIMIT, FEEDBACK_PER_SESSION_PER_DAY, FEEDBACK_RETENTION_DAYS } from './feedback-rules';
 import type { FeedbackStatus, TriagedFeedbackEntry } from './feedback-triage-types';
-import type { FeedbackBody, FeedbackKind } from './feedback-types';
+import type { FeedbackKind, ReceivedFeedback } from './feedback-types';
 import type { InputKind, Orientation, Platform } from './insights-types';
 
 /** Accepted feedback per UTC day across all sessions. */
@@ -18,12 +18,15 @@ const PRUNED_KEY = 'feedback-pruned';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Stores the feedback unless the session (by `sessionHash`) or all sessions together reached the
- * day's limit; the new row's id, or null when it was not stored. One transaction: the session counter always counts
+ * Stores the feedback with its key hash (or null without a key) unless the session (by `sessionHash`) or all
+ * sessions together reached the day's limit; the new row's id, or null when it was not stored. The raw key never reaches the database. One transaction: the session counter always counts
  * the attempt, the global counter only attempts within the session limit (so one session cannot
  * use up the global cap), and the row is inserted only while both counters are within their limits.
  */
-export async function saveFeedback(db: D1Database, feedback: FeedbackBody, sessionHash: string, day: string): Promise<number | null> {
+export async function saveFeedback(
+  db: D1Database, feedback: ReceivedFeedback, hashes: { session: string; key: string | null }, day: string,
+): Promise<number | null> {
+  const sessionHash = hashes.session;
   const sessionCount = 'SELECT count FROM feedback_counts WHERE day = ?1 AND session_hash = ?2';
   const results = await db.batch([
     db
@@ -40,12 +43,12 @@ export async function saveFeedback(db: D1Database, feedback: FeedbackBody, sessi
       .bind(day, sessionHash, ALL_SESSIONS, FEEDBACK_PER_SESSION_PER_DAY),
     db
       .prepare(
-        `INSERT INTO feedback (day, kind, text, version, platform, input, orientation, view_width, log)
-         SELECT ?1, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+        `INSERT INTO feedback (day, kind, text, version, platform, input, orientation, view_width, log, key_hash)
+         SELECT ?1, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?14
          WHERE (${sessionCount}) <= ?4 AND (SELECT count FROM feedback_counts WHERE day = ?1 AND session_hash = ?3) <= ?13`,
       )
       .bind(day, sessionHash, ALL_SESSIONS, FEEDBACK_PER_SESSION_PER_DAY, feedback.kind, feedback.text, feedback.version,
-        feedback.platform, feedback.input, feedback.orientation, feedback.viewWidth, JSON.stringify(feedback.log), FEEDBACK_DAILY_CAP),
+        feedback.platform, feedback.input, feedback.orientation, feedback.viewWidth, JSON.stringify(feedback.log), FEEDBACK_DAILY_CAP, hashes.key),
   ]);
   const { meta } = results[2] as D1Result;
   return meta.changes > 0 ? meta.last_row_id : null;
@@ -84,16 +87,19 @@ interface FeedbackRow {
   status: FeedbackStatus;
   issue: number | null;
   reply: string | null;
+  done_version: string | null;
 }
 
-/** The newest FEEDBACK_LIST_LIMIT entries (day, then id descending) with the log parsed back and the triage fields. */
+/** The newest FEEDBACK_LIST_LIMIT entries (day, then id descending) with the log parsed back and the triage fields; never the key hash. */
 export async function listFeedback(db: D1Database): Promise<TriagedFeedbackEntry[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, day, kind, text, version, platform, input, orientation, view_width, log, status, issue, reply
+      `SELECT id, day, kind, text, version, platform, input, orientation, view_width, log, status, issue, reply, done_version
        FROM feedback ORDER BY day DESC, id DESC LIMIT ?`,
     )
     .bind(FEEDBACK_LIST_LIMIT)
     .all<FeedbackRow>();
-  return results.map(({ view_width, log, ...row }) => ({ ...row, viewWidth: view_width, log: JSON.parse(log) as string[] }));
+  return results.map(({ view_width, log, done_version, ...row }) => ({
+    ...row, viewWidth: view_width, log: JSON.parse(log) as string[], doneVersion: done_version,
+  }));
 }

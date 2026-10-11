@@ -7,7 +7,7 @@ import { h } from './dom';
 import { FEEDBACK_FILTERS, type FeedbackFilter, feedbackCount, filterFeedback, kindLabel, logSummary, metaLine } from './feedback';
 import { type TriageActions, triageControls, type TriageOutcome } from './feedback-triage-ui';
 import { formatDate } from './format';
-import { issueUrl, STATUS_FILTERS, type StatusFilter, statusLabel } from './triage';
+import { issueUrl, logNote, STATUS_FILTERS, type StatusFilter, statusText } from './triage';
 import type { TriagedFeedbackEntry } from './triage-types';
 
 export interface FeedbackView {
@@ -23,14 +23,15 @@ export interface FeedbackHandlers extends TriageActions {
   onEntries(entries: TriagedFeedbackEntry[]): void;
 }
 
-/** 'Todo #12' as a link to the issue, else the status as a badge. */
+/** 'Todo #12' as a link to the issue, else the status ('Erledigt in 2026-10-12.1') as a badge. */
 function statusBadge(entry: TriagedFeedbackEntry): HTMLElement {
-  const label = statusLabel(entry.status);
+  const label = statusText(entry);
   if (entry.issue === null) return h('span', { class: `fb-status ${entry.status}` }, label);
   return h('a', { class: `fb-status ${entry.status}`, href: issueUrl(entry.issue), target: '_blank', rel: 'noopener noreferrer' }, `${label} #${entry.issue}`);
 }
 
 function item(entry: TriagedFeedbackEntry, handlers: FeedbackHandlers, outcome: TriageOutcome): HTMLElement {
+  const withLog = logNote(entry);
   const log = entry.log.length
     ? h('details', { class: 'fb-log' }, h('summary', {}, logSummary(entry.log.length)), h('pre', {}, entry.log.join('\n')))
     : null;
@@ -42,6 +43,7 @@ function item(entry: TriagedFeedbackEntry, handlers: FeedbackHandlers, outcome: 
       { class: 'fb-head' },
       h('span', { class: `fb-kind ${entry.kind}` }, kindLabel(entry.kind)),
       statusBadge(entry),
+      withLog ? h('span', { class: 'fb-has-log' }, withLog) : null,
       h('time', { datetime: entry.day }, formatDate(entry.day)),
     ),
     h('p', { class: 'fb-text' }, entry.text),

@@ -2,7 +2,8 @@
  * Feedback triage on the insights board (ROADMAP 56) against a FAKE worker: a
  * route answers every request to the worker URL, so nothing reaches the live
  * worker or GitHub. Card actions, the issue editor, "Todo #N", the delete
- * confirm and the status filter.
+ * confirm, the status filter, 'umgesetzt in Version' with Erledigt and the
+ * 'mit Fehlerprotokoll' marker (ROADMAP 70).
  *   npm run playtest -- --scenario scripts/scenarios/insights-triage.ts --viewports desktop,phone-portrait --name triage
  */
 import type { Route } from 'playwright';
@@ -37,14 +38,16 @@ export default async function (t: PlaytestContext) {
     const id = Number(m[1]);
     if (m[2] && req.method() === 'POST') {
       if (issueFails) return route.fulfill({ status: 502, headers, body: '{"ok":false,"error":"github","status":403}' });
-      entries = entries.map((e) => (e.id === id ? { ...e, status: 'todo', issue: 21 } : e));
+      entries = entries.map((e) => (e.id === id ? { ...e, status: 'todo', issue: 21, doneVersion: null } : e));
       return route.fulfill({ status: 201, headers, body: '{"ok":true,"issue":21}' });
     }
     if (req.method() === 'PATCH') {
       const patch = JSON.parse(req.postData() ?? '{}');
-      entries = entries.map((e) => (e.id === id ? { ...e, ...patch } : e));
+      // Like the worker: a status patch sets the done version (the given one with done, else null).
+      const version = patch.status === undefined ? {} : { doneVersion: patch.status === 'done' ? (patch.doneVersion ?? null) : null };
+      entries = entries.map((e) => (e.id === id ? { ...e, ...patch, ...version } : e));
       const e = entries.find((x) => x.id === id)!;
-      return route.fulfill({ status: 200, headers, body: JSON.stringify({ ok: true, status: e.status, issue: e.issue, reply: e.reply }) });
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ ok: true, status: e.status, issue: e.issue, reply: e.reply, doneVersion: e.doneVersion }) });
     }
     if (req.method() === 'DELETE') {
       entries = entries.filter((e) => e.id !== id);
@@ -68,6 +71,8 @@ export default async function (t: PlaytestContext) {
     t.check('Todo #12 links to the issue, rejected shows its badge', JSON.stringify(badges).includes('["A","Todo #12","https://github.com/marvinmai/cannstatt-cruiser/issues/12"]') && JSON.stringify(badges).includes('Abgelehnt'), badges);
     t.check('reply shown as text', (await page.textContent('.fb-reply')) === 'Antwort: Der Schlossgarten passt nicht zur Strecke.');
     t.check('no script element from player text', (await card.locator('script').count()) === 0);
+    const logMarks = await page.$$eval('.fb-item', (els) => els.map((e) => [e.getAttribute('data-id'), e.querySelector('.fb-has-log')?.textContent ?? null]));
+    t.check('only the report with a log is marked mit Fehlerprotokoll', JSON.stringify(logMarks) === '[["14",null],["13","mit Fehlerprotokoll"],["12",null],["11",null]]', logMarks);
     await cardShot('card');
 
     // Issue editor on the idea #14
@@ -124,6 +129,31 @@ export default async function (t: PlaytestContext) {
     await page.selectOption('.fb-status-filter', 'rejected');
     await cardShot('filter-rejected');
     await page.selectOption('.fb-status-filter', 'all');
+
+    // Erledigt with 'umgesetzt in Version' on #12 (rejected before)
+    await long.locator('button:has-text("Status")').click();
+    const versionField = long.locator('label.fb-field:has(input[name=doneVersion])');
+    t.check('version field hidden while the status is not Erledigt', !(await versionField.isVisible()));
+    await long.locator('select[name=status]').selectOption('done');
+    t.check('version field shown for Erledigt, empty', (await versionField.isVisible()) && (await long.locator('input[name=doneVersion]').inputValue()) === '');
+    t.check('reply hint names Mein Feedback', ((await long.locator('label.fb-field:has(input[name=reply]) span').textContent()) ?? '').includes('„Mein Feedback“'));
+    const patchesBefore = calls.filter((c) => c.method === 'PATCH').length;
+    await long.locator('input[name=doneVersion]').fill('bald');
+    await long.locator('button:has-text("Speichern")').click();
+    t.check('a malformed version is refused on the board, nothing sent',
+      ((await long.locator('.fb-error').textContent()) ?? '').startsWith('Version im Format') && calls.filter((c) => c.method === 'PATCH').length === patchesBefore);
+    await long.locator('input[name=doneVersion]').fill('2026-10-12.1');
+    await long.locator('input[name=reply]').fill('Ist drin, danke!');
+    await cardShot('status-editor-version');
+    await long.locator('button:has-text("Speichern")').click();
+    await page.locator('.fb-item[data-id="12"] .fb-status.done').waitFor();
+    const donePatch = calls.filter((c) => c.method === 'PATCH').at(-1);
+    t.check('PATCH sends status done with the version', donePatch?.body === '{"status":"done","reply":"Ist drin, danke!","doneVersion":"2026-10-12.1"}', donePatch);
+    t.check('card shows Erledigt in 2026-10-12.1', (await page.locator('.fb-item[data-id="12"] .fb-status').textContent()) === 'Erledigt in 2026-10-12.1');
+    await long.locator('button:has-text("Status")').click();
+    t.check('editor prefills the stored version', (await long.locator('input[name=doneVersion]').inputValue()) === '2026-10-12.1');
+    await long.locator('button:has-text("Abbrechen")').click();
+    await cardShot('card-done-version');
     // log checkbox on #13 is not offered (it has an issue); check the editor log toggle through a reload with a fresh bug
     entries = [...entries, { ...sampleFeedback()[1]!, id: 15, status: 'open', issue: null }];
     await page.click('button:has-text("Neu laden")');

@@ -17,6 +17,7 @@ const entry = (id: number, day: string, kind: TriagedFeedbackEntry['kind'], stat
   status,
   issue: null,
   reply: null,
+  doneVersion: null,
 });
 
 describe('filterFeedback', () => {

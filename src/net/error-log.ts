@@ -44,6 +44,8 @@ function reasonText(reason: unknown): string {
 
 /** The part of an error log the feedback sender reads. */
 export interface ErrorLogLike {
+  /** A copy of the recorded lines (empty: nothing to send). */
+  lines(): string[];
   /** A copy of the lines plus `extra` as the last one, at most MAX_LOG_LINES. */
   snapshot(extra: string): string[];
 }

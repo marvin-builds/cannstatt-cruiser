@@ -45,8 +45,8 @@ export async function saveBestRun(db: D1Database, run: Submission, deviceHash: s
   return saved!.meta.changes > 0;
 }
 
-/** Hex SHA-256 of the device id, so the raw id is never stored. */
-export async function hashDevice(device: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(device));
+/** Hex SHA-256 of a secret (device id, session id, feedback key), so the raw value is never stored. */
+export async function sha256Hex(secret: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }

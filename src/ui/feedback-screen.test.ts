@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
-import { feedbackPlaceholder, wrapText } from './feedback-screen';
+import { feedbackPlaceholder } from './feedback-screen';
+import { wrapText } from './wrap-text';
 
 describe('feedback screen drawing helpers', () => {
   it('wraps the typed text at word boundaries within the width, keeping new lines', () => {
