@@ -20,6 +20,15 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-12.1',
+    date: '2026-10-12',
+    items: [
+      'Kein Installier-Hinweis mehr in der App',
+      'Großer Dreh-Hinweis im Hochformat',
+      'Feedback tippen ohne Dreh-Hinweis',
+    ],
+  },
+  {
     version: '2026-10-11.11',
     date: '2026-10-11',
     items: [
