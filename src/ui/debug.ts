@@ -61,8 +61,8 @@ export interface UiDebugHook {
   previewKickerHint(): boolean;
   /** Replaces the loaded records in memory (storage follows at the next game over); `kidHighscore` is kid mode's record. */
   setRecords(highscore?: number, starsTotal?: number, kidHighscore?: number): void;
-  /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen, the logo hold progress (0..1) and the statistics switch. */
-  settings(): { screen: SettingsScreen; holdProgress: number; statsOn: boolean };
+  /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen, the logo hold progress (0..1), the statistics switch and the "Testgerät" line (ROADMAP 55). */
+  settings(): { screen: SettingsScreen; holdProgress: number; statsOn: boolean; testDevice: boolean };
   /**
    * Current tap areas (view px) for this display: HUD buttons, settings buttons, the kid notice's OK, the logo
    * (title, or the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter,
@@ -196,7 +196,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       view.records = { highscore, kidHighscore, starsTotal };
     },
     settings() {
-      return { screen: view.settings.screen, holdProgress: view.logoHold.progress, statsOn: view.settings.statsOn };
+      return { screen: view.settings.screen, holdProgress: view.logoHold.progress, statsOn: view.settings.statsOn, testDevice: view.settings.testDevice };
     },
     layout() {
       const { display } = ctx;

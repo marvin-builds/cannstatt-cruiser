@@ -1108,6 +1108,31 @@ hidden page `insights.html` shows aggregates to the owner.
   rendered with `createElement`/`createElementNS` and text nodes, never
   `innerHTML` (player names). `?api=` overrides the worker only on
   localhost/127.0.0.1.
+- **Test devices and new players (ROADMAP 55):**
+  - Marker: store key `TEST_DEVICE_KEY` (`cannstatt-cruiser:testDevice`):
+    true = the owner's test device, false = switched off, absent = the board
+    was never unlocked here. Only the board writes it (`src/insights/test-device.ts`:
+    set to true on the first successful unlock when absent; the switch "Dieses
+    Gerät ist ein Testgerät" changes it). The game only reads it: the
+    `session` event carries `tester: true` while it is true, and the hidden
+    settings show a plain, non-interactive "Testgerät" line (nothing for
+    normal players).
+  - `returning`: whether the game had its own `cannstatt-cruiser:` keys
+    (except the marker) before this page load (`src/net/returning.ts`). The
+    snapshot is taken when `src/net/browser.ts` loads, before the `Game`
+    constructor writes `visits`/`lastSeenVersion` and the ui writes
+    `deviceId`; any new storage write at module load, or code loaded before
+    `browser.ts`, would break it. Left out when storage is missing or throws.
+    Keys only the board writes must be listed in `BOARD_ONLY_KEYS`.
+  - Server: migration 0006 adds `events.tester` and `events.is_returning`
+    (not `returning`, an SQL keyword; NULL = unknown, old builds) and
+    `day_summaries.player_value` (count without test devices). `GET /stats`
+    leaves test sessions and their runs/ends out of every number unless
+    `testers=1`; it adds `visits {new, returning, unknown}` and per day
+    `newPlayers` / `returningVisits`. The board's "inkl. Testgeräte" switch
+    (off on every load, never stored) asks for `testers=1`; its card "Sessions
+    und neue Spieler pro Tag" says "neu = ohne gespeicherte Spieldaten ·
+    Besuche, nicht Personen".
 - **Service worker:** `public/sw.js` answers only navigations to the scope
   root or `index.html` with the cached game page, and caches only requests
   made by the game page; `insights.html`, `datenschutz.html` and their assets go to the network.

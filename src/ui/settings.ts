@@ -3,11 +3,12 @@
  * (state.kidMode) and the anonymous statistics switch (ROADMAP 46, also on the
  * "Bestenliste"), plus the notice the title's "Kindermodus" button opens
  * (ROADMAP 43). DOM-free logic: the long press that opens the menu (the only
- * guard: 3 s on the logo or K), the toggles and persistence. Hotspots and
+ * guard: 3 s on the logo or K), the toggles and persistence, and whether the
+ * plain "Testgerät" line shows (ROADMAP 55; the game never sets the marker). Hotspots and
  * drawing live in index.ts and screens.ts.
  */
 import type { Store } from '../core/storage';
-import { loadStatsOptOut, saveStatsOptOut } from '../net/telemetry';
+import { loadStatsOptOut, loadTestDevice, saveStatsOptOut } from '../net/telemetry';
 import type { GameState } from '../types';
 
 /** Seconds the title logo (or K) must be held to open the menu. */
@@ -92,6 +93,8 @@ export class SettingsMenu {
   switched = false;
   /** Anonymous statistics are sent (the store keeps the opt-out; Telemetry reads it at every send). */
   statsOn: boolean;
+  /** The owner marked this device on the insights board (ROADMAP 55); read when the menu opens, shown as a plain line. */
+  testDevice = false;
 
   constructor(
     private readonly store: Store,
@@ -108,6 +111,7 @@ export class SettingsMenu {
   openMenu(kidMode: boolean): void {
     this.kidModeAtOpen = kidMode;
     this.switched = false;
+    this.testDevice = loadTestDevice(this.store);
     this.screen = 'menu';
   }
 

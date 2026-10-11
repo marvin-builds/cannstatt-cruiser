@@ -24,6 +24,7 @@ import {
   type ScoreBucket,
   type SessionEvent,
   type TelemetryEvent,
+  TEST_DEVICE_KEY,
 } from './telemetry-types';
 
 /** The only host whose players send statistics to the live worker (GitHub Pages). */
@@ -38,6 +39,11 @@ export function loadStatsOptOut(store: Store): boolean {
 
 export function saveStatsOptOut(store: Store, optOut: boolean): void {
   store.set(OPT_OUT_KEY, optOut);
+}
+
+/** The owner's test device (ROADMAP 55): only a stored `true`, which only the insights board writes; the game only reads it. */
+export function loadTestDevice(store: Store): boolean {
+  return store.get<unknown>(TEST_DEVICE_KEY, false) === true;
 }
 
 const floorTo = (value: number, step: number, max: number) => Math.min(max, Math.max(0, Math.floor(value / step) * step));
@@ -72,7 +78,14 @@ export interface SessionInfo {
   kid: boolean;
 }
 
-export function sessionEvent(session: string, version: string, info: SessionInfo): SessionEvent {
+/** ROADMAP 55: the test device marker and new vs. returning (undefined = unknown). */
+export interface SessionFlags {
+  tester: boolean;
+  returning?: boolean;
+}
+
+/** `tester` only when true, `returning` only when known (both optional in the contract). */
+export function sessionEvent(session: string, version: string, info: SessionInfo, flags: SessionFlags = { tester: false }): SessionEvent {
   return {
     kind: 'session',
     session,
@@ -81,6 +94,8 @@ export function sessionEvent(session: string, version: string, info: SessionInfo
     orientation: info.portrait ? 'portrait' : 'landscape',
     platform: info.platform,
     kid: info.kid,
+    ...(flags.tester ? { tester: true } : {}),
+    ...(flags.returning === undefined ? {} : { returning: flags.returning }),
   };
 }
 
@@ -131,12 +146,14 @@ export interface TelemetryDeps {
   fetch: FetchLike;
   /** Used for `end` (the page is going away); null falls back to fetch. */
   beacon: BeaconLike | null;
-  /** Holds the opt-out (read at every send); the session id is never stored. */
+  /** Holds the opt-out (read at every send) and the test device marker (read when the session goes out); the session id is never stored. */
   store: Store;
   /** BUILD_VERSION */
   version: string;
   /** The session id (tests); default a fresh newSessionId(). */
   session?: string;
+  /** Game data was stored before this page load (returning.ts); undefined = unknown, left out of the session. */
+  returning?: boolean;
 }
 
 /** The part the ui calls. */
@@ -190,7 +207,8 @@ export class Telemetry {
     if (!this.allowed()) return false;
     if (!this.sessionSent && this.pending) {
       this.sessionSent = true;
-      this.post(sessionEvent(this.id, this.deps.version, this.pending));
+      const flags = { tester: loadTestDevice(this.deps.store), returning: this.deps.returning };
+      this.post(sessionEvent(this.id, this.deps.version, this.pending, flags));
     }
     return this.sessionSent;
   }

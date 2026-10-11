@@ -142,6 +142,10 @@ await t.page.route(`${API}/**`, async (route) => {
 - The insights board scenario (`scripts/scenarios/insights.ts`) stubs
   `**/stats**` with a fixture and a 401 case and screenshots the board on
   desktop and phone, light and dark.
+- The test device scenario (`scripts/scenarios/test-device.ts`) checks the
+  `session` flags (`returning` false on a cleared device, true after a
+  reload; `tester` only with the marker) and screenshots the hidden settings
+  with and without the "Testgerät" line.
 
 ## Test hook: `window.__game`
 
