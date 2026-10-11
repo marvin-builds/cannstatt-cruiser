@@ -56,6 +56,8 @@ describe('condensing finished days into day_summaries', () => {
       { day, metric: 'total', key: 'end_median', value: 90 },
       { day, metric: 'total', key: 'end_seconds', value: 510 },
       { day, metric: 'total', key: 'ends', value: 4 },
+      { day, metric: 'total', key: 'new_players', value: 0 },
+      { day, metric: 'total', key: 'returning_visits', value: 0 },
       { day, metric: 'total', key: 'runs', value: 3 },
       { day, metric: 'total', key: 'sessions', value: 3 },
     ]);
@@ -72,7 +74,7 @@ describe('condensing finished days into day_summaries', () => {
     expect(summaries(`metric = 'run_distance'`).map((r) => [r.key, r.value])).toEqual([['0', 2], ['1300', 1]]);
     expect(summaries(`metric = 'run_score'`).map((r) => [r.key, r.value])).toEqual([['0', 2], ['500', 1]]);
     const columns = db.sqlite.prepare("SELECT name FROM pragma_table_info('day_summaries')").all().map((row) => (row as { name: string }).name);
-    expect(columns).toEqual(['day', 'metric', 'key', 'value']);
+    expect(columns).toEqual(['day', 'metric', 'key', 'value', 'player_value']);
   });
 
   it('takes the middle value as the median of an odd day', async () => {
@@ -88,6 +90,9 @@ describe('condensing finished days into day_summaries', () => {
     expect([...new Set(summaries().map((row) => row.day))]).toEqual(['2026-10-08']);
     expect(value('2026-10-08', 'total', 'runs')).toBe(0);
     expect(value('2026-10-08', 'total', 'ends')).toBe(0);
+    // Sessions without the returning flag (older builds) still give zero counts, never a dropped row.
+    expect(value('2026-10-08', 'total', 'new_players')).toBe(0);
+    expect(value('2026-10-08', 'total', 'returning_visits')).toBe(0);
   });
 
   it('runs at most once per UTC day and never counts a day twice', async () => {
@@ -135,5 +140,65 @@ describe('condensing finished days into day_summaries', () => {
     seedSession('2026-10-01');
     await condenseAndPruneOnceADay(db.asD1(), NOW);
     expect([...new Set(summaries().map((row) => row.day))]).toEqual(['2026-01-01', '2026-10-01']);
+  });
+});
+
+describe('player-only counts next to the totals (ROADMAP 55)', () => {
+  type PlayerRow = { metric: string; key: string; value: number; player_value: number };
+  const playerRows = (where: string): PlayerRow[] =>
+    db.sqlite.prepare(`SELECT metric, key, value, player_value FROM day_summaries WHERE ${where} ORDER BY metric, key`).all() as PlayerRow[];
+
+  function seedFlagged(day: string, tester: number | null, returning: number | null, city: string): string {
+    const id = sessionId();
+    db.sqlite
+      .prepare(
+        `INSERT INTO events (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city, tester, is_returning)
+         VALUES (?, 'session', ?, 9, '2026-10-11.1', 'touch', 'landscape', 'android', 0, 'DE', 'BW', ?, ?, ?)`,
+      )
+      .run(id, day, city, tester, returning);
+    return id;
+  }
+
+  it('stores per row the count without test devices, new players and returning visits', async () => {
+    const day = '2026-10-10';
+    const player = seedFlagged(day, 0, 0, 'Stuttgart');
+    seedFlagged(day, null, 1, 'Stuttgart');
+    seedFlagged(day, null, null, 'Esslingen');
+    const tester = seedFlagged('2026-10-09', 1, 1, 'Linux');
+    db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, kid, seconds, distance_bucket, score_bucket) VALUES (?, 'run', ?, 10, 0, 600, 0, 0)").run(tester, day);
+    db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, kid, seconds, distance_bucket, score_bucket) VALUES (?, 'run', ?, 10, 0, 60, 0, 0)").run(player, day);
+    for (const [session, seconds] of [[player, 30], [tester, 500], [tester + 'x', 70]] as const) {
+      db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, seconds) VALUES (?, 'end', ?, 10, ?)").run(session, day, seconds);
+    }
+    await condenseAndPruneOnceADay(db.asD1(), NOW);
+
+    expect(playerRows(`day = '${day}' AND metric = 'total'`)).toEqual([
+      { metric: 'total', key: 'end_median', value: 70, player_value: 50 },
+      { metric: 'total', key: 'end_seconds', value: 600, player_value: 100 },
+      { metric: 'total', key: 'ends', value: 3, player_value: 2 },
+      { metric: 'total', key: 'new_players', value: 1, player_value: 1 },
+      { metric: 'total', key: 'returning_visits', value: 1, player_value: 1 },
+      { metric: 'total', key: 'runs', value: 2, player_value: 1 },
+      { metric: 'total', key: 'sessions', value: 3, player_value: 3 },
+    ]);
+    expect(playerRows(`day = '${day}' AND metric = 'run_seconds'`)).toEqual([
+      { metric: 'run_seconds', key: '60', value: 1, player_value: 1 },
+      { metric: 'run_seconds', key: '600', value: 1, player_value: 0 },
+    ]);
+    expect(playerRows(`day = '2026-10-09'`).filter((row) => row.metric === 'city' || row.key === 'sessions' || row.key === 'returning_visits')).toEqual([
+      { metric: 'city', key: 'Linux', value: 1, player_value: 0 },
+      { metric: 'total', key: 'returning_visits', value: 1, player_value: 0 },
+      { metric: 'total', key: 'sessions', value: 1, player_value: 0 },
+    ]);
+  });
+
+  it('stores a player median of 0 on a day whose ends are all from test devices', async () => {
+    const tester = seedFlagged('2026-10-10', 1, null, 'Linux');
+    db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, seconds) VALUES (?, 'end', '2026-10-10', 10, 80)").run(tester);
+    await condenseAndPruneOnceADay(db.asD1(), NOW);
+    expect(playerRows("metric = 'total' AND key IN ('end_median', 'ends')")).toEqual([
+      { metric: 'total', key: 'end_median', value: 80, player_value: 0 },
+      { metric: 'total', key: 'ends', value: 1, player_value: 0 },
+    ]);
   });
 });

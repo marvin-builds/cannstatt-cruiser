@@ -26,6 +26,8 @@ CREATE INDEX IF NOT EXISTS submissions_device ON submissions (device, at);
 -- these tables get them from migrations/0003_play_statistics.sql (same statements).
 -- No IP, no device id, no exact time: day (UTC) and hour only, coarse buckets.
 -- country/region/city are Cloudflare's coarse IP location, on session rows only.
+-- tester and is_returning (session rows, ROADMAP 55) came with migrations/0006_test_devices_and_returning.sql,
+-- which documents them.
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session TEXT NOT NULL,
@@ -42,7 +44,9 @@ CREATE TABLE IF NOT EXISTS events (
   city TEXT,
   seconds INTEGER,
   score_bucket INTEGER,
-  distance_bucket INTEGER
+  distance_bucket INTEGER,
+  tester INTEGER,
+  is_returning INTEGER
 );
 CREATE INDEX IF NOT EXISTS events_day_kind ON events (day, kind);
 CREATE INDEX IF NOT EXISTS events_session ON events (session, kind);
@@ -63,12 +67,14 @@ CREATE TABLE IF NOT EXISTS event_meta (
 -- Daily summaries of the play statistics, kept for good after the raw events are
 -- pruned. Databases created before this table get it from
 -- migrations/0004_day_summaries.sql (same statement, which documents the rows).
--- Counts only: no session id, no hour.
+-- Counts only: no session id, no hour. player_value (the count without test devices)
+-- came with migrations/0006_test_devices_and_returning.sql.
 CREATE TABLE IF NOT EXISTS day_summaries (
   day TEXT NOT NULL,
   metric TEXT NOT NULL,
   key TEXT NOT NULL,
   value INTEGER NOT NULL,
+  player_value INTEGER,
   PRIMARY KEY (day, metric, key)
 );
 

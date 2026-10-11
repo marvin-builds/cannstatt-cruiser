@@ -61,8 +61,9 @@ export function groupDays(days: readonly DayStats[], grain: Grain): Period[] {
       current.sessions += d.sessions;
       current.runs += d.runs;
       current.entries += d.entries;
+      current.newPlayers += d.newPlayers;
     } else {
-      periods.push({ start: d.day, end: d.day, label, title: '', sessions: d.sessions, runs: d.runs, entries: d.entries });
+      periods.push({ start: d.day, end: d.day, label, title: '', sessions: d.sessions, runs: d.runs, entries: d.entries, newPlayers: d.newPlayers });
       lastKey = key;
     }
   }

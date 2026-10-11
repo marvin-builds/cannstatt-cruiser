@@ -10,6 +10,8 @@ function run(start: string, count: number, value = 1): DayStats[] {
     sessions: value,
     runs: 2 * value,
     entries: value,
+    newPlayers: value,
+    returningVisits: 0,
   }));
 }
 
@@ -37,7 +39,7 @@ describe('groupDays', () => {
   it('sums ISO weeks labelled KW, also across the new year', () => {
     const periods = groupDays(run('2026-12-28', 14), 'week');
     expect(periods.map((p) => p.label)).toEqual(['KW 53', 'KW 1']);
-    expect(periods[0]).toMatchObject({ start: '2026-12-28', end: '2027-01-03', sessions: 7, runs: 14, entries: 7 });
+    expect(periods[0]).toMatchObject({ start: '2026-12-28', end: '2027-01-03', sessions: 7, runs: 14, entries: 7, newPlayers: 7 });
     expect(periods[0]!.title).toBe('KW 53 (28.12.–3.1.)');
   });
   it('sums partial weeks at the edges', () => {

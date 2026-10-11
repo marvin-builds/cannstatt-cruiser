@@ -19,6 +19,8 @@ export interface SessionEvent {
   orientation: Orientation;
   platform: Platform;
   kid: boolean;
+  tester?: boolean;
+  returning?: boolean;
 }
 
 export interface RunEvent {
@@ -48,6 +50,8 @@ export interface DayStats {
   sessions: number;
   runs: number;
   entries: number;
+  newPlayers: number;
+  returningVisits: number;
 }
 
 export interface InsightsStats {
@@ -59,6 +63,7 @@ export interface InsightsStats {
     medianSeconds: number;
     avgSeconds: number;
   };
+  visits: { new: number; returning: number; unknown: number };
   runs: {
     total: number;
     perSession: number;

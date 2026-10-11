@@ -11,11 +11,11 @@ describe('rangeButtonLabel', () => {
 describe('rangeNote', () => {
   it('counts the days of a fixed range', () => {
     expect(rangeNote(365, [])).toBe('365 Tage');
-    expect(rangeNote(7, [{ day: '2026-10-05', sessions: 0, runs: 0, entries: 0 }])).toBe('7 Tage');
+    expect(rangeNote(7, [{ day: '2026-10-05', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 }])).toBe('7 Tage');
   });
   it('names the first recorded day for Alles', () => {
-    expect(rangeNote(ALL_RANGE, [{ day: '2026-10-11', sessions: 3, runs: 5, entries: 0 }])).toBe('seit 11.10.2026');
-    expect(rangeNote(ALL_RANGE, [{ day: '2025-05-03', sessions: 3, runs: 5, entries: 0 }])).toBe('seit 3.5.2025');
+    expect(rangeNote(ALL_RANGE, [{ day: '2026-10-11', sessions: 3, runs: 5, entries: 0, newPlayers: 0, returningVisits: 0 }])).toBe('seit 11.10.2026');
+    expect(rangeNote(ALL_RANGE, [{ day: '2025-05-03', sessions: 3, runs: 5, entries: 0, newPlayers: 0, returningVisits: 0 }])).toBe('seit 3.5.2025');
   });
   it('says Alles when there is no day yet', () => {
     expect(rangeNote(ALL_RANGE, [])).toBe('Alles');

@@ -24,7 +24,13 @@ describe('telemetry contract', () => {
     expect(client.RAW_RETENTION_DAYS).toBe(90);
   });
 
+  it('names the test device marker and the stats switch for it (ROADMAP 55)', () => {
+    expect(client.TEST_DEVICE_KEY).toBe('testDevice');
+    expect(client.STATS_TESTERS_PARAM).toBe('testers');
+  });
+
   it('is mirrored exactly by the server', () => {
+    expect(server.STATS_TESTERS_PARAM).toBe(client.STATS_TESTERS_PARAM);
     expect(server.EVENT_KINDS).toEqual(client.EVENT_KINDS);
     expect(server.INPUTS).toEqual(client.INPUTS);
     expect(server.ORIENTATIONS).toEqual(client.ORIENTATIONS);

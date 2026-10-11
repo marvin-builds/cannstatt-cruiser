@@ -139,17 +139,39 @@ On the first event of the next UTC day the worker summarises every finished
 day that still has raw events (at most 100 days per run, oldest first), so the
 statistics already collected are kept before the 90-day prune deletes them.
 
+`0006_test_devices_and_returning.sql` (test devices and new vs. returning
+players, ROADMAP 55): adds the nullable columns `events.tester`,
+`events.is_returning` and `day_summaries.player_value`; old rows stay `NULL`
+(a player, flag unknown, day counted wholly as players). Unlike the earlier
+migrations it is **not** safe to apply twice: SQLite cannot add a column twice,
+so a second run fails at its first statement and changes nothing. The new
+worker writes these columns, so the order is:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0006.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0006_test_devices_and_returning.sql   # 2. migrate, once
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler deploy   # 4. new worker (accepts events with and without the new fields)
+```
+
+Deploy the worker before the game release that sends `tester` and
+`returning`: the old worker rejects session events with unknown fields.
+
 ## Daily summaries
 
 Raw events live for 90 days; the daily counts are kept for good in
 `day_summaries`, one row per finished UTC day, `metric` and `key` with an
-integer `value` (no session id, no hour, no device id, no IP):
+integer `value` and `player_value`, the same count without test devices (no
+session id, no hour, no device id, no IP). `player_value` is `NULL` on days
+summarised before migration 0006; those days count wholly as players:
 
 | `metric` | `key` | `value` |
 | --- | --- | --- |
 | `total` | `sessions`, `runs`, `ends` | counts of that day |
+| `total` | `new_players`, `returning_visits` | sessions with `is_returning` 0 / 1 (0 on days before 0006) |
 | `total` | `end_seconds` | sum of the `end` seconds |
-| `total` | `end_median` | that day's median `end` seconds (only on days with an `end`) |
+| `total` | `end_median` | that day's median `end` seconds (only on days with an `end`; `player_value` 0 when all ends are from test devices) |
 | `input`, `orientation`, `platform`, `kid`, `version`, `country`, `region`, `city` | the value (`kid` as `true`/`false`, `''` = unknown) | sessions |
 | `run_seconds`, `run_distance`, `run_score` | the reported bucket value | runs |
 
@@ -236,7 +258,7 @@ of its kind (see `src/events.ts` and the game's `src/net/telemetry-types.ts`):
 
 | `kind` | Fields | Rules |
 | --- | --- | --- |
-| `session` | `session`, `version`, `input`, `orientation`, `platform`, `kid` | once per page load; `session` 32 lowercase hex chars, `version` `YYYY-MM-DD.n`, `input` `touch`/`keys`, `orientation` `landscape`/`portrait`, `platform` `android`/`ios`/`other`, `kid` boolean |
+| `session` | `session`, `version`, `input`, `orientation`, `platform`, `kid`, optional `tester`, `returning` | once per page load; `session` 32 lowercase hex chars, `version` `YYYY-MM-DD.n`, `input` `touch`/`keys`, `orientation` `landscape`/`portrait`, `platform` `android`/`ios`/`other`, `kid` boolean; `tester` (owner's test device, stored as `tester` 1/0, omitted = 0) and `returning` (game data stored before this page load, stored as `is_returning` 1/0, omitted = `NULL`, unknown) booleans when present |
 | `run` | `session`, `seconds`, `score`, `distance`, `kid` | per game over; `seconds` a multiple of 10 in 0..3600, `score` one of 0/100/500/2000/5000, `distance` a multiple of 100 in 0..5000 |
 | `end` | `session`, `seconds` | when the page is hidden; whole seconds of play, 0..14400 |
 
@@ -252,7 +274,7 @@ Responses:
 - `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
   not one of the game origins above.
 
-### `GET /stats?days=7|30|90|365|0`
+### `GET /stats?days=7|30|90|365|0[&testers=1]`
 
 The insights board's data. Needs `Authorization: Bearer <STATS_TOKEN>`;
 without the secret, without the header or with a wrong token it answers
@@ -260,6 +282,12 @@ without the secret, without the header or with a wrong token it answers
 `days` other than exactly `7`, `30`, `90`, `365` or `0` ("Alles": every day
 since the first recorded one, at most 3650 days) answers 400. Not cached
 (`Cache-Control: no-store`).
+
+Test devices (ROADMAP 55): by default every number leaves out the sessions
+with `tester` = 1 and the `run` and `end` rows of those sessions (matched by
+session id, also across midnight); exactly one `testers=1` includes them, any
+other value leaves them out. The long ranges use `player_value` of the day
+summaries. The highscore numbers (`entries`, `topScores`) are not affected.
 
 `200` with the `InsightsStats` shape (`src/insights-types.ts`), aggregates only.
 Ranges up to 90 days are counted from the raw events. `365` and `0` add the
@@ -269,11 +297,15 @@ last summarised one (usually today), so no day counts twice; for them
 count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count.
 
 - `perDay`: every UTC day of the range (today included), oldest first,
-  zero-filled: `sessions`, `runs`, and `entries` = rows of the highscore list
+  zero-filled: `sessions`, `runs`, `newPlayers` (sessions with `returning:
+  false`), `returningVisits` (sessions with `returning: true`; visits, not
+  people), and `entries` = rows of the highscore list
   whose `date` falls on that day (one row per device, so a device that beats
   its best moves to the new day).
 - `sessions`: `total`, `medianSeconds` and `avgSeconds` over the `end` rows of
   the range (whole seconds, 0 without any).
+- `visits`: `new`, `returning` and `unknown` (sessions without the flag, from
+  builds before ROADMAP 55) over the range; they add up to `sessions.total`.
 - `runs`: `total`, `perSession` (runs / sessions, 2 decimals) and histograms,
   zero-filled, keys as strings ascending: `seconds` by lower bounds
   0/30/60/180/600, `distance` per 100 m (0..5000), `score` per score bucket.
@@ -351,8 +383,10 @@ the data is anonymous and coarse, so a person cannot be identified from it.
 - Stored per event (table `events`): a random session id that the game makes
   per page load and keeps in memory only (not linked to the device id or the
   highscore list), the kind, the UTC **day** and **hour** (no exact time), and
-  the coarse values listed under `POST /event` (buckets, not exact scores).
-  No name, no device id, no IP address.
+  the coarse values listed under `POST /event` (buckets, not exact scores),
+  and on `session` rows whether the game had stored data on the device before
+  (new vs. returning, no id) and whether it is one of the operator's test
+  devices. No name, no device id, no IP address.
 - Location: on `session` rows only, `country`, `region` and `city` as
   Cloudflare derives them from the IP (`request.cf`, coarse IP geolocation,
   often only the nearest larger town). The worker never reads or stores the IP

@@ -13,8 +13,8 @@ describe('niceMax', () => {
 
 describe('dayChart', () => {
   const days = [
-    { day: '2026-10-09', sessions: 10, runs: 20, entries: 1 },
-    { day: '2026-10-10', sessions: 0, runs: 0, entries: 0 },
+    { day: '2026-10-09', sessions: 10, runs: 20, entries: 1, newPlayers: 0, returningVisits: 0 },
+    { day: '2026-10-10', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
   ];
   const box = { width: 200, height: 100, padLeft: 0, padBottom: 0, padTop: 0, gap: 2 };
 
@@ -51,7 +51,7 @@ describe('dayChart', () => {
   });
 
   it('marks which days get a label so labels never crowd', () => {
-    const many = Array.from({ length: 30 }, (_, i) => ({ day: `2026-09-${String(i + 1).padStart(2, '0')}`, sessions: 1, runs: 1, entries: 0 }));
+    const many = Array.from({ length: 30 }, (_, i) => ({ day: `2026-09-${String(i + 1).padStart(2, '0')}`, sessions: 1, runs: 1, entries: 0, newPlayers: 0, returningVisits: 0 }));
     const chart = dayChart(many, ['sessions'], { ...box, width: 300 });
     const labelled = chart.slots.filter((s) => s.label);
     expect(labelled.length).toBeLessThanOrEqual(8);
@@ -62,7 +62,7 @@ describe('dayChart', () => {
 describe('dayChart labels', () => {
   const box = { width: 200, height: 100, padLeft: 0, padBottom: 0, padTop: 0, gap: 2 };
   it('takes any periods and thins labels further on a narrow chart', () => {
-    const many = Array.from({ length: 30 }, () => ({ sessions: 1, runs: 1, entries: 0 }));
+    const many = Array.from({ length: 30 }, () => ({ sessions: 1, runs: 1, entries: 0, newPlayers: 0, returningVisits: 0 }));
     const narrow = dayChart(many, ['sessions'], { ...box, width: 150 });
     expect(narrow.slots.filter((s) => s.label).length).toBeLessThanOrEqual(3);
     expect(narrow.slots[29]!.item).toBe(many[29]);

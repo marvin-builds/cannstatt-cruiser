@@ -55,8 +55,20 @@ describe('POST /event stores valid events', () => {
       {
         id: 1, session: SESSION, kind: 'session', day: '2026-10-11', hour: 14, version: '2026-10-11.1', input: 'touch',
         orientation: 'portrait', platform: 'android', kid: 0, country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart',
-        seconds: null, score_bucket: null, distance_bucket: null,
+        seconds: null, score_bucket: null, distance_bucket: null, tester: 0, is_returning: null,
       },
+    ]);
+  });
+
+  it('stores the session flags: tester 1/0 (omitted = 0), is_returning 1/0 (omitted = unknown, null)', async () => {
+    await post({ ...session, tester: true, returning: true });
+    await post({ ...session, session: OTHER, tester: false, returning: false });
+    await post({ ...session, session: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    await post({ ...run, tester: true });
+    expect(rows('SELECT session, tester, is_returning FROM events ORDER BY id')).toEqual([
+      { session: SESSION, tester: 1, is_returning: 1 },
+      { session: OTHER, tester: 0, is_returning: 0 },
+      { session: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', tester: 0, is_returning: null },
     ]);
   });
 

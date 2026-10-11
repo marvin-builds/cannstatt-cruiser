@@ -4,13 +4,20 @@
  */
 import { ALL_RANGE, type DayStats, type InsightsStats, type StatsRange } from '../net/telemetry-types';
 
+/** Days at the end of each fixture with known new/returning flags. */
+const KNOWN_DAYS = 20;
+
 function days(count: number, end: string): DayStats[] {
   const last = Date.parse(`${end}T00:00:00Z`);
   return Array.from({ length: count }, (_, i) => {
     const day = new Date(last - (count - 1 - i) * 86_400_000).toISOString().slice(0, 10);
     const weekend = [0, 6].includes(new Date(day).getUTCDay());
     const sessions = Math.round(14 + 9 * Math.sin(i / 3) + (weekend ? 12 : 0) + (i % 5));
-    return { day, sessions, runs: Math.round(sessions * (2.4 + (i % 3) * 0.4)), entries: i % 4 === 0 ? 0 : 1 + (i % 3) };
+    // The newest days come from builds that send the returning flag; older ones count as unknown.
+    const flagged = i >= count - KNOWN_DAYS;
+    const newPlayers = flagged ? Math.round(sessions * (0.3 + (i % 4) * 0.05)) : 0;
+    const returningVisits = flagged ? sessions - newPlayers : 0;
+    return { day, sessions, runs: Math.round(sessions * (2.4 + (i % 3) * 0.4)), entries: i % 4 === 0 ? 0 : 1 + (i % 3), newPlayers, returningVisits };
   });
 }
 
@@ -20,11 +27,14 @@ export function sampleStats(range: StatsRange, end = '2026-10-11', allDays = 500
   const sessions = perDay.reduce((a, d) => a + d.sessions, 0);
   const runs = perDay.reduce((a, d) => a + d.runs, 0);
   const share = (f: number) => Math.round(sessions * f);
+  const newPlayers = perDay.reduce((a, d) => a + d.newPlayers, 0);
+  const returning = perDay.reduce((a, d) => a + d.returningVisits, 0);
   return {
     days: range,
     generatedAt: `${end}T12:00:00.000Z`,
     perDay,
     sessions: { total: sessions, medianSeconds: 400, avgSeconds: 545 },
+    visits: { new: newPlayers, returning, unknown: sessions - newPlayers - returning },
     runs: {
       total: runs,
       perSession: Math.round((runs / sessions) * 100) / 100,

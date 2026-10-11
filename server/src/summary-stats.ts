@@ -3,6 +3,8 @@
  * last summarised day plus the raw events of the days after it (usually today,
  * and yesterday until the day's first event condenses it). No day counts twice.
  * The median is the end-count-weighted mean of the daily medians (approximate).
+ * Without test devices each row's player_value counts; days summarised before it
+ * existed (NULL) count wholly as players.
  */
 import { dayAfter, daysSince } from './aggregate';
 import { rawSummaryRows, runMetric, TOTAL_METRIC, UNKNOWN_KEY, type SummaryRow, type TotalKey } from './day-summary';
@@ -19,25 +21,30 @@ export async function allRangeDays(db: D1Database, now: number): Promise<number>
   return row?.first ? Math.min(MAX_ALL_DAYS, Math.max(1, daysSince(row.first, now))) : 1;
 }
 
-async function summaryRows({ db, from, to }: Range): Promise<SummaryRow[]> {
+/** A summary row with the one count the range uses. */
+type CountRow = Omit<SummaryRow, 'player_value'>;
+
+async function summaryRows({ db, from, to, testers }: Range): Promise<CountRow[]> {
   const last = await db.prepare('SELECT MAX(day) AS day FROM day_summaries').first<{ day: string | null }>();
   const rawFrom = last?.day && last.day >= from ? dayAfter(last.day) : from;
+  const count = testers ? 'value' : 'COALESCE(player_value, value)';
   const [totals, counts, raw] = await Promise.all([
     db
-      .prepare('SELECT day, metric, key, value FROM day_summaries WHERE metric = ? AND day BETWEEN ? AND ?')
+      .prepare(`SELECT day, metric, key, ${count} AS value FROM day_summaries WHERE metric = ? AND day BETWEEN ? AND ?`)
       .bind(TOTAL_METRIC, from, to)
-      .all<SummaryRow>(),
+      .all<CountRow>(),
     db
-      .prepare("SELECT '' AS day, metric, key, SUM(value) AS value FROM day_summaries WHERE metric <> ? AND day BETWEEN ? AND ? GROUP BY metric, key")
+      .prepare(`SELECT '' AS day, metric, key, SUM(${count}) AS value FROM day_summaries WHERE metric <> ? AND day BETWEEN ? AND ? GROUP BY metric, key`)
       .bind(TOTAL_METRIC, from, to)
-      .all<SummaryRow>(),
+      .all<CountRow>(),
     rawFrom > to ? [] : rawSummaryRows(db, rawFrom, to),
   ]);
-  return [...totals.results, ...counts.results, ...raw];
+  const rawCounts = raw.map(({ player_value, ...row }) => (testers ? row : { ...row, value: player_value }));
+  return [...totals.results, ...counts.results, ...rawCounts];
 }
 
 /** Folds summary rows (any mix of days) into tallies. */
-function foldSummaryRows(rows: readonly SummaryRow[]): Tallies {
+function foldSummaryRows(rows: readonly CountRow[]): Tallies {
   const days = new Map<string, Partial<Record<TotalKey, number>>>();
   const counts = new Map<string, Map<string, number>>();
   for (const { day, metric, key, value } of rows) {
@@ -61,7 +68,13 @@ function foldSummaryRows(rows: readonly SummaryRow[]): Tallies {
     weightedMedians += (totals.end_median ?? 0) * (totals.ends ?? 0);
   }
   return {
-    perDay: [...days].map(([day, totals]) => ({ day, sessions: totals.sessions ?? 0, runs: totals.runs ?? 0 })),
+    perDay: [...days].map(([day, totals]) => ({
+      day,
+      sessions: totals.sessions ?? 0,
+      runs: totals.runs ?? 0,
+      newPlayers: totals.new_players ?? 0,
+      returningVisits: totals.returning_visits ?? 0,
+    })),
     ends: ends === 0 ? { medianSeconds: 0, avgSeconds: 0 } : { medianSeconds: Math.round(weightedMedians / ends), avgSeconds: Math.round(endSeconds / ends) },
     split: Object.fromEntries(
       SPLIT_COLUMNS.map((column) => [column, entries(column).map(({ key, count }) => ({ key: key === UNKNOWN_KEY ? null : key, count }))]),

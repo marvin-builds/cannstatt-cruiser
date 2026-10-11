@@ -34,6 +34,15 @@ export const MIN_GROUP_SESSIONS = 1;
 export const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,2}$/;
 /** 32 lowercase hex chars, random per page load, kept in memory only. */
 export const SESSION_ID_PATTERN = /^[0-9a-f]{32}$/;
+/**
+ * Store key (core/storage, so `cannstatt-cruiser:testDevice`) marking the owner's
+ * test devices (ROADMAP 55): true = test device, false = switched off on the
+ * board, absent = the board was never unlocked here. Only the insights board
+ * writes it; the game only reads it.
+ */
+export const TEST_DEVICE_KEY = 'testDevice';
+/** `GET /stats?…&testers=1` includes test devices; without it they are left out. */
+export const STATS_TESTERS_PARAM = 'testers';
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 export type InputKind = (typeof INPUTS)[number];
@@ -51,6 +60,10 @@ export interface SessionEvent {
   orientation: Orientation;
   platform: Platform;
   kid: boolean;
+  /** This device is marked as the owner's test device (TEST_DEVICE_KEY true); omitted = false. */
+  tester?: boolean;
+  /** The game found its own stored data from before this page load (new vs. returning player); omitted by builds before ROADMAP 55 = unknown. */
+  returning?: boolean;
 }
 
 /** Sent on game over. */
@@ -88,6 +101,10 @@ export interface DayStats {
   runs: number;
   /** Highscore list submissions stored that day (scores table). */
   entries: number;
+  /** Sessions that day with `returning: false` (new players: no stored game data). */
+  newPlayers: number;
+  /** Sessions that day with `returning: true` (visits, not people). */
+  returningVisits: number;
 }
 
 /** The `GET /stats?days=N` answer (aggregates only, never raw rows). */
@@ -104,6 +121,8 @@ export interface InsightsStats {
     medianSeconds: number;
     avgSeconds: number;
   };
+  /** Sessions by the `returning` flag; `unknown` = sent by builds before ROADMAP 55. */
+  visits: { new: number; returning: number; unknown: number };
   runs: {
     total: number;
     /** runs / sessions, 0 without sessions. */
