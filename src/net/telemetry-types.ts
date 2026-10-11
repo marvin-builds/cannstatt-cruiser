@@ -100,7 +100,7 @@ export interface InsightsStats {
   perDay: DayStats[];
   sessions: {
     total: number;
-    /** Over sessions that sent an `end`; 0 when none did. For ranges beyond RAW_RETENTION_DAYS the session-weighted mean of daily medians (approximate). */
+    /** Over sessions that sent an `end`; 0 when none did. For ranges beyond RAW_RETENTION_DAYS the mean of the daily medians weighted by their end counts (approximate). */
     medianSeconds: number;
     avgSeconds: number;
   };
