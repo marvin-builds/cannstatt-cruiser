@@ -346,15 +346,16 @@ describe('hidden settings menu', () => {
   });
 });
 
-describe('Kindermodus button on the title (ROADMAP 43)', () => {
+describe('settings gear on the title, one place for Kindermodus (ROADMAP 64)', () => {
   function title(kidMode?: boolean, touch = false) {
     const store = memoryStore();
     if (kidMode !== undefined) saveKidMode(store, kidMode);
     const t = setup(true, store);
     t.game.display.touch = touch;
     const d = t.game.display;
-    const input: MenuInput = { viewWidth: d.viewWidth, touch, portrait: d.portrait, fullscreenAvailable: true, reload: false, install: null, kidButton: true };
-    const button = titleLayout(input).buttons.kidMode!;
+    const input: MenuInput = { viewWidth: d.viewWidth, touch, portrait: d.portrait, fullscreenAvailable: true, reload: false, install: null, settingsButton: true };
+    const gear = titleLayout(input).buttons.settings!;
+    const menu = () => settingsLayout(d.viewWidth, uiMetrics(d));
     const ok = () => kidNoticeLayout(d).ok;
     const press = (r: Rect) => t.game.hitHotspot(...centre(r));
     const key = (code: string) => {
@@ -363,72 +364,110 @@ describe('Kindermodus button on the title (ROADMAP 43)', () => {
       keyUp(t.game, code);
       t.game.tick();
     };
-    return { ...t, button, ok, press, key };
+    return { ...t, gear, menu, ok, press, key };
   }
 
-  it('a tap on it turns kid mode on and saves it, without starting a run; the notice swallows taps and keys until OK', () => {
+  it('a tap or click on the gear opens the settings without starting a run', () => {
     for (const touch of [false, true]) {
       const t = title(undefined, touch);
-      expect(t.press(t.button)).toBe(true);
+      expect(t.press(t.gear)).toBe(true);
+      t.game.tick();
+      expect(t.game.state.mode).toBe('title');
+      expect(t.press(t.menu().back)).toBe(true); // the menu is open: Zurück closes it
+      t.game.tick();
+      expect(t.game.state.mode).toBe('title');
+      expect(t.press(t.menu().back)).toBe(false); // closed
+    }
+  });
+
+  it('G opens the settings from the keyboard', () => {
+    const t = title();
+    t.key('KeyG');
+    expect(t.game.state.mode).toBe('title');
+    expect(t.press(t.menu().back)).toBe(true);
+  });
+
+  it('in kid mode there is no gear and G does nothing; the long press still opens the settings', () => {
+    const t = title(true);
+    expect(t.press(t.gear)).toBe(false);
+    t.key('KeyG');
+    expect(t.press(t.menu().back)).toBe(false); // nothing opened
+    keyDown(t.game, 'KeyK');
+    for (let i = 0; i < 180; i++) t.game.tick();
+    keyUp(t.game, 'KeyK');
+    t.game.tick();
+    expect(t.press(t.menu().back)).toBe(true);
+  });
+
+  it('turning Kindermodus on in the settings shows the kid notice; OK ends on the title in kid mode, saved, without the gear', () => {
+    for (const touch of [false, true]) {
+      const t = title(undefined, touch);
+      t.press(t.gear);
+      t.game.tick();
+      expect(t.press(t.menu().toggle)).toBe(true);
       t.game.tick();
       expect(t.game.state.kidMode).toBe(true);
       expect(loadKidMode(t.store)).toBe(true);
-      expect(t.game.state.mode).toBe('title');
+      expect(t.ui.settings.screen).toBe('kidNotice');
       expect(t.game.hitHotspot(5, 170)).toBe(true); // swallowed by the notice
-      t.key('KeyI');
       t.game.tick();
       expect(t.game.state.mode).toBe('title');
       expect(t.press(t.ok())).toBe(true);
       t.game.tick();
+      expect(t.ui.settings.screen).toBe('closed');
       expect(t.game.state.mode).toBe('title');
       expect(t.press(t.ok())).toBe(false); // closed
-      expect(t.press(t.button)).toBe(false); // kid mode: no button
+      expect(t.press(t.gear)).toBe(false); // kid mode: no gear
     }
   });
 
-  it('I does the same on the keyboard; Enter, Space or Escape close the notice', () => {
+  it('Enter turns Kindermodus on from the keyboard; Enter, Space or Escape close the notice', () => {
     for (const close of ['Enter', 'Space', 'Escape']) {
       const t = title();
-      t.key('KeyI');
+      t.key('KeyG');
+      t.key('Enter');
       expect(t.game.state.kidMode).toBe(true);
-      expect(t.game.state.mode).toBe('title');
+      expect(t.ui.settings.screen).toBe('kidNotice');
       t.key(close);
+      expect(t.ui.settings.screen).toBe('closed');
       expect(t.game.state.mode).toBe('title');
-      expect(t.press(t.ok())).toBe(false); // closed
+      expect(t.game.state.kidMode).toBe(true);
     }
   });
 
-  it('in kid mode there is no button and I does nothing', () => {
-    const t = title(true);
-    expect(t.press(t.button)).toBe(false);
+  it('the old Kindermodus key I does nothing any more', () => {
+    const t = title();
     t.key('KeyI');
-    expect(t.press(t.ok())).toBe(false);
-    expect(t.game.state.mode).toBe('title');
+    expect(t.game.state.kidMode).toBe(false);
+    expect(t.ui.settings.screen).toBe('closed');
   });
 
-  it('turning kid mode off in the hidden menu brings the button back', () => {
+  it('switching back to adult mode in the hidden menu works as before and brings the gear back', () => {
     const t = title(true);
     keyDown(t.game, 'KeyK');
     for (let i = 0; i < 180; i++) t.game.tick();
     keyUp(t.game, 'KeyK');
-    t.key('Enter'); // toggles off
-    t.key('Escape'); // closes the menu
+    t.key('Enter'); // toggles off, the menu stays
     expect(t.game.state.kidMode).toBe(false);
-    expect(t.press(t.button)).toBe(true);
-    expect(t.game.state.kidMode).toBe(true);
+    expect(loadKidMode(t.store)).toBe(false);
+    expect(t.ui.settings.screen).toBe('menu');
+    t.key('Escape'); // closes the menu
+    expect(t.press(t.gear)).toBe(true);
+    t.game.tick();
+    expect(t.ui.settings.screen).toBe('menu');
   });
 
-  it('not on pause or game over: I does nothing there', () => {
+  it('not on pause or game over: G does nothing there', () => {
     const t = title();
     t.game.commands.startRun();
     t.game.commands.pause();
-    t.key('KeyI');
-    expect(t.game.state.kidMode).toBe(false);
+    t.key('KeyG');
+    expect(t.ui.settings.screen).toBe('closed');
     t.game.commands.resume();
     t.game.commands.gameOver();
     for (let i = 0; i < 120; i++) t.game.tick();
-    t.key('KeyI');
-    expect(t.game.state.kidMode).toBe(false);
+    t.key('KeyG');
+    expect(t.ui.settings.screen).toBe('closed');
   });
 });
 
@@ -815,7 +854,8 @@ describe('update, what is new, install hint and pause navigation', () => {
       keyUp(t.game, 'KeyK');
       t.ticks(1);
       t.press(menu.toggle);
-      t.press(menu.back);
+      // Turned on: the kid notice (with the restart line) closes with OK; turned off: the menu with Zurück.
+      t.press(t.game.state.kidMode ? kidNoticeLayout(t.game.display, true).ok : menu.back);
     };
     t.game.commands.startRun();
     t.game.state.score = 2000;
@@ -851,8 +891,9 @@ describe('update, what is new, install hint and pause navigation', () => {
     openMenu();
     t.press(menu.toggle);
     expect(t.game.state.kidMode).toBe(true); // on from the adult mode default
-    expect(t.game.state.mode).toBe('paused'); // the note shows until the menu closes
-    t.press(menu.back);
+    expect(t.ui.settings.screen).toBe('kidNotice'); // the kid notice, as on the title (ROADMAP 64)
+    expect(t.game.state.mode).toBe('paused'); // it says the run restarts, until OK
+    t.press(kidNoticeLayout(t.game.display, true).ok);
     expect(starts()).toBe(2);
     expect(t.game.state.mode).toBe('playing');
 

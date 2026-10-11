@@ -1,8 +1,9 @@
 /**
  * UI slice: title, HUD, pause, game over, portrait hint, the pointer buttons
- * (pause, mute, fullscreen, the item button), the hidden settings menu
- * (kid mode, opened by a 3 s long press on the title or pause logo or holding
- * K), the title's "Kindermodus" button with its notice (kid-notice.ts) and the menu notices: "Neu in dieser Version", the reload button, the
+ * (pause, mute, fullscreen, the item button), the settings menu (kid mode,
+ * opened by the title's gear in adult mode or by a 3 s long press on the title
+ * or pause logo or holding K), the kid notice after turning kid mode on there
+ * (kid-notice.ts) and the menu notices: "Neu in dieser Version", the reload button, the
  * install hint and "Zum Startbildschirm" (rules in notices.ts, layout in
  * menu-layout.ts and menu-state.ts, drawing in menu-screens.ts).
  * Records live in records.ts, popups in popups.ts (which events show which
@@ -58,7 +59,7 @@ import { handShown, highFiveHand, highFiveHintPlate, HighFiveHint } from './high
 import { HintSlot, type HintWants } from './hint-slot';
 import { HudModel } from './hud-model';
 import { KickerHint } from './kicker-hint';
-import { kidNoticeLayout } from './kid-notice';
+import { kidNoticeLayout, kidNoticeRestart } from './kid-notice';
 import { itemButtonRect, itemControl, ItemHint, itemHintRect, popupAvoid, popupCeiling } from './item-button';
 import { catchPopup } from './item-look';
 import { HighscoreFlow, type ScoreServiceLike } from './highscore-flow';
@@ -125,7 +126,7 @@ export interface UiSystemOptions {
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback screen's (null without a sender). */
-export type UiSystem = System & { highscores: HighscoreFlow | null; feedback: FeedbackFlow | null; whatsNew: ListScroll };
+export type UiSystem = System & { highscores: HighscoreFlow | null; feedback: FeedbackFlow | null; whatsNew: ListScroll; settings: SettingsMenu };
 
 /** Popups appear with their bottom this far above the skater's feet, clear of his head. */
 const HEAD_CLEARANCE = 33;
@@ -478,7 +479,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
 
   /**
    * The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter",
-   * "Eintragen" (E / Enter), "Kindermodus" (I, title in adult mode).
+   * "Eintragen" (E / Enter), the settings gear (G, title in adult mode).
    */
   function addMenuHotspots(ctx: GameContext): void {
     const { state, commands } = ctx;
@@ -502,7 +503,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.install, () => commands.promptInstall()));
     ctx.addHotspot(button((b) => b.dismiss, () => commands.dismissInstallHint()));
     ctx.addHotspot(button((b) => b.next, () => commands.markVersionSeen()));
-    ctx.addHotspot(button((b) => b.kidMode, () => view.settings.turnOnFromTitle(state), ['KeyI']));
+    ctx.addHotspot(button((b) => b.settings, () => view.settings.openMenu(state.kidMode), ['KeyG']));
     ctx.addHotspot(button((b) => b.feedback, () => openFeedback(ctx), ['KeyF']));
   }
 
@@ -634,7 +635,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: () => (onMenu() ? menu().stats : null), onPress: () => settings.toggleStats() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
-    ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
+    ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display, kidNoticeRestart(settings, state)).ok : null), onPress: () => settings.close() });
   }
 
   /** The name entry shows as its portrait sheet (portrait-sheets.ts) rather than on the canvas. */
@@ -790,6 +791,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     highscores: flow,
     feedback,
     whatsNew: view.whatsNew,
+    settings: view.settings,
 
     init(ctx) {
       uiCtx = ctx;

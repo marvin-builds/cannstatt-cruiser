@@ -80,13 +80,15 @@ export default async function (t: PlaytestContext) {
   t.check('a fresh player starts in adult mode (no stored choice)', !(await game.state()).kidMode);
   await t.canvasShot('title');
   await t.screenshot('title page');
-  // The title's Kindermodus button by key (I): kid mode on, the notice, Enter = OK (the persona plays in kid mode).
-  await kb.press('KeyI');
+  // The title's settings gear by key (G), Enter = Kindermodus on: the notice, Enter = OK (the persona plays in kid mode).
+  await kb.press('KeyG');
+  await game.step(2);
+  await kb.press('Enter');
   await game.step(2);
   await t.canvasShot('kid mode notice');
   await kb.press('Enter');
   await game.step(2);
-  t.check('I turns kid mode on, Enter closes the notice, still on the title', (await game.state()).kidMode && (await game.state()).mode === 'title');
+  t.check('G and Enter turn kid mode on, Enter closes the notice, still on the title', (await game.state()).kidMode && (await game.state()).mode === 'title');
 
   // Real Space on the title starts.
   await game.seed(11);

@@ -432,13 +432,16 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await game.pause();
   await game.step(2);
   await dismissRotateHint(t);
-  // The title's Kindermodus button (adult default): tap, the notice, OK.
-  const kidButton = (await layout(t)).screen?.kidMode;
-  t.check('the adult title shows the Kindermodus button', !!kidButton);
-  if (kidButton) await f.tap(centre(kidButton).x, centre(kidButton).y);
+  // The title's settings gear (adult default): tap, Kindermodus on, the notice, OK.
+  const gear = (await layout(t)).screen?.settings;
+  t.check('the adult title shows the settings gear', !!gear);
+  if (gear) await f.tap(centre(gear).x, centre(gear).y);
+  await game.step(2);
+  const toggle = (await layout(t)).menu.toggle;
+  await f.tap(centre(toggle).x, centre(toggle).y);
   await game.step(2);
   await t.screenshot('kid mode notice page');
-  t.check('the button turns kid mode on and shows the notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
+  t.check('Kindermodus on in the settings shows the notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
   const ok = (await layout(t)).kidNoticeOk;
   await f.tap(centre(ok).x, centre(ok).y);
   await game.step(2);
@@ -492,7 +495,7 @@ export default async function finalPhoneTouch(t: PlaytestContext): Promise<void>
   await game.step(2);
   await t.screenshot('kid mode on again page');
   await t.canvasShot('kid mode on again');
-  t.check('the toggle turns kid mode on again', (await game.state()).kidMode);
+  t.check('the toggle turns kid mode on again, with the notice', (await game.state()).kidMode && (await settings(t)).screen === 'kidNotice');
   await t.log('kid mode on again', { kidMode: (await game.state()).kidMode, settings: await settings(t) });
   await t.log('summary', { r1: { crashes: r1.crashes, ended: r1.ended, frames: r1.frames }, compare });
   await cdp.detach();

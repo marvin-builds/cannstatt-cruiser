@@ -10,12 +10,12 @@ import {
   feedbackLabel,
   gameOverLayout,
   installParts,
-  kidModeLabel,
   type MenuInput,
   type MenuLayout,
   PANEL_PAD,
   pauseLayout,
   reloadParts,
+  settingsGear,
   SKATER_CLEAR,
   titleHelp,
   titleLayout,
@@ -60,7 +60,7 @@ const inside = (r: Rect, w: number) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w &&
 /** Every tap area of a screen: the buttons and the pause logo. */
 function buttons(l: MenuLayout): Rect[] {
   const b = l.buttons;
-  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit, b.kidMode, b.feedback].filter((r): r is Rect => !!r);
+  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit, b.settings, b.feedback].filter((r): r is Rect => !!r);
 }
 
 function hud(input: MenuInput, riding: boolean): Rect[] {
@@ -104,31 +104,51 @@ describe('menu screen layouts', () => {
       expect(!!l.buttons.dismiss, input.label).toBe(!!input.install);
       expect(!!l.buttons.install, input.label).toBe(input.install === 'prompt');
       expect(l.buttons.toTitle).toBeNull();
-      expect(l.buttons.kidMode).toBeNull();
+      expect(l.buttons.settings).toBeNull();
       expect(l.blocks.has('prompt'), input.label).toBe(true);
     }
   });
 
-  it('title: the Kindermodus button (adult mode) shows only when offered, clear of the logo, the panel, the HUD buttons and the trophy, all variants', () => {
+  it('title: the settings gear (adult mode, ROADMAP 64) shows only when offered, a HUD-sized icon in the top-left corner clear of the logo, the panel, the HUD buttons and the trophy, all variants', () => {
     for (const base of inputs()) {
-      const input = { ...base, kidButton: true };
+      const input = { ...base, settingsButton: true };
       const l = titleLayout(input);
-      const kid = l.buttons.kidMode!;
-      expect(kid, input.label).not.toBeNull();
+      const m = uiMetrics(input);
+      const gear = l.buttons.settings!;
+      expect(gear, input.label).toEqual(settingsGear(m));
+      expect(gear.x, input.label).toBeLessThanOrEqual(m.margin);
+      expect(gear.y, input.label).toBeLessThanOrEqual(m.margin);
+      expect(gear.w, input.label).toBe(m.hit);
       checkScreen(input, l, false, [logoRect(input.viewWidth)]);
-      for (const other of [logoRect(input.viewWidth), l.panel!, titleTrophy(input.viewWidth, input.fullscreenAvailable, uiMetrics(input)), ...l.blocks.values()]) {
-        expect(overlap(kid, other), `${input.label}: Kindermodus vs ${JSON.stringify(other)}`).toBe(false);
+      for (const other of [logoRect(input.viewWidth), l.panel!, titleTrophy(input.viewWidth, input.fullscreenAvailable, m), ...l.blocks.values()]) {
+        expect(overlap(gear, other), `${input.label}: gear vs ${JSON.stringify(other)}`).toBe(false);
+        expect(overlap(buttonPlate(gear, m), other), `${input.label}: gear plate vs ${JSON.stringify(other)}`).toBe(false);
       }
-      // The same title as without the button: it sits in the free corner.
+      // The same title as without the gear: it sits in the free corner.
       expect([...l.blocks.keys()]).toEqual([...titleLayout(base).blocks.keys()]);
-      expect(kid.h, input.label).toBeGreaterThanOrEqual(uiMetrics(input).menuButtonH);
     }
   });
 
-  it('title: the feedback icon (adult mode) sits bottom right, clear of the rows, cards, panel, logo, Kindermodus and trophy, all variants', () => {
+  it('title: the trophy (adult mode) stays clear of the panel and its rows, also where it sits under the HUD row (narrow portrait), all variants', () => {
     for (const base of inputs()) {
-      for (const kidButton of [false, true]) {
-        const input = { ...base, kidButton, feedback: true };
+      const m = uiMetrics(base);
+      const trophy = titleTrophy(base.viewWidth, base.fullscreenAvailable, m);
+      for (const feedback of [false, true]) {
+        const input = { ...base, trophy, settingsButton: true, feedback };
+        const l = titleLayout(input);
+        checkScreen(input, l, false, [logoRect(input.viewWidth)]);
+        const plate = buttonPlate(trophy, m);
+        expect(overlap(plate, l.panel!), `${input.label}: trophy plate vs panel ${JSON.stringify(l.panel)}`).toBe(false);
+        for (const [id, r] of l.blocks) expect(overlap(trophy, r), `${input.label}: trophy vs ${id}`).toBe(false);
+        expect(l.blocks.has('prompt'), input.label).toBe(true);
+      }
+    }
+  });
+
+  it('title: the feedback icon (adult mode) sits bottom right, clear of the rows, cards, panel, logo, settings gear and trophy, all variants', () => {
+    for (const base of inputs()) {
+      for (const settingsButton of [false, true]) {
+        const input = { ...base, settingsButton, feedback: true };
         const l = titleLayout(input);
         const m = uiMetrics(input);
         const icon = l.buttons.feedback;
@@ -139,7 +159,7 @@ describe('menu screen layouts', () => {
         if (!icon) continue;
         expect(icon, input.label).toEqual(feedbackIcon(input.viewWidth, m));
         const others = [logoRect(input.viewWidth), titleTrophy(input.viewWidth, input.fullscreenAvailable, m), ...l.blocks.values()];
-        if (l.buttons.kidMode) others.push(l.buttons.kidMode);
+        if (l.buttons.settings) others.push(l.buttons.settings);
         for (const other of others) expect(overlap(icon, other), `${input.label}: icon vs ${JSON.stringify(other)}`).toBe(false);
         expect(overlap(buttonPlate(icon, m), l.panel!), `${input.label}: icon plate vs panel ${JSON.stringify(l.panel)}`).toBe(false);
       }
@@ -176,11 +196,6 @@ describe('menu screen layouts', () => {
   it('the feedback label shows its key (F) on desktop only', () => {
     expect(feedbackLabel(true)).toBe('Feedback');
     expect(feedbackLabel(false)).toBe('Feedback (F)');
-  });
-
-  it('the Kindermodus label shows its key (I) on desktop only', () => {
-    expect(kidModeLabel(true)).toBe('Kindermodus');
-    expect(kidModeLabel(false)).toBe('Kindermodus (I)');
   });
 
   it('title: the panel pads every row and button on all four sides', () => {
@@ -426,7 +441,7 @@ describe('the reload card on 2:1 landscape titles (ROADMAP 59)', () => {
     for (const viewWidth of [400, 422]) {
       for (const touch of [false, true]) {
         for (const install of touch ? [null, 'prompt', 'ios'] as const : [null] as const) {
-          const input = { viewWidth, touch, portrait: false, fullscreenAvailable: true, reload: true, install, kidButton: true, feedback: true };
+          const input = { viewWidth, touch, portrait: false, fullscreenAvailable: true, reload: true, install, settingsButton: true, feedback: true };
           const l = titleLayout(input);
           const label = JSON.stringify(input);
           const card = l.blocks.get('reload');

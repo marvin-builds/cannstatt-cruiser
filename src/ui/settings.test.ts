@@ -125,22 +125,28 @@ describe('SettingsMenu', () => {
     expect(unchanged.closed).toEqual([false]);
   });
 
-  it('switching on and back off counts as no switch', () => {
-    const { state, menu, closed } = setup(false);
+  it('switching off and back on counts as no switch', () => {
+    const { state, menu, closed } = setup(true);
     menu.toggle(state);
     menu.toggle(state);
-    expect(state.kidMode).toBe(false);
+    expect(state.kidMode).toBe(true);
     expect(menu.switched).toBe(false);
     menu.close();
     expect(closed).toEqual([false]);
   });
 
-  it('turns kid mode on at once and persists it', () => {
-    const { store, state, menu } = setup(false);
+  it('turning kid mode on persists it at once and shows the kid notice (ROADMAP 64); OK closes it as a switch', () => {
+    const { store, state, menu, closed } = setup(false);
     menu.toggle(state);
     expect(state.kidMode).toBe(true);
     expect(loadKidMode(store)).toBe(true);
-    expect(menu.screen).toBe('menu');
+    expect(menu.screen).toBe('kidNotice');
+    expect(menu.open).toBe(true);
+    menu.toggle(state); // the notice has no toggle
+    expect(state.kidMode).toBe(true);
+    menu.close();
+    expect(menu.screen).toBe('closed');
+    expect(closed).toEqual([true]);
   });
 
   it('turns kid mode off at once too, without a question, and persists it', () => {
@@ -167,23 +173,6 @@ describe('SettingsMenu', () => {
     menu.close();
     expect(menu.screen).toBe('closed');
     expect(state.kidMode).toBe(true);
-  });
-
-  it('the title button turns kid mode on, persists it and shows the notice; OK closes it', () => {
-    const store = memoryStore();
-    const state = createInitialState();
-    const closed: boolean[] = [];
-    const menu = new SettingsMenu(store, (switched) => closed.push(switched));
-    menu.turnOnFromTitle(state);
-    expect(state.kidMode).toBe(true);
-    expect(loadKidMode(store)).toBe(true);
-    expect(menu.screen).toBe('kidNotice');
-    expect(menu.open).toBe(true);
-    menu.toggle(state); // the notice has no toggle
-    expect(state.kidMode).toBe(true);
-    menu.close();
-    expect(menu.screen).toBe('closed');
-    expect(closed).toEqual([true]);
   });
 });
 

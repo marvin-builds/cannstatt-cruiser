@@ -36,6 +36,7 @@ It runs in the browser on desktop and phones, and you can install it as an app o
 | Sound on/off | M | Speaker button |
 | Bestenliste (title screen) | B | Trophy button |
 | Feedback | F | Pause menu or speech bubble on the title |
+| Einstellungen (title screen) | G, or hold K for 3 s | Gear button, or hold the logo for 3 s |
 
 On phones, landscape is the play orientation.
 
@@ -53,8 +54,9 @@ On phones, landscape is the play orientation.
   wants a high five.
 - **Items:** catch a football, a Brezel or a Lebkuchenherz and use them: eat for health, throw
   the ball. Collect stars on the way.
-- **Kindermodus:** kid-friendly pictures and texts, switched on with the button on the title
-  screen.
+- **Kindermodus:** kid-friendly pictures and texts, switched on in the settings (the gear on the
+  title screen). Kid mode hides the gear; holding the logo (or K) for 3 s opens the settings to
+  switch it off again.
 - **Online Bestenliste:** a shared top 20 with nicknames, one entry per device (not in kid mode).
 - **Offline and installable:** a PWA with a service worker; the game shows an install hint on
   phones and a "Neu in dieser Version" screen after updates.
