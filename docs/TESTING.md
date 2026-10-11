@@ -433,7 +433,7 @@ npm run playtest -- --headed
 - Final personas: `final-keyboard.ts` (real key events, `desktop,laptop`;
   its top-speed run pins gameplay's `TOP_SPEED`),
   `final-phone-touch.ts`, `final-phone-rotate.ts` (portrait, then rotating:
-  rotate hint, pause on rotation, nothing cut off) and `final-casual.ts`
+  rotate screen, pause on rotation, nothing cut off) and `final-casual.ts`
   (a first-timer).
 - `scripts/scenarios/final-phone-touch.ts`: a held touch only jumps after the
   swipe window, so its bench-grind bot plans `SWIPE_WINDOW` ticks ahead
@@ -441,7 +441,7 @@ npm run playtest -- --headed
 - `default.ts`, `gameplay.ts`, `world.ts`, `ducking.ts`, `chill.ts`,
   `items.ts`, `items-ui.ts`, `drop.ts` and `final-phone-touch.ts` call `dismissRotateHint(t)`
   (`playtest-lib.ts`) first (and after a reload), so they also run on
-  phone-portrait, where the rotate hint takes the first tap and would
+  phone-portrait, where the rotate screen takes the first tap and would
   otherwise keep the run paused.
   Loops that wait for game progress use `stepWhile(t, more, {max})` or check
   the mode, so a stopped run fails with a message instead of hanging.
@@ -593,6 +593,18 @@ npm run playtest -- --headed
 - `scripts/scenarios/insights-triage.ts` (ROADMAP 56, `desktop,phone-portrait`):
   the board against a fake worker route: card actions, the issue editor,
   "Todo #N", the delete confirm and the status filter.
+- `scripts/scenarios/rotate-screen.ts` (ROADMAP 73, touch viewports only, a
+  plain browser tab; feedback and the online list are faked): the full-screen
+  overlay at 320x568, 390x844 and a tablet (820x1180), the turning phone and
+  the still one under reduced motion, "Trotzdem weiter" without starting a
+  run, landscape and back bringing it again, a run pausing under it; turning
+  to portrait in the feedback form and the name entry shows the sheet at
+  once, and closing the sheet in portrait brings the rotate screen.
+- `scripts/scenarios/insights-session.ts` (ROADMAP 74, `desktop,phone-portrait`):
+  "Angemeldet bleiben" against a fake worker route: only the session token in
+  `localStorage` (never the real token, nor in the URL), a reload without
+  asking again, "Abmelden", and a rejected session (key rotated), an expired
+  one and an unticked sign-in all leaving nothing stored.
 
 - `scripts/scenarios/ramp-only.ts` (ROADMAP 61/62, `desktop,phone-landscape`):
   a street jump passes in front of a stunt ledge and a park container without

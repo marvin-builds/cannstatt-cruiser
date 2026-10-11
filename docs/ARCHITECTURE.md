@@ -83,7 +83,9 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/drunk-look.ts      drunk HUD row and woozy screen (two swaying double images, pulsing wash, vignette); ui/item-look.ts catch popups
   ui/notices.ts         rules for the menu notices: reloadOffered, installHintKind (INSTALL_HINT_MIN_VISITS), whatsNewLines (see Menu screens)
   ui/menu-layout.ts     one pure layout per menu screen (title, pause, game over, what's new) incl. its buttons, shared by hotspots and drawing
-  ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), portrait hint, game-over input delay
+  ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), game-over input delay
+  ui/rotate-screen.ts   when the rotate screen shows (uiScreen, wantsLandscape per screen, RotateHint; see Rotate screen)
+  ui/rotate-sheet.ts    the rotate screen's full-screen DOM overlay; ui/rotate-sheet.fake.ts its shared test double
   ui/menu-screens.ts    drawing of the menu screens and their notice cards
   ui/kid-notice.ts      "Kindermodus ist an" notice after turning kid mode on in the settings: texts, kidNoticeLayout, kidNoticeRestart (see Settings menu and kid mode)
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
@@ -113,9 +115,9 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
-| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), portrait hint, the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting |
+| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; the speaker button (`state.muted`) sets the master gain on every gesture, visibility return and context restart, and a suspended or interrupted context is resumed then, with retries (`AudioBackend.wake()`, ROADMAP 63); manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
-| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
+| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
 | `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game) |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -335,7 +337,7 @@ K), for the open settings menu, which takes every key but M so nothing starts
 a run behind it, for the modal "Neu in dieser Version" screen, and for the
 menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
 [Menu screens](#menu-screens-ui)). Modal layers (feedback form, settings
-menu, Bestenliste and name entry, "Neu in dieser Version", the rotate hint and
+menu, Bestenliste and name entry, "Neu in dieser Version", the rotate screen and
 pause) use a rect covering every pointer position (`EVERYWHERE` in
 `ui/layout.ts`), so a tap in the phone letterbox or anywhere on the page beside
 the canvas never starts or resumes a run behind them. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
@@ -1071,7 +1073,7 @@ Modules:
   that `index.ts` places every tick over the drawn name field
   (`scoreEntryLayout(...).field`, scaled from view px to the canvas' CSS
   box; font >= 16 CSS px so iOS does not zoom) and hides and blurs as soon
-  as the entry closes, kid mode is on or the portrait rotate hint covers the
+  as the entry closes, kid mode is on or the rotate screen covers the
   game. Its keydown, pointer and touch events stop at the input, so letters
   such as E, W, S, P, M or Space never reach the game; key releases still
   bubble, so no game key stays held. Enter in it sends, Esc closes the
@@ -1132,15 +1134,16 @@ hidden page `insights.html` shows aggregates to the owner.
   summaries plus the raw rows after the last summarised day, with the median
   as the end-count-weighted mean of daily medians (the board marks it "≈"). needs `Authorization: Bearer <STATS_TOKEN>`
   (a Wrangler secret, never in `wrangler.toml` or a `VITE_` variable),
-  compared as SHA-256 digests in constant time; 401 before any database
-  query. Answers aggregates only with `no-store`. `MIN_GROUP_SESSIONS` is 1:
+  compared as SHA-256 digests in constant time (or a board session token, see
+  below); 401 before any database query. Answers aggregates only with `no-store`. `MIN_GROUP_SESSIONS` is 1:
   every place shows from its first session; only unknown places are
   `other`. Splits are largest first, so `other` is not always last.
 - **Board** (`insights.html`, `src/insights/`): ranges 7 T / 30 T / 90 T /
   365 T / Alles; `periods.ts` groups the day charts into ISO weeks or months
   for long ranges and narrow (phone) charts, `ranges.ts` labels them. noindex, no-referrer, never
   linked from the game. The token sits in a password field (password managers
-  can keep it) and in memory only, never in storage or a URL. Everything is
+  can keep it) and in memory only, never in storage or a URL (a kept board
+  session is the only thing stored, see below). Everything is
   rendered with `createElement`/`createElementNS` and text nodes, never
   `innerHTML` (player names). `?api=` overrides the worker only on
   localhost/127.0.0.1.
@@ -1169,6 +1172,30 @@ hidden page `insights.html` shows aggregates to the owner.
     (off on every load, never stored) asks for `testers=1`; its card "Sessions
     und neue Spieler pro Tag" says "neu = ohne gespeicherte Spieldaten ·
     Besuche, nicht Personen".
+- **Board session (ROADMAP 74):** "Angemeldet bleiben" (a checkbox under the
+  token field, `src/insights/locked.ts`) trades the real `STATS_TOKEN` once
+  for a session token via `POST /board/session` (real token only, 401
+  otherwise; `server/src/board-session.ts`). The token is
+  `v1.<expiresAt ms>.<signature>`: its 7-day expiry (`BOARD_SESSION_DAYS`)
+  signed with HMAC-SHA-256 under the Wrangler secret `BOARD_SESSION_KEY`;
+  the worker stores nothing, so rotating the key signs out every device.
+  Without the secret the route answers 503 (`session-key-missing`) and no
+  session token is accepted; the board then keeps the real token in memory
+  only and shows a short note. Every token route (`GET /stats`,
+  `GET /feedback`, the triage routes) accepts the real token or a valid,
+  unexpired session token (`isBoardAuthorized`). `STATS_TOKEN`,
+  `GITHUB_TOKEN` and `BOARD_SESSION_KEY` are trimmed before use, so a pasted
+  line break does no harm. On the board `src/insights/session.ts`
+  (`BoardAuth`) stores only the session token and its expiry in
+  `localStorage` (key `insightsSession`, never the real token), uses it after
+  a reload and drops it on expiry, on any 401 ("Anmeldung abgelaufen") and on
+  "Abmelden" (the lock button's label while a session is kept; "Sperren"
+  otherwise). Unticked behaves as before. Since the Pages origin's storage
+  is shared, `src/insights/render-safety.test.ts` guards against HTML
+  injection: no board source may use an HTML-parsing sink (`innerHTML`,
+  `insertAdjacentHTML`, ...), and a render with injection payloads must yield
+  them as text nodes only. Setup, rotation and release order:
+  `server/README.md`.
 - **Service worker:** `public/sw.js` answers only navigations to the scope
   root or `index.html` with the cached game page, and caches only requests
   made by the game page; `insights.html`, `datenschutz.html` and their assets go to the network.
@@ -1196,6 +1223,39 @@ purpose: native fields need a system font and the pixel font is drawn from
 sprites. Landscape and desktop keep the canvas forms. In the installed app
 (ROADMAP 54) portrait stays unlocked over the feedback thank-you in portrait
 and locks to landscape again on OK; in landscape it locks right after sending.
+These sheets never get the rotate screen (see below).
+
+## Rotate screen (ROADMAP 73)
+
+"Bitte Gerät drehen" is a full-screen DOM overlay (`ui/rotate-sheet.ts`,
+built with `sheet-dom.ts` like the portrait sheets), no longer drawn into the
+canvas: the logo, a large pixel-art phone (`ROTATE_PHONE`, `ROTATE_ARROW` in
+`ui/art.ts`, integer scale, `image-rendering: pixelated`) that turns from
+upright to sideways in a loop (still under `prefers-reduced-motion`), the
+title, the reason ("Im Querformat fährt es sich besser.") and a "Trotzdem
+weiter" button; a tap anywhere or Esc dismisses it too.
+
+- **One rule** (`ui/rotate-screen.ts`, pure): `uiScreen()` names the screen
+  on top (install steps, settings, feedback, Bestenliste / name entry, "Neu
+  in dieser Version", then the mode's screen) and `wantsLandscape(screen)`
+  says whether it needs landscape. `RotateHint.shown()` is true on a touch
+  device in portrait, on a screen that wants landscape, unless dismissed;
+  `update()` forgets the dismissal once the device is in landscape.
+- Screens with their own portrait layout (the feedback dialog with its tabs
+  and pages, the name entry, "Neu in dieser Version") never get it: turning
+  the phone there goes straight to the sheet, and closing the sheet while
+  still in portrait brings the rotate screen back. Title, run, pause, game
+  over, Bestenliste, settings and the install steps want landscape.
+- `ui/index.ts` shows the overlay every tick (`rotateShown`), pauses a run
+  under it and keeps a full-screen hotspot over the canvas while it shows,
+  so no tap starts anything behind it.
+- `ui/typing-orientation.ts` (`TypingOrientation`) now only drives the
+  installed app's orientation lock (portrait freed while typing); it no
+  longer decides whether the rotate screen shows.
+- Tests: `rotate-screen.test.ts` covers every screen; the ui tests
+  (`index`, `feedback`, `highscores`, `whats-new-sheet`) pass the shared
+  double `ui/rotate-sheet.fake.ts` as `rotateSheet`. The overlay itself is
+  checked by `scripts/scenarios/rotate-screen.ts`.
 
 ## Player feedback (ROADMAP 50)
 
