@@ -1,5 +1,5 @@
 /**
- * The items people carry and toss on a stomp: VfB fans a football, Wasen
+ * The items people carry and toss on a stomp: VfB fans (and the e-scooter rider, hazards.ts) a football, Wasen
  * visitors (by their `data.prop`) a Maßkrug or a Brezel; in kid mode the
  * Maßkrug becomes a Lebkuchenherz, so kid mode never shows beer.
  */

@@ -3,13 +3,15 @@
  * the grind loop, the traffic rumble and the NorDIY park sounds in sync with
  * the game, unlocks audio on user gestures and persists the mute flag. Sound
  * design lives in sounds.ts, traffic logic in traffic.ts, park logic in
- * park.ts, WebAudio in webaudio.ts.
+ * park.ts, the e-scooter and pigeon sounds (read from the street) in
+ * hazards.ts, WebAudio in webaudio.ts.
  */
 import { store as defaultStore, type Store } from '../core/storage';
 import type { GameContext, GameEvents, System } from '../types';
 import type { AudioBackend, Cue } from './backend';
 import { ClearedSounds } from './cleared';
 import { exposeAudioDebug } from './debug';
+import { HazardSounds } from './hazards';
 import { cheerCue, cheerIntensity, CrowdCheers, HIGH_FIVE, isParkCue, ParkSound } from './park';
 import { PASS_BY, PassBy } from './passby';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
@@ -73,6 +75,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
   const traffic = new TrafficNoise();
   const passBy = new PassBy();
   const clears = new ClearedSounds();
+  const hazards = new HazardSounds();
 
   /** Audio is decoration: a failing backend must never break the game loop. */
   const safely = (fn: () => void) => {
@@ -262,6 +265,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         traffic.reset();
         passBy.reset();
         clears.reset();
+        hazards.reset();
         park.reset();
         crowd.reset();
       });
@@ -272,6 +276,7 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
       updateSpin(ctx);
       updateTraffic(ctx);
       updatePark(ctx);
+      if (ctx.state.mode === 'playing') for (const cue of hazards.update(ctx.state.entities, ctx.display.viewWidth)) play(cue);
       if (ctx.state.mode !== 'playing') {
         stopGrind();
         boostTicks = null;

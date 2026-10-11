@@ -19,7 +19,12 @@
  * (combos.ts) are grind lines: also fair from a grind on each of their
  * pieces, and their stars follow the line (line-guide.ts). Combination
  * templates (mixes.ts) chain jumps, ducks, people and rails into longer
- * mixed sequences from tier 2 on.
+ * mixed sequences from tier 2 on. Waves (waves.ts) are 3-4 single obstacles
+ * in a steady rhythm with a breather after them (`breather`); the moving
+ * local hazards (hazards.ts) come from tier 2 on too: an e-scooter rider
+ * (a fast person, alone like one) and pigeons before a low obstacle, planned
+ * with the flock as a low obstacle (solverStandIn) so a jump over it leads
+ * on fairly.
  *
  * planSteps is the same planning as a resumable generator: with a work
  * budget (`options.budget`) it yields whenever the solvers run out of it and
@@ -31,6 +36,7 @@ import type { Rng } from '../core/rng';
 import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
 import { COMBO_TEMPLATES } from './combos';
+import { pigeonsPiece, scooterPiece, solverStandIn } from './hazards';
 import { isGrindable, isObstacle, isPerson, isRail, jointRect, OBSTACLES, obstacleRect, OVERHEAD_KINDS, RAILS, railRect, starRect } from './catalogue';
 import { buildCourse, type Piece } from './course';
 import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
@@ -40,6 +46,7 @@ import { lineGuide, type Point, spreadStars } from './line-guide';
 import { asArc } from './star-arcs';
 import { MIX_TEMPLATES, type MixBuilder } from './mixes';
 import { anchorOf, type Motion } from './motion';
+import { BREATHER_SECONDS, buildWave, type WaveBuilder } from './waves';
 import { constantPace, type Course, HOLDS, resumable, Solver, type WorkBudget } from './solver';
 
 export type { Piece };
@@ -61,6 +68,8 @@ export interface PlanOptions {
   budget?: WorkBudget;
   /** Plan only this template (by name), whatever the tier, zone and effect (tests and the debug hook). */
   template?: string;
+  /** Kid mode: the moving hazards and waves keep gentler numbers (hazards.ts, waves.ts). */
+  kidMode?: boolean;
 }
 
 export interface Pattern {
@@ -80,6 +89,8 @@ interface Template {
   people?: boolean;
   /** A grind line (combos.ts): a grind on any of its pieces must lead on fairly, and its stars follow the line (line-guide.ts). */
   line?: boolean;
+  /** Seconds of easy street (only a star arc) after its last obstacle: a wave's breather (waves.ts). */
+  breather?: number;
   build(b: Builder): void;
 }
 
@@ -105,6 +116,8 @@ const OPEN_GAP_SPREAD = 65;
 /** Street between an overhead obstacle and a ground obstacle (duckJump), either order. */
 const DUCK_THEN_JUMP: [number, number] = [40, 117];
 const JUMP_THEN_DUCK: [number, number] = [52, 130];
+/** Low obstacles after a pigeon flock: easy to jump after landing from a jump over the flock, or after ducking. */
+const AFTER_PIGEONS: ObstacleKind[] = ['curbGap', 'planter', 'bin', 'bench'];
 /** Street between an obstacle and a rail (obstacleRail), and between a rail and an obstacle (railObstacle). */
 const OBSTACLE_TO_RAIL: [number, number] = [26, 78];
 const RAIL_TO_OBSTACLE: [number, number] = [26, 91];
@@ -130,7 +143,7 @@ export function runoutFor(speed: number): number {
   return Math.round(32 + 0.55 * speed);
 }
 
-class Builder implements MixBuilder {
+class Builder implements MixBuilder, WaveBuilder {
   readonly pieces: Piece[] = [];
 
   readonly lead: number;
@@ -140,6 +153,7 @@ class Builder implements MixBuilder {
     private readonly speed: number,
     private readonly zone: number,
     drunk: boolean,
+    readonly kidMode = false,
   ) {
     this.lead = leadFor(speed, drunk);
   }
@@ -208,6 +222,20 @@ class Builder implements MixBuilder {
   railKind(): RailKind {
     return this.rng.chance(0.65) ? 'handrail' : 'pipe';
   }
+
+  /** An e-scooter rider with its street anchor at x (hazards.ts), gentler in kid mode. */
+  scooter(x: number): Piece {
+    const piece = scooterPiece(this.rng, x, this.kidMode);
+    this.pieces.push(piece);
+    return piece;
+  }
+
+  /** A pigeon flock at x (hazards.ts). */
+  pigeons(x: number): Piece {
+    const piece = pigeonsPiece(x);
+    this.pieces.push(piece);
+    return piece;
+  }
 }
 
 /**
@@ -219,7 +247,7 @@ class Builder implements MixBuilder {
 const LATE_MIX_TIER = 2;
 
 const TEMPLATES: Template[] = [
-  { name: 'single', tier: 0, weight: 5, late: 3, build: (b) => void b.obstacle(b.pick(), b.lead) },
+  { name: 'single', tier: 0, weight: 5, late: 1.5, build: (b) => void b.obstacle(b.pick(), b.lead) },
   { name: 'person', tier: 0, weight: 4, late: 6, people: true, build: (b) => void b.person(b.lead) },
   { name: 'stars', tier: 0, weight: 1, late: 0.3, build: () => {} },
   {
@@ -287,6 +315,18 @@ const TEMPLATES: Template[] = [
       for (let i = 0; i < 3; i++) b.obstacle(b.pick(), i === 0 ? b.lead : b.end + b.spacing());
     },
   },
+  // ROADMAP 52 Phase 2: waves and the moving local hazards, all zones, from tier 2 on.
+  { name: 'wave', tier: 2, weight: 2.4, breather: BREATHER_SECONDS, build: buildWave },
+  { name: 'scooter', tier: 2, weight: 1.5, build: (b) => void b.scooter(b.lead) },
+  {
+    name: 'pigeons',
+    tier: 2,
+    weight: 1.5,
+    build: (b) => {
+      const flock = b.pigeons(b.lead);
+      b.obstacle(b.rng.pick(AFTER_PIGEONS), flock.x + flock.w + b.openGap());
+    },
+  },
   ...COMBO_TEMPLATES.map((t) => ({ ...t, line: true })),
   ...MIX_TEMPLATES,
 ];
@@ -318,9 +358,9 @@ function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean, effe
   return open[open.length - 1]!;
 }
 
-/** What the solver sees of a pattern, with the player starting at pattern x `originX`. */
+/** What the solver plans with for a pattern, with the player starting at pattern x `originX` (pigeons as a low obstacle, hazards.ts). */
 export function courseOf(pattern: Pattern, originX = 0): Course {
-  return buildCourse(pattern.pieces, originX, () => pattern.length - originX);
+  return buildCourse(pattern.pieces.map(solverStandIn), originX, () => pattern.length - originX);
 }
 
 /**
@@ -400,7 +440,7 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   }
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone, drunk, effect, options.template);
-    const builder = new Builder(rng, fast, zone, drunk);
+    const builder = new Builder(rng, fast, zone, drunk, options.kidMode);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = yield* fairSolvers(pattern);
@@ -417,6 +457,7 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
       const guide = solvers[slowest]!;
       addStars(pattern, (yield* resumable(() => guide.bestJump(groundBody(), margin.holds)))?.path ?? []);
     }
+    if (template.breather) addBreather(pattern, template.breather, fast, slow);
     return pattern;
   }
   // A lone low obstacle, further out if the previous pattern needs a longer run-up.
@@ -502,9 +543,24 @@ export function jumpArcStars(from: number, speed: number): Piece[] {
   return arcPoints(arcPath(from, speed)).map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) }));
 }
 
-/** Stars centred on `points` (in riding order), one arc (star-arcs.ts); the pattern lasts until past the last one. */
-function placeStars(pattern: Pattern, points: Point[]): void {
-  pattern.pieces.push(...asArc(points.map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) })), 'arc'));
+/**
+ * Stretches the pattern to `seconds` of riding at `fast` after its last
+ * obstacle (a wave's breather), with an easy star arc (a full jump at `slow`)
+ * in the middle of it: nothing to crash into, but something to catch.
+ */
+function addBreather(pattern: Pattern, seconds: number, fast: number, slow: number): void {
+  const end = Math.max(0, ...pattern.pieces.filter((p) => isObstacle(p.kind) || isRail(p.kind)).map((p) => p.x + p.w));
+  const room = Math.ceil(seconds * fast);
+  const arc = arcPoints(arcPath(0, slow));
+  const span = arc.length > 0 ? arc[arc.length - 1]!.x - arc[0]!.x : 0;
+  const from = end + Math.round((room - span) / 2) - (arc[0]?.x ?? 0);
+  placeStars(pattern, arc.map((p) => ({ x: p.x + from, y: p.y })), 'breather');
+  pattern.length = Math.max(pattern.length, end + room);
+}
+
+/** Stars centred on `points` (in riding order), one arc named `key` (star-arcs.ts); the pattern lasts until past the last one. */
+function placeStars(pattern: Pattern, points: Point[], key = 'arc'): void {
+  pattern.pieces.push(...asArc(points.map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) })), key));
   const last = points[points.length - 1];
   if (last) pattern.length = Math.max(pattern.length, last.x + STAR_SPACING);
 }

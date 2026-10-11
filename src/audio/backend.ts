@@ -55,7 +55,9 @@ export type Cue =
   | 'cheerBig'
   | 'sessionRoar'
   | 'fingerWhistle'
-  | 'highFive';
+  | 'highFive'
+  | 'scooter'
+  | 'pigeons';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';

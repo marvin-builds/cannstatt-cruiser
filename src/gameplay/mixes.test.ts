@@ -143,9 +143,10 @@ describe('combination templates (ROADMAP 52 6a)', () => {
     const at = (tier: number, options: Parameters<typeof planPattern>[3] = {}, count = 240) =>
       Array.from({ length: count }, (_, i) => planPattern(rng, tier, [i % 2 ? BASE_SPEED : TOP_SPEED], { zone: i % 3, ...options }).name);
     const share = (picked: string[]) => picked.filter((n) => names.includes(n)).length / picked.length;
-    // By weight about 30 % at tier 2 and 42 % at tier 3 (fewer in Mitte, which has no people).
-    expect(share(at(2))).toBeGreaterThanOrEqual(0.25);
-    expect(share(at(3))).toBeGreaterThanOrEqual(0.37);
+    // By weight about 27 % at tier 2 and 38 % at tier 3 (fewer in Mitte, which has no people); before the
+    // waves and moving hazards of ROADMAP 52 Phase 2 (waves.ts, hazards.ts: about 10-14 % of the mix) 30 % and 42 %.
+    expect(share(at(2))).toBeGreaterThanOrEqual(0.24);
+    expect(share(at(3))).toBeGreaterThanOrEqual(0.34);
     for (const name of [...at(0, {}, 60), ...at(1, {}, 100), ...at(3, { drunk: true, effect: true }, 100)]) expect(names).not.toContain(name);
   }, 120_000);
 

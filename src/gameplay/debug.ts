@@ -3,7 +3,8 @@
  * scenarios put a specific obstacle, person, the joint or stunt pieces on the
  * street, see the dropped items (they are no entities, so window.__game
  * misses them) and the running stunt line, plan a NorDIY park right ahead,
- * lay a named spawn pattern (the combos), see which patterns the spawner laid
+ * lay a named spawn pattern (the combos, a wave, the e-scooter, the pigeons;
+ * in kid mode as kid mode plans them), see which patterns the spawner laid
  * and start a run further down the street.
  * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts and combos.ts.
  */
@@ -13,7 +14,7 @@ import type { CarriedItem, Entity, GameContext, ObstacleKind, ParkPlan, Rect, St
 import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect } from './catalogue';
 import type { DroppedItems } from './drop';
 import type { LaidPattern } from './pattern-log';
-import { withMotion } from './motion';
+import { motionOf, withMotion } from './motion';
 import { parkPiecesOf, planParkLine } from './park-line';
 import { planPattern } from './patterns';
 import { linkArcs } from './star-arcs';
@@ -151,7 +152,7 @@ export function installGameplayDebug(
     },
     pattern(name, x = PLAYER_X, seed = 1) {
       const { state } = ctx;
-      const planned = planPattern(new Rng(seed), 3, [state.speed], { zone: state.zoneIndex, template: name });
+      const planned = planPattern(new Rng(seed), 3, [state.speed], { zone: state.zoneIndex, template: name, kidMode: state.kidMode });
       if (planned.name !== name) throw new Error(`pattern ${name}: nothing fair at ${state.speed} px/s`);
       const entities = state.entities;
       for (let i = entities.length - 1; i >= 0; i--) if (entities[i]!.x + entities[i]!.w > x) entities.splice(i, 1);
@@ -160,6 +161,9 @@ export function installGameplayDebug(
       const first = entities.length;
       const ids = planned.pieces.map((p) => {
         const e: Entity = { ...p, data: p.data && { ...p.data }, id: nextId++, x: x + p.x, done: false };
+        // People and the e-scooter: anchored on the screen like the spawner does it, moved where their motion has carried them.
+        const motion = motionOf(e);
+        if (motion) withMotion(e, motion, e.x);
         entities.push(e);
         return e.id;
       });

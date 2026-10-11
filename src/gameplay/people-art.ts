@@ -289,14 +289,14 @@ const DAZED_TIME = 1.4;
 const LAUGH_PERIOD = 0.25;
 
 /** The art turned a quarter clockwise: the head ends up on the right (fallen backwards, away from the skater). */
-function lyingDown(art: string[]): string[] {
+export function lyingDown(art: string[]): string[] {
   const h = art.length;
   const w = art[0]!.length;
   return Array.from({ length: w }, (_, x) => Array.from({ length: h }, (_, y) => art[h - 1 - y]![x]).join(''));
 }
 
-/** Sitting on the street, legs stretched towards the skater. Frames: 0 dazed (wide eyes), 1 laughing. */
-const SITTING = [
+/** Sitting on the street, legs stretched towards the skater. Frames: 0 dazed (wide eyes), 1 laughing. H hair, T/t top, P trousers, b shoes. */
+export const SITTING = [
   `
   ......kkkk....
   .....kHHHHk...
@@ -333,7 +333,8 @@ const SITTING = [
   `,
 ];
 
-const SIT_BASE = { k: K, ...SKIN, w: '#ffffff', m: '#8a2a2a', o: '#8a2a2a', b: '#2a2a2e' };
+/** SITTING's outline, skin, eyes and mouth (add H, T, t, P and b for a look). */
+export const SIT_BASE = { k: K, ...SKIN, w: '#ffffff', m: '#8a2a2a', o: '#8a2a2a', b: '#2a2a2e' };
 const FAN_SIT = sprite({ ...SIT_BASE, H: '#5a3a22', T: '#f4f1ea', t: '#d8202c', P: '#3a4f7a' }, SITTING);
 const GUEST_SIT = [
   sprite({ ...SIT_BASE, H: '#3f5a3a', T: '#f4f1ea', t: '#c8323c', P: '#7a4a24', b: '#3a2a20' }, SITTING),
@@ -346,12 +347,15 @@ const DIZZY = '#ffd84a';
 
 function drawStomped(g: CanvasRenderingContext2D, e: Entity, x: number, since: number): void {
   const fan = e.kind === 'vfbFan';
+  drawFallen(g, fan ? FAN_LYING : GUEST_LYING[outfitOf(e)]!, fan ? FAN_SIT : GUEST_SIT[outfitOf(e)]!, x, since);
+}
+
+/** A stomped (or ball-hit) person `since` seconds ago at x: `lying` on the back, then `sitting` (SITTING frames) dazed, then laughing. */
+export function drawFallen(g: CanvasRenderingContext2D, lying: Sprite, sitting: Sprite, x: number, since: number): void {
   if (since < TUMBLE_TIME) {
-    const lying = fan ? FAN_LYING : GUEST_LYING[outfitOf(e)]!;
     lying.draw(g, 0, x - 4, GROUND_Y - lying.height);
     return;
   }
-  const sitting = fan ? FAN_SIT : GUEST_SIT[outfitOf(e)]!;
   const sy = GROUND_Y - sitting.height;
   if (since < TUMBLE_TIME + DAZED_TIME) {
     sitting.draw(g, 0, x - 2, sy);

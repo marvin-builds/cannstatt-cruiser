@@ -5,7 +5,8 @@
  * front corner to its rear end, grinds, and landing behind it never crashes),
  * stomps on people's heads, crashes (a bin that swallows the skater leaves the
  * street at once), clean clears, star pickups (with their points, star-arcs.ts)
- * and joint pickups.
+ * and joint pickups; pigeon flocks take off and pay when passed in the air or
+ * ducking (pigeons.ts; they are star entities, never collected).
  * Uses the same rules as the clearability solver (rules.ts). Runs every
  * tick, so it reuses scratch objects instead of allocating.
  */
@@ -13,7 +14,9 @@ import { TICK_DT } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, PlayerState, Rect } from '../types';
 import { collectJoints } from './chill';
 import { GRIND_LANDING_POINTS, hitBoxInto, isGrindable, isLedge, isObstacle, isPerson, isRail, OBSTACLES } from './catalogue';
+import { isPigeons } from './hazards';
 import { crashInto } from './health';
+import { updatePigeons } from './pigeons';
 import { feetOf, LEDGE_FRONT_REACH, landsOnHighLedge, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
 import { addPoints, addTrick } from './scoring';
 import type { StarArcs } from './star-arcs';
@@ -32,6 +35,7 @@ export function resolveContacts(ctx: GameContext, ledgesReachable: boolean, star
   stompPeople(ctx);
   checkObstacles(ctx);
   collectStars(ctx, stars);
+  updatePigeons(ctx);
   collectJoints(ctx);
 }
 
@@ -93,7 +97,7 @@ function collectStars(ctx: GameContext, arcs: StarArcs): void {
   const entities = state.entities;
   for (let i = 0; i < entities.length; i++) {
     const star = entities[i]!;
-    if (star.kind !== 'star' || !overlaps(body, star)) continue;
+    if (star.kind !== 'star' || isPigeons(star) || !overlaps(body, star)) continue;
     state.stars += 1;
     // Emitted while the star is still there (the sparkle starts at it).
     ctx.bus.emit('starCollected', { entityId: star.id, stars: state.stars });

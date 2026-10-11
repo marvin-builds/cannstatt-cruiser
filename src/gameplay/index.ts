@@ -40,6 +40,7 @@ import { isLive, resolveContacts } from './contacts';
 import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
 import { GrindTrick } from './grind-trick';
+import { isPigeons } from './hazards';
 import { DroppedItems } from './drop';
 import { drawDrops, drawToss } from './item-art';
 import { ITEM_POINTS, itemOf } from './items';
@@ -82,7 +83,8 @@ function catchItem(ctx: GameContext, item: CarriedItem | null): void {
   ctx.bus.emit('itemCaught', { item });
 }
 
-const isPickup = (e: Entity) => e.kind === 'star' || e.kind === 'joint';
+/** Stars and the joint, drawn on top (a pigeon flock is a star entity drawn with the obstacles, hazards.ts). */
+const isPickup = (e: Entity) => (e.kind === 'star' && !isPigeons(e)) || e.kind === 'joint';
 /** Drawn first: rails and the stunt ledges with their thin posts. */
 const isBehind = (e: Entity) => isRail(e.kind) || isLedge(e.kind);
 

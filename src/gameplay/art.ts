@@ -1,7 +1,8 @@
 /**
  * Palette sprites and drawing for obstacles, rails, stars, the joint and the
  * pickup sparkle (people live in people-art.ts, stunt pieces in stunt-art.ts,
- * the NorDIY park's pieces and high fiver in park-art.ts). Every sprite has a dark
+ * the NorDIY park's pieces and high fiver in park-art.ts, the e-scooter and
+ * the pigeons in hazard-art.ts). Every sprite has a dark
  * outline so it reads against the busy Stuttgart backgrounds. Sizes match
  * catalogue.ts.
  */
@@ -11,6 +12,7 @@ import { scratchContext, sprite, warmSprites } from './sprites';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { ITEM_SPRITES } from './item-art';
 import { ComposedCache } from './composed';
+import { drawHazard } from './hazard-art';
 import { drawOverhead, isOverheadArt, overheadSize, warmOverheads } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
 import { drawHighFiver, drawParkPiece } from './park-art';
@@ -260,6 +262,7 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
   const { frame, kidMode } = state;
   const x = Math.round(e.x - lead);
   const y = Math.round(e.y);
+  if (drawHazard(g, e, x, frame, state.time)) return;
   switch (e.kind) {
     case 'handrail':
     case 'pipe':

@@ -442,6 +442,26 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'triangle', at: 0, dur: 0.07, freq: 300, to: 130, gain: 0.2 },
     { wave: 'noise', at: 0.02, dur: 0.16, freq: 2200, to: 1200, gain: 0.05, filter: 'bandpass', attack: 0.01 },
   ],
+  // An e-scooter comes towards the skater (heard just before it is seen): a bright 'ring ring' of its
+  // bell, then the electric motor's thin whine swelling in with rising pitch as it closes in, over a
+  // soft tyre hiss, and dropping as it zips past.
+  scooter: [
+    ...[0, 0.13].flatMap((at): Voice[] => [
+      { wave: 'sine', at, dur: 0.12, freq: 2350, gain: 0.12, attack: 0.002 },
+      { wave: 'sine', at, dur: 0.1, freq: 3530, gain: 0.05, attack: 0.002 },
+    ]),
+    { wave: 'sawtooth', at: 0.2, dur: 0.85, freq: 620, to: 840, gain: 0.035, filter: 'lowpass', attack: 0.5 },
+    { wave: 'square', at: 0.2, dur: 0.85, freq: 310, to: 420, gain: 0.02, attack: 0.5 },
+    { wave: 'sawtooth', at: 1.05, dur: 0.3, freq: 840, to: 560, gain: 0.03, filter: 'lowpass' },
+    { wave: 'noise', at: 0.3, dur: 1.0, freq: 900, to: 1500, gain: 0.05, filter: 'bandpass', attack: 0.45 },
+  ],
+  // Pigeons take off: a quick flurry of wing claps (short bandpassed noise bursts, faster then fading)
+  // and one soft 'gurr' of a startled pigeon.
+  pigeons: [
+    ...[0, 0.06, 0.11, 0.16, 0.21, 0.27, 0.34, 0.42].map((at, i): Voice => ({ wave: 'noise', at, dur: 0.04, freq: 1500 - i * 60, gain: 0.2 - i * 0.018, filter: 'bandpass', attack: 0.003 })),
+    { wave: 'triangle', at: 0.05, dur: 0.16, freq: 330, to: 280, gain: 0.08, attack: 0.02 },
+    { wave: 'triangle', at: 0.2, dur: 0.12, freq: 300, to: 250, gain: 0.05, attack: 0.02 },
+  ],
 };
 
 /**
