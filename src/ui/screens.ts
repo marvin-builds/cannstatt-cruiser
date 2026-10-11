@@ -24,7 +24,6 @@ import {
   ITEM_ICONS,
   JOINT_ICON,
   type PixelIcon,
-  ROTATE,
   STAR,
   SWIPE_ARROW,
   UI,
@@ -67,7 +66,7 @@ import {
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
 import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
-import { currentMenu, menuScreen, portraitHintShown, trophyShown } from './menu-state';
+import { currentMenu, menuScreen, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import type { FeedbackFlow } from './feedback-flow';
 import { drawFeedback } from './feedback-screen';
@@ -93,10 +92,6 @@ export interface UiView {
   popups: PopupPool;
   banner: Banner;
   fullscreenAvailable: boolean;
-  /** The portrait hint was dismissed for the current orientation. */
-  portraitDismissed: boolean;
-  /** The player types with portrait freed (typing-orientation.ts): no rotate hint. */
-  portraitFree: boolean;
   /** Length of the current chill effect (from chillStart), for the timer bar. */
   chillDuration: number;
   /** Length of the current drunk effect (from drunkStart), for the timer bar and the woozy ease. */
@@ -493,15 +488,6 @@ function drawLive(r: RenderContext, view: UiView): void {
   }
 }
 
-function drawPortraitHint(r: RenderContext): void {
-  fill(r, UI.ink);
-  const cx = centreX(r.display.viewWidth);
-  ROTATE.draw(r.g, 0, cx - Math.floor(ROTATE.width / 2), 22);
-  centred(r, 'Bitte Gerät drehen', 66, { scale: 2, color: UI.yellow });
-  centred(r, 'Im Querformat fährt es sich besser.', 92);
-  centred(r, 'Tippen zum Ignorieren', 120, { color: UI.muted });
-}
-
 function drawSettings(r: RenderContext, view: UiView): void {
   const { settings } = view;
   fill(r, UI.ink);
@@ -565,7 +551,6 @@ function drawInstallGuide(r: RenderContext): void {
 export function drawUi(r: RenderContext, view: UiView): void {
   if (view.install.guideOpen) {
     drawInstallGuide(r);
-    if (portraitHintShown(r, view)) drawPortraitHint(r);
     return;
   }
   const menu = currentMenu(r, view);
@@ -608,10 +593,6 @@ export function drawUi(r: RenderContext, view: UiView): void {
       if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
       else drawGameOver(r, view, menu!);
       break;
-  }
-  if (portraitHintShown(r, view)) {
-    drawPortraitHint(r);
-    return;
   }
   // Modal screens hide the HUD buttons (only M mutes there).
   if (!view.settings.open && !view.scores?.open && !view.feedback?.open) drawButtons(r, view);

@@ -260,7 +260,7 @@ export default async function finalPhoneRotate(t: PlaytestContext): Promise<void
     await ride(t, 5, 45, 'landscape ride', 15, true);
     await rotate(t, 'landscape->portrait');
     await t.screenshot('landscape to portrait hint');
-    // The rotate hint (and its pause) is for phones only (SPEC: "On phones ..."; portraitHintShown needs touch):
+    // The rotate hint (and its pause) is for phones only (SPEC: "On phones ..."; RotateHint.shown in ui/rotate-screen.ts needs touch):
     // a desktop window made tall just rides on.
     const mode = (await t.game.state()).mode;
     if (t.viewport.touch) t.check('landscape->portrait pauses', mode !== 'playing', mode);

@@ -8,6 +8,7 @@ import { whatsNewSections } from './portrait-sheets';
 import { scrollThumb } from './score-layout';
 import { sheetScrollTo, versionHeading } from './whats-new';
 import type { WhatsNewSheet, WhatsNewSheetHandlers } from './whats-new-sheet';
+import { fakeRotateSheet } from './rotate-sheet.fake';
 
 const entry = (version: string, ...items: string[]): ChangelogEntry => ({ version, date: version.slice(0, 10), items });
 const MANY = Array.from({ length: 10 }, (_, i) => entry(`2099-01-${String(20 - i).padStart(2, '0')}.1`, 'Neu A', 'Neu B', 'Neu C'));
@@ -68,7 +69,8 @@ function setup(display: { touch: boolean; portrait: boolean }) {
     scroll: () => null,
   } satisfies WhatsNewSheet & Record<string, unknown>;
   const whatsNewSheet = (handlers: WhatsNewSheetHandlers) => ((sheet.actions = handlers), sheet);
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: null, whatsNewSheet });
+  const rotate = fakeRotateSheet();
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: null, whatsNewSheet, rotateSheet: rotate.factory });
   const game = new Game({ systems: [ui] });
   Object.assign(game.display, display);
   const key = (code: string) => {
@@ -76,7 +78,7 @@ function setup(display: { touch: boolean; portrait: boolean }) {
     keyUp(game, code);
     game.tick();
   };
-  return { game, ui, sheet, key };
+  return { game, ui, sheet, rotate, key };
 }
 
 describe('the "Neu in dieser Version" sheet in the ui system', () => {
@@ -101,14 +103,18 @@ describe('the "Neu in dieser Version" sheet in the ui system', () => {
     expect(t.game.state.whatsNew).toEqual([]);
   });
 
-  it('waits under the rotate hint on a phone, then shows; landscape keeps the canvas list', () => {
+  it('shows at once on a phone in portrait, without the rotate screen (ROADMAP 73); landscape keeps the canvas list', () => {
     const t = setup({ touch: true, portrait: true });
     t.game.state.whatsNew = MANY;
     t.game.tick();
-    expect(t.sheet.entries).toBeNull();
-    t.game.hitHotspot(160, 90); // dismisses the rotate hint
-    t.game.tick();
     expect(t.sheet.entries).toBe(MANY);
+    expect(t.rotate.shown).toBe(false);
+    // "Weiter" in portrait: the title needs landscape, so the rotate screen comes.
+    t.sheet.actions!.onDone();
+    t.game.tick();
+    expect(t.sheet.entries).toBeNull();
+    expect(t.rotate.shown).toBe(true);
+    t.game.state.whatsNew = MANY;
     t.game.display.portrait = false;
     t.game.tick();
     expect(t.sheet.entries).toBeNull();

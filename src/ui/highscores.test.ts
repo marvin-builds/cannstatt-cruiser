@@ -17,6 +17,7 @@ import type { EntrySheet, EntrySheetHandlers } from './entry-sheet';
 import type { EntrySheetModel } from './portrait-sheets';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { loadStatsOptOut } from '../net/telemetry';
+import { fakeRotateSheet } from './rotate-sheet.fake';
 
 const entry = (rank: number, score: number): ScoreEntry => ({ rank, name: `P${rank}`, score, distance: 100, date: '2026-10-09T10:00:00.000Z' });
 const fullList = () => Array.from({ length: 20 }, (_, i) => entry(i + 1, 5000 - i * 100));
@@ -87,7 +88,8 @@ function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
   /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
   const locks: string[] = [];
   const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
-  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, entrySheet, orientation, openPage: (url) => (opened.push(url), true) });
+  const rotate = fakeRotateSheet();
+  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, entrySheet, rotateSheet: rotate.factory, orientation, openPage: (url) => (opened.push(url), true) });
   const game = new Game({ systems: [ui], store });
   const flow = ui.highscores!;
   const key = (code: string) => {
@@ -123,7 +125,7 @@ function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
     pointers.up(1);
     for (let i = 0; i < 8; i++) game.tick();
   };
-  return { game, flow, service, sent, sheet, locks, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
+  return { game, flow, service, sent, sheet, rotate, locks, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
 }
 
 describe('Bestenliste from the title', () => {
@@ -494,5 +496,32 @@ describe('the name entry in portrait (ROADMAP 58)', () => {
     game.tick();
     expect(flow.screen).toBe('closed');
     expect(game.state.mode).toBe('gameover');
+  });
+});
+
+describe('the rotate screen around the name entry (ROADMAP 73)', () => {
+  it('a plain tab: turned to portrait in the name entry, the sheet shows at once; closing it brings the rotate screen', () => {
+    const { game, flow, crash, sheet, rotate, submitRect } = setup();
+    game.display.touch = true;
+    crash(4500);
+    expect(game.hitHotspot(...centre(submitRect()))).toBe(true);
+    expect(flow.screen).toBe('entry');
+    game.display.portrait = true;
+    game.tick();
+    expect(rotate.shown).toBe(false);
+    expect(sheet.model).not.toBeNull();
+    sheet.actions!.onCancel();
+    game.tick();
+    expect(sheet.model).toBeNull();
+    expect(rotate.shown).toBe(true);
+  });
+
+  it('the "Bestenliste" needs landscape: the rotate screen covers it in portrait', () => {
+    const { game, flow, rotate } = setup();
+    game.display.touch = true;
+    flow.openList();
+    game.display.portrait = true;
+    game.tick();
+    expect(rotate.shown).toBe(true);
   });
 });

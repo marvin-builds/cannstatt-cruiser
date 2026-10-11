@@ -13,12 +13,11 @@ describe('typing orientation (ROADMAP 54)', () => {
     const { e, calls } = env(true);
     const o = new TypingOrientation(e);
     o.update(false);
-    expect(o.free).toBe(false);
+    expect(calls).toEqual([]);
     o.update(true);
     o.update(true);
-    expect(o.free).toBe(true);
+    expect(calls).toEqual(['any']);
     o.update(false);
-    expect(o.free).toBe(false);
     expect(calls).toEqual(['any', 'landscape']);
   });
 
@@ -26,14 +25,12 @@ describe('typing orientation (ROADMAP 54)', () => {
     for (const { e, calls } of [env(false), env(true, false)]) {
       const o = new TypingOrientation(e);
       o.update(true);
-      expect(o.free).toBe(false);
+      o.update(false);
       expect(calls).toEqual([]);
     }
   });
 
   it('does nothing without an environment (tests, headless games)', () => {
-    const o = new TypingOrientation(null);
-    o.update(true);
-    expect(o.free).toBe(false);
+    expect(() => new TypingOrientation(null).update(true)).not.toThrow();
   });
 });
