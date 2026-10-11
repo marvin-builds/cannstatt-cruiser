@@ -20,6 +20,14 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.1',
+    date: '2026-10-11',
+    items: [
+      'Bestenliste: nur dein bester Lauf',
+      'Kindermodus: eigener Rekord',
+    ],
+  },
+  {
     version: '2026-10-10.1',
     date: '2026-10-10',
     items: [
