@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { condenseAndPruneOnceADay } from '../src/event-store';
 import { handleRequest, type Env } from '../src/handler';
 import type { InsightsStats } from '../src/insights-types';
@@ -109,6 +109,24 @@ async function stats(days = 7): Promise<{ res: Response; body: InsightsStats }> 
   expect(res.status).toBe(200);
   return { res, body: (await res.json()) as InsightsStats };
 }
+
+describe('GET /stats unexpected errors', () => {
+  it('answer 500 JSON with the CORS headers of the origin', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const broken = {
+      prepare() {
+        throw new Error('D1_ERROR: boom');
+      },
+    } as unknown as D1Database;
+    const res = await get('/stats?days=365', { env: { DB: broken, STATS_TOKEN: TOKEN } });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'server' });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+});
 
 describe('GET /stats answer', () => {
   it('is zero-filled on an empty database, not cached, with CORS headers', async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DAILY_EVENT_CAP, RUNS_PER_SESSION } from '../src/event-store';
 import { MAX_EVENT_BYTES } from '../src/events';
 import { handleRequest } from '../src/handler';
@@ -204,6 +204,32 @@ describe('POST /event retention', () => {
     db.sqlite.prepare('INSERT INTO event_days (day, accepted) VALUES (?, ?)').run('2026-10-10', 42);
     await post(session);
     expect(db.sqlite.prepare('SELECT day, accepted FROM event_days').all()).toEqual([{ day: '2026-10-11', accepted: 1 }]);
+  });
+});
+
+describe('POST /event housekeeping failures', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('still stores the event and answers 204 when condensing fails, and retries on a later event', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    seedEvents(1, 'session', '2026-10-10', OTHER);
+    const batch = vi.spyOn(db, 'batch').mockRejectedValueOnce(new Error('D1_ERROR: too many terms in compound SELECT'));
+    const res = await post(session);
+    expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect(count("day = '2026-10-11'")).toBe(1);
+    expect(logged).toHaveBeenCalled();
+    expect(db.sqlite.prepare('SELECT COUNT(*) AS n FROM day_summaries').get()).toEqual({ n: 0 });
+
+    expect((await post(end, { now: NOW + 3600_000 })).status).toBe(204);
+    expect(batch).toHaveBeenCalledTimes(2);
+    expect(count("day = '2026-10-11'")).toBe(2);
+    expect(db.sqlite.prepare("SELECT value FROM day_summaries WHERE day = '2026-10-10' AND metric = 'total' AND key = 'sessions'").get()).toEqual({ value: 1 });
+
+    await post(run, { now: NOW + 2 * 3600_000 });
+    expect(batch).toHaveBeenCalledTimes(2); // done for today
   });
 });
 

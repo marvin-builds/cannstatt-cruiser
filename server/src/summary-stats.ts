@@ -5,7 +5,7 @@
  * The median is the end-count-weighted mean of the daily medians (approximate).
  */
 import { dayAfter, daysSince } from './aggregate';
-import { runMetric, SUMMARY_SELECT, TOTAL_METRIC, UNKNOWN_KEY, type SummaryRow, type TotalKey } from './day-summary';
+import { rawSummaryRows, runMetric, TOTAL_METRIC, UNKNOWN_KEY, type SummaryRow, type TotalKey } from './day-summary';
 import { RUN_COLUMNS, SPLIT_COLUMNS, type Range, type RunHistogram, type Tallies } from './tallies';
 
 /** "Alles" goes back at most this many days. */
@@ -31,9 +31,9 @@ async function summaryRows({ db, from, to }: Range): Promise<SummaryRow[]> {
       .prepare("SELECT '' AS day, metric, key, SUM(value) AS value FROM day_summaries WHERE metric <> ? AND day BETWEEN ? AND ? GROUP BY metric, key")
       .bind(TOTAL_METRIC, from, to)
       .all<SummaryRow>(),
-    rawFrom > to ? null : db.prepare(SUMMARY_SELECT).bind(rawFrom, to).all<SummaryRow>(),
+    rawFrom > to ? [] : rawSummaryRows(db, rawFrom, to),
   ]);
-  return [...totals.results, ...counts.results, ...(raw?.results ?? [])];
+  return [...totals.results, ...counts.results, ...raw];
 }
 
 /** Folds summary rows (any mix of days) into tallies. */
