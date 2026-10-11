@@ -17,6 +17,8 @@ import type { UiView } from './screens';
 import type { SettingsScreen } from './settings';
 import type { ScoreScreen } from './highscore-flow';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
+import type { FeedbackStatus } from './feedback-flow';
+import { type FeedbackLayout, feedbackLayout } from './feedback-layout';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -72,6 +74,21 @@ export interface UiDebugHook {
    * trophy, the open screen's close button, the entry's field and submit button.
    */
   highscores(): HighscoresDebug | null;
+  /**
+   * The feedback screen's state and its form's tap areas (view px), or null without a feedback
+   * sender; the title icon and the pause button are in layout().screen.feedback.
+   */
+  feedback(): FeedbackDebug | null;
+}
+
+export interface FeedbackDebug {
+  open: boolean;
+  kind: 'bug' | 'idea';
+  text: string;
+  withLog: boolean;
+  status: FeedbackStatus;
+  message: string | null;
+  form: FeedbackLayout;
 }
 
 export interface HighscoresDebug {
@@ -219,6 +236,12 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         field: entry.field,
         submit: entry.submit,
       };
+    },
+    feedback() {
+      const flow = view.feedback;
+      if (!flow) return null;
+      const { open, kind, text, withLog, status, message } = flow;
+      return { open, kind, text, withLog, status, message, form: feedbackLayout(ctx.display) };
     },
   };
 }

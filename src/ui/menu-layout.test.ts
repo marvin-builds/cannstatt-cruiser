@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import type { Rect } from '../types';
-import { centreX, hudButtons, uiMetrics } from './layout';
+import { buttonPlate, centreX, hudButtons, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { statsLayout } from './stats';
 import { titleTrophy } from './score-layout';
+import { feedbackIcon } from './feedback-layout';
 import {
+  feedbackLabel,
   gameOverLayout,
   installParts,
   kidModeLabel,
@@ -58,7 +60,7 @@ const inside = (r: Rect, w: number) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w &&
 /** Every tap area of a screen: the buttons and the pause logo. */
 function buttons(l: MenuLayout): Rect[] {
   const b = l.buttons;
-  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit, b.kidMode].filter((r): r is Rect => !!r);
+  return [b.reload, b.install, b.dismiss, b.toTitle, b.next, b.logo, b.submit, b.kidMode, b.feedback].filter((r): r is Rect => !!r);
 }
 
 function hud(input: MenuInput, riding: boolean): Rect[] {
@@ -121,6 +123,59 @@ describe('menu screen layouts', () => {
       expect([...l.blocks.keys()]).toEqual([...titleLayout(base).blocks.keys()]);
       expect(kid.h, input.label).toBeGreaterThanOrEqual(uiMetrics(input).menuButtonH);
     }
+  });
+
+  it('title: the feedback icon (adult mode) sits bottom right, clear of the rows, cards, panel, logo, Kindermodus and trophy, all variants', () => {
+    for (const base of inputs()) {
+      for (const kidButton of [false, true]) {
+        const input = { ...base, kidButton, feedback: true };
+        const l = titleLayout(input);
+        const m = uiMetrics(input);
+        const icon = l.buttons.feedback;
+        checkScreen(input, l, false, [logoRect(input.viewWidth)]);
+        // Only a narrow portrait title with both notice cards has no room left for it (the pause menu still offers feedback).
+        const crowded = input.portrait && input.viewWidth < 360 && input.reload && !!input.install;
+        expect(icon === null, input.label).toBe(crowded);
+        if (!icon) continue;
+        expect(icon, input.label).toEqual(feedbackIcon(input.viewWidth, m));
+        const others = [logoRect(input.viewWidth), titleTrophy(input.viewWidth, input.fullscreenAvailable, m), ...l.blocks.values()];
+        if (l.buttons.kidMode) others.push(l.buttons.kidMode);
+        for (const other of others) expect(overlap(icon, other), `${input.label}: icon vs ${JSON.stringify(other)}`).toBe(false);
+        expect(overlap(buttonPlate(icon, m), l.panel!), `${input.label}: icon plate vs panel ${JSON.stringify(l.panel)}`).toBe(false);
+      }
+    }
+  });
+
+  it('title: the feedback icon costs no rows; only a narrow portrait view compacts the install card for it', () => {
+    for (const base of inputs()) {
+      const plain = titleLayout(base);
+      const l = titleLayout({ ...base, feedback: true });
+      expect([...l.blocks.keys()], base.label).toEqual([...plain.blocks.keys()]);
+      if (l.install !== plain.install) expect(base.portrait && base.viewWidth < 360 && l.install === 'compact', base.label).toBe(true);
+    }
+  });
+
+  it('title and pause: no feedback entry unless offered (kid mode)', () => {
+    for (const input of inputs()) {
+      expect(titleLayout(input).buttons.feedback, input.label).toBeNull();
+      expect(pauseLayout({ ...input, install: null }).buttons.feedback, input.label).toBeNull();
+    }
+  });
+
+  it('pause: the "Feedback" button fits with the logo, "Startbildschirm" and the prompt, all variants', () => {
+    for (const input of inputs()) {
+      const l = pauseLayout({ ...input, install: null, feedback: true });
+      checkScreen(input, l, true, [l.buttons.logo!]);
+      expect(l.blocks.has('prompt'), input.label).toBe(true);
+      // Only portrait with a pending update gives it up for the reload card.
+      if (!(input.portrait && input.reload)) expect(l.buttons.feedback, input.label).not.toBeNull();
+      if (l.buttons.feedback) expect(l.buttons.feedback, input.label).toEqual(l.blocks.get('feedback'));
+    }
+  });
+
+  it('the feedback label shows its key (F) on desktop only', () => {
+    expect(feedbackLabel(true)).toBe('Feedback');
+    expect(feedbackLabel(false)).toBe('Feedback (F)');
   });
 
   it('the Kindermodus label shows its key (I) on desktop only', () => {

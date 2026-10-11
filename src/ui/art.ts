@@ -172,6 +172,18 @@ export const ICON_TROPHY = new PixelIcon({ y: UI.yellow, o: UI.orange, w: UI.whi
   .oooooo.
 `]);
 
+/** The title's feedback button: a speech bubble with three dots. */
+export const ICON_FEEDBACK = new PixelIcon({ w: UI.white, k: UI.ink }, [`
+  ........
+  .wwwwww.
+  wwwwwwww
+  wkwkkwkw
+  wwwwwwww
+  .wwwwww.
+  .ww.....
+  .w......
+`]);
+
 /** Frame 0 sound on, frame 1 muted. */
 export const ICON_SOUND = new PixelIcon(ICON, [
   `
