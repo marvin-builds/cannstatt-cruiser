@@ -24,8 +24,8 @@ export const MAX_END_SECONDS = 4 * 3600;
 export const MAX_EVENT_BYTES = 1024;
 /** The board's ranges in days. */
 export const STATS_RANGES = [7, 30, 90] as const;
-/** Country, region or city groups with fewer sessions in the range are shown as "other". */
-export const MIN_GROUP_SESSIONS = 5;
+/** Country, region or city groups need this many sessions in the range (USER: every place counts); unknown places are "other". */
+export const MIN_GROUP_SESSIONS = 1;
 /** BUILD_VERSION shape (`YYYY-MM-DD.n`, see changelog.ts). */
 export const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,2}$/;
 /** 32 lowercase hex chars, random per page load, kept in memory only. */

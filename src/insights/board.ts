@@ -136,7 +136,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
         ),
         card('Aktuelle Bestenliste', stats.topScores.length ? top : h('p', { class: 'empty-note' }, 'Noch keine Einträge')),
       ),
-      h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte mit weniger als 5 Sessions zählen als „Andere“'),
+      h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte ohne Angabe zählen als „Andere“'),
     ),
   );
   drawDayCharts(root, stats);

@@ -16,7 +16,7 @@ export const MAX_RUN_SECONDS = 3600;
 export const MAX_END_SECONDS = 4 * 3600;
 export const MAX_EVENT_BYTES = 1024;
 export const STATS_RANGES = [7, 30, 90] as const;
-/** Country, region or city groups with fewer sessions in the range are reported as 'other'. */
-export const MIN_GROUP_SESSIONS = 5;
+/** Country, region or city groups need this many sessions in the range (every place counts); unknown places are 'other'. */
+export const MIN_GROUP_SESSIONS = 1;
 export const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}\.\d{1,2}$/;
 export const SESSION_ID_PATTERN = /^[0-9a-f]{32}$/;
