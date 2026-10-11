@@ -56,7 +56,8 @@ export async function condenseAndPruneOnceADay(db: D1Database, now: number): Pro
 }
 
 /**
- * Stores the event: a session once (with `location`, which other kinds never store), a run while the
+ * Stores the event: a session once (with `location`, which other kinds never store, and its flags:
+ * tester 1/0 with omitted = 0, is_returning 1/0 with omitted = NULL, unknown), a run while the
  * session has fewer than RUNS_PER_SESSION, an end as the session's largest value.
  */
 export async function saveEvent(db: D1Database, event: TelemetryEvent, { day, hour }: Arrival, location: Location): Promise<void> {
@@ -64,11 +65,13 @@ export async function saveEvent(db: D1Database, event: TelemetryEvent, { day, ho
     case 'session':
       await db
         .prepare(
-          `INSERT OR IGNORE INTO events (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city)
-           VALUES (?, 'session', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO events
+             (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city, tester, is_returning)
+           VALUES (?, 'session', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(event.session, day, hour, event.version, event.input, event.orientation, event.platform, Number(event.kid),
-          location.country, location.region, location.city)
+          location.country, location.region, location.city, Number(event.tester === true),
+          event.returning === undefined ? null : Number(event.returning))
         .run();
       return;
     case 'run':

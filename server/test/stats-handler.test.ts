@@ -37,27 +37,34 @@ interface SessionSeed {
   country?: string | null;
   region?: string | null;
   city?: string | null;
+  /** events.tester: 1 = the owner's test device. */
+  tester?: number | null;
+  /** events.is_returning: 1/0, null = unknown (builds before ROADMAP 55). */
+  returning?: number | null;
 }
 
-function seedSessions(n: number, seed: SessionSeed): void {
+/** Seeds `n` session rows; returns their session ids. */
+function seedSessions(n: number, seed: SessionSeed): string[] {
   const insert = db.sqlite.prepare(
-    `INSERT INTO events (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city)
-     VALUES (?, 'session', ?, 9, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city, tester, is_returning)
+     VALUES (?, 'session', ?, 9, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  for (let i = 0; i < n; i++) {
-    insert.run(sessionId(), seed.day, seed.version ?? '2026-10-11.1', seed.input ?? 'touch', seed.orientation ?? 'landscape', seed.platform ?? 'android',
-      seed.kid ?? 0, seed.country ?? null, seed.region ?? null, seed.city ?? null);
-  }
+  return Array.from({ length: n }, () => {
+    const id = sessionId();
+    insert.run(id, seed.day, seed.version ?? '2026-10-11.1', seed.input ?? 'touch', seed.orientation ?? 'landscape', seed.platform ?? 'android',
+      seed.kid ?? 0, seed.country ?? null, seed.region ?? null, seed.city ?? null, seed.tester ?? null, seed.returning ?? null);
+    return id;
+  });
 }
 
-function seedEnd(day: string, seconds: number): void {
-  db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, seconds) VALUES (?, 'end', ?, 10, ?)").run(sessionId(), day, seconds);
+function seedEnd(day: string, seconds: number, session = sessionId()): void {
+  db.sqlite.prepare("INSERT INTO events (session, kind, day, hour, seconds) VALUES (?, 'end', ?, 10, ?)").run(session, day, seconds);
 }
 
-function seedRun(day: string, seconds: number, distance: number, score: number): void {
+function seedRun(day: string, seconds: number, distance: number, score: number, session = sessionId()): void {
   db.sqlite
     .prepare("INSERT INTO events (session, kind, day, hour, kid, seconds, distance_bucket, score_bucket) VALUES (?, 'run', ?, 10, 0, ?, ?, ?)")
-    .run(sessionId(), day, seconds, distance, score);
+    .run(session, day, seconds, distance, score);
 }
 
 function seedScore(name: string, score: number, date: string): void {
@@ -104,8 +111,8 @@ describe('GET /stats access', () => {
   });
 });
 
-async function stats(days = 7): Promise<{ res: Response; body: InsightsStats }> {
-  const res = await get(`/stats?days=${days}`);
+async function stats(days = 7, extra = ''): Promise<{ res: Response; body: InsightsStats }> {
+  const res = await get(`/stats?days=${days}${extra}`);
   expect(res.status).toBe(200);
   return { res, body: (await res.json()) as InsightsStats };
 }
@@ -136,8 +143,9 @@ describe('GET /stats answer', () => {
     expect(body).toEqual({
       days: 7,
       generatedAt: '2026-10-11T14:37:21.000Z',
-      perDay: ['05', '06', '07', '08', '09', '10', '11'].map((d) => ({ day: `2026-10-${d}`, sessions: 0, runs: 0, entries: 0 })),
+      perDay: ['05', '06', '07', '08', '09', '10', '11'].map((d) => ({ day: `2026-10-${d}`, sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 })),
       sessions: { total: 0, medianSeconds: 0, avgSeconds: 0 },
+      visits: { new: 0, returning: 0, unknown: 0 },
       runs: {
         total: 0,
         perSession: 0,
@@ -172,13 +180,13 @@ describe('GET /stats answer', () => {
     seedScore('D', 600, '2026-09-01T08:00:00.000Z');
     const { body } = await stats(7);
     expect(body.perDay).toEqual([
-      { day: '2026-10-05', sessions: 2, runs: 0, entries: 0 },
-      { day: '2026-10-06', sessions: 0, runs: 0, entries: 1 },
-      { day: '2026-10-07', sessions: 0, runs: 0, entries: 0 },
-      { day: '2026-10-08', sessions: 0, runs: 0, entries: 0 },
-      { day: '2026-10-09', sessions: 0, runs: 2, entries: 0 },
-      { day: '2026-10-10', sessions: 0, runs: 0, entries: 0 },
-      { day: '2026-10-11', sessions: 3, runs: 1, entries: 2 },
+      { day: '2026-10-05', sessions: 2, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-06', sessions: 0, runs: 0, entries: 1, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-07', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-08', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-09', sessions: 0, runs: 2, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-10', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-11', sessions: 3, runs: 1, entries: 2, newPlayers: 0, returningVisits: 0 },
     ]);
     expect(body.sessions.total).toBe(5);
     expect(body.runs.total).toBe(3);
@@ -269,7 +277,7 @@ describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
   it('answers an empty database with today only for 0 and 365 zero days for 365', async () => {
     const all = (await stats(0)).body;
     expect(all.days).toBe(0);
-    expect(all.perDay).toEqual([{ day: '2026-10-11', sessions: 0, runs: 0, entries: 0 }]);
+    expect(all.perDay).toEqual([{ day: '2026-10-11', sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 }]);
     expect(all.sessions).toEqual({ total: 0, medianSeconds: 0, avgSeconds: 0 });
     expect(all.runs.total).toBe(0);
     expect(all.runs.seconds.map((entry) => entry.key)).toEqual(['0', '30', '60', '180', '600']);
@@ -285,9 +293,9 @@ describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
     await seedHistory();
     const { body } = await stats(365);
     expect(body.perDay).toHaveLength(365);
-    expect(day(body.perDay, '2026-01-15')).toEqual({ day: '2026-01-15', sessions: 3, runs: 2, entries: 0 });
-    expect(day(body.perDay, '2026-10-10')).toEqual({ day: '2026-10-10', sessions: 1, runs: 0, entries: 0 });
-    expect(day(body.perDay, '2026-10-11')).toEqual({ day: '2026-10-11', sessions: 2, runs: 1, entries: 1 });
+    expect(day(body.perDay, '2026-01-15')).toEqual({ day: '2026-01-15', sessions: 3, runs: 2, entries: 0, newPlayers: 0, returningVisits: 0 });
+    expect(day(body.perDay, '2026-10-10')).toEqual({ day: '2026-10-10', sessions: 1, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 });
+    expect(day(body.perDay, '2026-10-11')).toEqual({ day: '2026-10-11', sessions: 2, runs: 1, entries: 1, newPlayers: 0, returningVisits: 0 });
     // Ends: 2026-01-15 4 (sum 160, median 25), 2026-10-10 1 (200), today 2 (sum 140, median 70).
     expect(body.sessions).toEqual({ total: 6, avgSeconds: 71, medianSeconds: 63 });
     expect(body.runs.total).toBe(3);
@@ -321,7 +329,7 @@ describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
     const { body } = await stats(0);
     expect(body.days).toBe(0);
     expect(body.perDay).toHaveLength((Date.parse('2026-10-11') - Date.parse('2025-06-01')) / DAY_MS + 1);
-    expect(body.perDay[0]).toEqual({ day: '2025-06-01', sessions: 2, runs: 1, entries: 0 });
+    expect(body.perDay[0]).toEqual({ day: '2025-06-01', sessions: 2, runs: 1, entries: 0, newPlayers: 0, returningVisits: 0 });
     expect(body.perDay.at(-1)!.day).toBe('2026-10-11');
     expect(body.sessions).toEqual({ total: 8, avgSeconds: 75, medianSeconds: 68 });
     expect(body.runs.total).toBe(4);
@@ -358,5 +366,109 @@ describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
     const after = await Promise.all([7, 30, 90].map(async (days) => (await stats(days)).body));
     expect(after).toEqual(before);
     expect(before.map((body) => body.sessions.total)).toEqual([4, 4, 8]);
+  });
+});
+
+describe('GET /stats test devices and new vs. returning players (ROADMAP 55)', () => {
+  /** Players: a new one, a returning one and one from an old build (unknown); a test device whose run and end fall on the next day. */
+  function seedMixedWeek(): void {
+    const [newPlayer] = seedSessions(1, { day: '2026-10-11', returning: 0, tester: 0, city: 'Stuttgart' });
+    const [returning] = seedSessions(1, { day: '2026-10-11', returning: 1, city: 'Stuttgart' });
+    seedSessions(1, { day: '2026-10-09', city: 'Esslingen' });
+    const [tester] = seedSessions(1, { day: '2026-10-10', tester: 1, returning: 1, platform: 'other', input: 'keys', city: 'Linux' });
+    seedRun('2026-10-11', 60, 100, 100, newPlayer);
+    seedRun('2026-10-11', 600, 5000, 5000, tester);
+    seedRun('2026-10-11', 600, 5000, 5000, tester);
+    seedEnd('2026-10-11', 100, newPlayer);
+    seedEnd('2026-10-11', 200, returning);
+    seedEnd('2026-10-11', 9000, tester);
+    seedScore('Tester', 900, '2026-10-10T10:00:00.000Z');
+  }
+
+  it('leaves test sessions and their runs and ends out of every number by default', async () => {
+    seedMixedWeek();
+    const { body } = await stats(7);
+    expect(body.perDay.slice(-3)).toEqual([
+      { day: '2026-10-09', sessions: 1, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-10', sessions: 0, runs: 0, entries: 1, newPlayers: 0, returningVisits: 0 },
+      { day: '2026-10-11', sessions: 2, runs: 1, entries: 0, newPlayers: 1, returningVisits: 1 },
+    ]);
+    expect(body.sessions).toEqual({ total: 3, medianSeconds: 150, avgSeconds: 150 });
+    expect(body.visits).toEqual({ new: 1, returning: 1, unknown: 1 });
+    expect(body.runs.total).toBe(1);
+    expect(body.runs.seconds.at(-1)).toEqual({ key: '600', count: 0 });
+    expect(body.split.platform).toEqual([{ key: 'android', count: 3 }]);
+    expect(body.split.input).toEqual([{ key: 'touch', count: 3 }]);
+    expect(body.split.city).toEqual([{ key: 'Stuttgart', count: 2 }, { key: 'Esslingen', count: 1 }]);
+    expect(body.topScores).toEqual([{ name: 'Tester', score: 900, date: '2026-10-10T10:00:00.000Z' }]);
+  });
+
+  it('includes test devices with testers=1', async () => {
+    seedMixedWeek();
+    const { body } = await stats(7, '&testers=1');
+    expect(body.perDay.slice(-2)).toEqual([
+      { day: '2026-10-10', sessions: 1, runs: 0, entries: 1, newPlayers: 0, returningVisits: 1 },
+      { day: '2026-10-11', sessions: 2, runs: 3, entries: 0, newPlayers: 1, returningVisits: 1 },
+    ]);
+    expect(body.sessions).toEqual({ total: 4, medianSeconds: 200, avgSeconds: 3100 });
+    expect(body.visits).toEqual({ new: 1, returning: 2, unknown: 1 });
+    expect(body.runs.total).toBe(3);
+    expect(body.split.platform).toEqual([{ key: 'android', count: 3 }, { key: 'other', count: 1 }]);
+    expect(body.split.city).toEqual([{ key: 'Stuttgart', count: 2 }, { key: 'Esslingen', count: 1 }, { key: 'Linux', count: 1 }]);
+  });
+
+  it('includes test devices only for exactly testers=1', async () => {
+    seedMixedWeek();
+    for (const extra of ['', '&testers=0', '&testers=true', '&testers=', '&testers=01', '&testers=1&testers=1', '&Testers=1']) {
+      expect((await stats(7, extra)).body.sessions.total, extra).toBe(3);
+    }
+    expect((await stats(7, '&testers=1')).body.sessions.total).toBe(4);
+  });
+
+  it('still answers 401 before 400 and 400 for a bad range with testers=1, without touching the database', async () => {
+    const env = { DB: untouchable, STATS_TOKEN: TOKEN };
+    expect((await get('/stats?days=7&testers=1', { auth: null, env })).status).toBe(401);
+    expect((await get('/stats?days=14&testers=1', { env })).status).toBe(400);
+  });
+
+  it('keeps test devices out of the long ranges, from summaries and raw rows, and includes them with testers=1', async () => {
+    const [player] = seedSessions(1, { day: '2026-01-15', returning: 0, city: 'Stuttgart' });
+    const [tester] = seedSessions(2, { day: '2026-01-15', tester: 1, returning: 1, city: 'Linux' });
+    seedRun('2026-01-15', 60, 100, 100, player);
+    seedRun('2026-01-15', 600, 5000, 5000, tester);
+    seedEnd('2026-01-15', 40, player);
+    seedEnd('2026-01-15', 1000, tester);
+    await condenseAndPruneOnceADay(db.asD1(), NOW);
+    seedSessions(1, { day: '2026-10-11', returning: 1 });
+    seedSessions(1, { day: '2026-10-11', tester: 1, returning: 0 });
+
+    const players = (await stats(365)).body;
+    expect(players.perDay.find((entry) => entry.day === '2026-01-15')).toEqual(
+      { day: '2026-01-15', sessions: 1, runs: 1, entries: 0, newPlayers: 1, returningVisits: 0 },
+    );
+    expect(players.perDay.at(-1)).toEqual({ day: '2026-10-11', sessions: 1, runs: 0, entries: 0, newPlayers: 0, returningVisits: 1 });
+    expect(players.sessions).toEqual({ total: 2, medianSeconds: 40, avgSeconds: 40 });
+    expect(players.visits).toEqual({ new: 1, returning: 1, unknown: 0 });
+    expect(players.runs.seconds.at(-1)).toEqual({ key: '600', count: 0 });
+    expect(players.split.city).toEqual([{ key: 'Stuttgart', count: 1 }, { key: 'other', count: 1 }]);
+
+    const all = (await stats(0, '&testers=1')).body;
+    expect(all.perDay[0]).toEqual({ day: '2026-01-15', sessions: 3, runs: 2, entries: 0, newPlayers: 1, returningVisits: 2 });
+    expect(all.sessions).toEqual({ total: 5, medianSeconds: 520, avgSeconds: 520 });
+    expect(all.visits).toEqual({ new: 2, returning: 3, unknown: 0 });
+    expect(all.split.city).toEqual([{ key: 'Linux', count: 2 }, { key: 'other', count: 2 }, { key: 'Stuttgart', count: 1 }]);
+  });
+
+  it('counts days summarised before this release as players with unknown visits', async () => {
+    db.sqlite.exec(`INSERT INTO day_summaries (day, metric, key, value) VALUES
+      ('2026-01-15', 'total', 'sessions', 5), ('2026-01-15', 'total', 'runs', 7), ('2026-01-15', 'platform', 'ios', 5)`);
+    for (const extra of ['', '&testers=1']) {
+      const { body } = await stats(365, extra);
+      expect(body.perDay.find((entry) => entry.day === '2026-01-15'), extra).toEqual(
+        { day: '2026-01-15', sessions: 5, runs: 7, entries: 0, newPlayers: 0, returningVisits: 0 },
+      );
+      expect(body.visits).toEqual({ new: 0, returning: 0, unknown: 5 });
+      expect(body.split.platform).toEqual([{ key: 'ios', count: 5 }]);
+    }
   });
 });

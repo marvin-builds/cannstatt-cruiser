@@ -2,14 +2,15 @@
  * The GET /stats answer: aggregates over the last `days` UTC days (today
  * included; ALL_RANGE from the first recorded day) and the scores table.
  * Ranges up to RAW_RETENTION_DAYS count raw events; longer ones read the day
- * summaries (summary-stats.ts). Never returns raw rows.
+ * summaries (summary-stats.ts). Test devices count only when asked for
+ * (ROADMAP 55). Never returns raw rows.
  */
 import { dayRange, histogram, mergeSmallGroups } from './aggregate';
 import { ALL_RANGE, DISTANCE_STEP_M, MAX_DISTANCE_M, MIN_GROUP_SESSIONS, RAW_RETENTION_DAYS, SCORE_BUCKETS } from './events';
 import type { DayStats, InsightsStats, StatsRange } from './insights-types';
 import { topRows } from './store';
 import { allRangeDays, summaryTallies } from './summary-stats';
-import { RUN_COLUMNS, SPLIT_COLUMNS, type Range, type RunHistogram, type SplitColumn, type Tallies } from './tallies';
+import { RUN_COLUMNS, SPLIT_COLUMNS, testerFilter, type Range, type RunHistogram, type SplitColumn, type Tallies } from './tallies';
 
 /** Lower bounds (seconds) of the run length histogram. */
 const RUN_SECONDS_HISTOGRAM = [0, 30, 60, 180, 600] as const;
@@ -20,28 +21,22 @@ const LOCATION_SPLITS: ReadonlySet<SplitColumn> = new Set(['country', 'region', 
 type Key = string | number | null;
 
 /** COUNT per value of `column` over the `kind` rows of the range. `column` comes from a fixed list. */
-async function countBy<K extends Key>({ db, from, to }: Range, kind: 'session' | 'run', column: string): Promise<{ key: K; count: number }[]> {
-  const sql = `SELECT ${column} AS key, COUNT(*) AS count FROM events WHERE day BETWEEN ? AND ? AND kind = ? GROUP BY ${column}`;
-  return (await db.prepare(sql).bind(from, to, kind).all<{ key: K; count: number }>()).results;
+async function countBy<K extends Key>(range: Range, kind: 'session' | 'run', column: string): Promise<{ key: K; count: number }[]> {
+  const sql = `SELECT ${column} AS key, COUNT(*) AS count FROM events WHERE day BETWEEN ? AND ? AND kind = ?${testerFilter(range)} GROUP BY ${column}`;
+  return (await range.db.prepare(sql).bind(range.from, range.to, kind).all<{ key: K; count: number }>()).results;
 }
 
-async function rawPerDay({ db, from, to }: Range): Promise<Tallies['perDay']> {
-  const rows = await db
-    .prepare("SELECT day, kind, COUNT(*) AS n FROM events WHERE day BETWEEN ? AND ? AND kind IN ('session', 'run') GROUP BY day, kind")
-    .bind(from, to)
-    .all<{ day: string; kind: 'session' | 'run'; n: number }>();
-  const byDay = new Map<string, { day: string; sessions: number; runs: number }>();
-  for (const { day, kind, n } of rows.results) {
-    const entry = byDay.get(day) ?? { day, sessions: 0, runs: 0 };
-    entry[kind === 'session' ? 'sessions' : 'runs'] = n;
-    byDay.set(day, entry);
-  }
-  return [...byDay.values()];
+async function rawPerDay(range: Range): Promise<Tallies['perDay']> {
+  const sql = `SELECT day, SUM(kind = 'session') AS sessions, SUM(kind = 'run') AS runs,
+      SUM(kind = 'session' AND is_returning IS 0) AS newPlayers, SUM(kind = 'session' AND is_returning IS 1) AS returningVisits
+    FROM events WHERE day BETWEEN ? AND ? AND kind IN ('session', 'run')${testerFilter(range)} GROUP BY day`;
+  return (await range.db.prepare(sql).bind(range.from, range.to).all<Tallies['perDay'][number]>()).results;
 }
 
 /** Median and average of the sessions' `end` seconds, whole seconds; 0 without ends. */
-async function rawEnds({ db, from, to }: Range): Promise<Tallies['ends']> {
-  const where = "FROM events WHERE day BETWEEN ? AND ? AND kind = 'end'";
+async function rawEnds(range: Range): Promise<Tallies['ends']> {
+  const { db, from, to } = range;
+  const where = `FROM events WHERE day BETWEEN ? AND ? AND kind = 'end'${testerFilter(range)}`;
   const summary = await db.prepare(`SELECT COUNT(*) AS n, AVG(seconds) AS avg ${where}`).bind(from, to).first<{ n: number; avg: number | null }>();
   const n = summary?.n ?? 0;
   if (n === 0) return { medianSeconds: 0, avgSeconds: 0 };
@@ -89,16 +84,24 @@ async function entriesPerDay({ db, from, to }: Range): Promise<{ day: string; n:
 }
 
 function zeroFilled(days: string[], tallies: Tallies['perDay'], entries: { day: string; n: number }[]): DayStats[] {
-  const byDay = new Map(days.map((day) => [day, { day, sessions: 0, runs: 0, entries: 0 }]));
-  for (const { day, sessions, runs } of tallies) Object.assign(byDay.get(day)!, { sessions, runs });
+  const byDay = new Map(days.map((day) => [day, { day, sessions: 0, runs: 0, entries: 0, newPlayers: 0, returningVisits: 0 }]));
+  for (const { day, sessions, runs, newPlayers, returningVisits } of tallies) Object.assign(byDay.get(day)!, { sessions, runs, newPlayers, returningVisits });
   for (const { day, n } of entries) byDay.get(day)!.entries = n;
   return [...byDay.values()];
 }
 
-export async function loadStats(db: D1Database, days: StatsRange, now: number): Promise<InsightsStats> {
+/** Sessions by their returning flag; the rest (older builds) are unknown. */
+function visits(perDay: readonly DayStats[], sessions: number): InsightsStats['visits'] {
+  const fresh = perDay.reduce((sum, day) => sum + day.newPlayers, 0);
+  const returning = perDay.reduce((sum, day) => sum + day.returningVisits, 0);
+  return { new: fresh, returning, unknown: sessions - fresh - returning };
+}
+
+/** `testers` includes the owner's test devices; without it their sessions, runs and ends count nowhere. */
+export async function loadStats(db: D1Database, days: StatsRange, now: number, testers: boolean): Promise<InsightsStats> {
   const fromRaw = days !== ALL_RANGE && days <= RAW_RETENTION_DAYS;
   const dayList = dayRange(now, days === ALL_RANGE ? await allRangeDays(db, now) : days);
-  const range: Range = { db, from: dayList[0]!, to: dayList[dayList.length - 1]! };
+  const range: Range = { db, from: dayList[0]!, to: dayList[dayList.length - 1]!, testers };
   const [tallies, entries, top] = await Promise.all([fromRaw ? rawTallies(range) : summaryTallies(range), entriesPerDay(range), topRows(db)]);
   const perDay = zeroFilled(dayList, tallies.perDay, entries);
   const sessions = perDay.reduce((sum, day) => sum + day.sessions, 0);
@@ -111,6 +114,7 @@ export async function loadStats(db: D1Database, days: StatsRange, now: number): 
     generatedAt: new Date(now).toISOString(),
     perDay,
     sessions: { total: sessions, ...tallies.ends },
+    visits: visits(perDay, sessions),
     runs: {
       total: runs,
       perSession: sessions === 0 ? 0 : Math.round((runs / sessions) * 100) / 100,

@@ -45,6 +45,21 @@ describe('fetchStats', () => {
       expect(result.ok && result.stats.days).toBe(days);
     }
   });
+  it('asks for test devices only with testers set, token still only in the header', async () => {
+    const calls: { url: string; headers?: Record<string, string> }[] = [];
+    await fetchStats(fakeFetch(200, sampleStats(7), calls), { base: 'http://x', token: 'abc', days: 7, testers: true });
+    await fetchStats(fakeFetch(200, sampleStats(7), calls), { base: 'http://x', token: 'abc', days: 7, testers: false });
+    expect(calls.map((c) => c.url)).toEqual(['http://x/stats?days=7&testers=1', 'http://x/stats?days=7']);
+    expect(calls[0]!.headers).toEqual({ Authorization: 'Bearer abc' });
+  });
+  it('requires the new vs. returning counts', () => {
+    const stats = sampleStats(7);
+    expect(isInsightsStats(stats)).toBe(true);
+    expect(isInsightsStats({ ...stats, visits: undefined })).toBe(false);
+    expect(isInsightsStats({ ...stats, visits: { new: 1, returning: -1, unknown: 0 } })).toBe(false);
+    const { newPlayers: _, ...oldDay } = stats.perDay[0]!;
+    expect(isInsightsStats({ ...stats, perDay: [oldDay] })).toBe(false);
+  });
   it('rejects a range outside STATS_RANGES', () => {
     expect(isInsightsStats({ ...sampleStats(30), days: 60 })).toBe(false);
   });

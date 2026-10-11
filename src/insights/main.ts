@@ -4,6 +4,7 @@
  * the URL. Never linked from the game.
  */
 import './insights.css';
+import { store } from '../core/storage';
 import type { FetchLike } from '../net/api';
 import type { FeedbackEntry } from '../net/feedback-types';
 import type { InsightsStats, StatsRange } from '../net/telemetry-types';
@@ -11,6 +12,7 @@ import { drawDayCharts, renderBoard } from './board';
 import { apiBase, fetchFeedback, fetchStats, type StatsError } from './client';
 import type { FeedbackFilter } from './feedback';
 import { renderLocked } from './locked';
+import { markOnUnlock, setTestDevice, testDeviceState } from './test-device';
 
 const root = document.getElementById('app')!;
 const base = apiBase(window.location);
@@ -28,6 +30,10 @@ let stats: InsightsStats | null = null;
 /** null while GET /feedback fails; the stats still render. */
 let feedback: FeedbackEntry[] | null = null;
 let feedbackFilter: FeedbackFilter = 'all';
+/** The test-device marker as the board shows it; written only through test-device.ts. */
+let testDevice = testDeviceState(store) === true;
+/** 'inkl. Testgeräte': off on every page load, never stored. */
+let testers = false;
 
 function showLocked(message: string | null, busy = false): void {
   stats = null;
@@ -38,18 +44,26 @@ function showBoard(loading: boolean, error: string | null = null): void {
   if (!stats) return;
   renderBoard(
     root,
-    { stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter } },
-    { onRange: switchRange, onReload: () => void load(), onLock: lock, onFeedbackFilter: (filter) => (feedbackFilter = filter) },
+    { stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter }, testDevice, testers },
+    {
+      onRange: switchRange,
+      onReload: () => void load(),
+      onLock: lock,
+      onFeedbackFilter: (filter) => (feedbackFilter = filter),
+      onTestDevice: switchTestDevice,
+      onTesters: switchTesters,
+    },
   );
 }
 
 async function load(): Promise<void> {
   if (!token) return;
   const asked = range;
+  const askedTesters = testers;
   if (stats) showBoard(true);
   else showLocked(null, true);
-  const [result, fb] = await Promise.all([fetchStats(fetchFn, { base, token, days: asked }), fetchFeedback(fetchFn, { base, token })]);
-  if (asked !== range || !token) return;
+  const [result, fb] = await Promise.all([fetchStats(fetchFn, { base, token, days: asked, testers: askedTesters }), fetchFeedback(fetchFn, { base, token })]);
+  if (asked !== range || askedTesters !== testers || !token) return;
   if ((!result.ok && result.error === 'auth') || (!fb.ok && fb.error === 'auth')) {
     token = null;
     showLocked(ERRORS.auth);
@@ -57,6 +71,7 @@ async function load(): Promise<void> {
   }
   feedback = fb.ok ? fb.entries : null;
   if (result.ok) {
+    testDevice = markOnUnlock(store);
     stats = result.stats;
     showBoard(false);
   } else if (stats) {
@@ -73,6 +88,16 @@ function unlock(value: string): void {
 
 function switchRange(days: StatsRange): void {
   range = days;
+  void load();
+}
+
+function switchTestDevice(on: boolean): void {
+  setTestDevice(store, on);
+  testDevice = on;
+}
+
+function switchTesters(on: boolean): void {
+  testers = on;
   void load();
 }
 

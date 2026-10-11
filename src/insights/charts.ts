@@ -6,7 +6,7 @@ import { formatNumber, formatPercent } from './format';
 import type { Grain, Period } from './periods';
 import type { RankedRow, Segment } from './split';
 
-export const SERIES_LABEL: Record<DaySeries, string> = { sessions: 'Sessions', runs: 'Runs', entries: 'Einträge' };
+export const SERIES_LABEL: Record<DaySeries, string> = { sessions: 'Sessions', runs: 'Runs', entries: 'Einträge', newPlayers: 'neue Spieler' };
 /** 'pro Tag', 'pro Woche', 'pro Monat'. */
 export const GRAIN_UNIT: Record<Grain, string> = { day: 'Tag', week: 'Woche', month: 'Monat' };
 

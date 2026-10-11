@@ -5,7 +5,7 @@
  */
 import { type FetchLike, REQUEST_TIMEOUT_MS, SCORES_URL } from '../net/api';
 import { FEEDBACK_KINDS, type FeedbackEntry, type FeedbackList } from '../net/feedback-types';
-import { type CountEntry, INPUTS, type InsightsStats, ORIENTATIONS, PLATFORMS, STATS_RANGES, type StatsRange } from '../net/telemetry-types';
+import { type CountEntry, INPUTS, type InsightsStats, ORIENTATIONS, PLATFORMS, STATS_RANGES, STATS_TESTERS_PARAM, type StatsRange } from '../net/telemetry-types';
 
 export type StatsError = 'auth' | 'offline' | 'server';
 export type StatsResult = { ok: true; stats: InsightsStats } | { ok: false; error: StatsError };
@@ -30,7 +30,7 @@ const isEntries = (v: unknown): v is CountEntry[] => Array.isArray(v) && v.every
 const SPLITS = ['input', 'orientation', 'platform', 'kid', 'version', 'country', 'region', 'city'] as const;
 
 function isDay(v: unknown): boolean {
-  return isRecord(v) && typeof v.day === 'string' && isCount(v.sessions) && isCount(v.runs) && isCount(v.entries);
+  return isRecord(v) && typeof v.day === 'string' && isCount(v.sessions) && isCount(v.runs) && isCount(v.entries) && isCount(v.newPlayers) && isCount(v.returningVisits);
 }
 
 function isTop(v: unknown): boolean {
@@ -40,8 +40,9 @@ function isTop(v: unknown): boolean {
 /** Checks the shape the board reads; anything else counts as a server error. */
 export function isInsightsStats(v: unknown): v is InsightsStats {
   if (!isRecord(v) || !STATS_RANGES.includes(v.days as StatsRange) || typeof v.generatedAt !== 'string') return false;
-  const { perDay, sessions, runs, split, topScores } = v;
+  const { perDay, sessions, visits, runs, split, topScores } = v;
   if (!Array.isArray(perDay) || !perDay.every(isDay)) return false;
+  if (!isRecord(visits) || !isCount(visits.new) || !isCount(visits.returning) || !isCount(visits.unknown)) return false;
   if (!isRecord(sessions) || !isCount(sessions.total) || !isCount(sessions.medianSeconds) || !isCount(sessions.avgSeconds)) return false;
   if (!isRecord(runs) || !isCount(runs.total) || !isCount(runs.perSession)) return false;
   if (!isEntries(runs.seconds) || !isEntries(runs.distance) || !isEntries(runs.score)) return false;
@@ -53,11 +54,13 @@ export interface StatsRequest {
   base: string;
   token: string;
   days: StatsRange;
+  /** Include the owner's test devices ('inkl. Testgeräte'). */
+  testers?: boolean;
   timeoutMs?: number;
 }
 
 export function fetchStats(fetchFn: FetchLike, request: StatsRequest): Promise<StatsResult> {
-  const url = `${request.base}/stats?days=${request.days}`;
+  const url = `${request.base}/stats?days=${request.days}${request.testers ? `&${STATS_TESTERS_PARAM}=1` : ''}`;
   return authorizedGet(fetchFn, url, request, isInsightsStats).then((r) => (r.ok ? { ok: true, stats: r.body } : r));
 }
 

@@ -15,6 +15,21 @@ describe('parseEvent', () => {
     expect(parseEvent(text(end))).toEqual(end);
   });
 
+  it('accepts session events with or without the optional tester and returning flags', () => {
+    for (const flags of [{ tester: true }, { returning: false }, { tester: false, returning: true }]) {
+      expect(parseEvent(text({ ...session, ...flags })), JSON.stringify(flags)).toEqual({ ...session, ...flags });
+    }
+  });
+
+  it('rejects non-boolean tester or returning flags, and the flags on other kinds', () => {
+    for (const value of [1, 0, 'true', null, {}, []]) {
+      expect(parseEvent(text({ ...session, tester: value })), `tester ${JSON.stringify(value)}`).toBeNull();
+      expect(parseEvent(text({ ...session, returning: value })), `returning ${JSON.stringify(value)}`).toBeNull();
+    }
+    expect(parseEvent(text({ ...run, tester: true }))).toBeNull();
+    expect(parseEvent(text({ ...end, returning: true }))).toBeNull();
+  });
+
   it('accepts the range edges', () => {
     expect(parseEvent(text({ ...run, seconds: 0, distance: 0, score: 0 }))).not.toBeNull();
     expect(parseEvent(text({ ...run, seconds: 3600, distance: 5000, score: 5000 }))).not.toBeNull();

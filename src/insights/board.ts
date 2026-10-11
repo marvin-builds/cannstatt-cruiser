@@ -3,6 +3,7 @@ import { type InsightsStats, STATS_RANGES, type StatsRange } from '../net/teleme
 import { distanceGroups, runLengthGroups, scoreGroups } from './buckets';
 import { CHART_PAD_LEFT, GRAIN_UNIT, histogram, legend, periodBars, rankedList, splitBar } from './charts';
 import type { DaySeries } from './day-chart';
+import { deviceSwitches, type DeviceSwitchesHandlers } from './device-switches';
 import { h } from './dom';
 import type { FeedbackFilter } from './feedback';
 import { feedbackCard, type FeedbackView } from './feedback-card';
@@ -10,8 +11,9 @@ import { countryName, formatDecimal, formatDuration, formatNumber } from './form
 import { chartPeriods } from './periods';
 import { isApproximate, rangeButtonLabel, rangeNote } from './ranges';
 import { rankedRows, type SplitKey, splitSegments } from './split';
+import { visitsSummary } from './visits';
 
-export interface BoardHandlers {
+export interface BoardHandlers extends DeviceSwitchesHandlers {
   onRange(days: StatsRange): void;
   onReload(): void;
   onLock(): void;
@@ -26,6 +28,10 @@ export interface BoardView {
   /** A failed reload, shown above the (older) data. */
   error: string | null;
   feedback: FeedbackView;
+  /** This device carries the test-device marker. */
+  testDevice: boolean;
+  /** The numbers include test devices. */
+  testers: boolean;
 }
 
 const SPLITS: { title: string; field: keyof InsightsStats['split']; keys: SplitKey[] }[] = [
@@ -101,7 +107,25 @@ function card(title: string, ...children: (Node | null)[]): HTMLElement {
 const DAY_CHARTS: Record<string, { title: string; series: DaySeries[] }> = {
   sessions: { title: 'Sessions und Runs', series: ['sessions', 'runs'] },
   entries: { title: 'Highscore-Einträge', series: ['entries'] },
+  visits: { title: 'Sessions und neue Spieler', series: ['sessions', 'newPlayers'] },
 };
+
+/** New players and returning visits of the range, then sessions and new players per period. */
+function visitsCard(stats: InsightsStats): HTMLElement {
+  const summary = visitsSummary(stats.visits);
+  return card(
+    `${DAY_CHARTS.visits!.title} pro Tag`,
+    h(
+      'p',
+      { class: 'visits' },
+      h('span', {}, h('strong', { class: 'tile-value' }, summary.value), ' neue Spieler im Zeitraum'),
+      ...summary.notes.map((note) => h('span', { class: 'visits-note' }, note)),
+    ),
+    h('p', { class: 'card-note fine' }, summary.fine),
+    legend([{ label: 'Sessions', color: 'c1' }, { label: 'neue Spieler', color: 'c3' }]),
+    h('div', { class: 'chart-holder', 'data-day-chart': 'visits' }),
+  );
+}
 
 /**
  * Sizes the period charts to their card; called again on resize. The main
@@ -145,9 +169,11 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
       'main',
       { class: 'board', 'aria-busy': String(view.loading) },
       header(view, handlers),
+      deviceSwitches({ testDevice: view.testDevice, testers: view.testers, loading: view.loading }, handlers),
       view.error ? h('p', { class: 'banner', role: 'alert' }, view.error) : null,
       tiles,
       card(`${DAY_CHARTS.sessions!.title} pro Tag`, legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
+      visitsCard(stats),
       h(
         'div',
         { class: 'grid three' },

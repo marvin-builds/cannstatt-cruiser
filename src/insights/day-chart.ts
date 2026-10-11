@@ -1,6 +1,6 @@
 /** Geometry of the grouped bar chart over days, weeks or months (pure, drawn by charts.ts). */
 
-export type DaySeries = 'sessions' | 'runs' | 'entries';
+export type DaySeries = 'sessions' | 'runs' | 'entries' | 'newPlayers';
 
 export interface ChartBox {
   width: number;

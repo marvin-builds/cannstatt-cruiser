@@ -1,6 +1,7 @@
 /**
  * Strict parsing of a `POST /event` body against the allow-lists in events.ts:
- * exactly the fields of its kind (no extra, none missing), allowed values only.
+ * exactly the fields of its kind (no extra, none missing; optional ones may be
+ * left out), allowed values only.
  */
 import {
   DISTANCE_STEP_M, INPUTS, MAX_DISTANCE_M, MAX_END_SECONDS, MAX_RUN_SECONDS, ORIENTATIONS, PLATFORMS, RUN_SECONDS_STEP,
@@ -13,6 +14,8 @@ const FIELDS: Record<TelemetryEvent['kind'], readonly string[]> = {
   run: ['kind', 'session', 'seconds', 'score', 'distance', 'kid'],
   end: ['kind', 'session', 'seconds'],
 };
+/** Fields a kind may leave out (sent only by newer builds, ROADMAP 55). */
+const OPTIONAL_FIELDS: Record<TelemetryEvent['kind'], readonly string[]> = { session: ['tester', 'returning'], run: [], end: [] };
 
 const oneOf = <T>(list: readonly T[], value: unknown): value is T => list.includes(value as T);
 
@@ -20,10 +23,13 @@ const oneOf = <T>(list: readonly T[], value: unknown): value is T => list.includ
 const isStep = (value: unknown, step: number, max: number): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= max && (value as number) % step === 0;
 
-function hasExactly(body: Record<string, unknown>, fields: readonly string[]): boolean {
-  const keys = Object.keys(body);
-  return keys.length === fields.length && fields.every((field) => Object.hasOwn(body, field));
+/** Every required field and no other than the optional ones. */
+function hasFieldsOf(body: Record<string, unknown>, kind: TelemetryEvent['kind']): boolean {
+  const allowed = [...FIELDS[kind], ...OPTIONAL_FIELDS[kind]];
+  return FIELDS[kind].every((field) => Object.hasOwn(body, field)) && Object.keys(body).every((key) => allowed.includes(key));
 }
+
+const isOptionalBoolean = (value: unknown): boolean => value === undefined || typeof value === 'boolean';
 
 /** The event, or null when the text is not a valid event. */
 export function parseEvent(text: string): TelemetryEvent | null {
@@ -36,13 +42,14 @@ export function parseEvent(text: string): TelemetryEvent | null {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
   const kind = record.kind;
-  if (!oneOf(Object.keys(FIELDS), kind) || !hasExactly(record, FIELDS[kind as TelemetryEvent['kind']])) return null;
+  if (!oneOf(Object.keys(FIELDS), kind) || !hasFieldsOf(record, kind as TelemetryEvent['kind'])) return null;
   if (typeof record.session !== 'string' || !SESSION_ID_PATTERN.test(record.session)) return null;
   const event = record as unknown as TelemetryEvent;
   switch (event.kind) {
     case 'session':
       return typeof event.version === 'string' && VERSION_PATTERN.test(event.version) && oneOf(INPUTS, event.input) &&
-        oneOf(ORIENTATIONS, event.orientation) && oneOf(PLATFORMS, event.platform) && typeof event.kid === 'boolean'
+        oneOf(ORIENTATIONS, event.orientation) && oneOf(PLATFORMS, event.platform) && typeof event.kid === 'boolean' &&
+        isOptionalBoolean(event.tester) && isOptionalBoolean(event.returning)
         ? event
         : null;
     case 'run':

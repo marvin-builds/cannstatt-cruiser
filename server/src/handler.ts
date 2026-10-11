@@ -8,7 +8,7 @@ import { isAuthorized } from './auth';
 import { corsHeaders, isAllowedOrigin } from './cors';
 import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-store';
 import { parseEvent } from './event-parse';
-import { MAX_EVENT_BYTES, STATS_RANGES } from './events';
+import { MAX_EVENT_BYTES, STATS_RANGES, STATS_TESTERS_PARAM } from './events';
 import { parseFeedback } from './feedback-parse';
 import { MAX_FEEDBACK_BYTES } from './feedback-rules';
 import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
@@ -75,7 +75,9 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const values = searchParams.getAll('days');
     const days = STATS_RANGES.find((range) => values.length === 1 && String(range) === values[0]);
     if (days === undefined) return fail('bad-request');
-    return json(await loadStats(env.DB, days, now), 200);
+    // Only exactly one `testers=1` includes test devices; anything else leaves them out.
+    const testers = searchParams.getAll(STATS_TESTERS_PARAM).join() === '1';
+    return json(await loadStats(env.DB, days, now, testers), 200);
   }
   if (request.method === 'POST' && pathname === '/event') {
     if (!isAllowedOrigin(origin)) return fail('forbidden');
