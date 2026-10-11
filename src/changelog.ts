@@ -20,6 +20,15 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.7',
+    date: '2026-10-11',
+    items: [
+      'Mehr los auf der Straße',
+      'Neu: Boardslide auf dem Geländer',
+      'Updates kommen schneller an',
+    ],
+  },
+  {
     version: '2026-10-11.6',
     date: '2026-10-11',
     items: [
