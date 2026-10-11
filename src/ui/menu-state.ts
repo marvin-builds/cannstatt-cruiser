@@ -14,6 +14,8 @@ export interface MenuView {
   lastRun: RunResult | null;
   settings: { open: boolean };
   portraitDismissed: boolean;
+  /** The player types with portrait freed (typing-orientation.ts): no rotate hint. */
+  portraitFree: boolean;
   /** The HUD stats plate as drawn now (the pause logo keeps clear of it). */
   hud: { layout: { plate: Rect } };
   /** The online list (highscore-flow.ts): its screens cover the menus; `offered` adds "Eintragen" to game over. Null without one. */
@@ -29,8 +31,11 @@ interface Source {
   display: DisplayInfo;
 }
 
-export function portraitHintShown(r: { display: { portrait: boolean; touch: boolean } }, view: { portraitDismissed: boolean }): boolean {
-  return r.display.portrait && r.display.touch && !view.portraitDismissed;
+export function portraitHintShown(
+  r: { display: { portrait: boolean; touch: boolean } },
+  view: { portraitDismissed: boolean; portraitFree: boolean },
+): boolean {
+  return r.display.portrait && r.display.touch && !view.portraitDismissed && !view.portraitFree;
 }
 
 /** The menu screen of this mode, or null while riding or while the settings menu or a highscore screen covers it. */

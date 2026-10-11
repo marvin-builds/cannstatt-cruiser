@@ -3,6 +3,7 @@ import { Game } from '../core/game';
 import { GAMEOVER_INPUT_DELAY, TICK_DT } from '../core/config';
 import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
+import type { OrientationEnv } from '../core/orientation';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
 import type { Rect } from '../types';
 import type { FeedbackField } from './feedback-field';
@@ -18,7 +19,7 @@ function memoryStore(): Store {
 
 const centre = (r: Rect) => [r.x + r.w / 2, r.y + r.h / 2] as const;
 
-function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult; hold?: boolean } = {}) {
+function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult; hold?: boolean; installed?: boolean } = {}) {
   let answer: (r: FeedbackResult) => void = () => {};
   const sent: { draft: FeedbackDraft; context: FeedbackContext }[] = [];
   const sender = {
@@ -48,7 +49,10 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
   } satisfies FeedbackField & Record<string, unknown>;
   const store = memoryStore();
   if (options.kid) store.set('kidMode', true);
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field });
+  /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
+  const locks: string[] = [];
+  const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
+  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackField: field, orientation });
   const game = new Game({ systems: [ui] });
   game.display.touch = options.touch ?? false;
   game.display.portrait = options.portrait ?? false;
@@ -78,7 +82,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     for (let i = 0; i < 8; i++) game.tick();
   };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
+  return { game, ui, flow: ui.feedback!, sent, field, locks, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -340,5 +344,70 @@ describe('the open feedback form is modal everywhere (phone bug of 2026-10-11.5)
     for (let i = 0; i < Math.ceil(GAMEOVER_INPUT_DELAY / TICK_DT) + 1; i++) t.game.tick();
     t.tap(t.game.display.viewWidth / 2, 100);
     expect(t.game.state.mode).toBe('playing');
+  });
+});
+
+describe('portrait while typing feedback in the installed app (ROADMAP 54)', () => {
+  it('opening the form frees portrait, "Abbrechen" locks landscape again', () => {
+    const t = app({ installed: true, touch: true });
+    expect(t.locks).toEqual([]);
+    t.press(t.icon());
+    t.game.tick();
+    expect(t.locks).toEqual(['any']);
+    t.press(t.form().cancel);
+    t.game.tick();
+    expect(t.locks).toEqual(['any', 'landscape']);
+  });
+
+  it('Esc, "Senden" (the thank-you screen has nothing to type) and a closing textarea lock landscape again', async () => {
+    const t = app({ installed: true });
+    t.key('KeyF');
+    t.key('Escape');
+    expect(t.locks).toEqual(['any', 'landscape']);
+    t.key('KeyF');
+    t.flow.setText('Die Bank ist zu hoch');
+    t.press(t.form().send);
+    await Promise.resolve();
+    await Promise.resolve();
+    t.game.tick();
+    expect(t.flow.done).toBe(true);
+    expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
+  });
+
+  it('a run start or leaving the pause screen closes the form and locks landscape on the same tick', () => {
+    const t = app({ installed: true });
+    t.key('KeyF');
+    t.game.commands.startRun();
+    t.game.tick();
+    expect(t.locks).toEqual(['any', 'landscape']);
+    t.game.commands.pause();
+    t.game.tick();
+    t.press(pauseLayout(t.input()).buttons.feedback);
+    t.game.tick();
+    t.game.commands.resume();
+    t.game.tick();
+    expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
+  });
+
+  it('turned to portrait while typing, the form keeps its field in the portrait layout instead of the rotate hint', () => {
+    const t = app({ installed: true, touch: true });
+    t.press(t.icon());
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.field.rect).toEqual(t.form().field);
+    expect(t.press(t.form().idea)).toBe(true);
+    expect(t.flow.kind).toBe('idea');
+  });
+
+  it('kid mode without feedback never frees portrait', () => {
+    const t = app({ installed: true, kid: true });
+    t.press(t.icon());
+    t.key('KeyF');
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    t.press(pauseLayout(t.input()).buttons.feedback);
+    t.game.tick();
+    expect(t.locks).toEqual([]);
   });
 });
