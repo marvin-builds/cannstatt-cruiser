@@ -20,7 +20,8 @@
  * name-field.ts, drag and wheel scrolling list-scroll.ts. The anonymous
  * statistics (src/net/telemetry.ts) get the session on the first title, each
  * game over and the active play time; their switch ("Anonyme Statistik") is in
- * the settings menu and on the "Bestenliste".
+ * the settings menu and on the "Bestenliste", with the "Datenschutz" link
+ * (privacy-link.ts) right beside it.
  */
 import { CHILL_DURATION } from '../core/chill';
 import { GROUND_Y, PLAYER_X } from '../core/config';
@@ -59,6 +60,7 @@ import { drawUi, type UiView } from './screens';
 import { Sparkle } from './sparkle';
 import { TrickHint } from './trick-hint';
 import { placeCallout, StuntCallout } from './stunt-callout';
+import { browserOpenPage, type OpenPage, PrivacyLink } from './privacy-link';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -77,6 +79,8 @@ export interface UiSystemOptions {
    * none elsewhere). null sends nothing; tests pass a fake.
    */
   telemetry?: TelemetryLike | null;
+  /** Opens datenschutz.html in a new tab (default: window.open in a browser, none elsewhere); tests pass a fake. */
+  openPage?: OpenPage | null;
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list). */
@@ -109,6 +113,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
   const flow = scores ? new HighscoreFlow({ service: scores, store }) : null;
   const telemetry = options.telemetry !== undefined ? options.telemetry : browser ? createBrowserTelemetry(store) : null;
+  const privacyLink = new PrivacyLink(options.openPage !== undefined ? options.openPage : browser ? browserOpenPage : null);
   /** The session event goes out once per page load, when the title first shows. */
   let sessionReported = false;
   const nameField =
@@ -397,6 +402,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (onMenu() ? menu().toggle : null), onPress: () => settings.toggle(state) });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().stats : null), onPress: () => settings.toggleStats() });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display).ok : null), onPress: () => settings.close() });
   }
@@ -472,6 +478,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(modal);
     ctx.addHotspot({ rect: () => (flow.open && !covered() ? closeButton(display.viewWidth, uiMetrics(display)) : null), onPress: () => flow.close() });
     ctx.addHotspot({ rect: () => (flow.screen === 'list' && !covered() ? listLayout(ctx).stats : null), onPress: () => view.settings.toggleStats() });
+    ctx.addHotspot({ rect: () => (flow.screen === 'list' && !covered() ? listLayout(ctx).privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: entry((l) => l.submit), onPress: () => void flow.submit() });
     ctx.addHotspot({ rect: entry((l) => l.field), onPress: () => nameField?.focus() });
   }
@@ -542,6 +549,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       };
       bindEvents(ctx);
       addHotspots(ctx);
+      ctx.onUserGesture(() => privacyLink.gesture());
       if (browser && flow) {
         bindListScroll(
           { active: () => flow.screen === 'list', scrollBy: (dy) => flow.scrollBy(dy), lineHeight: () => listLayout(ctx).rowH },
@@ -554,6 +562,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     update(ctx, dt) {
       const { state, display } = ctx;
       if (!display.portrait) view.portraitDismissed = false;
+      privacyLink.update(dt);
       if (state.mode === 'playing' && portraitHintShown(ctx, view)) ctx.commands.pause();
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));

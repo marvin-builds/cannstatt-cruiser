@@ -61,6 +61,17 @@ describe('Bestenliste layout', () => {
         expect(l.stats.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
         if (c.touch) expect(l.stats.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
         expect(l.stats.x, `${label}: stats switch top left`).toBeLessThan(8);
+        expect(inside(l.privacyLink, c.viewWidth) && whole(l.privacyLink), `${label}: privacy link`).toBe(true);
+        for (const r of [l.close, l.title, l.list, l.stats]) expect(overlap(l.privacyLink, r), `${label}: privacy link`).toBe(false);
+        expect(l.privacyLink.y, `${label}: privacy link beside the switch`).toBe(l.stats.y);
+        expect(l.privacyLink.h, label).toBe(l.stats.h);
+        expect(l.privacyLink.x, label).toBeGreaterThan(l.stats.x + l.stats.w);
+        expect(l.title.x, `${label}: title right of the link`).toBeGreaterThan(l.privacyLink.x + l.privacyLink.w);
+        if (c.touch) expect(l.privacyLink.w * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
+        const viewCentred = Math.abs(l.title.x + l.title.w / 2 - c.viewWidth / 2) <= 1;
+        const gapLeft = l.title.x - (l.privacyLink.x + l.privacyLink.w);
+        const gapRight = l.close.x - (l.title.x + l.title.w);
+        if (!viewCentred) expect(Math.abs(gapLeft - gapRight), `${label}: title centred between link and close`).toBeLessThanOrEqual(1);
         expect(l.close.w, label).toBeGreaterThanOrEqual(m.menuButtonH);
         expect(l.close.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
         if (c.touch) expect(l.close.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);

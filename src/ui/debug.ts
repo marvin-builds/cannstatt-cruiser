@@ -93,6 +93,8 @@ export interface HighscoresDebug {
   close: Rect;
   /** The list's "Anonyme Statistik" switch. */
   stats: Rect;
+  /** The list's "Datenschutz" link beside the switch. */
+  privacyLink: Rect;
   field: Rect;
   submit: Rect;
 }
@@ -197,6 +199,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       const { display } = ctx;
       const metrics = uiMetrics(display);
       const entry = scoreEntryLayout(display);
+      const list = scoreListLayout(display, flow.entries.length, flow.message !== null);
       return {
         screen: flow.screen,
         offered: flow.offered,
@@ -207,11 +210,12 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         highlight: flow.highlight,
         ownBest: flow.ownBest,
         scroll: flow.scroll,
-        maxScroll: scoreListLayout(display, flow.entries.length, flow.message !== null).maxScroll,
+        maxScroll: list.maxScroll,
         trophy: titleTrophy(display.viewWidth, view.fullscreenAvailable, metrics),
         trophyShown: trophyShown(ctx.state, view),
         close: closeButton(display.viewWidth, metrics),
-        stats: scoreListLayout(display, flow.entries.length, flow.message !== null).stats,
+        stats: list.stats,
+        privacyLink: list.privacyLink,
         field: entry.field,
         submit: entry.submit,
       };

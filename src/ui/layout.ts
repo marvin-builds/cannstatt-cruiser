@@ -1,5 +1,6 @@
 import type { GameMode } from '../core/modes';
 import type { Rect } from '../types';
+import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 /**
  * Pointer button sizes (view pixels) for the device. Phones get bigger
@@ -78,13 +79,15 @@ export function buttonPlate(hit: Rect, m: UiMetrics): Rect {
   return { x: hit.x + inset, y: hit.y + inset, w: m.plate, h: m.plate };
 }
 
-/** The settings menu top down: title, Kindermodus and its note, the statistics switch and its note, the desktop key hint, Zurück. */
+/** The settings menu top down: title, Kindermodus and its note, the statistics switch (with the "Datenschutz" link right of it) and its note, the desktop key hint, Zurück. */
 export interface SettingsLayout {
   /** Top of the scale-2 title. */
   titleY: number;
   toggle: Rect;
   kidNoteY: number;
   stats: Rect;
+  /** "Datenschutz" (opens datenschutz.html), right of the statistics switch. */
+  privacyLink: Rect;
   statsNoteY: number;
   /** Desktop key help; null on touch. */
   keysY: number | null;
@@ -108,13 +111,16 @@ export function settingsLayout(viewWidth: number, m: UiMetrics): SettingsLayout 
   const titleY = tall ? 4 : 12;
   const toggle = centred(TOGGLE_W, titleY + TITLE_H + (tall ? 2 : 8));
   const kidNoteY = toggle.y + h + 2;
-  const stats = centred(TOGGLE_W, kidNoteY + NOTE_LINE + gap);
+  // The switch and the link are centred as one row.
+  const statsRow = centred(TOGGLE_W + PRIVACY_LINK_GAP + PRIVACY_LINK_W, kidNoteY + NOTE_LINE + gap);
+  const stats = { ...statsRow, w: TOGGLE_W };
+  const privacyLink = { ...statsRow, x: stats.x + TOGGLE_W + PRIVACY_LINK_GAP, w: PRIVACY_LINK_W };
   const statsNoteY = stats.y + h + 2;
   const below = statsNoteY + NOTE_LINE + gap;
   // Touch (bigger buttons) has no key help line.
   const keysY = h > DESKTOP.menuButtonH ? null : below;
   const back = centred(BACK_W, keysY === null ? below : keysY + NOTE_LINE + gap);
-  return { titleY, toggle, kidNoteY, stats, statsNoteY, keysY, back };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */

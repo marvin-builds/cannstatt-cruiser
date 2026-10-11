@@ -907,6 +907,29 @@ describe('statistics switch in the hidden settings menu', () => {
     }
   });
 
+  it('the "Datenschutz" link beside it opens datenschutz.html on the tap\'s gesture, in adult and kid mode; the menu stays open', () => {
+    for (const kidMode of [false, true]) {
+      const store = memoryStore();
+      saveKidMode(store, kidMode);
+      const opened: string[] = [];
+      const ui = createUiSystem({ store, fullscreenAvailable: () => true, openPage: (url) => (opened.push(url), true) });
+      const game = new Game({ systems: [ui] });
+      keyDown(game, 'KeyK');
+      for (let i = 0; i < 180; i++) game.tick();
+      keyUp(game, 'KeyK');
+      game.tick();
+      const menu = settingsLayout(game.display.viewWidth, uiMetrics(game.display));
+      expect(game.hitHotspot(...centre(menu.privacyLink))).toBe(true);
+      game.tick();
+      game.notifyUserGesture();
+      expect(opened).toEqual(['datenschutz.html']);
+      expect(loadStatsOptOut(store)).toBe(false);
+      expect(game.state.mode).toBe('title');
+      game.tick();
+      expect(game.hitHotspot(...centre(menu.back))).toBe(true);
+    }
+  });
+
   it('A toggles it from the keyboard', () => {
     const t = menuOpen(false);
     keyDown(t.game, 'KeyA');

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Datenschutz beim Pixel-Skate-Runner Cannstatt Cruiser" />
+    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./src/privacy/privacy.css" />
+    <title>Datenschutz · Cannstatt Cruiser</title>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./">← Zurück zum Spiel</a>
+      <h1>Datenschutz</h1>
+      <p class="lead">
+        Cannstatt Cruiser ist ein kostenloses Hobby-Spiel ohne Werbung, ohne Konto und ohne Tracking. Hier steht kurz, welche Daten
+        anfallen, wofür und wie lange.
+      </p>
+
+      <h2>Wer ist verantwortlich?</h2>
+      <p>
+        Das Spiel betreibt eine Privatperson unter dem Namen <strong>marvinmai</strong>. Fragen und Wünsche zum Datenschutz am
+        besten über ein
+        <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a>
+        oder über „Feedback“ im Spiel. GitHub-Issues sind öffentlich: Schreib dort bitte nichts Persönliches hinein.
+      </p>
+
+      <h2>Hosting</h2>
+      <ul>
+        <li>
+          Die Spielseite liegt bei <strong>GitHub Pages</strong>. Um die Seite auszuliefern, verarbeitet GitHub technisch deine
+          IP-Adresse (siehe
+          <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener"
+            >Datenschutzerklärung von GitHub</a
+          >).
+        </li>
+        <li>
+          Der Server für Bestenliste, Statistik und Feedback läuft bei <strong>Cloudflare Workers</strong>. Cloudflare verarbeitet
+          dabei technisch deine IP-Adresse (siehe
+          <a href="https://www.cloudflare.com/de-de/privacypolicy/" rel="noopener">Datenschutzerklärung von Cloudflare</a>). Der
+          Spiel-Server selbst liest und speichert die IP-Adresse nie.
+        </li>
+      </ul>
+
+      <h2>Auf deinem Gerät</h2>
+      <p>
+        Das Spiel speichert im Browser (localStorage) nur, was es zum Spielen braucht: deine Einstellungen (Kindermodus, Ton,
+        Statistik an/aus), deine eigenen Rekorde und gesammelten Sterne, den zuletzt eingetragenen Namen, eine zufällige
+        Geräte-ID für die Online-Bestenliste und welche Hinweise du schon gesehen hast. Für das Spielen ohne Internet legt es
+        außerdem die Spieldateien im Browser-Cache ab.
+      </p>
+      <p>
+        Nichts davon verlässt dein Gerät, außer wie unten beschrieben. Du kannst alles löschen, indem du die Website-Daten im
+        Browser löschst.
+      </p>
+      <p class="legal">Rechtsgrundlage: § 25 Abs. 2 Nr. 2 TDDDG (für das Spiel technisch nötig).</p>
+
+      <h2>Online-Bestenliste</h2>
+      <p>Nur wenn du nach einem Lauf auf „Eintragen“ tippst, sendet das Spiel:</p>
+      <ul>
+        <li>den Namen, den du eingibst, Punkte, Strecke und Dauer des Laufs,</li>
+        <li>die Spielversion und das Datum,</li>
+        <li>deine Geräte-ID; gespeichert wird davon nur ein Hash (eine nicht umkehrbare Prüfsumme).</li>
+      </ul>
+      <p>
+        Pro Gerät bleibt nur der beste Lauf stehen, die Liste behält die besten 500. Damit niemand die Liste flutet, merkt sich der
+        Server einen Tag lang, wann ein Gerät etwas eingetragen hat. Beim Öffnen der Bestenliste schickt das Spiel die Geräte-ID
+        mit, damit dein eigener Platz markiert werden kann; dabei wird nichts gespeichert.
+      </p>
+      <p>Tipp: Nimm einen Spitznamen, nicht deinen echten Namen.</p>
+      <p class="legal">
+        Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, eine gemeinsame Bestenliste fair und ohne
+        Spam anzubieten; ob du dich einträgst, entscheidest du selbst.
+      </p>
+
+      <h2>Anonyme Spielstatistik</h2>
+      <p>Damit das Spiel besser wird, sendet es anonyme Zahlen dazu, wie gespielt wird:</p>
+      <ul>
+        <li>
+          pro Besuch: Spielversion, Touch oder Tastatur, Quer- oder Hochformat, Plattform (Android, iOS, andere) und ob der
+          Kindermodus an ist,
+        </li>
+        <li>pro Lauf: Länge, Punkte und Strecke nur grob in Stufen (z. B. „100–199 m“),</li>
+        <li>die Spielzeit des Besuchs.</li>
+      </ul>
+      <p>
+        Dazu kommt ein grober Ort (Land, Region, Stadt), den Cloudflare aus der Verbindung ableitet. Die IP-Adresse wird dabei nie
+        gespeichert. Zeitpunkte werden nur als Tag und Stunde gespeichert. Jeder Besuch bekommt eine zufällige Sitzungs-ID, die nur
+        im Arbeitsspeicher liegt und beim Schließen verschwindet; sie hat nichts mit der Geräte-ID oder der Bestenliste zu tun.
+        Kein Name, keine Geräte-ID.
+      </p>
+      <p>
+        Die einzelnen Einträge werden nach 90 Tagen gelöscht. Danach bleiben nur Tagessummen (Anzahlen, ohne Sitzungs-ID und ohne
+        Uhrzeit) dauerhaft erhalten.
+      </p>
+      <div class="box">
+        <p>
+          <strong>Abschalten:</strong> jederzeit mit „Anonyme Statistik“ in der Bestenliste oder in den Einstellungen (Logo 3
+          Sekunden gedrückt halten). Sendet dein Browser das Signal „Global Privacy Control“, wird keine Statistik gesendet.
+        </p>
+      </div>
+      <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, das Spiel zu verbessern.</p>
+
+      <h2>Feedback</h2>
+      <p>
+        Nur wenn du im Pausenmenü oder auf dem Startbildschirm Feedback abschickst, sendet das Spiel: die Art (Fehler oder Idee),
+        deinen Text, Spielversion, Plattform, Touch oder Tastatur, Quer- oder Hochformat, die Bildgröße und, nur wenn du das
+        Häkchen setzt, ein kurzes Fehlerprotokoll des Spiels. Kein Name, keine Geräte-ID. Feedback wird nach einem Jahr gelöscht.
+      </p>
+      <p>Bitte schreib keine persönlichen Daten (Name, Adresse, Telefonnummer) in den Text.</p>
+      <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, Fehler zu beheben.</p>
+
+      <h2>Deine Rechte</h2>
+      <p>
+        Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Widerspruch (Art. 15 bis 21
+        DSGVO). Du kannst dich auch bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel beim
+        <a href="https://www.baden-wuerttemberg.datenschutz.de/" rel="noopener"
+          >Landesbeauftragten für den Datenschutz und die Informationsfreiheit Baden-Württemberg</a
+        >.
+      </p>
+      <p>
+        Statistik und Feedback enthalten keine Kennung. Einzelne Einträge lassen sich deshalb nicht finden oder einer Person
+        zuordnen. Für einen Eintrag in der Bestenliste nenne bitte Name, Punkte und Datum.
+      </p>
+
+      <footer>
+        <p>Stand: Oktober 2026</p>
+        <p><a href="./">Zurück zum Spiel</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

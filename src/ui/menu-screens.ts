@@ -36,6 +36,7 @@ import {
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
 import { whatsNewLines } from './notices';
+import { PRIVACY_LABEL } from './privacy-link';
 import { bestOf, type Records, type RunResult } from './records';
 import { STATS_TEXT } from './settings';
 
@@ -111,6 +112,11 @@ export function drawStatsSwitch(r: RenderContext, rect: Rect, on: boolean): void
   const label = STATS_TEXT.label(on);
   const scale = rect.h >= 24 && measureText(label, 2) <= rect.w - 8 ? 2 : 1;
   menuButton(r, rect, label, on ? UI.white : UI.muted, scale);
+}
+
+/** The small "Datenschutz" link button beside the statistics switch. */
+export function drawPrivacyLink(r: RenderContext, rect: Rect): void {
+  menuButton(r, rect, PRIVACY_LABEL, UI.muted, 1);
 }
 
 /** A "×" button (install hint, the highscore screens' close): an empty button face with a pixel cross sized to the button. */

@@ -20,6 +20,7 @@ const fullList = () => Array.from({ length: 20 }, (_, i) => entry(i + 1, 5000 - 
 const centre = (r: Rect) => [r.x + Math.floor(r.w / 2), r.y + Math.floor(r.h / 2)] as const;
 
 function setup(options: { fullscreen?: boolean } = {}) {
+  const opened: string[] = [];
   const sent: { run: RunStats; name: string }[] = [];
   const outcomes: SubmitOutcome[] = [];
   let refreshes = 0;
@@ -51,7 +52,7 @@ function setup(options: { fullscreen?: boolean } = {}) {
     focus: () => void focused++,
   };
   const store = createMemoryStore();
-  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField });
+  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, openPage: (url) => (opened.push(url), true) });
   const game = new Game({ systems: [ui], store });
   const flow = ui.highscores!;
   const key = (code: string) => {
@@ -80,7 +81,7 @@ function setup(options: { fullscreen?: boolean } = {}) {
       newRecord: true,
       submit: true,
     }).buttons.submit!;
-  return { game, flow, service, sent, outcomes, store, placed, key, crash, submitRect, refreshes: () => refreshes, focused: () => focused };
+  return { game, flow, service, sent, outcomes, store, placed, key, crash, submitRect, refreshes: () => refreshes, focused: () => focused, opened };
 }
 
 describe('Bestenliste from the title', () => {
@@ -322,5 +323,19 @@ describe('statistics switch on the Bestenliste', () => {
     t.key('KeyA');
     expect(loadStatsOptOut(t.store)).toBe(false);
     expect(t.flow.screen).toBe('list');
+  });
+});
+
+describe('"Datenschutz" link on the Bestenliste', () => {
+  it('a tap opens datenschutz.html on the gesture and keeps the list open', () => {
+    const t = setup();
+    t.game.tick();
+    t.key('KeyB');
+    const l = scoreListLayout(t.game.display, t.flow.entries.length, t.flow.message !== null);
+    expect(t.game.hitHotspot(...centre(l.privacyLink))).toBe(true);
+    t.game.notifyUserGesture();
+    expect(t.opened).toEqual(['datenschutz.html']);
+    expect(t.flow.screen).toBe('list');
+    expect(loadStatsOptOut(t.store)).toBe(false);
   });
 });
