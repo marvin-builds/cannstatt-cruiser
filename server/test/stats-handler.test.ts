@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { condenseAndPruneOnceADay } from '../src/event-store';
 import { handleRequest, type Env } from '../src/handler';
 import type { InsightsStats } from '../src/insights-types';
 import { FakeD1 } from './d1-fake';
@@ -86,8 +87,16 @@ describe('GET /stats access', () => {
     expect((await get('/stats?days=7', { auth: 'Bearer undefined', env: { DB: untouchable } })).status).toBe(401);
   });
 
-  it('answers 400 for ranges other than 7, 30 or 90, without touching the database', async () => {
-    for (const days of ['', '?days=', '?days=1', '?days=14', '?days=7.0', '?days=07', '?days=abc', '?days=7&days=30']) {
+  it('answers 401 for every range, including 365 and 0, without touching the database', async () => {
+    for (const days of [7, 30, 90, 365, 0]) {
+      expect((await get(`/stats?days=${days}`, { auth: null, env: { DB: untouchable, STATS_TOKEN: TOKEN } })).status, String(days)).toBe(401);
+    }
+  });
+
+  it('answers 400 for ranges other than 7, 30, 90, 365 or 0, without touching the database', async () => {
+    const bad = ['', '?days=', '?days=1', '?days=14', '?days=7.0', '?days=07', '?days=abc', '?days=7&days=30',
+      '?days=00', '?days=-0', '?days=180', '?days=365.0', '?days=3650', '?days=0&days=365'];
+    for (const days of bad) {
       const res = await get(`/stats${days}`, { env: { DB: untouchable, STATS_TOKEN: TOKEN } });
       expect(res.status, days).toBe(400);
       expect(await res.json()).toEqual({ ok: false, error: 'bad-request' });
@@ -95,13 +104,13 @@ describe('GET /stats access', () => {
   });
 });
 
-describe('GET /stats answer', () => {
-  async function stats(days = 7): Promise<{ res: Response; body: InsightsStats }> {
-    const res = await get(`/stats?days=${days}`);
-    expect(res.status).toBe(200);
-    return { res, body: (await res.json()) as InsightsStats };
-  }
+async function stats(days = 7): Promise<{ res: Response; body: InsightsStats }> {
+  const res = await get(`/stats?days=${days}`);
+  expect(res.status).toBe(200);
+  return { res, body: (await res.json()) as InsightsStats };
+}
 
+describe('GET /stats answer', () => {
   it('is zero-filled on an empty database, not cached, with CORS headers', async () => {
     const { res, body } = await stats(7);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
@@ -212,5 +221,124 @@ describe('GET /stats answer', () => {
       { name: 'Profi', score: 50_000, date: '2026-10-01T00:00:00.000Z' },
       { name: 'Fuchs', score: 28_507, date: '2026-10-09T12:00:00.000Z' },
     ]);
+  });
+});
+
+describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
+  const DAY_MS = 24 * 3600_000;
+  const condense = () => condenseAndPruneOnceADay(db.asD1(), NOW);
+  const day = (perDay: InsightsStats['perDay'], date: string) => perDay.find((entry) => entry.day === date);
+
+  /** Old days are summarised (and the oldest pruned), today and yesterday still have raw rows. */
+  async function seedHistory(): Promise<void> {
+    seedSessions(2, { day: '2025-06-01', country: 'DE', region: 'Berlin', city: 'Berlin' });
+    seedRun('2025-06-01', 600, 5000, 5000);
+    seedEnd('2025-06-01', 100);
+    seedSessions(3, { day: '2026-01-15', input: 'keys', country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart' });
+    seedRun('2026-01-15', 60, 100, 100);
+    seedRun('2026-01-15', 60, 100, 100);
+    for (const seconds of [10, 20, 30, 100]) seedEnd('2026-01-15', seconds);
+    seedSessions(1, { day: '2026-10-10', input: 'keys', country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart' });
+    seedEnd('2026-10-10', 200);
+    await condense();
+    seedSessions(2, { day: '2026-10-11', kid: 1 });
+    seedRun('2026-10-11', 30, 0, 0);
+    seedEnd('2026-10-11', 50);
+    seedEnd('2026-10-11', 90);
+    seedScore('Heute', 900, '2026-10-11T10:00:00.000Z');
+  }
+
+  it('answers an empty database with today only for 0 and 365 zero days for 365', async () => {
+    const all = (await stats(0)).body;
+    expect(all.days).toBe(0);
+    expect(all.perDay).toEqual([{ day: '2026-10-11', sessions: 0, runs: 0, entries: 0 }]);
+    expect(all.sessions).toEqual({ total: 0, medianSeconds: 0, avgSeconds: 0 });
+    expect(all.runs.total).toBe(0);
+    expect(all.runs.seconds.map((entry) => entry.key)).toEqual(['0', '30', '60', '180', '600']);
+    expect(all.split.city).toEqual([]);
+    const year = (await stats(365)).body;
+    expect(year.days).toBe(365);
+    expect(year.perDay).toHaveLength(365);
+    expect(year.perDay[0]!.day).toBe('2025-10-12');
+    expect(year.perDay[364]!.day).toBe('2026-10-11');
+  });
+
+  it('adds summaries and today\'s raw rows for 365 days: totals, per day, weighted median', async () => {
+    await seedHistory();
+    const { body } = await stats(365);
+    expect(body.perDay).toHaveLength(365);
+    expect(day(body.perDay, '2026-01-15')).toEqual({ day: '2026-01-15', sessions: 3, runs: 2, entries: 0 });
+    expect(day(body.perDay, '2026-10-10')).toEqual({ day: '2026-10-10', sessions: 1, runs: 0, entries: 0 });
+    expect(day(body.perDay, '2026-10-11')).toEqual({ day: '2026-10-11', sessions: 2, runs: 1, entries: 1 });
+    // Ends: 2026-01-15 4 (sum 160, median 25), 2026-10-10 1 (200), today 2 (sum 140, median 70).
+    expect(body.sessions).toEqual({ total: 6, avgSeconds: 71, medianSeconds: 63 });
+    expect(body.runs.total).toBe(3);
+    expect(body.runs.perSession).toBe(0.5);
+  });
+
+  it('builds splits and histograms for 365 days from summaries and raw rows', async () => {
+    await seedHistory();
+    const { runs, split } = (await stats(365)).body;
+    expect(runs.seconds).toEqual([
+      { key: '0', count: 0 }, { key: '30', count: 1 }, { key: '60', count: 2 }, { key: '180', count: 0 }, { key: '600', count: 0 },
+    ]);
+    expect(runs.score).toEqual([
+      { key: '0', count: 1 }, { key: '100', count: 2 }, { key: '500', count: 0 }, { key: '2000', count: 0 }, { key: '5000', count: 0 },
+    ]);
+    expect(runs.distance.filter((entry) => entry.count > 0)).toEqual([{ key: '0', count: 1 }, { key: '100', count: 2 }]);
+    expect(split).toEqual({
+      input: [{ key: 'keys', count: 4 }, { key: 'touch', count: 2 }],
+      orientation: [{ key: 'landscape', count: 6 }],
+      platform: [{ key: 'android', count: 6 }],
+      kid: [{ key: 'false', count: 4 }, { key: 'true', count: 2 }],
+      version: [{ key: '2026-10-11.1', count: 6 }],
+      country: [{ key: 'DE', count: 4 }, { key: 'other', count: 2 }],
+      region: [{ key: 'Baden-Württemberg', count: 4 }, { key: 'other', count: 2 }],
+      city: [{ key: 'Stuttgart', count: 4 }, { key: 'other', count: 2 }],
+    });
+  });
+
+  it('covers every day since the first recorded one for 0 (Alles)', async () => {
+    await seedHistory();
+    const { body } = await stats(0);
+    expect(body.days).toBe(0);
+    expect(body.perDay).toHaveLength((Date.parse('2026-10-11') - Date.parse('2025-06-01')) / DAY_MS + 1);
+    expect(body.perDay[0]).toEqual({ day: '2025-06-01', sessions: 2, runs: 1, entries: 0 });
+    expect(body.perDay.at(-1)!.day).toBe('2026-10-11');
+    expect(body.sessions).toEqual({ total: 8, avgSeconds: 75, medianSeconds: 68 });
+    expect(body.runs.total).toBe(4);
+    expect(body.runs.seconds.at(-1)).toEqual({ key: '600', count: 1 });
+    expect(body.split.city).toEqual([{ key: 'Stuttgart', count: 4 }, { key: 'Berlin', count: 2 }, { key: 'other', count: 2 }]);
+  });
+
+  it('counts finished days that are not summarised yet from their raw rows', async () => {
+    seedSessions(2, { day: '2026-10-09' });
+    seedEnd('2026-10-09', 40);
+    const { body } = await stats(365);
+    expect(day(body.perDay, '2026-10-09')!.sessions).toBe(2);
+    expect(body.sessions).toEqual({ total: 2, avgSeconds: 40, medianSeconds: 40 });
+    await condense();
+    expect((await stats(365)).body.sessions).toEqual({ total: 2, avgSeconds: 40, medianSeconds: 40 });
+  });
+
+  it('starts Alles at most 3650 days ago', async () => {
+    db.sqlite.prepare("INSERT INTO day_summaries (day, metric, key, value) VALUES ('2000-01-01', 'total', 'sessions', 5)").run();
+    const { body } = await stats(0);
+    expect(body.perDay).toHaveLength(3650);
+    expect(body.perDay.at(-1)!.day).toBe('2026-10-11');
+  });
+
+  it('keeps the 7, 30 and 90 day answers unchanged by condensing', async () => {
+    for (const date of ['2026-07-14', '2026-09-01', '2026-10-08', '2026-10-11']) {
+      seedSessions(2, { day: date, city: 'Stuttgart' });
+      seedRun(date, 60, 100, 100);
+      seedEnd(date, 30);
+      seedEnd(date, 90);
+    }
+    const before = await Promise.all([7, 30, 90].map(async (days) => (await stats(days)).body));
+    await condense();
+    const after = await Promise.all([7, 30, 90].map(async (days) => (await stats(days)).body));
+    expect(after).toEqual(before);
+    expect(before.map((body) => body.sessions.total)).toEqual([4, 4, 8]);
   });
 });

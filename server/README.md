@@ -11,7 +11,7 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | File | Purpose |
 | --- | --- |
 | `wrangler.toml` | Worker name, D1 binding `DB` (database `cannstatt-cruiser-scores`) |
-| `schema.sql` | Tables `scores` (the list, one row per device), `submissions` (rate-limit log), `events`, `event_days`, `event_meta` (play statistics) |
+| `schema.sql` | Tables `scores` (the list, one row per device), `submissions` (rate-limit log), `events`, `event_days`, `event_meta`, `day_summaries` (play statistics) |
 | `migrations/` | One-off changes to an existing database (see "Migrations") |
 | `src/index.ts` | Worker entry |
 | `src/handler.ts` | Routing, CORS, status codes |
@@ -22,9 +22,10 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/ranking.ts`, `src/store.ts` | Top-20 order, pruning to 500 rows, D1 queries (best run per device) |
 | `src/events.ts`, `src/insights-types.ts` | Statistics contract: allowed values and shapes (mirror of the game's `src/net/telemetry-types.ts`) |
 | `src/event-parse.ts` | Strict `POST /event` body check |
-| `src/event-store.ts`, `src/location.ts` | Daily cap, 90-day prune, storing events; coarse location from `request.cf` |
+| `src/event-store.ts`, `src/location.ts` | Daily cap, once-a-day condense + 90-day prune, storing events; coarse location from `request.cf` |
+| `src/day-summary.ts` | Condensing finished days into `day_summaries` (kept for good) |
 | `src/auth.ts` | Bearer token check for `GET /stats` (SHA-256 + constant-time compare) |
-| `src/stats.ts`, `src/aggregate.ts` | The `GET /stats` aggregates |
+| `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
 ## Develop and test
@@ -103,6 +104,46 @@ npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 
 npx wrangler secret put STATS_TOKEN   # 4. token (see "Stats token"), once
 npx wrangler deploy   # 5. new worker
 ```
+
+`0004_day_summaries.sql` (long-term statistics): only adds the table
+`day_summaries` (`IF NOT EXISTS`, safe to apply twice, keeps all data). The
+new worker writes into it before every prune, so the table must exist first:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0004.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0004_day_summaries.sql   # 2. migrate
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler deploy   # 4. new worker
+```
+
+On the first event of the next UTC day the worker summarises every finished
+day that still has raw events (at most 100 days per run, oldest first), so the
+statistics already collected are kept before the 90-day prune deletes them.
+
+## Daily summaries
+
+Raw events live for 90 days; the daily counts are kept for good in
+`day_summaries`, one row per finished UTC day, `metric` and `key` with an
+integer `value` (no session id, no hour, no device id, no IP):
+
+| `metric` | `key` | `value` |
+| --- | --- | --- |
+| `total` | `sessions`, `runs`, `ends` | counts of that day |
+| `total` | `end_seconds` | sum of the `end` seconds |
+| `total` | `end_median` | that day's median `end` seconds (only on days with an `end`) |
+| `input`, `orientation`, `platform`, `kid`, `version`, `country`, `region`, `city` | the value (`kid` as `true`/`false`, `''` = unknown) | sessions |
+| `run_seconds`, `run_distance`, `run_score` | the reported bucket value | runs |
+
+Condensing runs on the same trigger as the prune (the first accepted event of
+a UTC day), in one transaction and before it: it summarises the oldest days
+before today that have raw rows and are newer than the last summarised day
+(at most 100 per run; the rest follow on the next days). A day is summarised
+exactly once (`INSERT OR IGNORE` on the primary key), and the prune only
+deletes raw rows of days that are already summarised, so no day is lost. A day
+without events gets no rows. A session that runs across midnight can still
+raise its `end` after its day was summarised; the summary keeps the value it
+had then.
 
 ## API
 
@@ -185,15 +226,21 @@ Responses:
 - `403 {"ok": false, "error": "forbidden"}`: the `Origin` header is missing or
   not one of the game origins above.
 
-### `GET /stats?days=7|30|90`
+### `GET /stats?days=7|30|90|365|0`
 
 The insights board's data. Needs `Authorization: Bearer <STATS_TOKEN>`;
 without the secret, without the header or with a wrong token it answers
 `401 {"ok": false, "error": "unauthorized"}` before any database access.
-`days` other than exactly `7`, `30` or `90` answers 400. Not cached
+`days` other than exactly `7`, `30`, `90`, `365` or `0` ("Alles": every day
+since the first recorded one, at most 3650 days) answers 400. Not cached
 (`Cache-Control: no-store`).
 
-`200` with the `InsightsStats` shape (`src/insights-types.ts`), aggregates only:
+`200` with the `InsightsStats` shape (`src/insights-types.ts`), aggregates only.
+Ranges up to 90 days are counted from the raw events. `365` and `0` add the
+daily summaries of the summarised days to the raw events of the days after the
+last summarised one (usually today), so no day counts twice; for them
+`medianSeconds` is the mean of the daily medians weighted by each day's `end`
+count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count.
 
 - `perDay`: every UTC day of the range (today included), oldest first,
   zero-filled: `sessions`, `runs`, and `entries` = rows of the highscore list
@@ -239,9 +286,12 @@ the data is anonymous and coarse, so a person cannot be identified from it.
   itself, and `run`/`end` rows carry no location.
 - `GET /stats` returns aggregates only (session counts per place, no rows);
   places without a location are shown as `other`.
-- Retention: events older than 90 days are deleted (checked on the first
-  event of each UTC day); `event_days` keeps only today's counter and
-  `event_meta` only the day of the last deletion.
+- Retention: raw events older than 90 days are deleted (checked on the first
+  event of each UTC day, after that day's condensing); `event_days` keeps only
+  today's counter and `event_meta` only the day of the last deletion.
+- Daily counts are kept for good (table `day_summaries`, see "Daily
+  summaries"): per UTC day only totals and per-value counts, no session id, no
+  hour, no device id, no IP.
 - Access: only with the `STATS_TOKEN` secret.
 
 ## Keeping it in sync with the game
