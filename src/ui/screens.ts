@@ -91,6 +91,8 @@ export interface UiView {
   fullscreenAvailable: boolean;
   /** The portrait hint was dismissed for the current orientation. */
   portraitDismissed: boolean;
+  /** The player types with portrait freed (typing-orientation.ts): no rotate hint. */
+  portraitFree: boolean;
   /** Length of the current chill effect (from chillStart), for the timer bar. */
   chillDuration: number;
   /** Length of the current drunk effect (from drunkStart), for the timer bar and the woozy ease. */

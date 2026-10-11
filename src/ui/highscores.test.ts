@@ -3,6 +3,7 @@ import { GAMEOVER_INPUT_DELAY, TICK_DT } from '../core/config';
 import { Game } from '../core/game';
 import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createMemoryStore } from '../core/storage';
+import type { OrientationEnv } from '../core/orientation';
 import type { ScoreEntry } from '../net/api';
 import type { RunStats } from '../net/payload';
 import type { SubmitOutcome } from '../net/service';
@@ -19,7 +20,7 @@ const entry = (rank: number, score: number): ScoreEntry => ({ rank, name: `P${ra
 const fullList = () => Array.from({ length: 20 }, (_, i) => entry(i + 1, 5000 - i * 100));
 const centre = (r: Rect) => [r.x + Math.floor(r.w / 2), r.y + Math.floor(r.h / 2)] as const;
 
-function setup(options: { fullscreen?: boolean } = {}) {
+function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
   const opened: string[] = [];
   const sent: { run: RunStats; name: string }[] = [];
   const outcomes: SubmitOutcome[] = [];
@@ -54,7 +55,10 @@ function setup(options: { fullscreen?: boolean } = {}) {
     blur: () => void blurred++,
   };
   const store = createMemoryStore();
-  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, openPage: (url) => (opened.push(url), true) });
+  /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
+  const locks: string[] = [];
+  const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
+  const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, orientation, openPage: (url) => (opened.push(url), true) });
   const game = new Game({ systems: [ui], store });
   const flow = ui.highscores!;
   const key = (code: string) => {
@@ -90,7 +94,7 @@ function setup(options: { fullscreen?: boolean } = {}) {
     pointers.up(1);
     for (let i = 0; i < 8; i++) game.tick();
   };
-  return { game, flow, service, sent, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
+  return { game, flow, service, sent, locks, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
 }
 
 describe('Bestenliste from the title', () => {
@@ -376,5 +380,47 @@ describe('the open highscore screens are modal everywhere (taps outside the canv
     for (const [x, y] of outside) tap(x, y);
     expect(game.state.mode).toBe('title');
     expect(flow.screen).toBe('list');
+  });
+});
+
+describe('portrait while typing a name in the installed app (ROADMAP 54)', () => {
+  it('the name entry frees portrait, Esc locks landscape again; the list alone does not free it', () => {
+    const { game, flow, crash, key, locks } = setup({ installed: true });
+    flow.openList();
+    game.tick();
+    key('Escape');
+    expect(locks).toEqual([]);
+    crash(4500);
+    key('KeyE');
+    expect(locks).toEqual(['any']);
+    key('Escape');
+    expect(locks).toEqual(['any', 'landscape']);
+  });
+
+  it('sending the name (the list follows) or a new run locks landscape again', async () => {
+    const { game, crash, key, locks, store } = setup({ installed: true });
+    store.set('scoreName', 'Max');
+    crash(4500);
+    key('Enter');
+    key('Enter');
+    await Promise.resolve();
+    await Promise.resolve();
+    game.tick();
+    expect(locks).toEqual(['any', 'landscape']);
+    crash(4800);
+    key('KeyE');
+    game.commands.startRun();
+    game.tick();
+    expect(locks).toEqual(['any', 'landscape', 'any', 'landscape']);
+  });
+
+  it('turned to portrait while typing, the name field stays in the portrait layout instead of the rotate hint', () => {
+    const { game, crash, key, placed } = setup({ installed: true });
+    game.display.touch = true;
+    crash(4500);
+    key('KeyE');
+    game.display.portrait = true;
+    game.tick();
+    expect(placed[placed.length - 1]).toEqual(scoreEntryLayout({ ...game.display }).field);
   });
 });

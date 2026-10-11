@@ -71,6 +71,8 @@ import { Sparkle } from './sparkle';
 import { TrickHint } from './trick-hint';
 import { placeCallout, StuntCallout } from './stunt-callout';
 import { browserOpenPage, type OpenPage, PrivacyLink } from './privacy-link';
+import { browserOrientationEnv, type OrientationEnv } from '../core/orientation';
+import { TypingOrientation } from './typing-orientation';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -98,6 +100,11 @@ export interface UiSystemOptions {
   feedback?: FeedbackSenderLike | null;
   /** The feedback screen's native textarea (default: an HTML textarea in a browser, none elsewhere). */
   feedbackField?: FeedbackField | null;
+  /**
+   * The screen orientation lock, freed to portrait while the player types (default: the browser's
+   * in a browser, none elsewhere); tests pass a fake.
+   */
+  orientation?: OrientationEnv | null;
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback screen's (null without a sender). */
@@ -160,6 +167,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
             () => document.getElementById('game'),
           )
         : null;
+  const typingOrientation = new TypingOrientation(
+    options.orientation !== undefined ? options.orientation : browser ? browserOrientationEnv() : null,
+  );
   /** Seconds of play in the current run (not paused time), for the online entry. */
   let runSeconds = 0;
   /**
@@ -178,6 +188,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     banner: new Banner(),
     fullscreenAvailable: false,
     portraitDismissed: false,
+    portraitFree: false,
     chillDuration: CHILL_DURATION,
     drunkDuration: DEFAULT_DRUNK_DURATION,
     hud: new HudModel(),
@@ -603,6 +614,13 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: entry((l) => l.field), onPress: () => nameField?.focus() });
   }
 
+  /** Frees portrait while the feedback form or the name entry takes text, after any path that opened or closed them this tick. */
+  function updateOrientation(): void {
+    const typing = (!!feedback?.open && !feedback.done) || flow?.screen === 'entry';
+    typingOrientation.update(typing);
+    view.portraitFree = typingOrientation.free;
+  }
+
   /** Per tick while a highscore screen shows: held arrow keys, keeping the scroll in range (and the own entry in view), the name input. */
   function updateScores(ctx: GameContext, dt: number): void {
     if (!flow) return;
@@ -710,8 +728,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       const popups = feed.flush(state.kidMode);
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
-      updateScores(ctx, dt);
       keepFeedbackOnItsScreen(ctx);
+      updateOrientation();
+      updateScores(ctx, dt);
       placeFeedbackField(ctx);
       reportSession(ctx);
       if (state.mode !== 'playing') return;
