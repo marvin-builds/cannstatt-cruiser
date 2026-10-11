@@ -40,6 +40,8 @@ function createBrowser(files: Record<string, string>) {
   const stores = new Map<string, FakeCache>();
   const messages: unknown[] = [];
   const net = { offline: false };
+  /** Every fetch the worker made itself: what it passed and its cache mode. */
+  const fetches: { input: unknown; cache?: string }[] = [];
   const caches = {
     open: async (name: string) => stores.get(name) ?? stores.set(name, new FakeCache(fetchUrl)).get(name)!,
     keys: async () => [...stores.keys()],
@@ -59,7 +61,8 @@ function createBrowser(files: Record<string, string>) {
         matchAll: async () => [{ postMessage: (m: unknown) => messages.push(m) }],
       },
     };
-    const fetch = async (input: string | { url: string }) => {
+    const fetch = async (input: string | { url: string }, init?: { cache?: string }) => {
+      fetches.push({ input, cache: init?.cache });
       if (net.offline) throw new TypeError('Failed to fetch');
       return fetchUrl(typeof input === 'string' ? input : input.url);
     };
@@ -85,7 +88,7 @@ function createBrowser(files: Record<string, string>) {
     };
   }
 
-  return { network, stores, messages, net, startWorker };
+  return { network, stores, messages, net, fetches, startWorker };
 }
 
 function staticFiles(): Record<string, string> {
@@ -123,6 +126,14 @@ describe('service worker update signal', () => {
     const { messages, worker } = await installedBrowser();
     await worker.navigate();
     expect(messages).toEqual([]);
+  });
+
+  it('refreshes the page past the HTTP cache, which Pages fills for ten minutes', async () => {
+    const browser = await installedBrowser();
+    browser.fetches.length = 0;
+    await browser.worker.navigate();
+    // The URL, not the navigate-mode request: Chrome rejects that one combined with an init.
+    expect(browser.fetches).toEqual([{ input: SCOPE, cache: 'no-cache' }]);
   });
 
   it('posts updateReady once a changed page and its assets are cached', async () => {
