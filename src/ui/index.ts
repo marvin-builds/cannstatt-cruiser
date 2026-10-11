@@ -122,6 +122,12 @@ const DEFAULT_DRUNK_DURATION = 6;
 /** Arrow keys held on the "Bestenliste" scroll this many rows per second (a press moves one row at once). */
 const LIST_KEY_ROWS_PER_SECOND = 10;
 
+/**
+ * A modal layer's tap area: every pointer position, also outside the view (the letterbox around the
+ * canvas, the page beside it), so no press reaches the game behind an open screen.
+ */
+const EVERYWHERE: Rect = { x: -1e6, y: -1e6, w: 2e6, h: 2e6 };
+
 const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSupported();
 
 export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
@@ -140,6 +146,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
         : null;
   /** Focus the textarea on the next tick (desktop): focusing inside the opening key press would type its letter. */
   let focusFeedback = false;
+  /** The mode the feedback form was opened in (title or paused): it never outlives that screen. */
+  let feedbackMode: string | null = null;
   const privacyLink = new PrivacyLink(options.openPage !== undefined ? options.openPage : browser ? browserOpenPage : null);
   /** The session event goes out once per page load, when the title first shows. */
   let sessionReported = false;
@@ -211,6 +219,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.popups.spawn(text, PLAYER_X, rise === undefined ? aboveHead(ctx, scale) : state.player.y - rise, color, scale);
     };
     bus.on('runStarted', () => {
+      feedback?.dismiss();
       runSeconds = 0;
       runKidMode = state.kidMode;
       flow?.runStarted(!runKidMode);
@@ -285,6 +294,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
     });
     bus.on('gameOver', (e) => {
+      feedback?.dismiss();
       const run = { score: e.score, distance: e.distance, seconds: runSeconds };
       if (!runKidMode) flow?.runEnded(run);
       telemetry?.run(run, runKidMode);
@@ -299,10 +309,9 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode));
     const whenButtons = (pick: () => Rect | null) => () =>
       portraitHintShown(ctx, view) || view.settings.open ? null : pick();
-    const full = (): Rect => ({ x: 0, y: 0, w: display.viewWidth, h: display.viewHeight });
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
-    ctx.addHotspot({ rect: () => (state.mode === 'paused' ? full() : null), onPress: () => commands.resume() });
-    addWhatsNewHotspot(ctx, full);
+    ctx.addHotspot({ rect: () => (state.mode === 'paused' ? EVERYWHERE : null), onPress: () => commands.resume() });
+    addWhatsNewHotspot(ctx);
     const pauseButton: InputHotspot = {
       rect: whenButtons(() => (riding(state.mode) ? buttons().pause : null)),
       onPress: () => (state.mode === 'playing' ? commands.pause() : commands.resume()),
@@ -330,21 +339,21 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       },
     });
     addMenuHotspots(ctx);
-    addSettingsHotspots(ctx, full);
-    addScoreHotspots(ctx, full);
-    addFeedbackHotspots(ctx, full);
+    addSettingsHotspots(ctx);
+    addScoreHotspots(ctx);
+    addFeedbackHotspots(ctx);
     ctx.addHotspot({
-      rect: () => (portraitHintShown(ctx, view) ? full() : null),
+      rect: () => (portraitHintShown(ctx, view) ? EVERYWHERE : null),
       onPress: () => (view.portraitDismissed = true),
     });
   }
 
   /** "Neu in dieser Version" is modal: a tap or any key but M closes it (marks the version seen) and shows the title. */
-  function addWhatsNewHotspot(ctx: GameContext, full: () => Rect): void {
+  function addWhatsNewHotspot(ctx: GameContext): void {
     const shown = () => menuScreen(ctx.state, view) === 'whatsNew' && !portraitHintShown(ctx, view);
     const close = () => ctx.commands.markVersionSeen();
     const screen: InputHotspot = {
-      rect: () => (shown() ? full() : null),
+      rect: () => (shown() ? EVERYWHERE : null),
       onPress: close,
       onKeyDown: (code) => {
         if (code === 'KeyM') return false;
@@ -402,7 +411,16 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   function openFeedback(ctx: GameContext): void {
     if (!feedback) return;
     feedback.openForm();
+    feedbackMode = ctx.state.mode;
     focusFeedback = !ctx.display.touch;
+  }
+
+  /** The form closes as soon as the screen it was opened on is gone (any path out of title or pause), so all ui comes back. */
+  function keepFeedbackOnItsScreen(ctx: GameContext): void {
+    if (!feedback?.open) return;
+    const { mode } = ctx.state;
+    const menu = mode === 'title' || mode === 'paused';
+    if (!menu || (feedbackMode !== null && mode !== feedbackMode)) feedback.dismiss();
   }
 
   /** What the feedback sender adds to the report. */
@@ -424,10 +442,11 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   }
 
   /**
-   * The feedback screen: modal over the title or pause screen (every tap and key but M stays
-   * there, so nothing starts or resumes behind it), its buttons, Esc closes it, other keys type into the field.
+   * The feedback screen: modal over the title or pause screen (every tap anywhere, also outside the
+   * canvas, and every key but M stays there, so nothing starts or resumes behind it); a tap beside the
+   * form blurs the field. Its buttons, Esc closes it, other keys type into the field.
    */
-  function addFeedbackHotspots(ctx: GameContext, full: () => Rect): void {
+  function addFeedbackHotspots(ctx: GameContext): void {
     if (!feedback) return;
     const { display } = ctx;
     const shown = () => feedback.open && !portraitHintShown(ctx, view);
@@ -435,8 +454,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       shown() && !feedback.done ? pick(feedbackLayout(display)) : null;
     const send = () => void feedback.send(feedbackContext(ctx));
     const modal: InputHotspot = {
-      rect: () => (shown() ? full() : null),
-      onPress: () => {},
+      rect: () => (shown() ? EVERYWHERE : null),
+      onPress: () => feedbackField?.blur(),
       onKeyDown: (code) => {
         if (code === 'KeyM') return false;
         const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
@@ -456,7 +475,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   }
 
   /** The logo's long press (pointer or K) on the title and pause screens, the menu's (or kid notice's) modal layer and its buttons. */
-  function addSettingsHotspots(ctx: GameContext, full: () => Rect): void {
+  function addSettingsHotspots(ctx: GameContext): void {
     const { state, display, commands } = ctx;
     const { settings, logoHold } = view;
     const menu = () => settingsLayout(display.viewWidth, uiMetrics(display));
@@ -486,7 +505,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     // While open, the menu swallows every tap and key (except M = mute), so nothing starts a run behind it.
     // The kid notice closes with Enter, Space or Escape (its OK).
     const modal: InputHotspot = {
-      rect: () => (settings.open ? full() : null),
+      rect: () => (settings.open ? EVERYWHERE : null),
       onPress: () => {},
       onKeyDown: (code) => {
         const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
@@ -549,8 +568,11 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     return true;
   }
 
-  /** The trophy on the title (B, adult mode only), the modal layer of the list and the entry, and their buttons. */
-  function addScoreHotspots(ctx: GameContext, full: () => Rect): void {
+  /**
+   * The trophy on the title (B, adult mode only), the modal layer of the list and the entry (every tap
+   * anywhere, also outside the canvas; one beside the entry's field blurs it), and their buttons.
+   */
+  function addScoreHotspots(ctx: GameContext): void {
     if (!flow) return;
     const { state, display } = ctx;
     const covered = () => portraitHintShown(ctx, view) || view.settings.open;
@@ -565,8 +587,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       },
     };
     const modal: InputHotspot = {
-      rect: () => (flow.open && !covered() ? full() : null),
-      onPress: () => {},
+      rect: () => (flow.open && !covered() ? EVERYWHERE : null),
+      onPress: () => nameField?.blur(),
       onKeyDown: (code) => scoreKey(ctx, code),
       onKeyUp: () => void (listScroll = 0),
     };
@@ -689,6 +711,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       for (let i = 0; i < popups.length; i++) spawnPopup(ctx, popups[i]!.text, popups[i]!.color, popups[i]!.icon);
       if (state.drunkTimer > view.drunkDuration) view.drunkDuration = state.drunkTimer;
       updateScores(ctx, dt);
+      keepFeedbackOnItsScreen(ctx);
       placeFeedbackField(ctx);
       reportSession(ctx);
       if (state.mode !== 'playing') return;

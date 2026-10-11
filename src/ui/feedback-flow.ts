@@ -96,6 +96,14 @@ export class FeedbackFlow {
     if (!this.sending) this.open = false;
   }
 
+  /**
+   * The screen it was opened on is gone (a run started, the pause ended): closes even while a report
+   * is being sent; its answer still sets the status, the draft stays unless it was sent.
+   */
+  dismiss(): void {
+    this.open = false;
+  }
+
   setKind(kind: FeedbackKind): void {
     if (!this.sending && !this.done) this.kind = kind;
   }

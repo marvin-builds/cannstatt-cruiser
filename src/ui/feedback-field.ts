@@ -19,6 +19,8 @@ export interface FeedbackField {
   place(rect: Rect | null, value: string, placeholder: string): void;
   /** Focuses the textarea (opens the phone keyboard when called inside a user gesture). */
   focus(): void;
+  /** Takes the focus away (closes the phone keyboard) and leaves the field shown: a tap beside it on the modal screen. */
+  blur(): void;
 }
 
 export interface FeedbackFieldHandlers {
@@ -101,6 +103,9 @@ export function createDomFeedbackField(handlers: FeedbackFieldHandlers, canvas: 
     },
     focus() {
       area?.focus({ preventScroll: true });
+    },
+    blur() {
+      area?.blur();
     },
   };
 }

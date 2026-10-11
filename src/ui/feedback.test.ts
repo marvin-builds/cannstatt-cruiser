@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../core/game';
-import { keyDown, keyUp } from '../core/input';
+import { GAMEOVER_INPUT_DELAY, TICK_DT } from '../core/config';
+import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createStore, type Store } from '../core/storage';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
 import type { Rect } from '../types';
@@ -8,7 +9,7 @@ import type { FeedbackField } from './feedback-field';
 import { feedbackIcon, feedbackLayout } from './feedback-layout';
 import { createUiSystem } from './index';
 import { uiMetrics } from './layout';
-import { type MenuInput, pauseLayout } from './menu-layout';
+import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -17,11 +18,13 @@ function memoryStore(): Store {
 
 const centre = (r: Rect) => [r.x + r.w / 2, r.y + r.h / 2] as const;
 
-function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult } = {}) {
+function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; result?: FeedbackResult; hold?: boolean } = {}) {
+  let answer: (r: FeedbackResult) => void = () => {};
   const sent: { draft: FeedbackDraft; context: FeedbackContext }[] = [];
   const sender = {
     send: (draft: FeedbackDraft, context: FeedbackContext) => {
       sent.push({ draft: { ...draft }, context: { ...context } });
+      if (options.hold) return new Promise<FeedbackResult>((resolve) => (answer = resolve));
       return Promise.resolve(options.result ?? 'sent');
     },
   };
@@ -30,6 +33,7 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     value: '',
     placeholder: '',
     focused: 0,
+    blurred: 0,
     place(rect: Rect | null, value: string, placeholder: string) {
       field.rect = rect;
       field.value = value;
@@ -37,6 +41,9 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
     },
     focus() {
       field.focused++;
+    },
+    blur() {
+      field.blurred++;
     },
   } satisfies FeedbackField & Record<string, unknown>;
   const store = memoryStore();
@@ -63,8 +70,15 @@ function app(options: { touch?: boolean; portrait?: boolean; kid?: boolean; resu
   };
   const form = () => feedbackLayout(game.display);
   const icon = () => feedbackIcon(game.display.viewWidth, uiMetrics(game.display));
+  const pointers = new PointerControls(game);
+  /** A whole tap (down, up, a few ticks) at view px (x, y), which may lie outside the view (letterbox, page). */
+  const tap = (x: number, y: number) => {
+    pointers.down(1, x, y, game.display.touch);
+    pointers.up(1);
+    for (let i = 0; i < 8; i++) game.tick();
+  };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, input, press, key, form, icon };
+  return { game, ui, flow: ui.feedback!, sent, field, input, press, key, form, icon, tap, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -214,5 +228,117 @@ describe('feedback in the game', () => {
     t.press(t.form().log);
     expect(t.flow.withLog).toBe(false);
     expect(t.sent).toHaveLength(0);
+  });
+});
+
+/** Taps outside the view rect: the letterbox above and below (portrait), beside it, far off on the page. */
+const outside = (w: number, h: number) =>
+  [
+    [w / 2, -30],
+    [w / 2, h + 40],
+    [-12, h / 2],
+    [w + 12, h / 2],
+    [-500, 2000],
+  ] as const;
+
+describe('the open feedback form is modal everywhere (phone bug of 2026-10-11.5)', () => {
+  for (const [name, options] of [
+    ['phone portrait', { touch: true, portrait: true }],
+    ['phone landscape', { touch: true, portrait: false }],
+    ['desktop', { touch: false, portrait: false }],
+  ] as const) {
+    it(`${name}: a tap outside the canvas or on the form's background starts nothing on the title, only blurs the field`, () => {
+      const t = app(options);
+      // The player dismissed the portrait rotate hint (a tap) before.
+      if (options.portrait) t.game.hitHotspot(10, 10);
+      t.ui.feedback!.openForm();
+      t.game.tick();
+      const blurred = t.field.blurred;
+      for (const [x, y] of [...outside(t.game.display.viewWidth, t.game.display.viewHeight), [5, 100]] as const) t.tap(x, y);
+      expect(t.game.state.mode).toBe('title');
+      expect(t.flow.open).toBe(true);
+      expect(t.field.blurred).toBeGreaterThan(blurred);
+      expect(t.field.rect).toEqual(t.form().field);
+    });
+
+    it(`${name}: a tap outside the canvas does not resume the paused run behind the form`, () => {
+      const t = app(options);
+      if (options.portrait) t.game.hitHotspot(10, 10);
+      t.game.commands.startRun();
+      t.game.commands.pause();
+      t.game.tick();
+      t.flow.openForm();
+      t.game.tick();
+      for (const [x, y] of outside(t.game.display.viewWidth, t.game.display.viewHeight)) t.tap(x, y);
+      expect(t.game.state.mode).toBe('paused');
+      expect(t.flow.open).toBe(true);
+    });
+  }
+
+  it('a run that starts while the form is open (any path) closes it and hides the field', () => {
+    const t = app();
+    t.key('KeyF');
+    t.flow.setText('Entwurf bleibt');
+    t.game.commands.startRun();
+    expect(t.flow.open).toBe(false);
+    t.game.tick();
+    expect(t.field.rect).toBeNull();
+    expect(t.flow.text).toBe('Entwurf bleibt');
+  });
+
+  it('leaving the pause screen while the form is open (resume, to title) closes it', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    t.flow.openForm();
+    t.game.commands.resume();
+    t.game.tick();
+    expect(t.flow.open).toBe(false);
+    expect(t.field.rect).toBeNull();
+
+    t.game.commands.pause();
+    t.game.tick();
+    t.press(pauseLayout(t.input()).buttons.feedback);
+    expect(t.flow.open).toBe(true);
+    t.game.commands.toTitle();
+    t.game.tick();
+    expect(t.flow.open).toBe(false);
+  });
+
+  it('also while a report is still being sent', async () => {
+    const t = app({ hold: true });
+    t.key('KeyF');
+    t.flow.setText('Ich hänge in der Bank fest');
+    t.press(t.form().send);
+    expect(t.flow.sending).toBe(true);
+    t.game.commands.startRun();
+    expect(t.flow.open).toBe(false);
+    t.answer('sent');
+    await Promise.resolve();
+    expect(t.flow.open).toBe(false);
+  });
+
+  it('game over after a run that left the form open shows its buttons and a tap restarts', () => {
+    const t = app({ touch: true });
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    t.flow.openForm();
+    // Whatever path resumed the run (the old bug: a tap outside the canvas).
+    t.game.commands.resume();
+    t.game.tick();
+    t.game.commands.gameOver();
+    for (let i = 0; i < Math.ceil(GAMEOVER_INPUT_DELAY / TICK_DT) + 1; i++) t.game.tick();
+    expect(t.flow.open).toBe(false);
+    const toTitle = gameOverLayout({ ...t.input({ feedback: false }), newRecord: false, submit: false }).buttons.toTitle;
+    expect(toTitle).toBeTruthy();
+    expect(t.press(toTitle!)).toBe(true);
+    expect(t.game.state.mode).toBe('title');
+    t.game.commands.startRun();
+    t.game.commands.gameOver();
+    for (let i = 0; i < Math.ceil(GAMEOVER_INPUT_DELAY / TICK_DT) + 1; i++) t.game.tick();
+    t.tap(t.game.display.viewWidth / 2, 100);
+    expect(t.game.state.mode).toBe('playing');
   });
 });
