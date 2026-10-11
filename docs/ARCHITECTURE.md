@@ -69,6 +69,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/street.ts    what counts as something to react to on the street (shared by the quiet cap and quiet-time.ts)
   gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line or the park (ROADMAP 52)
   gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
+  gameplay/star-arcs.ts star points (ROADMAP 65): STAR_POINTS 10 per star and STAR_ARC_BONUS 50 for a whole arc in one flight (both x multiplier, via addPoints, so stars never start or break a combo); asArc / linkArcs tag a pattern's stars with a run-wide arc id and size (data.arc, data.arcSize); StarArcs tracks the arc in progress (a street landing or a new run cancels it). A jump-arc pattern or combo guide line is one arc; stunt lines and the park get one arc per kicker-to-kicker stretch
   gameplay/mixes.ts     combination templates from tier 2 on (ROADMAP 52 6a): jump+duck mixes, rail sandwiches, people inside combinations, route choices, 4-5 element chains at tier 3
   gameplay/pattern-log.ts  small log of laid patterns (spawner onSpawn), for the debug hook patterns()
   gameplay/variety.ts   variety meter: templates laid, elements per pattern, distinct templates per ride
@@ -336,7 +337,7 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
 | `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu wacklig!" (drunk), "Zu entspannt!" (chilled) or "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
-| `starCollected` | `{entityId, stars}` | gameplay |
+| `starCollected` | `{entityId, stars}` | gameplay (followed in the same tick by the star's `scoreChanged`, and by a second one for a completed arc's bonus, see `gameplay/star-arcs.ts`) |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick, or head jumps with a buffered press, ROADMAP 60) |
 | `itemCaught` | `{item}` | gameplay (the tossed item reached the hands, or a [dropped item](#dropped-items) was picked up; `state.carriedItem = item`) |
@@ -912,7 +913,10 @@ All UI plates (HUD, buttons, zone banner, pause prompt, panels) are opaque.
 ### Popups (ui/popups.ts)
 
 At most 3 popups show at once. A repeat of a live popup merges into it
-("Stern! x3"). Events of one tick are collected by `ui/popup-feed.ts` and
+("Autsch! x3"); a popup with points sums them instead, so stars in quick
+succession show one "Stern! +50". A completed star arc shows an orange
+"Sternenbogen! +N" (the feed tells it from the `scoreChanged` right after a
+star's own points whose delta is `STAR_ARC_BONUS` x multiplier). Events of one tick are collected by `ui/popup-feed.ts` and
 flushed once per tick, so events that belong together become one popup:
 a stomp with the points of its `obstacleCleared` "Stomp! +150" (a ball hit
 "Treffer!", merged the same way with an `obstacleCleared` of the same person;
