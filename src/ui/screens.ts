@@ -5,6 +5,8 @@
  * rendering: all state comes in through `UiView` (records, popups, banner)
  * and the RenderContext.
  */
+import type { FeedbackStatusLike } from '../net/feedback-status';
+import type { FeedbackStatusEntry } from '../net/feedback-types';
 import { chillStrength } from '../core/chill';
 import { PLAYER_X } from '../core/config';
 import { drawText, measureText, type TextOptions } from '../core/font';
@@ -66,12 +68,13 @@ import {
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
 import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
-import { currentMenu, portraitHintShown, trophyShown } from './menu-state';
+import { currentMenu, menuScreen, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import type { FeedbackFlow } from './feedback-flow';
 import { feedbackLayout } from './feedback-layout';
 import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
+import { FEEDBACK_NOTE_TEXT, feedbackNoteLayout } from './feedback-note';
 import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
@@ -128,6 +131,8 @@ export interface UiView {
   whatsNew: ListScroll;
   /** The feedback screen (title icon, pause button); null without a feedback sender (tests, headless). */
   feedback: FeedbackFlow | null;
+  /** What happened to the player's own feedback: its note covers the title once; null without a status check. */
+  feedbackStatus: FeedbackStatusLike | null;
 }
 
 const MUTED: TextOptions = { color: UI.muted };
@@ -537,14 +542,26 @@ function drawKidNotice(r: RenderContext, restart: boolean): void {
   menuButton(r, l.ok, KID_NOTICE_OK, UI.yellow);
 }
 
+/** "Dein Feedback: umgesetzt!" and the like: headline, the reply or a default line, OK (feedback-note.ts). */
+function drawFeedbackNote(r: RenderContext, note: FeedbackStatusEntry): void {
+  const l = feedbackNoteLayout(r.display, note);
+  fill(r, UI.ink);
+  centred(r, l.headline, l.headlineY, { scale: 2, color: l.headlineColor });
+  const color = l.reply ? UI.white : UI.muted;
+  l.lines.forEach((s, i) => centred(r, s, l.linesY + i * l.lineH, { scale: l.scale, color }));
+  menuButton(r, l.ok, FEEDBACK_NOTE_TEXT.ok, UI.yellow);
+}
+
 export function drawUi(r: RenderContext, view: UiView): void {
   const menu = currentMenu(r, view);
+  const screen = menuScreen(r.state, view);
   switch (r.state.mode) {
     case 'title':
       if (view.settings.open) drawSettings(r, view);
       else if (view.scores?.open) drawScores(r, view.scores, view.settings.statsOn);
       else if (view.feedback?.open) drawFeedback(r, view.feedback, feedbackLayout(r.display));
-      else if (r.state.whatsNew.length > 0) drawWhatsNew(r, menu!, view.whatsNew.offset);
+      else if (screen === 'whatsNew') drawWhatsNew(r, menu!, view.whatsNew.offset);
+      else if (screen === 'feedbackNote') drawFeedbackNote(r, view.feedbackStatus!.note!);
       else drawTitle(r, view, menu!);
       break;
     case 'playing':
@@ -582,5 +599,6 @@ export function drawUi(r: RenderContext, view: UiView): void {
     drawPortraitHint(r);
     return;
   }
-  if (!view.settings.open && !view.scores?.open && !view.feedback?.open) drawButtons(r, view);
+  // Modal screens hide the HUD buttons (only M mutes there).
+  if (!view.settings.open && !view.scores?.open && !view.feedback?.open && screen !== 'feedbackNote') drawButtons(r, view);
 }

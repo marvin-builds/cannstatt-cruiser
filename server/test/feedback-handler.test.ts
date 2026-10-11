@@ -61,10 +61,10 @@ const untouchable = new Proxy({}, {
 }) as D1Database;
 
 describe('POST /feedback stores valid feedback', () => {
-  it('answers 201 {ok:true} with CORS and stores the normalised text with the day only', async () => {
+  it('answers 201 {ok:true, id} with CORS and stores the normalised text with the day only', async () => {
     const res = await post(body);
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, id: 1 });
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
     expect(rows()).toEqual([
       {

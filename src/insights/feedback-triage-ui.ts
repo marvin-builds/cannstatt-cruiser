@@ -90,7 +90,7 @@ function statusEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outco
     'form',
     { class: 'fb-panel', 'aria-label': 'Status ändern' },
     field('Status', status),
-    field('Kurze Antwort (optional, später im Spiel sichtbar)', reply),
+    field('Kurze Antwort (optional; der Spieler sieht sie im Spiel auf seinem Gerät)', reply),
     buttonRow(save, close),
     note,
   );

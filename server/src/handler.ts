@@ -1,6 +1,6 @@
 /**
  * HTTP API: GET /top, POST /score, POST /event, GET /stats, POST /feedback, GET /feedback,
- * the feedback triage routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
+ * GET /feedback/status (the game asks for its own reports, no token), the feedback triage routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
  * session events, Cloudflare's coarse location (request.cf); never the client IP.
  */
@@ -12,10 +12,12 @@ import { parseEvent } from './event-parse';
 import { MAX_EVENT_BYTES, STATS_RANGES, STATS_TESTERS_PARAM } from './events';
 import { parseFeedback } from './feedback-parse';
 import { MAX_FEEDBACK_BYTES } from './feedback-rules';
+import type { FeedbackSent, FeedbackStatusList } from './feedback-types';
 import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
+import { parseStatusIds } from './feedback-status-parse';
 import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from './feedback-triage-parse';
 import { ISSUE_LABEL, MAX_TRIAGE_BYTES } from './feedback-triage-rules';
-import { deleteFeedback, feedbackForIssue, storeIssue, updateTriage } from './feedback-triage-store';
+import { deleteFeedback, feedbackForIssue, feedbackStatuses, storeIssue, updateTriage } from './feedback-triage-store';
 import { createIssue, type GitHubFetch } from './github';
 import { locationOf } from './location';
 import { rankRows } from './ranking';
@@ -35,6 +37,8 @@ export interface Env {
 /** Larger bodies are rejected unread beyond this many characters. */
 const MAX_BODY = 2048;
 const TOP_CACHE = 'public, max-age=30';
+/** GET /feedback/status answers per player; a status changes rarely, so the browser may keep it a few minutes. */
+const STATUS_CACHE = 'private, max-age=300';
 /** GET /top?device= answers per device, so shared caches must not keep it. */
 const OWN_TOP_CACHE = 'private, max-age=30';
 /** sendBeacon sends text/plain; fetch may send JSON. Same for feedback. */
@@ -115,10 +119,19 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     const feedback = parseFeedback((await readLimitedText(request, MAX_FEEDBACK_BYTES)) ?? '');
     if (feedback === null) return fail('bad-request');
     // The session id only rate-limits, as a hash in the day's counter table; it is never stored with the text.
-    if (!(await saveFeedback(env.DB, feedback, await hashDevice(feedback.session), utcDay(now)))) return fail('rate');
+    const id = await saveFeedback(env.DB, feedback, await hashDevice(feedback.session), utcDay(now));
+    if (id === null) return fail('rate');
     // Housekeeping after the feedback is stored: a failure is logged and retried on a later request.
     await pruneFeedbackOnceADay(env.DB, now).catch((error: unknown) => console.error('feedback prune failed', error));
-    return json({ ok: true }, 201);
+    // The id lets the game ask for its own report's status later (ROADMAP 57).
+    return json({ ok: true, id } satisfies FeedbackSent, 201);
+  }
+  // Before the triage routes, whose path would take "status" for a row id. Only reads: status and reply, never the text.
+  if (request.method === 'GET' && pathname === '/feedback/status') {
+    if (!isAllowedOrigin(origin)) return fail('forbidden');
+    const ids = parseStatusIds(searchParams);
+    if (ids === null) return fail('bad-request');
+    return json({ entries: await feedbackStatuses(env.DB, ids) } satisfies FeedbackStatusList, 200, STATUS_CACHE);
   }
   const triage = TRIAGE_PATH.exec(pathname);
   if (triage) {

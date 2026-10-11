@@ -1,5 +1,5 @@
-/** D1 access for triaging one feedback row: its kind and issue, storing an issue, status/reply changes, deleting. */
-import type { FeedbackKind } from './feedback-types';
+/** D1 access for triaging one feedback row (its kind and issue, storing an issue, status/reply changes, deleting) and the players' status check. */
+import type { FeedbackKind, FeedbackStatusEntry } from './feedback-types';
 import type { FeedbackTriage, TriagePatch } from './feedback-triage-types';
 
 /** The row's kind and issue number, or null when there is no such row. */
@@ -28,4 +28,13 @@ export async function updateTriage(db: D1Database, id: number, patch: TriagePatc
 export async function deleteFeedback(db: D1Database, id: number): Promise<boolean> {
   const result = await db.prepare('DELETE FROM feedback WHERE id = ?').bind(id).run();
   return result.meta.changes > 0;
+}
+
+/** Status and reply of the rows among `ids` (1..MAX_STATUS_IDS), ascending by id; unknown ids are left out. Reads only. */
+export async function feedbackStatuses(db: D1Database, ids: readonly number[]): Promise<FeedbackStatusEntry[]> {
+  const { results } = await db
+    .prepare(`SELECT id, status, reply FROM feedback WHERE id IN (${ids.map(() => '?').join(', ')}) ORDER BY id`)
+    .bind(...ids)
+    .all<FeedbackStatusEntry>();
+  return results;
 }

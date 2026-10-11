@@ -9,7 +9,9 @@ import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
-import { currentMenu, trophyShown } from './menu-state';
+import { currentMenu, menuScreen, trophyShown } from './menu-state';
+import { type FeedbackNoteLayout, feedbackNoteLayout } from './feedback-note';
+import type { FeedbackStatusEntry } from '../net/feedback-types';
 import { kidNoticeLayout, kidNoticeRestart } from './kid-notice';
 import type { PopupFeed } from './popup-feed';
 import type { HintKind } from './hint-plate';
@@ -84,6 +86,8 @@ export interface UiDebugHook {
    * px), else null. On the portrait sheet (`sheet` true) offset and overflow are the sheet's, in CSS px.
    */
   whatsNew(): WhatsNewDebug | null;
+  /** The note about the player's own feedback while it covers the title (ROADMAP 57): the report and the note's layout (view px), else null. */
+  feedbackNote(): { note: FeedbackStatusEntry; layout: FeedbackNoteLayout } | null;
 }
 
 export interface WhatsNewDebug {
@@ -259,6 +263,10 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
       if (!flow) return null;
       const { open, kind, text, withLog, status, message } = flow;
       return { open, kind, text, withLog, status, message, form: feedbackLayout(ctx.display) };
+    },
+    feedbackNote() {
+      const note = menuScreen(ctx.state, view) === 'feedbackNote' ? view.feedbackStatus?.note : null;
+      return note ? { note, layout: feedbackNoteLayout(ctx.display, note) } : null;
     },
     whatsNew() {
       const list = currentMenu(ctx, view)?.list;

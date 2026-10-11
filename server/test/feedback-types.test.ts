@@ -12,5 +12,8 @@ describe('feedback types', () => {
     expectTypeOf<server.FeedbackBody>().toEqualTypeOf<client.FeedbackBody>();
     expectTypeOf<server.FeedbackEntry>().toEqualTypeOf<client.FeedbackEntry>();
     expectTypeOf<server.FeedbackList>().toEqualTypeOf<client.FeedbackList>();
+    expectTypeOf<server.FeedbackSent>().toEqualTypeOf<client.FeedbackSent>();
+    expectTypeOf<server.FeedbackStatusEntry>().toEqualTypeOf<client.FeedbackStatusEntry>();
+    expectTypeOf<server.FeedbackStatusList>().toEqualTypeOf<client.FeedbackStatusList>();
   });
 });

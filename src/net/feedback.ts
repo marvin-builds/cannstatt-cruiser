@@ -8,12 +8,15 @@
  * injected test URL, else nothing goes out ('offline'). The session id is the
  * telemetry session of this page load (rate limit only, kept in memory); no
  * name, no device id, and the error log only on a bug report with the box ticked.
+ * The answer's new id goes to `onSent` (kept on the device, ROADMAP 57).
  */
 import { VIEW_H } from '../core/config';
 import { type FetchLike, REQUEST_TIMEOUT_MS, SCORES_URL } from './api';
 import type { ErrorLogLike } from './error-log';
+import { isFeedbackId } from './feedback-status';
 import {
   type FeedbackBody,
+  type FeedbackSent,
   type FeedbackKind,
   MAX_FEEDBACK_TEXT,
   MAX_LOG_LINES,
@@ -21,6 +24,7 @@ import {
   MIN_VIEW_WIDTH,
 } from './feedback-types';
 import { PRODUCTION_HOST } from './telemetry';
+import { jsonBody, timedFetch } from './timed-fetch';
 import type { Platform } from './telemetry-types';
 
 /** What the body is built from. */
@@ -104,6 +108,8 @@ export interface FeedbackSenderDeps {
   /** The error log; null sends an empty log. */
   log: ErrorLogLike | null;
   timeoutMs?: number;
+  /** Gets the id of every report the worker stored (the game keeps it for the status check, feedback-status.ts). */
+  onSent?: (id: number) => void;
 }
 
 /** The part the ui calls. */
@@ -125,30 +131,18 @@ export class FeedbackSender {
     const withLog = draft.kind === 'bug' && draft.withLog && this.deps.log !== null;
     const log = withLog ? this.deps.log!.snapshot(stateLine({ mode: context.mode, version, viewWidth: context.viewWidth, viewHeight: VIEW_H })) : [];
     const body = feedbackBody({ ...context, session: this.deps.session, kind: draft.kind, text: draft.text, version, log });
-    const status = await this.post(`${baseUrl}/feedback`, JSON.stringify(body));
-    return status === null ? 'offline' : resultOf(status);
+    // text/plain keeps it a simple CORS request.
+    const init = { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) };
+    const response = await timedFetch(this.deps.fetch, `${baseUrl}/feedback`, init, this.deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    if (response === null) return 'offline';
+    const result = resultOf(response.status);
+    if (result === 'sent') this.keepId(await jsonBody(response));
+    return result;
   }
 
-  /** The answer's status, or null when offline or timed out. text/plain keeps it a simple CORS request. */
-  private async post(url: string, body: string): Promise<number | null> {
-    const controller = typeof AbortController === 'undefined' ? null : new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<null>((resolve) => {
-      timer = setTimeout(() => {
-        controller?.abort();
-        resolve(null);
-      }, this.deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
-    });
-    const call = async () => {
-      const response = await this.deps.fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, signal: controller?.signal });
-      return response.status;
-    };
-    try {
-      return await Promise.race([call(), timeout]);
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-    }
+  /** Passes the new report's id of a `{ok: true, id}` answer on; an older worker sends none. */
+  private keepId(answer: unknown): void {
+    const id = (answer as Partial<FeedbackSent> | null)?.id;
+    if (isFeedbackId(id)) this.deps.onSent?.(id);
   }
 }
