@@ -6,7 +6,8 @@
  * guiding stars and by the playtest bots) and measures how wide its take-off
  * window is (the human margin, see fairness.ts). With `stomps` on, landing on
  * a person's head is a valid path that bounces (the spawner leaves it off, so
- * no pattern ever requires a stomp).
+ * no pattern ever requires a stomp); stompsLeadOn also flies the head jumps
+ * a press on the bounce turns it into (ROADMAP 60).
  *
  * With a `budget` every simulated tick costs one unit, and the search
  * throws OUT_OF_WORK once it runs out. Caches and finished results are kept,
@@ -170,8 +171,8 @@ export class Solver {
   /** wait() and jump() results per node (and hold): the searches visit the same nodes many times. */
   private readonly waits = new Map<number, Node | null>();
   private readonly jumps = new Map<number, Flight | null>();
-  /** stompsLeadOn's flights per node and hold: whether they stomped, and where they came down (null: a crash). */
-  private readonly stompFlights = new Map<number, { stomped: boolean; flight: Flight | null }>();
+  /** stompsLeadOn's flight segments (see stompEnds), each up to its landing or next stomp (null: a crash). */
+  private readonly stompSegments = new Map<string, Node | null>();
   /** Supports the body can ride (rails and ledge tops), by index in node keys; grows for rails not in the course. */
   private readonly supports: { top: number; end: number }[];
   /** The pace cannot carry the player past the goal within HORIZON (a standstill or a crawl): nothing passes. */
@@ -265,9 +266,14 @@ export class Solver {
    * Whether every stomp from `start` leads on fairly (people inside
    * combinations, ROADMAP 52 6a): each take-off with one of `holds` before
    * the next piece is passed whose flight lands on a person's head must come
-   * down, after the bounce, where the rest is fair (see fair) for `holds` and
-   * `window`, never crash on the bounce. Jumps that stomp nobody are fair's
-   * business. Needs `stomps` on. Resumable like every search (flights are
+   * down where the rest is fair (see fair) for `holds` and `window`, never
+   * crash on the way: after the plain bounce and after every head jump (a
+   * press on the bounce with one of `holds`, ROADMAP 60), so the higher arc
+   * never lands on anything unfair either. Coming down on the street past
+   * the last piece is fine even beyond `limit`: a long head jump off a
+   * person at the end of a pattern lands in the free street the next
+   * pattern's lead keeps. Jumps that stomp nobody are fair's business.
+   * Needs `stomps` on. Resumable like every search (flight segments are
    * kept).
    */
   stompsLeadOn(holds: readonly number[], window: number, start: Body = groundBody()): boolean {
@@ -276,25 +282,48 @@ export class Solver {
     const fairFrom = this.fairJudge(holds, window);
     for (const node of this.takeoffs({ tick: 0, body: start, stomped: 0 }).nodes) {
       for (const hold of holds) {
-        const { stomped, flight } = this.stompFlight(node, hold);
-        if (stomped && (!flight || !fairFrom(flight))) return false;
+        const ends = this.stompEnds(node, hold, holds);
+        if (ends && !ends.every((end) => !!end && (this.passed(end) || fairFrom(end)))) return false;
       }
     }
     return true;
   }
 
-  /** A jump from `node` (see jump) and whether it landed on a head on the way, also when it crashed after the bounce. */
-  private stompFlight(node: Node, held: number): { stomped: boolean; flight: Flight | null } {
+  /**
+   * Where a jump from `node` (see jump) comes down when it lands on a head on
+   * the way, or null when it stomps nobody (a crash before any stomp is
+   * fair's business too). After every stomp it branches: the plain bounce and
+   * a head jump per hold of `holds`, pressed on the bounce step (a buffered
+   * press takes off there as well). A null end is a crash.
+   */
+  private stompEnds(node: Node, held: number, holds: readonly number[]): (Flight | null)[] | null {
     const hold = Math.min(held, FULL_HOLD);
-    const key = this.keyOf(node) * KEY_HOLDS + hold;
-    let known = this.stompFlights.get(key);
-    if (!known) {
-      const crash = { stomped: node.stomped };
-      const flight = this.flyFrom(this.load(cursorA, node), hold, true, undefined, crash);
-      known = { stomped: (flight ? flight.stomped : crash.stomped) !== node.stomped, flight };
-      this.stompFlights.set(key, known);
+    const key = String(this.keyOf(node) * KEY_HOLDS + hold);
+    const first = this.segment(key, node, hold, true);
+    return first && !isSupported(first.body) ? this.afterStomp(key, first, holds) : null;
+  }
+
+  /** The ends of the flight on from airborne `stomp` (its bounce pending): without a press, and with a head jump per hold. */
+  private afterStomp(key: string, stomp: Node, holds: readonly number[]): (Flight | null)[] {
+    const ends: (Flight | null)[] = [];
+    for (const held of [0, ...holds]) {
+      const hold = Math.min(held, FULL_HOLD);
+      const branch = `${key}/${hold}`;
+      const next = this.segment(branch, stomp, hold, hold > 0);
+      if (next && !isSupported(next.body)) ends.push(...this.afterStomp(branch, next, holds));
+      else ends.push(next);
     }
-    return known;
+    return ends;
+  }
+
+  /** A flight from `node` up to its landing or next stomp (null: a crash), memoised under `key` so a resumed search keeps it. */
+  private segment(key: string, node: Node, hold: number, press: boolean): Node | null {
+    let found = this.stompSegments.get(key);
+    if (found === undefined) {
+      found = this.flyFrom(this.load(cursorA, node), hold, press, undefined, true);
+      this.stompSegments.set(key, found);
+    }
+    return found;
   }
 
   /** Whether the course is fair from a supported node on (see fair), memoised per solver. */
@@ -592,21 +621,20 @@ export class Solver {
 
   /**
    * fly from a scratch cursor: the airborne ticks step between the two
-   * scratch cursors, so only the landing allocates (its node). On a crash
-   * the people stomped by then go into `crash`.
+   * scratch cursors, so only the landing allocates (its node). With
+   * `untilStomp` it also stops right after a stomp, in the air (the bounce
+   * still pending).
    */
-  private flyFrom(start: Cursor, hold: number, press: boolean, path?: Jump['path'], crash?: { stomped: number }): Flight | null {
+  private flyFrom(start: Cursor, hold: number, press: boolean, path?: Jump['path'], untilStomp = false): Flight | null {
+    const stomped = start.stomped;
     let from = start;
     let to = start === cursorA ? cursorB : cursorA;
     for (let i = 0; i < MAX_FLIGHT; i++) {
-      if (!this.advance(from, press && i === 0, i < hold, to)) {
-        if (crash) crash.stomped = from.stomped;
-        return null;
-      }
+      if (!this.advance(from, press && i === 0, i < hold, to)) return null;
       const landed = to;
       to = from;
       from = landed;
-      if (isSupported(from.body)) return nodeOf(from);
+      if (isSupported(from.body) || (untilStomp && from.stomped !== stomped)) return nodeOf(from);
       if (path) {
         const box = hitboxOf(from.body, this.x(from.tick));
         path.push({ x: box.x + box.w / 2, y: box.y + box.h / 2 });

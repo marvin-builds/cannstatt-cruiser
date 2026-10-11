@@ -1,11 +1,12 @@
 /**
  * DOM-free skater logic: variable jump with coyote time and jump buffer,
  * rail riding, ducking (on the ground only), the grind trick (down on a
- * rail), the air trick (down in the air), the stomp bounce and the kicker
- * launch, crash/invulnerability and the animation state (incl. the catch
- * reach, the item use, the high five, the grab pose of big air, the hard
- * landing and the board tilt on a kicker). One instance per player system;
- * `reset()` at every run start.
+ * rail), the air trick (down in the air), the stomp bounce (or the head
+ * jump a buffered press turns it into) and the kicker launch,
+ * crash/invulnerability and the animation state (incl. the catch reach, the
+ * item use, the high five, the grab pose of big air, the hard landing and
+ * the board tilt on a kicker). One instance per player system; `reset()` at
+ * every run start.
  */
 import { GROUND_Y, TICK_DT } from '../core/config';
 import type { CarriedItem, Entity, EntityKind, GameBus, GameState, InputFrame, ItemAction, PlayerAnim, PlayerState, Rect } from '../types';
@@ -68,7 +69,7 @@ const FLIP_SEED_SALT = 0x5bd1e995;
 /** A take-off gameplay asked for (stomp bounce or kicker launch), applied at the start of the next tick. */
 interface TakeOff {
   velocity: number;
-  /** A launch: big air (grab pose) from the take-off on. */
+  /** A launch: big air (grab pose) from the take-off on. Else a stomp, which a buffered press turns into a head jump (ROADMAP 60). */
   launch: boolean;
 }
 
@@ -209,7 +210,11 @@ export class SkaterController {
     this.use = null;
   }
 
-  /** Gameplay: the falling board landed on a person's head (stomp). Bounces on the next tick. */
+  /**
+   * Gameplay: the falling board landed on a person's head (stomp). Bounces on
+   * the next tick, or jumps off the head when the action is pressed then or
+   * was pressed within the jump buffer before (ROADMAP 60).
+   */
   stomp(): void {
     this.queueTakeOff({ velocity: T.STOMP_BOUNCE_VELOCITY, launch: false });
   }
@@ -418,6 +423,11 @@ export class SkaterController {
   private tryJump(p: PlayerState): void {
     if (this.buffer <= 0 || !this.canJump(p)) return;
     if (p.grinding) this.leaveRail(p, true);
+    this.bus.emit('jump', { velocity: this.takeOffJump(p) });
+  }
+
+  /** The variable jump's take-off (hold boost on, buffer and coyote used up); returns its velocity. */
+  private takeOffJump(p: PlayerState): number {
     this.buffer = 0;
     this.coyote = 0;
     this.boosting = true;
@@ -426,19 +436,27 @@ export class SkaterController {
     p.grounded = false;
     const velocity = jumpVelocity(this.chill);
     p.vy = -velocity;
-    this.bus.emit('jump', { velocity });
+    return velocity;
   }
 
   /**
    * The stomp bounce or kicker launch: a take-off like a jump with the action
    * already released (normal gravity from this tick on, no hold boost, a
-   * press in this tick does not jump on top) and no jump event. Ignored on a rail.
+   * press in this tick does not jump on top) and no jump event. A stomp with
+   * a press in the jump buffer is a head jump instead: the normal variable
+   * jump from the head (still no jump event: one stomp, one take-off).
+   * Ignored on a rail.
    */
   private applyTakeOff(p: PlayerState): void {
     const takeOff = this.takeOff;
     if (!takeOff) return;
     this.takeOff = null;
     if (p.grinding || this.crashing) return;
+    if (!takeOff.launch && this.buffer > 0) {
+      this.takeOffJump(p);
+      this.launched = false;
+      return;
+    }
     this.boosting = false;
     this.coyote = 0;
     this.buffer = 0;

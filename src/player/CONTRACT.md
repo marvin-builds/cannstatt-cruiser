@@ -114,9 +114,23 @@ in any slice's Vitest tests.
   exactly like a jump take-off whose action was already released:
   `vy = -150 + GRAVITY * dt`, `y += vy * dt`. `gameplay/jumpsim.ts` must mirror
   this. `y` is not snapped; afterwards the normal air and landing rules apply.
-- No `jump` event is emitted (audio plays its own `boing`). A stomp is
-  ignored while the crash animation plays (or on a rail), a crash drops a
-  pending one, and a run start clears it. One stomp, one bounce.
+- **Head jump (ROADMAP 60):** if the jump buffer holds a press at that
+  moment (pressed in the take-off tick itself, or up to `JUMP_BUFFER`, 120 ms,
+  before it, and not used up by another jump), the take-off is the normal
+  variable jump from the head instead of the bounce: `vy = -JUMP_VELOCITY`
+  (scaled by `CHILL_JUMP_SCALE` while chilled), hold boost on from that tick
+  for as long as the action stays held (up to `MAX_JUMP_HOLD`), ollie pose.
+  A tap flies as high above the head as a tap from the street, a full hold
+  as high as a full jump; a buffered press counts its hold from the take-off,
+  like a jump buffered before a landing. No automatic hold boost: a press
+  released before the take-off is a tap. Without a buffered press the bounce
+  above is unchanged; a crash clears the buffer, so a missed stomp stays a
+  crash. `gameplay/jumpsim.ts` models it as a press on the bounce step
+  (`Body.headJump`).
+- No `jump` event is emitted, also not for a head jump (audio plays its own
+  `boing`). A stomp is ignored while the crash animation plays (or on a
+  rail), a crash drops a pending one, and a run start clears it. One stomp,
+  one take-off.
 - Covered in `stomp.test.ts`.
 
 ## Kicker launch (stunt lines)

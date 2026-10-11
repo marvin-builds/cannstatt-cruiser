@@ -228,6 +228,21 @@ describe('stomps in the solver', () => {
       });
     }
 
+    // ROADMAP 60: a press on the bounce jumps off the head, up to a full jump high and far.
+    for (const speed of [BASE_SPEED, TOP_SPEED]) {
+      it(`counts every head jump too: a bin 1 s after the person is too close for a long one, 1.3 s is not (${speed} px/s)`, () => {
+        const holds = [3, 10, 20];
+        // The plain bounce comes down ~0.35 s after the head, a full head jump ~0.75 s: no take-off window is left before the bin.
+        expect(new Solver(withAfter(89 + Math.round(1.0 * speed)), speed, { stomps: true }).stompsLeadOn(holds, 12)).toBe(false);
+        expect(new Solver(withAfter(89 + Math.round(1.3 * speed)), speed, { stomps: true }).stompsLeadOn(holds, 12)).toBe(true);
+      });
+
+      it(`a head jump off the last piece may come down past the limit, on the free street after it (${speed} px/s)`, () => {
+        const tight = { ...personCourse(), limit: 89 + Math.round(0.45 * speed) };
+        expect(new Solver(tight, speed, { stomps: true }).stompsLeadOn([3, 10, 20], 12)).toBe(true);
+      });
+    }
+
     it('needs stomps on', () => {
       expect(() => new Solver(personCourse(), BASE_SPEED).stompsLeadOn([20], 12)).toThrow();
     });
