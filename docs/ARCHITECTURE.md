@@ -1121,12 +1121,21 @@ hidden page `insights.html` shows aggregates to the owner.
   `src/net/feedback-types.test.ts`), types by `server/src/feedback-types.ts`
   (type-level test in `server/test/`).
 - **Game:** "Feedback" in the pause menu and the speech-bubble icon on the
-  title (both hidden in kid mode, key F). `ui/feedback-flow.ts` (state),
+  title (both hidden in kid mode, key F; F while riding pauses and opens the
+  form). The field is focused on the tick after the opening key, so F never
+  types into it. `ui/feedback-flow.ts` (state),
   `feedback-layout.ts`, `feedback-screen.ts` and `feedback-field.ts` (a native
   `<textarea>` over the canvas like the name field: font >= 16 CSS px, keys
   stop at it, Esc closes). Kind Fehler / Idee, "Fehlerprotokoll mitsenden"
   (bug only, default off), "Senden" / "Abbrechen"; results sent / rate
-  (429) / invalid (400/413) / offline, the text is kept unless sent.
+  (429) / invalid (400/413) / offline, the text is kept unless sent. In phone
+  landscape the log toggle gets its own 2x row above the buttons; in portrait
+  the counter sits in the title row and all notes are 2x.
+- **Portrait menus:** at 1 CSS px per view px, notes and labels in the
+  feedback form, the Bestenliste (heading beside the close button, statistics
+  switch and "Datenschutz" as a bottom row) and the settings ("Zurück" in the
+  title row) are drawn at 2x. A note too wide at 2x falls back to a shorter
+  wording of the same fact (`ui/note-text.ts`).
 - **Net:** `net/feedback.ts` builds and posts the body (text/plain JSON). It
   goes to the live worker only from `marvinmai.github.io` in a production
   build, else only to `window.__feedbackUrl`; the statistics opt-out and GPC
