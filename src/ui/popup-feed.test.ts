@@ -136,10 +136,10 @@ describe('PopupFeed', () => {
     expect(p!.color).not.toBe(UI.pink);
   });
 
-  it('a grind trick: "Grind-Trick! +N"', () => {
+  it('a grind trick: "Boardslide! +N"', () => {
     const feed = new PopupFeed();
     feed.grindTrick(1500);
-    expect(texts(feed)).toEqual(['Grind-Trick! +1.500']);
+    expect(texts(feed)).toEqual(['Boardslide! +1.500']);
   });
 
   it('a high five: "High Five! +N", the same in kid mode', () => {

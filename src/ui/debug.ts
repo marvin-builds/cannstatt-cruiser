@@ -33,7 +33,7 @@ export interface UiDebugHook {
   itemPopups(...kinds: ('drink' | 'eat' | 'throw' | 'hit' | 'back' | 'stomp' | 'trick')[]): void;
   /** Puts an item in the skater's hands (state.carriedItem) like a catch (incl. the first-time touch hint), without the toss or popup; null empties them. */
   carry(item: CarriedItem | null): void;
-  /** Whether the grind trick hint ("↓ = Trick!") shows now. */
+  /** Whether the grind trick hint ("↓ = Boardslide!") shows now. */
   trickHintVisible(): boolean;
   /** Emits stunt line events like gameplay: a step with this multiplier, or the end of the line. */
   stuntStep(multiplier: number): void;

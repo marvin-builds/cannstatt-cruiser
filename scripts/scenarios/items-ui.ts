@@ -3,7 +3,7 @@
  * control while carrying (desktop: the "E" chip next to the stats plate;
  * touch: the big item button, whose real tap must not jump), every carried
  * item, the merged item popups ("Prost! Gluck gluck gluck", "Lecker! +1",
- * "Stomp! +150", "Treffer! +200", "Achtung, der Ball!", "Grind-Trick!"), the
+ * "Stomp! +150", "Treffer! +200", "Achtung, der Ball!", "Boardslide!"), the
  * drunk look from easing in to easing out, and kid mode, which never shows it.
  * On touch it also shows the first-catch hint once the zone banner is gone.
  *   npm run playtest -- --scenario scripts/scenarios/items-ui.ts --viewports desktop,phone-landscape,phone-portrait --name items-ui

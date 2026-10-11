@@ -28,7 +28,7 @@ It runs in the browser on desktop and phones, and you can install it as an app o
 |---|---|---|
 | Jump (tap = small ollie, hold = higher jump) | Space, ↑ or W (or a mouse click) | Tap anywhere, hold for higher |
 | Duck | ↓ or S (held) | Swipe down |
-| Grind trick (while grinding) | ↓ or S | Swipe down |
+| Boardslide (while grinding) | ↓ or S | Swipe down |
 | Kickflip (in the air) | ↓ or S | Swipe down |
 | Use the carried item / high five | E | The item button |
 | Kicker ramp | Jump on the ramp | Tap on the ramp |
@@ -47,7 +47,7 @@ On phones, landscape is the play orientation.
   Hauptbahnhof tower, Stäffele, vineyards and heavy traffic). The route rides back and forth
   between them.
 - **Tricks:** ollies, ducking, stomps (land on a person's head, bounce off and catch what they
-  carry), rail and bench grinds with a grind trick, kickflips, kicker ramps and stunt lines over
+  carry), rail and bench grinds with a boardslide, kickflips, kicker ramps and stunt lines over
   ledges with a growing combo.
 - **NorDIY skatepark:** a DIY park with containers, a crane, a cheering crowd and a skater who
   wants a high five.

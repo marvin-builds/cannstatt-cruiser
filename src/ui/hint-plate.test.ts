@@ -24,15 +24,15 @@ describe('hint plate', () => {
   it('a row is its texts side by side, a key cap counts as one piece', () => {
     expect(hintRowWidth(['Hallo'], 1)).toBe(measureText('Hallo', 1));
     expect(hintRowWidth(['Hallo'], 2)).toBe(measureText('Hallo', 2));
-    expect(hintRowWidth(['In der Luft', KEY_DOWN, '= Trick!'], 1)).toBe(
-      measureText('In der Luft', 1) + KEYCAP_W + measureText('= Trick!', 1) + 2 * 3,
+    expect(hintRowWidth(['In der Luft', KEY_DOWN, '= Kickflip!'], 1)).toBe(
+      measureText('In der Luft', 1) + KEYCAP_W + measureText('= Kickflip!', 1) + 2 * 3,
     );
   });
 
   it('an E key cap is one key cap, a swipe arrow scales with the font', () => {
     expect(hintRowWidth([KEY_E, '= High Five!'], 2)).toBe(KEYCAP_W + 3 + measureText('= High Five!', 2));
-    expect(hintRowWidth([SWIPE_DOWN, 'wischen = Trick!'], 2)).toBe(
-      SWIPE_DOWN_W * 2 + measureText('wischen = Trick!', 2) + 3,
+    expect(hintRowWidth([SWIPE_DOWN, 'wischen = Boardslide!'], 2)).toBe(
+      SWIPE_DOWN_W * 2 + measureText('wischen = Boardslide!', 2) + 3,
     );
   });
 
@@ -44,7 +44,7 @@ describe('hint plate', () => {
     expect(two.h).toBeGreaterThan(one.h + 8);
     expect(hintPlateSize([['Hallo']], 2).h).toBe(2 * 8 + 6);
     // A key cap (10 px) makes a scale 1 row taller than the 8 px glyphs.
-    expect(hintPlateSize([[KEY_DOWN, '= Trick!']], 1).h).toBe(10 + 6);
+    expect(hintPlateSize([[KEY_DOWN, '= Boardslide!']], 1).h).toBe(10 + 6);
   });
 
   it('sits at the hint spot under the skater', () => {
@@ -54,8 +54,8 @@ describe('hint plate', () => {
   });
 
   it('fitHintRows picks the first variant that fits under the riding line and in the view', () => {
-    const long: HintRow[] = [['In der Luft'], ['runterwischen = Trick!']];
-    const short: HintRow[] = [['Runterwischen = Trick!']];
+    const long: HintRow[] = [['In der Luft'], ['runterwischen = Kickflip!']];
+    const short: HintRow[] = [[SWIPE_DOWN, 'wischen = Kickflip!']];
     expect(fitHintRows([long, short], 1, 320)).toBe(long);
     // Two scale-2 rows are taller than the street below the riding line.
     expect(fitHintRows([long, short], 2, 320)).toBe(short);
@@ -66,7 +66,7 @@ describe('hint plate', () => {
   for (const viewWidth of [320, 384, 427]) {
     for (const scale of [1, 2]) {
       it(`fitted plates at scale ${scale}, ${viewWidth} wide: on screen, under the riding line, clear of the skater`, () => {
-        const variants: HintRow[][] = [[['In der Luft'], ['runterwischen = Trick!']], [['Runterwischen = Trick!']]];
+        const variants: HintRow[][] = [[['In der Luft'], ['runterwischen = Kickflip!']], [[SWIPE_DOWN, 'wischen = Kickflip!']]];
         const r = hintPlateRect(fitHintRows(variants, scale, viewWidth), scale, viewWidth);
         expect(r.y).toBeGreaterThan(GROUND_Y);
         expect(r.y + r.h).toBeLessThanOrEqual(VIEW_H);

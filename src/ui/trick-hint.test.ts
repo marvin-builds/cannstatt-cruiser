@@ -78,22 +78,23 @@ describe('grind trick hint', () => {
   });
 
   describe('plate', () => {
-    it('desktop: a ↓ key cap and "= Trick!"; touch landscape: "Runterwischen = Trick!"', () => {
+    it('desktop: a ↓ key cap and "= Boardslide!"; touch landscape: "Runterwischen = Boardslide!"', () => {
       const desk = trickHintPlate({ touch: false, portrait: false, viewWidth: 320 });
-      expect(desk.rows).toEqual([[KEY_DOWN, '= Trick!']]);
+      expect(desk.rows).toEqual([[KEY_DOWN, '= Boardslide!']]);
       expect(desk.scale).toBe(1);
-      expect(trickHintPlate({ touch: true, portrait: false, viewWidth: 384 }).rows).toEqual([['Runterwischen = Trick!']]);
+      expect(trickHintPlate({ touch: true, portrait: false, viewWidth: 384 }).rows).toEqual([['Runterwischen = Boardslide!']]);
     });
 
-    it('touch portrait (big font): compact "↓ wischen = Trick!", no larger than the kicker and air trick hints', () => {
+    it('touch portrait (big font): compact "↓ wischen = Boardslide!", one row no taller than the kicker and air trick hints, inside the view', () => {
       for (const viewWidth of [320, 390, 427]) {
         const display = { touch: true, portrait: true, viewWidth };
         const p = trickHintPlate(display);
-        expect(p.rows).toEqual([[SWIPE_DOWN, 'wischen = Trick!']]);
+        expect(p.rows).toEqual([[SWIPE_DOWN, 'wischen = Boardslide!']]);
         expect(p.scale).toBe(popupScale(display, false));
         const kicker = kickerHintPlate(display).rect;
         const air = airTrickHintPlate(display).rect;
-        expect(p.rect.w).toBeLessThanOrEqual(Math.min(kicker.w, air.w));
+        expect(p.rect.x).toBeGreaterThanOrEqual(POPUP_MARGIN);
+        expect(p.rect.x + p.rect.w).toBeLessThanOrEqual(viewWidth - POPUP_MARGIN);
         expect(p.rect.h).toBeLessThanOrEqual(Math.min(kicker.h, air.h));
         expect(p.rect).toEqual(hintSpotRect(hintPlateSize(p.rows, p.scale).w, hintPlateSize(p.rows, p.scale).h, viewWidth));
       }

@@ -907,7 +907,7 @@ a stomp with the points of its `obstacleCleared` "Stomp! +150" (a ball hit
 eating "Lecker! +1" with a heart (or "Lecker! +…" with the bonus at full
 health), "Prost! Gluck gluck gluck" (never in kid mode), "Wurf!",
 "Achtung, der Ball!" on a ricochet, "Autsch!" on a crash and
-"Grind-Trick! +…". No popup rises above the HUD stats plate (`PopupPool.ceiling`;
+"Boardslide! +…". No popup rises above the HUD stats plate (`PopupPool.ceiling`;
 stacks then grow downwards). Every popup has a 1 px ink outline; catch popups
 and all popups in portrait are drawn at scale 2 (`popupScale`). The ui slice
 shows "Stomp!" on `stomp`; gameplay adds the points.
@@ -1484,23 +1484,27 @@ top. Rules in `gameplay/rules.ts`, shared by contacts and the solver:
 
 ## Grind trick
 
+Shown to players as the **Boardslide** (ROADMAP 53).
+
 - While grinding a rail or the bench, holding down (duck: ↓ / S, a swipe down
   on touch) performs a trick: the **player** sets `player.grindTrick = true`
   for as long as down is held and the grind lasts, and draws the skater facing
-  the player (front view, the only view with the moustache).
+  the player (front view, the only view with the moustache) with the board
+  turned across the rail (`BD.halfTurn` while turning, `BD.endOn` in the front
+  view; the deck stays on the rail line).
 - The trick ends when down is released or the grind ends (jump off, rail end,
   crash). **Gameplay** reads `player.grindTrick`, scores the trick and emits
   `grindTrick {entityId, ticks, points}` when it ends while the skater is
   still on the rail or bench (`grind-trick.ts`: `GRIND_TRICK_POINTS` = 3 per
   tick, times the multiplier, on top of the grind points); the ui shows
-  "Grind-Trick! +…" and audio plays a sound.
+  "Boardslide! +…" and audio plays a sound.
 - Ducking on the ground is unchanged; a grind trick never ducks.
 - **Hint** (ui, `ui/trick-hint.ts` `TrickHint`): while grinding, on the first
   `TRICK_HINT_GRINDS` (3) grinds of a run and until the player has scored a
   grind trick once ever (storage key `grindTrickSeen`, set on the first
   `grindTrick`), a small plate centred under the skater just below the riding
-  line says "↓ = Trick!" (desktop, with a key cap) or "Wisch runter = Trick!"
-  (touch). It hides while the trick is held and when the grind ends.
+  line says "↓ = Boardslide!" (desktop, with a key cap), "Runterwischen =
+  Boardslide!" (touch) or "↓ wischen = Boardslide!" (big portrait font). It hides while the trick is held and when the grind ends.
 
 ## Chill effect (joint pickup)
 

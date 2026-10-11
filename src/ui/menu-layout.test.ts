@@ -21,6 +21,7 @@ import {
   titleLayout,
   toTitleLabel,
   toTitlePlate,
+  trickKeysHint,
   whatsNewLayout,
 } from './menu-layout';
 import type { InstallHintKind } from './notices';
@@ -381,11 +382,19 @@ describe('menu screen layouts', () => {
     }
   });
 
-  it('title: the help has a kickflip line and says "runterwischen" and "Knopf antippen"', () => {
+  it('title: the help has boardslide and kickflip lines and says "runterwischen" and "Knopf antippen"', () => {
+    expect(titleHelp(true)).toContain('Auf dem Geländer runterwischen = Boardslide');
+    expect(titleHelp(false)).toContain('Auf dem Geländer Pfeil runter = Boardslide');
     expect(titleHelp(true)).toContain('In der Luft runterwischen = Kickflip');
     expect(titleHelp(false)).toContain('In der Luft Pfeil runter = Kickflip');
     expect(titleHelp(true)).toContain('Knopf antippen = Gegenstand benutzen');
     for (const touch of [true, false]) for (const line of titleHelp(touch)) expect(line).not.toMatch(/Wisch runter|nach unten wischen/i);
+  });
+
+  it('the boardslide line has a short form for the pause screen\'s big portrait font', () => {
+    expect(trickKeysHint(true, true)).toBe('Geländer: runterwischen = Boardslide');
+    expect(trickKeysHint(false, true)).toBe('Geländer: Pfeil runter = Boardslide');
+    expect(trickKeysHint(true)).toBe('Auf dem Geländer runterwischen = Boardslide');
   });
 
   it('game over keeps the score and highscore rows outside portrait, notices give way first', () => {
