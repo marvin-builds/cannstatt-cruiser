@@ -20,6 +20,18 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.11',
+    date: '2026-10-11',
+    items: [
+      'Mein Feedback: sieh, was draus wurde',
+      'Roter Punkt bei Neuem zu deinem Feedback',
+      'Vor dem Senden ansehen, was rausgeht',
+      'Neues Zahnrad für die Einstellungen',
+      'App installieren klappt wieder',
+      'Weniger Ducken am Stück',
+    ],
+  },
+  {
     version: '2026-10-11.10',
     date: '2026-10-11',
     items: [
