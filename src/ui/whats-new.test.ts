@@ -24,7 +24,7 @@ function* inputs(): Generator<MenuInput & { label: string }> {
   for (const v of VARIANTS) {
     for (const viewWidth of v.widths) {
       for (const fullscreenAvailable of [true, false]) {
-        yield { label: `${v.name} ${viewWidth} fs=${fullscreenAvailable}`, viewWidth, touch: v.touch, portrait: v.portrait, fullscreenAvailable, reload: false, install: null };
+        yield { label: `${v.name} ${viewWidth} fs=${fullscreenAvailable}`, viewWidth, touch: v.touch, portrait: v.portrait, fullscreenAvailable, reload: false, install: false };
       }
     }
   }
@@ -79,13 +79,13 @@ describe("what's new layout", () => {
   });
 
   it('portrait reads big: scale 2 text in rows of at least 16 px', () => {
-    const l = whatsNewLayout({ viewWidth: 390, touch: true, portrait: true, fullscreenAvailable: true, reload: false, install: null }, MANY).list!;
+    const l = whatsNewLayout({ viewWidth: 390, touch: true, portrait: true, fullscreenAvailable: true, reload: false, install: false }, MANY).list!;
     expect(l.scale).toBe(2);
     expect(l.rowH).toBeGreaterThanOrEqual(16);
   });
 
   it('a short list does not scroll', () => {
-    const l = whatsNewLayout({ viewWidth: 320, touch: false, portrait: false, fullscreenAvailable: true, reload: false, install: null }, [entry('2026-10-09.1', 'A')]).list!;
+    const l = whatsNewLayout({ viewWidth: 320, touch: false, portrait: false, fullscreenAvailable: true, reload: false, install: false }, [entry('2026-10-09.1', 'A')]).list!;
     expect(l.maxScroll).toBe(0);
   });
 });

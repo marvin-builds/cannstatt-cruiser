@@ -58,8 +58,10 @@ On phones, landscape is the play orientation.
   title screen). Kid mode hides the gear; holding the logo (or K) for 3 s opens the settings to
   switch it off again.
 - **Online Bestenliste:** a shared top 20 with nicknames, one entry per device (not in kid mode).
-- **Offline and installable:** a PWA with a service worker; the game shows an install hint on
-  phones and a "Neu in dieser Version" screen after updates.
+- **Offline and installable:** a PWA with a service worker. "App installieren" is always in the
+  settings (until installed); phones also get it on game over after a good run ("×" snoozes it).
+  Without the browser's install dialog it shows the steps (Android menu, iOS "Teilen"). After
+  updates a "Neu in dieser Version" screen shows.
 - **Feedback:** send a bug report ("Fehler") or an idea ("Idee") from inside the game (not in kid mode).
 
 ## Privacy

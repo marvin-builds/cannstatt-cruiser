@@ -4,10 +4,10 @@
  */
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import type { FeedbackStatusEntry } from '../net/feedback-types';
-import type { DisplayInfo, GameState, Rect } from '../types';
+import type { DisplayInfo, GameState, InstallState, Rect } from '../types';
 import { gameOverLayout, type MenuInput, type MenuLayout, pauseLayout, titleLayout } from './menu-layout';
 import { uiMetrics } from './layout';
-import { installHintKind, reloadOffered } from './notices';
+import { reloadOffered } from './notices';
 import { titleTrophy } from './score-layout';
 import { whatsNewLayout } from './whats-new';
 import type { RunResult } from './records';
@@ -28,6 +28,8 @@ export interface MenuView {
   feedback: { open: boolean } | null;
   /** What happened to the player's own feedback (feedback-note.ts): its note covers the title once. Null without a status check. */
   feedbackStatus: { note: FeedbackStatusEntry | null } | null;
+  /** The install offer (install-offer.ts): the game-over card, and the manual steps covering every screen. */
+  install: { guideOpen: boolean; cardShown(install: InstallState, touch: boolean): boolean };
 }
 
 export type MenuScreen = 'whatsNew' | 'feedbackNote' | 'title' | 'pause' | 'gameOver';
@@ -44,9 +46,12 @@ export function portraitHintShown(
   return r.display.portrait && r.display.touch && !view.portraitDismissed && !view.portraitFree;
 }
 
-/** The menu screen of this mode, or null while riding or while the settings menu, a highscore or the feedback screen covers it. */
+/**
+ * The menu screen of this mode, or null while riding or while the settings menu, a highscore, the
+ * feedback screen or the install steps cover it.
+ */
 export function menuScreen(state: GameState, view: MenuView): MenuScreen | null {
-  if (view.settings.open || view.scores?.open || view.feedback?.open) return null;
+  if (view.settings.open || view.scores?.open || view.feedback?.open || view.install.guideOpen) return null;
   switch (state.mode) {
     case 'title':
       if (state.whatsNew.length > 0) return 'whatsNew';
@@ -83,7 +88,7 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
   const screen = menuScreen(r.state, view);
   if (!screen || screen === 'feedbackNote') return null;
   const { state, display } = r;
-  const install = screen === 'title' || screen === 'gameOver' ? installHintKind(state.install, display.touch) : null;
+  const install = screen === 'gameOver' && view.install.cardShown(state.install, display.touch);
   const input: MenuInput = {
     viewWidth: display.viewWidth,
     touch: display.touch,

@@ -5,8 +5,8 @@
  */
 import { drawText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { buttonPlateSprite, ICON_SIZE, type PixelIcon, UI } from './art';
-import { centreX, type UiMetrics } from './layout';
+import { buttonPlateSprite, type PixelIcon, UI } from './art';
+import { centreX, iconOnPlate, type UiMetrics } from './layout';
 import { scrollThumb } from './score-layout';
 
 const NO_TEXT_OPTIONS: TextOptions = {};
@@ -51,14 +51,11 @@ export function menuButton(r: RenderContext, rect: Rect, label: string, color: s
   text(r, label, x + Math.floor(w / 2), y + Math.floor((h - 7 * scale) / 2), { align: 'center', scale, color });
 }
 
-/** A HUD-style icon button: the plate centred in its tap area (as layout.ts buttonPlate), the icon centred on the plate. */
+/** A HUD-style icon button: the plate centred in its tap area, the icon exactly centred on the plate (layout.ts iconOnPlate). */
 export function iconButton(r: RenderContext, m: UiMetrics, hit: Rect, icon: PixelIcon, frame = 0): void {
-  const plateInset = Math.floor((hit.w - m.plate) / 2);
-  const x = hit.x + plateInset;
-  const y = hit.y + plateInset;
-  buttonPlateSprite(m.plate).draw(r.g, 0, x, y);
-  const inset = Math.floor((m.plate - ICON_SIZE * m.iconScale) / 2);
-  icon.draw(r.g, frame, x + inset, y + inset, m.iconScale);
+  const { plate, icon: at } = iconOnPlate(hit, m, icon.width);
+  buttonPlateSprite(plate.w).draw(r.g, 0, plate.x, plate.y);
+  icon.draw(r.g, frame, at.x, at.y, m.iconScale);
 }
 
 /** A bar `w` px wide at a scrolling list's right edge: where the visible rows are in the whole list. */

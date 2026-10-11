@@ -13,6 +13,8 @@ import { currentMenu, menuScreen, trophyShown } from './menu-state';
 import { type FeedbackNoteLayout, feedbackNoteLayout } from './feedback-note';
 import type { FeedbackStatusEntry } from '../net/feedback-types';
 import { kidNoticeLayout, kidNoticeRestart } from './kid-notice';
+import { type InstallGuideLayout, installGuideLayout } from './install-guide';
+import { installable } from './install-offer';
 import type { PopupFeed } from './popup-feed';
 import type { HintKind } from './hint-plate';
 import type { UiView } from './screens';
@@ -88,6 +90,11 @@ export interface UiDebugHook {
   whatsNew(): WhatsNewDebug | null;
   /** The note about the player's own feedback while it covers the title (ROADMAP 57): the report and the note's layout (view px), else null. */
   feedbackNote(): { note: FeedbackStatusEntry; layout: FeedbackNoteLayout } | null;
+  /**
+   * The install offer (ROADMAP 68): whether the game-over card is offered now, whether the manual
+   * steps show, and their layout (view px; its OK closes them).
+   */
+  install(): { cardShown: boolean; guideOpen: boolean; guide: InstallGuideLayout };
 }
 
 export interface WhatsNewDebug {
@@ -225,7 +232,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
       return {
         metrics,
         hud: hudButtons(display.viewWidth, view.fullscreenAvailable, metrics, riding(ctx.state.mode)),
-        menu: settingsLayout(display.viewWidth, metrics),
+        menu: settingsLayout(display.viewWidth, metrics, installable(ctx.state.install)),
         kidNoticeOk: kidNoticeLayout(display, kidNoticeRestart(view.settings, ctx.state)).ok,
         logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
         screen: currentMenu(ctx, view)?.buttons ?? null,
@@ -267,6 +274,14 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
     feedbackNote() {
       const note = menuScreen(ctx.state, view) === 'feedbackNote' ? view.feedbackStatus?.note : null;
       return note ? { note, layout: feedbackNoteLayout(ctx.display, note) } : null;
+    },
+    install() {
+      const { state, display } = ctx;
+      return {
+        cardShown: view.install.cardShown(state.install, display.touch),
+        guideOpen: view.install.guideOpen,
+        guide: installGuideLayout(display, state.install.platform),
+      };
     },
     whatsNew() {
       const list = currentMenu(ctx, view)?.list;

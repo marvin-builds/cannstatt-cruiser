@@ -4,8 +4,10 @@
  * opened by the title's gear in adult mode or by a 3 s long press on the title
  * or pause logo or holding K), the kid notice after turning kid mode on there
  * (kid-notice.ts) and the menu notices: "Neu in dieser Version", the reload button, the
- * install hint and "Zum Startbildschirm" (rules in notices.ts, layout in
- * menu-layout.ts and menu-state.ts, drawing in menu-screens.ts).
+ * install card and "Zum Startbildschirm" (rules in notices.ts and install-offer.ts, layout in
+ * menu-layout.ts and menu-state.ts, drawing in menu-screens.ts). "App installieren" (game-over
+ * card, settings) shows the browser prompt in the release of the tap, else the manual steps
+ * (install-guide.ts).
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
  * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
@@ -57,6 +59,8 @@ import { FeedbackFlow } from './feedback-flow';
 import { feedbackLayout } from './feedback-layout';
 import { feedbackPlaceholder } from './feedback-screen';
 import { createDomFeedbackSheet, type FeedbackSheet, type FeedbackSheetHandlers } from './feedback-sheet';
+import { installGuideLayout } from './install-guide';
+import { installable, InstallOffer } from './install-offer';
 import { FormSurface } from './form-surface';
 import { installUiDebug } from './debug';
 import { handShown, highFiveHand, highFiveHintPlate, HighFiveHint } from './high-five';
@@ -132,6 +136,8 @@ export interface UiSystemOptions {
    * in a browser, none elsewhere); tests pass a fake.
    */
   orientation?: OrientationEnv | null;
+  /** The clock of the install card's snooze, ms (default: Date.now); tests pass a fake. */
+  now?: () => number;
 }
 
 /**
@@ -144,6 +150,8 @@ export type UiSystem = System & {
   readonly feedbackNote: FeedbackStatusEntry | null;
   whatsNew: ListScroll;
   settings: SettingsMenu;
+  /** The install card's timing and snooze and the manual install steps. */
+  install: InstallOffer;
 };
 
 /** Popups appear with their bottom this far above the skater's feet, clear of his head. */
@@ -270,6 +278,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     feedback,
     feedbackStatus,
     whatsNew: new ListScroll(),
+    install: new InstallOffer(store, options.now ?? Date.now),
   };
   /** Set in init: restarts a paused run when kid mode was switched in the menu. */
   let onSettingsClosed: (switched: boolean) => void = () => {};
@@ -308,6 +317,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.highFiveHint.runStarted();
       view.hints.runStarted();
       view.stunt.runStarted();
+      view.install.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
     bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
@@ -377,6 +387,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.lastRun = recordRun(view.records, e, runKidMode);
       view.records = view.lastRun.records;
       saveRecords(store, view.records);
+      view.install.runEnded({ ...view.lastRun, seconds: runSeconds });
     });
   }
 
@@ -384,7 +395,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const { state, display, commands } = ctx;
     const buttons = () => hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode));
     const whenButtons = (pick: () => Rect | null) => () =>
-      portraitHintShown(ctx, view) || view.settings.open || feedbackNoteShown(ctx) ? null : pick();
+      portraitHintShown(ctx, view) || view.settings.open || view.install.guideOpen || feedbackNoteShown(ctx) ? null : pick();
     // Later hotspots win, so the full-screen ones come first and the buttons on top.
     ctx.addHotspot({ rect: () => (state.mode === 'paused' ? EVERYWHERE : null), onPress: () => commands.resume() });
     addWhatsNewHotspot(ctx);
@@ -419,6 +430,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     addSettingsHotspots(ctx);
     addScoreHotspots(ctx);
     addFeedbackHotspots(ctx);
+    addInstallGuideHotspots(ctx);
     ctx.addHotspot({
       rect: () => (portraitHintShown(ctx, view) ? EVERYWHERE : null),
       onPress: () => (view.portraitDismissed = true),
@@ -546,12 +558,47 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.reload, () => commands.reloadForUpdate(), ['KeyU']));
     ctx.addHotspot(button((b) => b.toTitle, () => leaveRun(ctx), ['KeyT']));
     ctx.addHotspot(button((b) => b.submit, () => openEntry(ctx), ['KeyE', 'Enter', 'NumpadEnter']));
-    // Called inside the tap, so the browser's install dialog still counts as a user gesture.
-    ctx.addHotspot(button((b) => b.install, () => commands.promptInstall()));
-    ctx.addHotspot(button((b) => b.dismiss, () => commands.dismissInstallHint()));
+    ctx.addHotspot(onRelease(button((b) => b.install, () => {}), () => pressInstall(ctx)));
+    ctx.addHotspot(button((b) => b.dismiss, () => view.install.snooze(state.install)));
     ctx.addHotspot(button((b) => b.next, () => commands.markVersionSeen()));
     ctx.addHotspot(button((b) => b.settings, () => view.settings.openMenu(state.kidMode), ['KeyG']));
     ctx.addHotspot(button((b) => b.feedback, () => openFeedback(ctx), ['KeyF']));
+  }
+
+  /**
+   * "App installieren": the kept browser prompt, else the manual steps. Pressed in a hotspot's
+   * release (onRelease): a touch grants the user gesture the prompt needs only when it ends.
+   */
+  function pressInstall(ctx: GameContext): void {
+    view.install.press(ctx.state.install, ctx.commands);
+  }
+
+  /** The hotspot acts when its press is let go (still over a live button), not when it goes down. */
+  function onRelease(hotspot: InputHotspot, action: () => void): InputHotspot {
+    return {
+      ...hotspot,
+      onPress: () => {},
+      onRelease: () => {
+        if (hotspot.rect()) action();
+      },
+    };
+  }
+
+  /** The manual install steps: modal over every screen (taps and keys but M stay there); OK, Enter, Space or Esc close them. */
+  function addInstallGuideHotspots(ctx: GameContext): void {
+    const { state, display } = ctx;
+    const shown = () => view.install.guideOpen && !portraitHintShown(ctx, view);
+    const modal: InputHotspot = {
+      rect: () => (shown() ? EVERYWHERE : null),
+      onPress: () => {},
+      onKeyDown: (code) => {
+        if (code === 'KeyM') return false;
+        if (['Enter', 'NumpadEnter', 'Space', 'Escape'].includes(code)) view.install.closeGuide();
+        return true;
+      },
+    };
+    ctx.addHotspot(modal);
+    ctx.addHotspot({ rect: () => (shown() ? installGuideLayout(display, state.install.platform).ok : null), onPress: () => view.install.closeGuide() });
   }
 
   /**
@@ -639,7 +686,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   function addSettingsHotspots(ctx: GameContext): void {
     const { state, display, commands } = ctx;
     const { settings, logoHold } = view;
-    const menu = () => settingsLayout(display.viewWidth, uiMetrics(display));
+    const menu = () => settingsLayout(display.viewWidth, uiMetrics(display), installable(state.install));
     const logoRectNow = (): Rect | null => {
       if (settings.open || portraitHintShown(ctx, view)) return null;
       const screen = menuScreen(state, view);
@@ -682,6 +729,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: () => (onMenu() ? menu().stats : null), onPress: () => settings.toggleStats() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
+    ctx.addHotspot(onRelease({ rect: () => (onMenu() ? menu().install : null), onPress: () => {} }, () => pressInstall(ctx)));
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display, kidNoticeRestart(settings, state)).ok : null), onPress: () => settings.close() });
   }
 
@@ -839,12 +887,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     feedback,
     whatsNew: view.whatsNew,
     settings: view.settings,
+    install: view.install,
     get feedbackNote() {
       return uiCtx && menuScreen(uiCtx.state, view) === 'feedbackNote' ? feedbackStatus!.note : null;
     },
 
     init(ctx) {
       uiCtx = ctx;
+      view.install.load(ctx.state.install);
       view.fullscreenAvailable = (options.fullscreenAvailable ?? browserFullscreen)();
       ctx.state.kidMode = loadKidMode(store);
       onSettingsClosed = (switched) => {

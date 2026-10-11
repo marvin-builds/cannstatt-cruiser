@@ -94,7 +94,7 @@ export function whatsNewLayout(input: MenuInput, entries: readonly ChangelogEntr
       ['next', next],
     ]),
     buttons,
-    install: null,
+    install: false,
     panel: rect,
     textScale: scale,
     list: { rect, rows, rowH, scale, headingX, itemX, contentH, maxScroll: Math.max(0, contentH - rect.h) },

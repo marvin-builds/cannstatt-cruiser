@@ -135,8 +135,6 @@ export const HEART_ICON = new PixelIcon(HEART_PALETTE, [HEART_FULL]);
 
 const ICON = { w: UI.white, r: UI.red };
 
-/** 8x8 icons (16x16 on touch) centred on the button plate. */
-export const ICON_SIZE = 8;
 
 export const ICON_PAUSE = new PixelIcon(ICON, [`
   ........
@@ -184,16 +182,21 @@ export const ICON_FEEDBACK = new PixelIcon({ w: UI.white, k: UI.ink }, [`
   .w......
 `]);
 
-/** The title's settings button: a gear with a hole in the middle. */
+/**
+ * The title's settings button: the USER's 9x9 gear (ROADMAP 67), eight teeth
+ * (one on each side, a 2x1 pair on each diagonal) and a small hole. Odd-sized,
+ * so iconButton gives it an odd plate where the HUD plate is even (desktop).
+ */
 export const ICON_GEAR = new PixelIcon(ICON, [`
-  ..w..w..
-  .wwwwww.
-  wwwwwwww
-  .ww..ww.
-  .ww..ww.
-  wwwwwwww
-  .wwwwww.
-  ..w..w..
+  ....w....
+  .ww.w.ww.
+  .wwwwwww.
+  ..wwwww..
+  wwww.wwww
+  ..wwwww..
+  .wwwwwww.
+  .ww.w.ww.
+  ....w....
 `]);
 
 /** Frame 0 sound on, frame 1 muted. */
@@ -290,8 +293,8 @@ export const SWIPE_ARROW = new PixelIcon({ y: UI.yellow }, [`
   ..y..
 `]);
 
-/** The iOS share symbol (a box with an arrow out of the top) for the install hint "Teilen -> Zum Home-Bildschirm". */
-export const SHARE_ICON = sprite({ w: UI.white, b: UI.teal }, [`
+/** The iOS share symbol (a box with an arrow out of the top) for the install steps "Teilen" (install-guide.ts). */
+export const SHARE_ICON = new PixelIcon({ w: UI.white, b: UI.teal }, [`
   ...b...
   ..bbb..
   .b.b.b.
@@ -302,6 +305,17 @@ export const SHARE_ICON = sprite({ w: UI.white, b: UI.teal }, [`
   wwwwwww
 `]);
 
+/** Chrome's menu button (three dots on top of each other) for the Android install steps (install-guide.ts). */
+export const MENU_DOTS_ICON = new PixelIcon({ w: UI.white }, [`
+  w
+  .
+  .
+  w
+  .
+  .
+  w
+`]);
+
 /** The "×" that closes the install hint, drawn at the button's scale. */
 export const DISMISS_ICON = new PixelIcon({ w: UI.muted }, [`
   w...w
@@ -309,15 +323,6 @@ export const DISMISS_ICON = new PixelIcon({ w: UI.muted }, [`
   ..w..
   .w.w.
   w...w
-`]);
-
-/** "then" arrow between the steps of the install hint. */
-export const ARROW_RIGHT = sprite({ y: UI.yellow }, [`
-  ...y..
-  ....y.
-  yyyyyy
-  ....y.
-  ...y..
 `]);
 
 /** Small joint for the chill timer row (CHILL_ICON_W wide). */

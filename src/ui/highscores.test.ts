@@ -112,7 +112,7 @@ function setup(options: { fullscreen?: boolean; installed?: boolean } = {}) {
       portrait: false,
       fullscreenAvailable: !!options.fullscreen,
       reload: false,
-      install: null,
+      install: false,
       newRecord: true,
       submit: true,
     }).buttons.submit!;
@@ -467,7 +467,7 @@ describe('the name entry in portrait (ROADMAP 58)', () => {
     game.display.portrait = true;
     game.hitHotspot(10, 10); // the rotate hint
     crash(4500);
-    const submit = gameOverLayout({ viewWidth: game.display.viewWidth, touch: true, portrait: true, fullscreenAvailable: false, reload: false, install: null, newRecord: true, submit: true }).buttons.submit!;
+    const submit = gameOverLayout({ viewWidth: game.display.viewWidth, touch: true, portrait: true, fullscreenAvailable: false, reload: false, install: false, newRecord: true, submit: true }).buttons.submit!;
     expect(game.hitHotspot(...centre(submit))).toBe(true);
     expect(flow.screen).toBe('entry');
     expect(sheet.model).not.toBeNull();

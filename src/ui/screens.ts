@@ -61,6 +61,7 @@ import {
   popupLeft,
   popupScale,
   riding,
+  SETTINGS_INSTALL_LABEL,
   settingsLayout,
   TEST_DEVICE_LABEL,
   type UiMetrics,
@@ -75,6 +76,8 @@ import { feedbackLayout } from './feedback-layout';
 import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { FEEDBACK_NOTE_TEXT, feedbackNoteLayout } from './feedback-note';
+import { guideLines, guideLineWidth, ICON_GAP, INSTALL_GUIDE_TEXT, installGuideLayout, partIcon, partWidth } from './install-guide';
+import { installable, type InstallOffer } from './install-offer';
 import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
@@ -133,6 +136,8 @@ export interface UiView {
   feedback: FeedbackFlow | null;
   /** What happened to the player's own feedback: its note covers the title once; null without a status check. */
   feedbackStatus: FeedbackStatusLike | null;
+  /** The install card's timing and snooze, and the manual install steps (install-offer.ts). */
+  install: InstallOffer;
 }
 
 const MUTED: TextOptions = { color: UI.muted };
@@ -510,7 +515,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
     drawKidNotice(r, kidNoticeRestart(settings, r.state));
     return;
   }
-  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display));
+  const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display), installable(r.state.install));
   const on = r.state.kidMode;
   centred(r, 'Einstellungen', l.titleY, { scale: 2, color: UI.yellow });
   menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
@@ -527,6 +532,7 @@ function drawSettings(r: RenderContext, view: UiView): void {
   note(settings.statsOn ? [STATS_TEXT.note, STATS_TEXT.noteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
   if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
   menuButton(r, l.back, 'Zurück');
+  if (l.install) menuButton(r, l.install, SETTINGS_INSTALL_LABEL, UI.teal);
   if (settings.testDevice) text(r, TEST_DEVICE_LABEL, l.testDevice.x, l.testDevice.y, { scale: l.testDevice.scale, color: UI.muted });
 }
 
@@ -552,7 +558,32 @@ function drawFeedbackNote(r: RenderContext, note: FeedbackStatusEntry): void {
   menuButton(r, l.ok, FEEDBACK_NOTE_TEXT.ok, UI.yellow);
 }
 
+/** The manual install steps (install-guide.ts): headline, why, the platform's steps with their icons, OK. */
+function drawInstallGuide(r: RenderContext): void {
+  const platform = r.state.install.platform;
+  const l = installGuideLayout(r.display, platform);
+  fill(r, UI.ink);
+  centred(r, INSTALL_GUIDE_TEXT.title, l.title, { scale: 2, color: UI.teal });
+  centred(r, INSTALL_GUIDE_TEXT.reason, l.reason, { scale: l.scale, color: UI.muted });
+  guideLines(platform).forEach((line, i) => {
+    const y = l.lines + i * l.lineH;
+    let x = centreX(r.display.viewWidth) - Math.floor(guideLineWidth(line, l.scale) / 2);
+    for (const part of line) {
+      const icon = partIcon(part);
+      if (icon) icon.draw(r.g, 0, x + ICON_GAP * l.scale, y + Math.floor((7 - icon.height) / 2) * l.scale, l.scale);
+      else text(r, part as string, x, y, { scale: l.scale, color: UI.white });
+      x += partWidth(part, l.scale);
+    }
+  });
+  menuButton(r, l.ok, INSTALL_GUIDE_TEXT.ok, UI.yellow);
+}
+
 export function drawUi(r: RenderContext, view: UiView): void {
+  if (view.install.guideOpen) {
+    drawInstallGuide(r);
+    if (portraitHintShown(r, view)) drawPortraitHint(r);
+    return;
+  }
   const menu = currentMenu(r, view);
   const screen = menuScreen(r.state, view);
   switch (r.state.mode) {

@@ -1,8 +1,9 @@
 /**
  * The title's settings gear (ROADMAP 64) across the title layouts: adult mode
  * with the trophy (fake online list) and the feedback icon (fake feedback
- * URL), with no card, the update card ("Neue Version da"), the install card
- * (phones: prompt and iOS kinds) and both. Each title is screenshotted and
+ * URL), with no card and the update card ("Neue Version da"); on phones also
+ * with an install prompt kept or on iOS, which must not bring the install
+ * card to the title (ROADMAP 68: game over only). Each title is screenshotted and
  * checked: the gear shows top left, clear of the logo, the panel's rows and
  * cards, the trophy, the HUD buttons and every other title button, inside
  * the view, a >= 44 CSS px tap area on phones; the old Kindermodus button is
@@ -75,6 +76,7 @@ async function checkTitle(t: PlaytestContext, label: string): Promise<void> {
     t.check(`${label}: tap areas >= 44 CSS px`, sizes.every((s) => s >= 44), { css, sizes });
   }
   t.check(`${label}: no Kindermodus button`, !('kidMode' in l.screen!), Object.keys(l.screen!));
+  t.check(`${label}: no install card on the title`, l.screen!.install === null && l.screen!.dismiss === null, l.screen);
 }
 
 /** The gear opens the settings (tap on touch, G on desktop, a click as well); kid mode hides it. */
