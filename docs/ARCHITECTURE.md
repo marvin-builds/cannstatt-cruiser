@@ -308,7 +308,11 @@ The ui slice uses it for the title and pause logo (long press by pointer or
 K), for the open settings menu, which takes every key but M so nothing starts
 a run behind it, for the modal "Neu in dieser Version" screen, and for the
 menu buttons' keys (U = reload, T = "Zum Startbildschirm"; see
-[Menu screens](#menu-screens-ui)). (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
+[Menu screens](#menu-screens-ui)). Modal layers (feedback form, settings
+menu, Bestenliste and name entry, "Neu in dieser Version", the rotate hint and
+pause) use a rect covering every pointer position (`EVERYWHERE` in
+`ui/index.ts`), so a tap in the phone letterbox or anywhere on the page beside
+the canvas never starts or resumes a run behind them. (Suggested later: move these hooks into `Hotspot` in `src/types.ts`.)
 
 ### Events (`GameEvents`)
 
@@ -1123,7 +1127,10 @@ hidden page `insights.html` shows aggregates to the owner.
 - **Game:** "Feedback" in the pause menu and the speech-bubble icon on the
   title (both hidden in kid mode, key F; F while riding pauses and opens the
   form). The field is focused on the tick after the opening key, so F never
-  types into it. `ui/feedback-flow.ts` (state),
+  types into it. A tap beside the form (or beside the name entry) only blurs
+  the field and keeps it open; the form closes when a run starts, the game
+  ends or the mode leaves the screen it was opened on, so it can never hide
+  the HUD or block game over. `ui/feedback-flow.ts` (state),
   `feedback-layout.ts`, `feedback-screen.ts` and `feedback-field.ts` (a native
   `<textarea>` over the canvas like the name field: font >= 16 CSS px, keys
   stop at it, Esc closes). Kind Fehler / Idee, "Fehlerprotokoll mitsenden"
