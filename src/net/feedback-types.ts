@@ -23,6 +23,12 @@ export const MAX_FEEDBACK_BYTES = 16384;
 export const MIN_VIEW_WIDTH = 320;
 export const MAX_VIEW_WIDTH = 427;
 export const FEEDBACK_PER_SESSION_PER_DAY = 3;
+/** Store key (core Store, so `cannstatt-cruiser:testerPass`) of the tester pass the board issues to a test device. */
+export const TESTER_PASS_KEY = 'testerPass';
+/** A tester pass is at most this long; a longer one is a bad request. */
+export const MAX_TESTER_PASS_CHARS = 512;
+/** A tester pass is valid this many days after the board issued it. */
+export const TESTER_PASS_DAYS = 180;
 /** Feedback is deleted after this many days (USER: 1 year). */
 export const FEEDBACK_RETENTION_DAYS = 365;
 /** `GET /feedback` returns at most this many entries, newest first. */
@@ -56,6 +62,11 @@ export interface FeedbackBody {
   log: string[];
   /** The report's secret key (FEEDBACK_KEY_PATTERN); the worker stores only its SHA-256. */
   key: string;
+  /**
+   * The owner's tester pass (ROADMAP 75), sent only from a marked test device that holds one
+   * under TESTER_PASS_KEY. A valid pass lifts FEEDBACK_PER_SESSION_PER_DAY; omitted otherwise.
+   */
+  testerPass?: string;
 }
 
 export interface FeedbackEntry {

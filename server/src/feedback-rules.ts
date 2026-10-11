@@ -12,6 +12,9 @@ export const MAX_FEEDBACK_BYTES = 16384;
 export const MIN_VIEW_WIDTH = 320;
 export const MAX_VIEW_WIDTH = 427;
 export const FEEDBACK_PER_SESSION_PER_DAY = 3;
+/** Mirror of src/net/feedback-types.ts: the longest tester pass, and how long one is valid. */
+export const MAX_TESTER_PASS_CHARS = 512;
+export const TESTER_PASS_DAYS = 180;
 export const FEEDBACK_RETENTION_DAYS = 365;
 export const FEEDBACK_LIST_LIMIT = 100;
 /** `POST /feedback/status` takes 1 to this many {id, key} items (the game keeps as many reports, ROADMAP 70). */

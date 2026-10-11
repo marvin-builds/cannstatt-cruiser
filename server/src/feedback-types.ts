@@ -21,6 +21,8 @@ export interface FeedbackBody {
   log: string[];
   /** The report's secret key (FEEDBACK_KEY_PATTERN); the worker stores only its SHA-256. */
   key: string;
+  /** The owner's tester pass (ROADMAP 75); a valid one lifts FEEDBACK_PER_SESSION_PER_DAY. */
+  testerPass?: string;
 }
 
 /** A body as the worker accepts it: games before ROADMAP 70 send no key (such a report never gets a status). */
