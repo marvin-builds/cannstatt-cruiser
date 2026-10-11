@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Cue } from './backend';
-import { SOUNDS } from './sounds';
+import { MASTER_GAIN, SOUNDS } from './sounds';
 import { createWebAudioBackend } from './webaudio';
 
 /** Minimal stand-in for an AudioContext: records started/stopped sources, no sound. */
@@ -17,9 +17,18 @@ class FakeContext {
   master: { gain: { value: number } } | null = null;
   /** Every oscillator created, to read back the pitch it was given. */
   oscillators: { frequency: { value: number } }[] = [];
+  private stateListeners: (() => void)[] = [];
 
   constructor(state = 'running') {
     this.state = state;
+  }
+  addEventListener(type: string, fn: () => void) {
+    if (type === 'statechange') this.stateListeners.push(fn);
+  }
+  /** The browser changes the state on its own (interruption, device change, autoplay start). */
+  setState(state: string) {
+    this.state = state;
+    for (const fn of this.stateListeners) fn();
   }
   resume() {
     this.resumes++;
@@ -402,5 +411,134 @@ describe('WebAudio backend: NorDIY park', () => {
     const started = ctx.started.length - before;
     expect(started).toBeGreaterThan(0);
     expect(ctx.stopped.length).toBe(started);
+  });
+});
+
+describe('WebAudio backend: sound stays on while unmuted (ROADMAP 63)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
+
+  /** A suspended context whose resumes are answered by `answers` in order (true = runs, false = rejects). */
+  function answering(answers: boolean[]) {
+    const ctx = new FakeContext('suspended');
+    ctx.resume = () => {
+      ctx.resumes++;
+      if (answers.shift() === false) return Promise.reject(new Error('NotAllowedError'));
+      ctx.setState('running');
+      return Promise.resolve();
+    };
+    const backend = createWebAudioBackend(() => ctx as unknown as AudioContext);
+    return { ctx, backend };
+  }
+
+  it('retries a rejected resume without waiting for another gesture', async () => {
+    vi.useFakeTimers();
+    const { ctx, backend } = answering([false, true]);
+    backend.unlock();
+    await flush();
+    expect(ctx.state).toBe('suspended');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(ctx.resumes).toBe(2);
+    expect(backend.status?.()).toBe('running');
+    const before = ctx.started.length;
+    backend.play('jump', 1);
+    expect(ctx.started.length).toBeGreaterThan(before);
+  });
+
+  it('gives up timed retries after a few rejections and resumes on the next gesture', async () => {
+    vi.useFakeTimers();
+    const { ctx, backend } = answering([false, false, false, false, false, false, true]);
+    backend.unlock();
+    await vi.advanceTimersByTimeAsync(60_000);
+    const timed = ctx.resumes;
+    expect(timed).toBeLessThan(6);
+    expect(ctx.state).toBe('suspended');
+    ctx.resume = () => {
+      ctx.resumes++;
+      ctx.setState('running');
+      return Promise.resolve();
+    };
+    backend.unlock();
+    await flush();
+    expect(ctx.state).toBe('running');
+  });
+
+  it('plays the waiting cue when the context starts running on its own while resume hangs', () => {
+    const ctx = new FakeContext('suspended');
+    ctx.resume = () => new Promise(() => {});
+    const backend = createWebAudioBackend(() => ctx as unknown as AudioContext);
+    backend.unlock();
+    const before = ctx.started.length;
+    backend.play('jump', 1);
+    ctx.setState('running');
+    expect(ctx.started.length).toBeGreaterThan(before);
+  });
+
+  it('brings an interrupted context back on visibility return without creating one before a gesture', async () => {
+    const { ctx, backend } = answering([true, true]);
+    backend.wake();
+    expect(backend.status?.()).toBe('locked');
+    backend.unlock();
+    await flush();
+    ctx.state = 'interrupted';
+    backend.wake();
+    await flush();
+    expect(ctx.state).toBe('running');
+  });
+
+  it('tries to resume when the browser suspends or interrupts the context', async () => {
+    const { ctx, backend } = answering([true, true]);
+    backend.unlock();
+    await flush();
+    const resumes = ctx.resumes;
+    ctx.setState('interrupted');
+    await flush();
+    expect(ctx.resumes).toBe(resumes + 1);
+    expect(ctx.state).toBe('running');
+  });
+
+  it('derives the master gain from the mute flag on the next gesture, not from a fade left at 0', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    // A fade left over (pause, visibility, mute restore) holds the gain at 0 although sound is on.
+    ctx.master!.gain.value = 0;
+    ctx.currentTime = 5;
+    backend.unlock();
+    expect(ctx.master!.gain.value).toBe(MASTER_GAIN);
+    expect(backend.masterGain?.()).toBe(MASTER_GAIN);
+    ctx.master!.gain.value = 0;
+    ctx.currentTime = 6;
+    backend.wake();
+    expect(ctx.master!.gain.value).toBe(MASTER_GAIN);
+  });
+
+  it('restores the master gain when the context runs again after an interruption', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    ctx.state = 'interrupted';
+    ctx.master!.gain.value = 0;
+    ctx.currentTime = 5;
+    ctx.setState('running');
+    expect(ctx.master!.gain.value).toBe(MASTER_GAIN);
+  });
+
+  it('keeps the gain at 0 on gestures while muted and lets the mute fade finish', () => {
+    const { backend, ctx } = setup();
+    backend.unlock();
+    backend.setMuted(true);
+    backend.unlock();
+    expect(ctx.master!.gain.value).toBe(0);
+    ctx.currentTime = 5;
+    backend.unlock();
+    expect(ctx.master!.gain.value).toBe(0);
+    expect(backend.masterGain?.()).toBe(0);
+  });
+
+  it('reports no master gain before the context exists', () => {
+    const { backend } = setup();
+    expect(backend.masterGain?.()).toBeNull();
   });
 });

@@ -1,9 +1,14 @@
 /**
  * AudioBackend on WebAudio. The AudioContext is created lazily in the first
- * user gesture (autoplay policies) and resumed in every later gesture while
- * it is suspended or interrupted (iOS Safari). Cues played while the context
- * is resuming wait (see PendingCues) and play once it runs, if still fresh. Missing or failing WebAudio
- * leaves the backend silent; nothing here throws.
+ * user gesture (autoplay policies). Whenever it is not running (suspended,
+ * interrupted on iOS Safari, stopped by the browser) it is resumed on every
+ * gesture, on visibility return (wake), when the browser changes its state and
+ * a few times after a rejected resume (ROADMAP 63). The master gain always
+ * follows the mute flag: it is set from it again on every gesture, wake and
+ * return to running, so no fade leftover keeps the game silent. Cues played
+ * while the context is resuming wait (see PendingCues) and play once it runs,
+ * if still fresh. Missing or failing WebAudio leaves the backend silent;
+ * nothing here throws.
  */
 import type { AudioBackend, Cue, LoopName } from './backend';
 import { BOOMBOX, renderBoombox } from './boombox';
@@ -35,6 +40,12 @@ interface RunningLoop {
 const SILENT = 0.0001;
 /** A cue waiting for the context to resume is dropped this many ms after its start time (it would sound late). */
 const PENDING_MAX_AGE_MS = 250;
+/** Wait before trying a rejected resume again, and how often (a gesture or wake starts a new round). */
+const RESUME_RETRY_MS = 400;
+const RESUME_RETRIES = 3;
+/** Time constant (s) of the mute fade, and how long (s) a fade is left alone before the gain is set outright. */
+const MUTE_FADE = 0.01;
+const MUTE_FADE_SETTLE = 0.1;
 
 interface PendingCue {
   cue: Cue;
@@ -114,6 +125,11 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
   const parkLevel = { ambience: 0, boombox: 0 };
   /** The rendered boombox loop, made once per context on the first park visit. */
   let boomboxBuffer: AudioBuffer | null = null;
+  /** Context time until which the last mute fade runs; the gain is not set outright before. */
+  let fadeUntil = -Infinity;
+  /** Timed resume retries left in this round (see RESUME_RETRIES). */
+  let retriesLeft = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const masterLevel = () => (muted ? 0 : MASTER_GAIN);
   const ready = () => (ac && master && ac.state === 'running' ? ac : null);
@@ -128,6 +144,8 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
       master = ac.createGain();
       master.gain.value = masterLevel();
       master.connect(ac.destination);
+      const created = ac;
+      guard(() => created.addEventListener('statechange', () => stateChanged(created)));
       noise = noiseBuffer(ac);
       // iOS unlocks output only after a sound starts inside the gesture.
       const blip = ac.createBufferSource();
@@ -377,16 +395,66 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     for (const p of cues) playNow(ctx, p.cue, p.intensity, p.delay, p.pitch);
   }
 
+  /** Sets the master gain outright from the mute flag, unless a mute fade is still running. */
+  function syncMaster(): void {
+    const ctx = ready();
+    if (!ctx || ctx.currentTime < fadeUntil) return;
+    guard(() => {
+      master!.gain.cancelScheduledValues(0);
+      master!.gain.setValueAtTime(masterLevel(), ctx.currentTime);
+    });
+  }
+
+  /** The context runs (again): set the gain from the mute flag and play what waited. */
+  function started(): void {
+    syncMaster();
+    playPending();
+  }
+
+  /** Resumes a context that is not running; a rejected resume is retried a few times. */
+  function resume(): void {
+    const ctx = ac;
+    if (!ctx || ctx.state === 'running') return;
+    guard(
+      () =>
+        void ctx.resume().then(
+          () => ctx.state === 'running' && started(),
+          () => scheduleRetry(),
+        ),
+    );
+  }
+
+  function scheduleRetry(): void {
+    if (retryTimer !== null || retriesLeft <= 0) return;
+    retriesLeft--;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      resume();
+    }, RESUME_RETRY_MS);
+  }
+
+  /** A gesture or visibility return: start a new retry round, resume or re-set the gain. */
+  function revive(): void {
+    retriesLeft = RESUME_RETRIES;
+    if (ac?.state === 'running') syncMaster();
+    else resume();
+  }
+
+  /** The browser changed the state: play on when it runs, try to resume when it stopped. */
+  function stateChanged(ctx: AudioContext): void {
+    if (ctx !== ac) return;
+    if (ctx.state === 'running') started();
+    else if (ctx.state !== 'closed' && globalThis.document?.visibilityState !== 'hidden') resume();
+  }
+
   return {
     unlock() {
       if (unavailable) return;
       if (!ac) create();
-      if (ac && ac.state !== 'running') {
-        guard(
-          () =>
-            void ac!.resume().then(playPending, () => pending.clear()),
-        );
-      }
+      revive();
+    },
+    wake() {
+      if (ac) revive();
     },
     play(cue: Cue, intensity: number, delay = 0, pitch = 1) {
       if (muted) return;
@@ -412,7 +480,13 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     setMuted(value: boolean) {
       muted = value;
       if (muted) pending.clear();
-      if (ac && master) guard(() => master!.gain.setTargetAtTime(masterLevel(), ac!.currentTime, 0.01));
+      if (!ac || !master) return;
+      const now = ac.currentTime;
+      fadeUntil = now + MUTE_FADE_SETTLE;
+      guard(() => {
+        master!.gain.cancelScheduledValues(now);
+        master!.gain.setTargetAtTime(masterLevel(), now, MUTE_FADE);
+      });
     },
     setTraffic(level: number) {
       trafficLevel = Math.max(0, level);
@@ -426,6 +500,9 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     status() {
       if (unavailable) return 'unavailable';
       return ac ? ac.state : 'locked';
+    },
+    masterGain() {
+      return master ? master.gain.value : null;
     },
   };
 }

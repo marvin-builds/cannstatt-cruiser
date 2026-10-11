@@ -14,6 +14,7 @@ import { cheerCue, cheerIntensity, CrowdCheers, HIGH_FIVE, isParkCue, ParkSound 
 import { PASS_BY, PassBy } from './passby';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { isTrafficCue, TrafficNoise } from './traffic';
+import { watchVisible as watchPageVisible } from './visibility';
 import { createWebAudioBackend } from './webaudio';
 
 export interface AudioSystemOptions {
@@ -25,6 +26,8 @@ export interface AudioSystemOptions {
    * playtests), also while muted; `muted` tells whether it was inaudible.
    */
   onSound?: (name: string, muted: boolean) => void;
+  /** Calls `fn` whenever the page becomes visible again (default: the document's visibilitychange). */
+  watchVisible?: (fn: () => void) => void;
 }
 
 const MUTED_KEY = 'muted';
@@ -129,13 +132,19 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
     name: 'audio',
     init(ctx: GameContext) {
       const { bus } = ctx;
-      ctx.onUserGesture(() => safely(() => backend.unlock()));
-
-      bus.on('mute', (event) => {
-        muted = event.muted;
+      const applyMute = (value: boolean) => {
+        muted = value;
         safely(() => backend.setMuted(muted));
         store.set(MUTED_KEY, muted);
+      };
+      // The speaker button (state.muted) is the single source of truth for what is audible.
+      ctx.onUserGesture(() => {
+        if (ctx.state.muted !== muted) applyMute(ctx.state.muted);
+        safely(() => backend.unlock());
       });
+      (options.watchVisible ?? watchPageVisible)(() => safely(() => backend.wake()));
+
+      bus.on('mute', (event) => applyMute(event.muted));
       const storedMute = store.get<boolean>(MUTED_KEY, false) === true;
       if (storedMute) ctx.commands.setMuted(true);
       else safely(() => backend.setMuted(false));
