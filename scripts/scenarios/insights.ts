@@ -2,16 +2,17 @@
  * Hidden insights board (insights.html, ROADMAP 46) against a FAKE worker:
  * every request to the live worker is intercepted (a Playwright route), so
  * nothing reaches it. Checks the locked view, the 'Token falsch' state on 401,
- * the board with the bearer header, the range switch, a failed reload, safe
- * rendering of player names, no token in storage or URL, no horizontal
- * scroll, and dark mode. Runs in its own browser context with service workers
+ * the board with the bearer header, the range switch incl. 365 T and Alles
+ * (500-day fixture; weeks / months, approximate median), readable bars, a
+ * failed reload, safe rendering of player names, no token in storage or URL,
+ * no horizontal scroll, and light and dark mode. Runs in its own browser context with service workers
  * blocked (the game's worker would otherwise answer navigations).
  *
  *   npm run playtest -- --scenario scripts/scenarios/insights.ts --viewports desktop,phone-portrait --name insights
  */
 import type { Page, Route } from 'playwright';
 import { sampleStats } from '../../src/insights/sample-stats';
-import { STATS_RANGES, type StatsRange } from '../../src/net/telemetry-types';
+import { ALL_RANGE, STATS_RANGES, type StatsRange } from '../../src/net/telemetry-types';
 import { join, type PlaytestContext } from '../playtest-lib';
 
 const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
@@ -33,9 +34,30 @@ class FakeStats {
       return route.fulfill({ status: 401, headers, body: JSON.stringify({ error: 'unauthorized' }) });
     }
     const days = Number(url.searchParams.get('days'));
-    const range = (STATS_RANGES.includes(days as StatsRange) ? days : 7) as StatsRange;
+    const range = (url.searchParams.has('days') && STATS_RANGES.includes(days as StatsRange) ? days : 7) as StatsRange;
     return route.fulfill({ status: 200, headers, body: JSON.stringify(sampleStats(range)) });
   }
+}
+
+/** What the board shows after a range switch: chart heading, thinnest bar, axis labels, tiles. */
+async function chartState(page: Page) {
+  return page.evaluate(() => {
+    const bars = [...document.querySelectorAll<SVGGraphicsElement>('.chart .bar')].map((b) => b.getBBox().width);
+    return {
+      heading: document.querySelector('.card h2')?.textContent ?? '',
+      minBar: bars.length ? Math.min(...bars) : 0,
+      labels: [...document.querySelectorAll('.chart .slot text.axis')].map((t) => t.textContent),
+      tiles: [...document.querySelectorAll('.tile')].map((t) => t.textContent),
+    };
+  });
+}
+
+async function pickRange(page: Page, label: string): Promise<void> {
+  await page.click(`.segmented button:has-text("${label}")`);
+  await page.waitForFunction(
+    (text) => document.querySelector('.segmented button[aria-pressed=true]')?.textContent === text && document.querySelector('.board')?.getAttribute('aria-busy') === 'false',
+    label,
+  );
 }
 
 async function noHorizontalScroll(page: Page): Promise<{ scroll: number; client: number }> {
@@ -96,15 +118,30 @@ export default async function (t: PlaytestContext) {
     t.check('no horizontal scroll on the board', width.scroll <= width.client, width);
     await screenshot('board-7');
 
-    await page.click('.segmented button:has-text("30 T")');
-    await page.waitForFunction(() => document.querySelector('.segmented button[aria-pressed=true]')?.textContent === '30 T' && document.querySelector('.board')?.getAttribute('aria-busy') === 'false');
-    t.check('range switch asks for 30 days', fake.requests.at(-1)?.url === `${API}/stats?days=30`);
-    await screenshot('board-30');
+    const ranges: { label: string; days: StatsRange; heading: string; approx: boolean }[] = [
+      { label: '30 T', days: 30, heading: desktop ? 'pro Tag' : 'pro Woche', approx: false },
+      { label: '365 T', days: 365, heading: desktop ? 'pro Woche' : 'pro Monat', approx: true },
+      { label: 'Alles', days: ALL_RANGE, heading: 'pro Monat', approx: true },
+    ];
+    for (const r of ranges) {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await pickRange(page, r.label);
+      t.check(`range ${r.label} asks for days=${r.days}`, fake.requests.at(-1)?.url === `${API}/stats?days=${r.days}`, fake.requests.at(-1));
+      const state = await chartState(page);
+      t.check(`${r.label}: chart groups ${r.heading}`, state.heading.endsWith(r.heading), state.heading);
+      t.check(`${r.label}: bars are readable (>= 3 px) with axis labels`, state.minBar >= 3 && state.labels.length >= 3, state);
+      const median = state.tiles.find((text) => text?.includes('Median')) ?? '';
+      t.check(`${r.label}: median ${r.approx ? 'marked approximate' : 'exact'}`, median.includes('≈') === r.approx && median.includes('Tageswerten') === r.approx, median);
+      if (r.days === ALL_RANGE) t.check('Alles names its first day', state.tiles.some((text) => text?.includes('seit 30.5.2025')), state.tiles);
+      const w = await noHorizontalScroll(page);
+      t.check(`no horizontal scroll at ${r.label}`, w.scroll <= w.client, w);
+      const slug = r.days === ALL_RANGE ? 'alles' : String(r.days);
+      await screenshot(`board-${slug}`);
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await screenshot(`board-${slug}-dark`);
+    }
 
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await screenshot('board-30-dark');
-    await page.click('.segmented button:has-text("90 T")');
-    await page.waitForFunction(() => document.querySelector('.board')?.getAttribute('aria-busy') === 'false' && document.querySelector('.segmented button[aria-pressed=true]')?.textContent === '90 T');
+    await pickRange(page, '90 T');
     const width90 = await noHorizontalScroll(page);
     t.check('no horizontal scroll at 90 days', width90.scroll <= width90.client, width90);
     await screenshot('board-90-dark', false);

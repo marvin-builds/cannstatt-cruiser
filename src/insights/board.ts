@@ -1,9 +1,12 @@
 /** The unlocked dashboard: header with range switch, tiles, charts and lists. */
 import { type InsightsStats, STATS_RANGES, type StatsRange } from '../net/telemetry-types';
 import { distanceGroups, runLengthGroups, scoreGroups } from './buckets';
-import { dayBars, histogram, legend, rankedList, splitBar } from './charts';
+import { CHART_PAD_LEFT, GRAIN_UNIT, histogram, legend, periodBars, rankedList, splitBar } from './charts';
+import type { DaySeries } from './day-chart';
 import { h } from './dom';
 import { countryName, formatDecimal, formatDuration, formatNumber } from './format';
+import { chartPeriods } from './periods';
+import { isApproximate, rangeButtonLabel, rangeNote } from './ranges';
 import { rankedRows, type SplitKey, splitSegments } from './split';
 
 export interface BoardHandlers {
@@ -41,8 +44,22 @@ const SPLITS: { title: string; field: keyof InsightsStats['split']; keys: SplitK
 
 const timeFormat = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-function tile(label: string, value: string, note?: string): HTMLElement {
-  return h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, label), h('strong', { class: 'tile-value' }, value), note ? h('span', { class: 'tile-note' }, note) : null);
+function tile(label: string, value: string, ...notes: string[]): HTMLElement {
+  return h(
+    'div',
+    { class: 'tile' },
+    h('span', { class: 'tile-label' }, label),
+    h('strong', { class: 'tile-value' }, value),
+    ...notes.map((note, i) => h('span', { class: i ? 'tile-note fine' : 'tile-note' }, note)),
+  );
+}
+
+/** Play time tile; long ranges come from daily medians, so the median is marked approximate. */
+function playTimeTile(stats: InsightsStats): HTMLElement {
+  const median = formatDuration(stats.sessions.medianSeconds);
+  const avg = formatDuration(stats.sessions.avgSeconds);
+  if (!isApproximate(stats.days)) return tile('Ø Spielzeit', avg, `Median ${median}`);
+  return tile('Ø Spielzeit', avg, `Median ≈ ${median}`, 'ältere Tage aus Tageswerten');
 }
 
 function header(view: BoardView, handlers: BoardHandlers): HTMLElement {
@@ -51,7 +68,7 @@ function header(view: BoardView, handlers: BoardHandlers): HTMLElement {
     'div',
     { class: 'segmented', role: 'group', 'aria-label': 'Zeitraum' },
     ...STATS_RANGES.map((days) => {
-      const button = h('button', { type: 'button', 'aria-pressed': String(days === view.range) }, `${days} T`);
+      const button = h('button', { type: 'button', 'aria-pressed': String(days === view.range) }, rangeButtonLabel(days));
       button.addEventListener('click', () => handlers.onRange(days));
       return button;
     }),
@@ -77,11 +94,28 @@ function card(title: string, ...children: (Node | null)[]): HTMLElement {
   return h('section', { class: 'card' }, h('h2', {}, title), ...children);
 }
 
-/** Sizes the day charts to their card; called again on resize. */
+const DAY_CHARTS: Record<string, { title: string; series: DaySeries[] }> = {
+  sessions: { title: 'Sessions und Runs', series: ['sessions', 'runs'] },
+  entries: { title: 'Highscore-Einträge', series: ['entries'] },
+};
+
+/**
+ * Sizes the period charts to their card; called again on resize. The main
+ * chart's width picks the grain (day, week, month), and the entries chart uses
+ * the same one so both read alike.
+ */
 export function drawDayCharts(root: HTMLElement, stats: InsightsStats): void {
-  for (const holder of root.querySelectorAll<HTMLElement>('[data-day-chart]')) {
-    const series = holder.dataset.dayChart === 'entries' ? (['entries'] as const) : (['sessions', 'runs'] as const);
-    holder.replaceChildren(dayBars(stats.perDay, [...series], Math.max(240, Math.floor(holder.clientWidth))));
+  const holders = [...root.querySelectorAll<HTMLElement>('[data-day-chart]')];
+  const widthOf = (holder: HTMLElement) => Math.max(240, Math.floor(holder.clientWidth));
+  const main = holders.find((holder) => holder.dataset.dayChart === 'sessions');
+  if (!main) return;
+  const { grain, periods } = chartPeriods(stats.perDay, stats.days, widthOf(main) - CHART_PAD_LEFT, DAY_CHARTS.sessions!.series.length);
+  for (const holder of holders) {
+    const chart = DAY_CHARTS[holder.dataset.dayChart ?? ''];
+    if (!chart) continue;
+    const heading = holder.closest('.card')?.querySelector('h2');
+    if (heading) heading.textContent = `${chart.title} pro ${GRAIN_UNIT[grain]}`;
+    holder.replaceChildren(periodBars(periods, grain, chart.series, widthOf(holder)));
   }
 }
 
@@ -92,9 +126,9 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
     'div',
     { class: 'tiles' },
     tile('Sessions heute', formatNumber(today?.sessions ?? 0), 'UTC-Tag'),
-    tile('Sessions im Zeitraum', formatNumber(stats.sessions.total), `${stats.days} Tage`),
+    tile('Sessions im Zeitraum', formatNumber(stats.sessions.total), rangeNote(stats.days, stats.perDay)),
     tile('Runs im Zeitraum', formatNumber(stats.runs.total), `${formatDecimal(stats.runs.perSession, 1)} Runs/Session`),
-    tile('Ø Spielzeit', formatDuration(stats.sessions.avgSeconds), `Median ${formatDuration(stats.sessions.medianSeconds)}`),
+    playTimeTile(stats),
   );
   const entriesTotal = stats.perDay.reduce((a, d) => a + d.entries, 0);
   const top = h(
@@ -109,7 +143,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
       header(view, handlers),
       view.error ? h('p', { class: 'banner', role: 'alert' }, view.error) : null,
       tiles,
-      card('Sessions und Runs pro Tag', legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
+      card(`${DAY_CHARTS.sessions!.title} pro Tag`, legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
       h(
         'div',
         { class: 'grid three' },
@@ -130,7 +164,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
         'div',
         { class: 'grid two' },
         card(
-          'Highscore-Einträge pro Tag',
+          `${DAY_CHARTS.entries!.title} pro Tag`,
           h('p', { class: 'card-note' }, `${formatNumber(entriesTotal)} Einträge im Zeitraum`),
           h('div', { class: 'chart-holder', 'data-day-chart': 'entries' }),
         ),
