@@ -128,6 +128,7 @@ describe('triageErrorText', () => {
     expect(triageErrorText({ error: 'github-token-missing' })).toMatch(/GITHUB_TOKEN/);
     expect(triageErrorText({ error: 'github', status: 403 })).toBe('GitHub hat abgelehnt (Status 403).');
     expect(triageErrorText({ error: 'github', status: 0 })).toBe('GitHub nicht erreichbar.');
+    expect(triageErrorText({ error: 'github', status: 401 })).toBe('GitHub-Token ungültig, neu setzen');
     expect(triageErrorText({ error: 'exists', issue: 5 })).toBe('Hat schon Issue #5.');
     expect(triageErrorText({ error: 'auth' })).toBe('Token falsch');
     for (const error of ['offline', 'server', 'not-found', 'bad-request'] as const) expect(triageErrorText({ error })).not.toBe('');

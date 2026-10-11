@@ -95,7 +95,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .lock { position: relative; width: min(360px, 100%); display: grid; gap: 10px; border-top: 4px solid var(--c2); }
 .lock h1 { font-size: 1.4rem; }
 .lock label { font-weight: 600; font-size: 0.9rem; }
-.lock input:not(.visually-hidden) {
+.lock .remember { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; cursor: pointer; padding: 4px 0; }
+.lock .remember input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--c1); }
+.lock .remember small { display: block; color: var(--ink-2); font-size: 0.8rem; margin-top: 2px; }
+.lock input:not(.visually-hidden):not([type='checkbox']) {
   padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--bg); color: var(--ink); width: 100%;
 }
