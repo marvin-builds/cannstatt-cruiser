@@ -1694,6 +1694,20 @@ events below).
   the street edge raising a hand. Never an obstacle and never a crash.
   Gameplay draws it (`gameplay/park-art.ts`, via `art.ts`), with a slap
   pose after the high five (`data.slapped`).
+- **The high five itself (ROADMAP 49):** on `highFive` the player raises
+  the front arm for about 0.3 s (`player/high-five.ts` timeline: raise,
+  0.12 s slap hold, lower; `high-five-art.ts` geometry; side ahead / over /
+  behind re-read each tick from the fiver's position; cancelled by a crash,
+  air-trick or grind-trick start; looks only, no physics). Gameplay
+  (`gameplay/klatsch.ts`) draws a short "klatsch" burst where the hands meet,
+  `KLATSCH_DELAY` = the player's `HIGH_FIVE_RAISE` ticks later, at the fiver's
+  position at that moment (`data.klatschDx`, `klatschY`, `slapRight` set at
+  the slap); the fiver then pulls back, fist-pumps with a hop and cheers, and
+  his slap and pump arms are drawn again in the fx layer over the skater.
+  `SKATER_PALM` copies the player's ride-pose palm and a test recomputes it
+  from the player art, so change both together. Audio plays a layered clap
+  and `cheerSmall` 0.12 s later, skipped within 0.5 s of a park cheer
+  (`CrowdCheers` in `audio/park.ts`).
 - **Use routing priority** (`gameplay/high-five.ts`, asked first by
   `use.ts`): inside a `highFiver`'s high five window (its middle within
   `HIGH_FIVE_REACH` 24 px of the skater, either side, on the ground or in
