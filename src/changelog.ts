@@ -20,6 +20,16 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.10',
+    date: '2026-10-11',
+    items: [
+      'Sterne geben jetzt Punkte',
+      'Neu: Roller und Tauben auf der Straße',
+      'Hindernis-Wellen mit Verschnaufpause',
+      'Antwort auf dein Feedback im Spiel',
+    ],
+  },
+  {
     version: '2026-10-11.9',
     date: '2026-10-11',
     items: [
