@@ -6,7 +6,7 @@ import { createAudioSystem } from './index';
 import { GLUG_LENGTH, stuntStepPitch } from './sounds';
 import { TRAFFIC, isTrafficCue } from './traffic';
 import type { ParkPlan } from '../types';
-import { PARK, boomboxAt } from './park';
+import { HIGH_FIVE, PARK, boomboxAt } from './park';
 
 const PLAN: ParkPlan = {
   start: 3000,
@@ -1068,17 +1068,58 @@ describe('audio system: NorDIY park', () => {
     expect(cues()).toEqual(['sessionRoar', 'fingerWhistle']);
   });
 
-  it('claps on a high five', () => {
-    const { game, cues } = playing();
+  it('claps on a high five, then a small crowd cheers a moment later, quieter than the clap', () => {
+    const { game, backend } = playing();
     game.bus.emit('highFive', { entityId: 7, points: 50 });
-    expect(cues()).toEqual(['highFive']);
+    expect(backend.played.map((p) => p.cue)).toEqual(['highFive', 'cheerSmall']);
+    const [clap, cheer] = backend.played;
+    expect(clap!.delay).toBe(0);
+    expect(cheer!.delay).toBe(HIGH_FIVE.cheerDelay);
+    expect(cheer!.delay).toBeGreaterThanOrEqual(0.1);
+    expect(cheer!.delay).toBeLessThanOrEqual(0.15);
+    expect(cheer!.intensity).toBeLessThan(clap!.intensity);
+  });
+
+  it('skips the high five cheer when a park cheer started just before, not later', () => {
+    const { game, cues } = playing();
+    game.bus.emit('sessionCheer', { level: 0.2 });
+    for (let i = 0; i < 6; i++) game.tick();
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
+    expect(cues()).toEqual(['cheerSmall', 'highFive']);
+    const ticks = Math.ceil(HIGH_FIVE.quietAfterCheer * 60) + 1;
+    for (let i = 0; i < ticks; i++) game.tick();
+    game.bus.emit('highFive', { entityId: 8, points: 50 });
+    expect(cues().filter((c) => !c.startsWith('park'))).toEqual(['cheerSmall', 'highFive', 'highFive', 'cheerSmall']);
+  });
+
+  it('skips the high five cheer right after the session roar', () => {
+    const { game, cues } = playing();
+    game.bus.emit('sessionEnd', { level: 0.8, points: 400 });
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
+    expect(cues()).toEqual(['sessionRoar', 'fingerWhistle', 'highFive']);
+  });
+
+  it('keeps the high five clap and cheer inaudible while muted', () => {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    game.commands.setMuted(true);
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
+    expect(heard).toEqual([
+      ['highFive', true],
+      ['cheerSmall', true],
+    ]);
+    expect(backend.muted).toBe(true);
   });
 
   it.each([false, true])('sounds the same for session and high five with adult mode %s', (adult) => {
     const { game, cues } = playing({ adult });
+    game.bus.emit('highFive', { entityId: 7, points: 50 });
     game.bus.emit('sessionCheer', { level: 1 });
     game.bus.emit('sessionEnd', { level: 1, points: 100 });
-    game.bus.emit('highFive', { entityId: 7, points: 50 });
-    expect(cues()).toEqual(['cheerBig', 'sessionRoar', 'fingerWhistle', 'highFive']);
+    expect(cues()).toEqual(['highFive', 'cheerSmall', 'cheerBig', 'sessionRoar', 'fingerWhistle']);
   });
 });

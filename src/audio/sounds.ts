@@ -432,8 +432,16 @@ export const SOUNDS: Record<Cue, Voice[]> = {
     { wave: 'sine', at: 0, dur: 0.22, freq: 1700, to: 2700, gain: 0.14, attack: 0.03 },
     { wave: 'sine', at: 0.28, dur: 0.38, freq: 2700, to: 1500, gain: 0.14, attack: 0.02 },
   ],
-  // High five: one crisp hand clap with a tiny skin 'pat' under it.
-  highFive: [...clap(0, 0.5), { wave: 'triangle', at: 0, dur: 0.05, freq: 320, to: 160, gain: 0.18 }],
+  // High five: a full 'klatsch' of two palms. A crisp crack with a second, slightly
+  // later one (the hands never meet in one instant), a dull lowpassed palm body and a
+  // falling skin 'pat' under it, then a short bright room tail. Short and soft-edged.
+  highFive: [
+    ...clap(0, 0.45),
+    ...clap(0.012, 0.22, 1.35),
+    { wave: 'noise', at: 0, dur: 0.08, freq: 700, to: 300, gain: 0.3, filter: 'lowpass', attack: 0.002 },
+    { wave: 'triangle', at: 0, dur: 0.07, freq: 300, to: 130, gain: 0.2 },
+    { wave: 'noise', at: 0.02, dur: 0.16, freq: 2200, to: 1200, gain: 0.05, filter: 'bandpass', attack: 0.01 },
+  ],
 };
 
 /**

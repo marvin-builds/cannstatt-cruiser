@@ -2,8 +2,8 @@
  * NorDIY park sound logic (ROADMAP 36, no WebAudio here): turns state.park
  * and the run distance into levels for the backend's park ambience (crowd
  * chatter bed) and the boombox loop, picks the occasional rolling wheels,
- * board clacks and laughter (rng-free slots), and maps the session cheering
- * to cheer cues.
+ * board clacks and laughter (rng-free slots), maps the session cheering
+ * to cheer cues and keeps the high five cheer off a running park cheer.
  *
  * Distances are run distances (state.distance values): a distance `d` is at
  * the skater (PLAYER_X) when state.distance === d.
@@ -54,6 +54,35 @@ export function cheerCue(level: number): Cue {
 /** Cheer volume 0..1 for a session level: audible from the first trick, full at level 1. */
 export function cheerIntensity(level: number): number {
   return 0.45 + 0.55 * Math.min(1, Math.max(0, level));
+}
+
+/** The high five: the clap, then a small crowd cheer that never piles onto a park cheer. */
+export const HIGH_FIVE = {
+  /** Seconds after the clap until the crowd cheers. */
+  cheerDelay: 0.12,
+  /** Volume of that cheer (cheerSmall), well below the clap. */
+  cheerIntensity: 0.4,
+  /** Seconds after a park cheer (sessionCheer / sessionEnd) in which the high five gets no cheer of its own. */
+  quietAfterCheer: 0.5,
+} as const;
+
+/** Remembers when the park crowd last cheered, so a high five cheer does not stack on it. */
+export class CrowdCheers {
+  private lastAt = -Infinity;
+
+  /** A park cheer (session cheer or roar) started at run time `time`. */
+  cheered(time: number): void {
+    this.lastAt = time;
+  }
+
+  /** Whether a high five at run time `time` gets its own small cheer. */
+  highFiveCheer(time: number): boolean {
+    return time - this.lastAt >= HIGH_FIVE.quietAfterCheer;
+  }
+
+  reset(): void {
+    this.lastAt = -Infinity;
+  }
 }
 
 /** Where the boombox stands: on the container, else in the middle of the park. */

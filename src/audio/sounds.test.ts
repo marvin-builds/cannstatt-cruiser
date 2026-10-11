@@ -3,6 +3,7 @@ import type { Cue } from './backend';
 import { GLUG_LENGTH, GRIND, GULP_AT, MASTER_GAIN, SOUNDS, TRAFFIC_RUMBLE, stuntStepPitch } from './sounds';
 import { PASS_CUES } from './passby';
 import { TRAFFIC, TRAFFIC_CUES } from './traffic';
+import { HIGH_FIVE } from './park';
 
 /** Merged [start, end] intervals in which any of the voices sounds. */
 function soundingSpans(voices: { at: number; dur: number }[]): [number, number][] {
@@ -287,8 +288,25 @@ describe('sounds: NorDIY park', () => {
     }
   });
 
-  it('claps the high five as one short, crisp hit', () => {
+  it('claps the high five as one short, full hit: layered noise cracks over a low body', () => {
     expect(end('highFive')).toBeLessThan(0.25);
-    expect(SOUNDS.highFive.some((v) => v.wave === 'noise')).toBe(true);
+    const noise = SOUNDS.highFive.filter((v) => v.wave === 'noise');
+    expect(noise.length).toBeGreaterThanOrEqual(3);
+    expect(Math.min(...noise.map((v) => v.at))).toBe(0);
+    // The palms' body: a low voice under the crack, not only bright noise.
+    expect(SOUNDS.highFive.some((v) => v.filter === 'lowpass' || (v.wave !== 'noise' && v.freq < 400))).toBe(true);
+  });
+
+  it('keeps the high five clap with its cheer under the clipping level, the cheer below the clap', () => {
+    const clap = summedPeak([{ cue: 'highFive' }]);
+    const cheer = summedPeak([{ cue: 'cheerSmall', intensity: HIGH_FIVE.cheerIntensity }]);
+    expect(cheer).toBeLessThan(clap / 2);
+    const both = summedPeak([
+      { cue: 'highFive' },
+      { cue: 'cheerSmall', intensity: HIGH_FIVE.cheerIntensity, delay: HIGH_FIVE.cheerDelay },
+    ]);
+    const { noise, hiss, drone } = TRAFFIC_RUMBLE;
+    const duckedTraffic = (noise.gain + hiss.gain + drone.gain + drone.throbDepth) * TRAFFIC.duckTo;
+    expect((both + duckedTraffic) * MASTER_GAIN).toBeLessThanOrEqual(0.9);
   });
 });
