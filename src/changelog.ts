@@ -20,6 +20,13 @@ export const WHATS_NEW_MAX_ITEMS = 6;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-11.3',
+    date: '2026-10-11',
+    items: [
+      'Datenschutz-Seite im Spiel verlinkt',
+    ],
+  },
+  {
     version: '2026-10-11.2',
     date: '2026-10-11',
     items: [
