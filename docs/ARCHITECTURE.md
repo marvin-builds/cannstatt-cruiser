@@ -212,7 +212,10 @@ kept across runs:
   platform: 'other'}` and a memory store.
 - `ctx.commands.promptInstall()` shows the kept prompt (call it from a
   hotspot's `onPress`, it needs the user gesture) and clears `canPrompt`; a
-  prompt can be shown only once, a refused one is swallowed.
+  prompt can be shown only once, a refused one is swallowed. After a prompt
+  was shown, later `beforeinstallprompt` events of the same page load are
+  swallowed too (`canPrompt` stays false): after a cancel Chrome sends a new
+  one whose `prompt()` shows nothing, so the button opens the manual steps.
   `ctx.commands.dismissInstallHint()` sets and persists `dismissed`.
 - The ui decides when to offer it (ROADMAP 68, `ui/install-offer.ts`): touch
   devices only (Android and iOS always, other platforms only with a kept
