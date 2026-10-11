@@ -161,15 +161,17 @@ describe('spawner planning ahead with a work budget', () => {
 describe('spawner while the player may be drunk', () => {
   for (const workPerTick of [undefined, PLAN_WORK_PER_TICK]) {
     it(`everything that comes onto the street while drunk is easy (${workPerTick ? 'budgeted' : 'unbudgeted'})`, () => {
+      let hardBefore = 0;
       for (const seed of [1, 2, 3, 4]) {
         const drunkFrom = 40;
         const seen = ride(seed, VIEW_MAX_W, 70, { workPerTick, zone: 2, situation: (t) => ({ drunk: t >= drunkFrom, kidMode: false }) });
         const whileDrunk = seen.filter((e) => e.time >= drunkFrom);
         expect(whileDrunk.length).toBeGreaterThan(3);
         expect(whileDrunk.filter((e) => !easy(e))).toEqual([]);
-        // Sober before: people and harder patterns do come.
-        expect(seen.some((e) => e.time < drunkFrom && !easy(e))).toBe(true);
+        hardBefore += seen.filter((e) => e.time < drunkFrom && !easy(e)).length;
       }
+      // Sober before: people and harder patterns do come (the NorDIY park can take most of a ride's sober part).
+      expect(hardBefore).toBeGreaterThan(3);
     }, 60_000);
   }
 

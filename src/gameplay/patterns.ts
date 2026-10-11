@@ -4,17 +4,18 @@
  * pattern starts. Every pattern is verified with the clearability solver at
  * the given speeds (and with the chill jump at the chill speeds, where the
  * chill effect may be active), together with the end of the previous pattern
- * (`before`), and rerolled (finally replaced by empty street) if it cannot
+ * (`before`), and rerolled (finally replaced by a fallback) if it cannot
  * be passed, or if any take-off on the way (also across the boundary) leaves
  * a human less than the take-off window of fairness.ts (`options.window`).
  * Gaps and the runout after the last piece leave room for a human landing a
  * little early or late. People come alone. While the player may be drunk
  * (`options.drunk`) only DRUNK_TEMPLATES come, checked with the drunk margin
  * (fairness.ts drunkFairness). While an effect may be on (`options.effect`)
- * no empty star pattern comes, and instead of empty street the fallback is a
- * lone low obstacle (EFFECT_FALLBACK). Combo templates (combos.ts) are grind
- * lines: also fair from a grind on each of their pieces, and their stars
- * follow the line (line-guide.ts).
+ * no empty star pattern comes. The fallback is a lone low obstacle
+ * (FALLBACK_KINDS), and only when even that is not fair a star arc: never
+ * empty street (ROADMAP 52: always something to react to). Combo templates
+ * (combos.ts) are grind lines: also fair from a grind on each of their
+ * pieces, and their stars follow the line (line-guide.ts).
  *
  * planSteps is the same planning as a resumable generator: with a work
  * budget (`options.budget`) it yields whenever the solvers run out of it and
@@ -67,6 +68,8 @@ interface Template {
   name: string;
   tier: number;
   weight: number;
+  /** Weight from LATE_MIX_TIER on, when it differs. */
+  late?: number;
   /** Only in zones with people (ZONE_PEOPLE). */
   people?: boolean;
   /** A grind line (combos.ts): a grind on any of its pieces must lead on fairly, and its stars follow the line (line-guide.ts). */
@@ -101,13 +104,12 @@ const OBSTACLE_TO_RAIL: [number, number] = [26, 78];
 const RAIL_TO_OBSTACLE: [number, number] = [26, 91];
 
 /**
- * While an effect may be on, a pattern that finds nothing fair in ATTEMPTS
- * falls back to one of these lone low obstacles (the bench is fair even drunk
- * and chilled at once)...
+ * A pattern that finds nothing fair in ATTEMPTS falls back to one of these
+ * lone low obstacles (the bench is fair even drunk and chilled at once)...
  */
-const EFFECT_FALLBACK: ObstacleKind[] = ['curbGap', 'bench'];
+const FALLBACK_KINDS: ObstacleKind[] = ['curbGap', 'bench'];
 /** ...pushed out by these seconds of riding until it is fair after the previous pattern (drunk landings scatter far). */
-const EFFECT_PUSH_SECONDS = [0, 0.5, 1];
+const FALLBACK_PUSH_SECONDS = [0, 0.5, 1];
 
 /** Extra run-up while the player may be drunk, in seconds of riding: the late, full drunk jumps take off far before the piece. */
 const DRUNK_LEAD_SECONDS = 0.4;
@@ -197,10 +199,17 @@ class Builder implements PieceBuilder {
   }
 }
 
+/**
+ * From this tier on the late weights apply (ROADMAP 52): templates with
+ * nothing that can crash (an empty star arc, pure grind lines) come rarely,
+ * people, ducking and obstacle + rail more often.
+ */
+const LATE_MIX_TIER = 2;
+
 const TEMPLATES: Template[] = [
   { name: 'single', tier: 0, weight: 5, build: (b) => void b.obstacle(b.pick(), b.lead) },
-  { name: 'person', tier: 0, weight: 4, people: true, build: (b) => void b.person(b.lead) },
-  { name: 'stars', tier: 0, weight: 1, build: () => {} },
+  { name: 'person', tier: 0, weight: 4, late: 6, people: true, build: (b) => void b.person(b.lead) },
+  { name: 'stars', tier: 0, weight: 1, late: 0.3, build: () => {} },
   {
     name: 'pair',
     tier: 1,
@@ -210,8 +219,8 @@ const TEMPLATES: Template[] = [
       b.obstacle(b.pick(), b.end + b.spacing());
     },
   },
-  { name: 'rail', tier: 1, weight: 2, build: (b) => void b.rail(b.railKind(), b.lead) },
-  { name: 'duck', tier: 1, weight: 2, build: (b) => void b.overhead(b.lead) },
+  { name: 'rail', tier: 1, weight: 2, late: 0.6, build: (b) => void b.rail(b.railKind(), b.lead) },
+  { name: 'duck', tier: 1, weight: 2, late: 3, build: (b) => void b.overhead(b.lead) },
   {
     name: 'duckJump',
     tier: 2,
@@ -231,6 +240,7 @@ const TEMPLATES: Template[] = [
     name: 'railOver',
     tier: 2,
     weight: 2,
+    late: 3,
     build: (b) => {
       const rail = b.rail('handrail', b.lead, undefined, b.rng.int(96, 140));
       const kind = b.pick(rail.h - 5);
@@ -241,6 +251,7 @@ const TEMPLATES: Template[] = [
     name: 'obstacleRail',
     tier: 2,
     weight: 2,
+    late: 3,
     build: (b) => {
       b.obstacle(b.pick(), b.lead);
       b.rail(b.railKind(), b.end + b.rng.int(...OBSTACLE_TO_RAIL));
@@ -250,6 +261,7 @@ const TEMPLATES: Template[] = [
     name: 'railObstacle',
     tier: 3,
     weight: 2,
+    late: 3,
     build: (b) => {
       b.rail(b.railKind(), b.lead);
       b.obstacle(b.pick(), b.end + b.rng.int(...RAIL_TO_OBSTACLE));
@@ -270,14 +282,24 @@ export const TEMPLATE_NAMES = TEMPLATES.map((t) => t.name);
 
 const isDrunkTemplate = (t: Template) => (DRUNK_TEMPLATES as readonly string[]).includes(t.name);
 
+const weightAt = (t: Template, tier: number) => (tier >= LATE_MIX_TIER ? (t.late ?? t.weight) : t.weight);
+
+/** The templates open at `tier` in `zone` (sober, no effect). */
+const openAt = (tier: number, zone: number) => TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE));
+
+/** The sober template mix at `tier` in `zone`: each open template's share of the picks. */
+export function mixAt(tier: number, zone: number): Record<string, number> {
+  const open = openAt(tier, zone);
+  const total = open.reduce((sum, t) => sum + weightAt(t, tier), 0);
+  return Object.fromEntries(open.map((t) => [t.name, weightAt(t, tier) / total]));
+}
+
 function pickTemplate(rng: Rng, tier: number, zone: number, drunk: boolean, effect: boolean, only?: string): Template {
-  const open = only
-    ? TEMPLATES.filter((t) => t.name === only)
-    : TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE) && (!drunk || isDrunkTemplate(t)) && (!effect || t.name !== 'stars'));
+  const open = only ? TEMPLATES.filter((t) => t.name === only) : openAt(tier, zone).filter((t) => (!drunk || isDrunkTemplate(t)) && (!effect || t.name !== 'stars'));
   if (open.length === 0) throw new Error(`no spawn template ${only}`);
-  let roll = rng.next() * open.reduce((sum, t) => sum + t.weight, 0);
+  let roll = rng.next() * open.reduce((sum, t) => sum + weightAt(t, tier), 0);
   for (const t of open) {
-    roll -= t.weight;
+    roll -= weightAt(t, tier);
     if (roll < 0) return t;
   }
   return open[open.length - 1]!;
@@ -372,32 +394,32 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
     }
     return pattern;
   }
-  // While an effect may be on: a lone low obstacle, further out if the previous pattern needs a longer run-up.
-  if (effect) {
-    const lone = (kind: ObstacleKind, push: number) => {
-      const builder = new Builder(rng, fast, zone, drunk);
-      builder.obstacle(kind, builder.lead + Math.round(push * fast));
-      return finish('single', builder.pieces, fast);
-    };
-    for (const push of EFFECT_PUSH_SECONDS) {
-      for (const kind of EFFECT_FALLBACK) {
-        const pattern = lone(kind, push);
-        if (yield* fairSolvers(pattern)) return pattern;
-      }
+  // A lone low obstacle, further out if the previous pattern needs a longer run-up.
+  const lone = (kind: ObstacleKind, push: number) => {
+    const builder = new Builder(rng, fast, zone, drunk);
+    builder.obstacle(kind, builder.lead + Math.round(push * fast));
+    return finish('single', builder.pieces, fast);
+  };
+  for (const push of FALLBACK_PUSH_SECONDS) {
+    for (const kind of FALLBACK_KINDS) {
+      const pattern = lone(kind, push);
+      if (yield* fairSolvers(pattern)) return pattern;
     }
-    // The previous pieces may be unfair themselves with this margin (planned sober, or fair only at the speeds they were checked at): then the boundary cannot be judged, and the obstacle only has to be fair itself (the previous runout and the gap leave the landing room).
-    const previous = before.length > 0 ? solversFor(courseAfter(finish('previous', [], fast), before, leadFor(fast, drunk)), paces, budget) : null;
-    if (previous && !(yield* resumable(() => humanFair(previous, margin)))) {
-      for (const push of EFFECT_PUSH_SECONDS) {
-        for (const kind of EFFECT_FALLBACK) {
-          const pattern = lone(kind, push);
-          if (yield* fairSolvers(pattern, true)) return pattern;
-        }
+  }
+  // The previous pieces may be unfair themselves with this margin (planned sober, or fair only at the speeds they were checked at): then the boundary cannot be judged, and the obstacle only has to be fair itself (the previous runout and the gap leave the landing room).
+  const previous = before.length > 0 ? solversFor(courseAfter(finish('previous', [], fast), before, leadFor(fast, drunk)), paces, budget) : null;
+  if (previous && !(yield* resumable(() => humanFair(previous, margin)))) {
+    for (const push of FALLBACK_PUSH_SECONDS) {
+      for (const kind of FALLBACK_KINDS) {
+        const pattern = lone(kind, push);
+        if (yield* fairSolvers(pattern, true)) return pattern;
       }
     }
   }
-  // Nothing fair found: a stretch of empty street (always fair, also after any previous pattern).
-  return finish('fallback', [], fast);
+  // Nothing fair found: a star arc over empty street (always fair, also after any previous pattern).
+  const fallback = finish('fallback', [], fast);
+  addStars(fallback, arcPath(leadFor(fast, drunk), slow));
+  return fallback;
 }
 
 /** The previous pattern's pieces followed by `pattern`, as one course starting from free street before them. */
@@ -434,6 +456,11 @@ function arcPath(from: number, speed: number): { x: number; y: number }[] {
 
 /** Up to MAX_STARS stars spread along the middle of an airborne path. */
 function addStars(pattern: Pattern, path: Point[]): void {
+  placeStars(pattern, arcPoints(path));
+}
+
+/** Up to MAX_STARS points spread along the middle of an airborne path, in riding order. */
+function arcPoints(path: Point[]): Point[] {
   const middle = path.slice(Math.floor(path.length * 0.15), Math.ceil(path.length * 0.85));
   let lastX = -Infinity;
   const stars: Point[] = [];
@@ -442,7 +469,12 @@ function addStars(pattern: Pattern, path: Point[]): void {
     lastX = p.x;
     stars.push(p);
   }
-  placeStars(pattern, stars);
+  return stars;
+}
+
+/** The stars of a full jump taken at pattern x `from` at `speed` (the `stars` template's arc). */
+export function jumpArcStars(from: number, speed: number): Piece[] {
+  return arcPoints(arcPath(from, speed)).map((p): Piece => ({ kind: 'star', ...starRect(p.x, p.y) }));
 }
 
 /** Stars centred on `points` (in riding order); the pattern lasts until past the last one. */

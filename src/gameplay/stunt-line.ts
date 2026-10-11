@@ -3,8 +3,9 @@
  * skater onto a ledge of the upper level, then the line goes on with gap
  * jumps from ledge to ledge and drops back to the street onto the next
  * kicker, 3-6 pieces in all, with a star trail. A line is one spawn pattern
- * (patterns.ts Pattern, name 'stunt') whose street holds nothing but its
- * kickers: the street path below is always free, and every way off the line
+ * (patterns.ts Pattern, name 'stunt') whose street holds its kickers and a
+ * few low obstacles under the launch ledges (line-street.ts, ROADMAP 52:
+ * skipping the line is no free ride, riding it never meets them), and every way off the line
  * (missing a ledge, rolling off, a full jump off the last ledge end) lands
  * before the pattern ends, with the usual runout after it.
  *
@@ -33,6 +34,7 @@ import type { Rect } from '../types';
 import { kickerRect, LEDGE, ledgeRect, starRect, STAR_SIZE } from './catalogue';
 import { HUMAN_HOLDS } from './fairness';
 import { leadFor, type Pattern, type Piece, runoutFor } from './patterns';
+import { planLineStreet } from './line-street';
 import { KICKER_LIP, launchVelocityFor } from './rules';
 import type { WorkBudget } from './solver';
 import { copyBody, railBody, stepBodyInto } from './jumpsim';
@@ -162,6 +164,8 @@ const endOf = (r: Rect): number => r.x + r.w;
 export class LineBuilder {
   readonly pieces: Piece[] = [];
   readonly stars: Piece[] = [];
+  /** Obstacles on the street below the line (line-street.ts). */
+  readonly street: Piece[] = [];
   readonly slow: number;
   readonly fast: number;
   readonly mid: number;
@@ -263,7 +267,7 @@ export class LineBuilder {
     const steps = this.pieces.length;
     this.pieces.forEach((p, i) => Object.assign(p.data!, { step: i + 1, steps }));
     const worst = stuntWorstLanding(this.pieces, this.fast);
-    return { name, pieces: [...extra, ...this.pieces, ...this.stars], length: worst + runoutFor(this.fast) };
+    return { name, pieces: [...extra, ...this.pieces, ...this.street, ...this.stars], length: worst + runoutFor(this.fast) };
   }
 
   /** Charges the simulated ticks to `budget`; a generator step that yields once the budget is used up. */
@@ -395,5 +399,6 @@ export function* planStuntLine(rng: Rng, speeds: number[], zone: number, line: n
     ledge = b.launchLedge(b.dropKicker(ledge, height), height, runup);
     yield* b.spend(budget);
   }
+  yield* planLineStreet(b, budget);
   return b.finish('stunt');
 }

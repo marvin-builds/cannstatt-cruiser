@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_SPEED, PLAYER_X, TICK_DT, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
-import type { Entity } from '../types';
+import type { Entity, ObstacleKind } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { isObstacle, isRail } from './catalogue';
 import { speedAt } from './difficulty';
+import { LINE_STREET_KINDS } from './line-street';
 import { anchorOf } from './motion';
 import { CHILL_REACH, Spawner, type SpawnSituation, STUNT_FIRST_SECONDS, STUNT_LINE_INTERVAL } from './spawner';
 import { shapeOf, STUNT_SHAPES, stuntWorstLanding } from './stunt-line';
@@ -63,6 +64,10 @@ const lineStarts = (r: Ride) => r.seen.filter((s) => s.e.kind === 'kicker' && s.
 /** Run time (s) at which the skater reaches the end of each park (its last piece) on the street. */
 const parkEnds = (r: Ride) => r.seen.filter((s) => inPark(s) && s.e.data?.step === s.e.data?.steps).map((s) => r.timeAt(s.street + s.e.w));
 
+/** A low street obstacle of the line `pieces` (line-street.ts): under one of its ledges. */
+const underLine = (s: Seen, pieces: Seen[]) =>
+  LINE_STREET_KINDS.includes(s.e.kind as ObstacleKind) && pieces.some((l) => l.e.kind === 'ledge' && s.street >= l.street && s.street + s.e.w <= l.street + l.e.w);
+
 /** The pieces of each line (by line id). */
 function linesOf(r: Ride): Map<number, Seen[]> {
   const lines = new Map<number, Seen[]>();
@@ -114,30 +119,34 @@ describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
     for (const shape of STUNT_SHAPES) expect(counts.get(shape) ?? 0, JSON.stringify([...counts])).toBeGreaterThanOrEqual(0.2 * total);
   });
 
-  it('the street under a line holds nothing but its kickers, and every way off it lands well before the next pattern', () => {
+  it('the street under a line holds its kickers and low obstacles under its ledges (ROADMAP 52), and every way off it lands well before the next pattern', () => {
     for (const r of RIDES) {
       const street = r.seen.filter((s) => isObstacle(s.e.kind) || isRail(s.e.kind));
+      let own = 0;
       for (const pieces of linesOf(r).values()) {
         const start = pieces[0]!.street;
         // Pieces are laid in one go: their street offset from the kicker is their pattern offset.
         const fast = speedAt(start + 700);
         const worst = start + stuntWorstLanding(pieces.map((p) => ({ ...p.e, x: p.street - start })), fast);
-        const next = Math.min(...street.filter((s) => s.street + s.e.w > start - 40).map((s) => s.street));
+        const mine = street.filter((s) => underLine(s, pieces));
+        own += mine.length;
+        const next = Math.min(...street.filter((s) => s.street + s.e.w > start - 40 && !mine.includes(s)).map((s) => s.street));
         expect(next).toBeGreaterThanOrEqual(worst + 20 + 0.3 * fast);
         const before = street.filter((s) => s.street < start).map((s) => s.street + s.e.w);
         expect(start - Math.max(...before)).toBeGreaterThan(60);
       }
+      expect(own).toBeGreaterThan(0);
     }
   });
 
-  it('comes at a pinned top speed (190) too, with the street under it free', () => {
+  it('comes at a pinned top speed (190) too, with nothing but its own low obstacles under it', () => {
     const r = ride(4, 160, { speed: 190 });
     expect(lineStarts(r).length).toBeGreaterThanOrEqual(3);
     const street = r.seen.filter((s) => isObstacle(s.e.kind) || isRail(s.e.kind));
     for (const pieces of linesOf(r).values()) {
       const start = pieces[0]!.street;
       const worst = start + stuntWorstLanding(pieces.map((p) => ({ ...p.e, x: p.street - start })), 190);
-      expect(street.some((s) => s.street + s.e.w > start - 40 && s.street < worst + 20 + 0.3 * 190)).toBe(false);
+      expect(street.some((s) => s.street + s.e.w > start - 40 && s.street < worst + 20 + 0.3 * 190 && !underLine(s, pieces))).toBe(false);
     }
   });
 

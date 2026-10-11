@@ -30,6 +30,8 @@ export interface ComboTemplate {
   name: string;
   tier: number;
   weight: number;
+  /** Weight from patterns.ts LATE_MIX_TIER on, when it differs (ROADMAP 52: fewer pure grind lines late). */
+  late?: number;
   build(b: PieceBuilder): void;
 }
 
@@ -62,6 +64,7 @@ export const COMBO_TEMPLATES: ComboTemplate[] = [
     name: 'pipeUp',
     tier: 2,
     weight: 0.5,
+    late: 0.15,
     build: (b) => stairs(b, [STEP_HEIGHTS[0]!, STEP_HEIGHTS[2]!], [[48, 64], [90, 130]]),
   },
   {
@@ -69,6 +72,7 @@ export const COMBO_TEMPLATES: ComboTemplate[] = [
     name: 'pipeStairs',
     tier: 2,
     weight: 0.5,
+    late: 0.15,
     build: (b) => stairs(b, STEP_HEIGHTS, [[40, 52], [40, 52], [56, 80]]),
   },
   {

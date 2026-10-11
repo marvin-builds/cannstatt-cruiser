@@ -54,6 +54,8 @@ import { countDownDrunk, useCarriedItem } from './use';
 export interface GameplayOptions {
   /** False keeps the street empty (tests place entities themselves). */
   spawning?: boolean;
+  /** Solver units the spawner plans per tick (default PLAN_WORK_PER_TICK; tests starve it to force the budget lag). */
+  workPerTick?: number;
 }
 
 interface Sparkle {
@@ -81,7 +83,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const spawning = options.spawning ?? true;
   /** Mirror of the world's zone schedule, so people match the zone their pattern lies in. */
   const route = new ZoneRoute();
-  const spawner = new Spawner((street) => route.zoneAt(street), { workPerTick: PLAN_WORK_PER_TICK });
+  const spawner = new Spawner((street) => route.zoneAt(street), { workPerTick: options.workPerTick ?? PLAN_WORK_PER_TICK });
   const situation: SpawnSituation = { drunk: false, kidMode: false };
   const sparkles: Sparkle[] = [];
   const toss = new ItemToss();

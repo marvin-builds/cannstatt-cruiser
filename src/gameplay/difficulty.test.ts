@@ -44,9 +44,21 @@ describe('difficulty ramp (by distance)', () => {
     for (let d = 0; d < SPEED_RAMP_DISTANCE; d += 1000) expect(speedAt(d + 1000) - speedAt(d)).toBeLessThanOrEqual(3.5);
   });
 
-  it('brings pairs within ~15 s and every pattern tier within ~1.5 min', () => {
-    expect(tierAt(distanceAfter(15))).toBeGreaterThanOrEqual(1);
+  // ROADMAP 52 (faster start): tier 1 at ~8 s (was ~12 s), tiers 2 and 3 where they were (~50 s, ~1.5 min).
+  it('keeps the first seconds to singles and brings pairs at ~8 s, every pattern tier within ~1.5 min', () => {
+    expect(tierAt(distanceAfter(7))).toBe(0);
+    expect(tierAt(distanceAfter(8.5))).toBe(1);
+    expect(tierAt(distanceAfter(45))).toBe(1);
+    expect(tierAt(distanceAfter(52))).toBe(2);
+    expect(tierAt(distanceAfter(88))).toBe(2);
     expect(tierAt(distanceAfter(95))).toBe(3);
+  });
+
+  // ROADMAP 52: the gaps reach their floor after ~2.5 min of riding (was ~3.5 min).
+  it('ramps the gap between patterns down over about 2.5 min', () => {
+    expect(RAMP_DISTANCE).toBeGreaterThan(distanceAfter(145));
+    expect(RAMP_DISTANCE).toBeLessThan(distanceAfter(155));
+    expect(gapAt(distanceAfter(75))).toBeLessThan(gapAt(0) - 55);
   });
 
   it('keeps the difficulty growing through density and pattern mix before the speed tops out', () => {

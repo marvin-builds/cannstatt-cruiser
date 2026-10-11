@@ -4,7 +4,7 @@ import { Rng } from '../core/rng';
 import { isObstacle, isRail, obstacleRect } from './catalogue';
 import { drunkFairness, EARLY_TAKEOFF_WINDOW } from './fairness';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
-import { courseOf, planPattern, TEMPLATE_NAMES } from './patterns';
+import { courseOf, mixAt, planPattern, TEMPLATE_NAMES } from './patterns';
 import { Solver } from './solver';
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
@@ -68,13 +68,27 @@ describe('spawn patterns', () => {
     expect(checked).toBeGreaterThanOrEqual(6);
   }, 60_000);
 
+  // ROADMAP 52: no empty fallback any more (it made long quiet stretches): a star arc is always fair.
+  it('when nothing at all is fair (a pair with an impossible take-off window), the fallback is a star arc, never empty street', () => {
+    for (const effect of [false, true]) {
+      const rng = new Rng(13);
+      for (let i = 0; i < 4; i++) {
+        const p = planPattern(rng, 3, [98], { zone: i % 3, window: 999, effect, template: 'pair' });
+        expect(p.name).toBe('fallback');
+        expect(p.pieces.length).toBeGreaterThanOrEqual(3);
+        expect(p.pieces.every((x) => x.kind === 'star')).toBe(true);
+      }
+    }
+  });
+
   it('uses every template at full difficulty and rarely needs the fallback', () => {
     for (const speed of [BASE_SPEED, TOP_SPEED]) {
       const names: string[] = [];
       const rng = new Rng(3);
-      for (let i = 0; i < 400; i++) names.push(planPattern(rng, 3, [speed], { zone: i % 3 }).name);
+      // 800: the pure grind lines are rare late in a run (ROADMAP 52).
+      for (let i = 0; i < 800; i++) names.push(planPattern(rng, 3, [speed], { zone: i % 3 }).name);
       for (const name of TEMPLATE_NAMES) expect(names).toContain(name);
-      expect(names.filter((n) => n === 'fallback').length).toBeLessThan(20);
+      expect(names.filter((n) => n === 'fallback').length).toBeLessThan(40);
     }
   }, 30_000);
 
@@ -104,6 +118,26 @@ describe('spawn patterns', () => {
       }
     }
   }, 30_000);
+
+  // ROADMAP 52: from tier 2 on, fewer templates without anything that can crash (empty star arcs, pure grind
+  // lines) and more people, ducking and obstacle + rail. Before: 14 % (16.7 % without people) threat-free,
+  // people 14 %, duck 7 %, obstacle + rail 21 % at tier 3.
+  it('from tier 2 on, threat-free templates are rare and people, duck and obstacle + rail more common', () => {
+    const share = (mix: Record<string, number>, names: string[]) => names.reduce((sum, n) => sum + (mix[n] ?? 0), 0);
+    const threatFree = ['stars', 'rail', 'pipeUp', 'pipeStairs'];
+    for (const tier of [2, 3]) {
+      for (const zone of [0, 1, 2]) expect(share(mixAt(tier, zone), threatFree), `tier ${tier} zone ${zone}`).toBeLessThanOrEqual(0.07);
+      const mix = mixAt(tier, 1);
+      expect(mix.person).toBeGreaterThanOrEqual(0.18);
+      expect(mix.duck).toBeGreaterThanOrEqual(0.09);
+      expect(share(mix, ['obstacleRail', 'railObstacle', 'railOver'])).toBeGreaterThanOrEqual(tier === 3 ? 0.27 : 0.22);
+    }
+    // Tiers 0 and 1 as before.
+    expect(mixAt(0, 1)).toEqual({ single: 0.5, person: 0.4, stars: 0.1 });
+    expect(mixAt(1, 0)).toEqual({ single: 5 / 13, stars: 1 / 13, pair: 3 / 13, rail: 2 / 13, duck: 2 / 13 });
+    const sum = Object.values(mixAt(3, 2)).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1, 9);
+  });
 
   it('tier 0 has single obstacles only, no rails', () => {
     const rng = new Rng(11);
