@@ -66,7 +66,7 @@ import {
 } from './layout';
 import { MENU_TEXT } from './menu-layout';
 import { drawGameOver, drawPause, drawTitle, drawWhatsNew } from './menu-screens';
-import { currentMenu, menuScreen, portraitHintShown } from './menu-state';
+import { currentMenu, portraitHintShown, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
 import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines } from './kid-notice';
@@ -176,7 +176,7 @@ function drawButtons(r: RenderContext, view: UiView): void {
   if (riding(mode)) hudButton(r, m, b.pause, mode === 'playing' ? ICON_PAUSE : ICON_PLAY, 0);
   hudButton(r, m, b.mute, ICON_SOUND, muted ? 1 : 0);
   if (b.fullscreen) hudButton(r, m, b.fullscreen, ICON_FULLSCREEN, r.display.fullscreen ? 1 : 0);
-  if (view.scores && menuScreen(r.state, view) === 'title') {
+  if (trophyShown(r.state, view)) {
     hudButton(r, m, titleTrophy(r.display.viewWidth, view.fullscreenAvailable, m), ICON_TROPHY, 0);
   }
 }
@@ -184,7 +184,7 @@ function drawButtons(r: RenderContext, view: UiView): void {
 /** The "Bestenliste" or the name entry over the title or game over. */
 function drawScores(r: RenderContext, flow: HighscoreFlow): void {
   if (flow.screen === 'list') drawScoreList(r, flow, scoreListLayout(r.display, flow.entries.length, flow.message !== null));
-  else drawScoreEntry(r, flow, scoreEntryLayout(r.display, flow.kid));
+  else drawScoreEntry(r, flow, scoreEntryLayout(r.display));
 }
 
 /** Score, combo, hearts, stars and the timer rows in the top-left corner, from the HUD model (no allocation). */

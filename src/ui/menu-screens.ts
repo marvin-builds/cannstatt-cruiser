@@ -36,7 +36,7 @@ import {
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
 import { whatsNewLines } from './notices';
-import type { Records, RunResult } from './records';
+import { bestOf, type Records, type RunResult } from './records';
 
 /** What the menu screens read from the ui view. */
 export interface MenuScreensView {
@@ -149,13 +149,13 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   if (keys !== undefined) centred(r, 'P/Esc = Pause, M = Ton aus', keys, { color: UI.muted });
   drawNotices(r, l);
   const records = y('records');
-  if (records !== undefined) drawRecordsRow(r, view.records, records);
+  if (records !== undefined) drawRecordsRow(r, bestOf(view.records, r.state.kidMode), view.records.starsTotal, records);
 }
 
-/** "Highscore 1.234   ★ 56 gesamt", centred. */
-function drawRecordsRow(r: RenderContext, records: Records, y: number): void {
-  const best = `Highscore ${formatNumber(records.highscore)}`;
-  const stars = `${formatNumber(records.starsTotal)} gesamt`;
+/** "Highscore 1.234   ★ 56 gesamt" (the highscore of the mode in play), centred. */
+function drawRecordsRow(r: RenderContext, highscore: number, starsTotal: number, y: number): void {
+  const best = `Highscore ${formatNumber(highscore)}`;
+  const stars = `${formatNumber(starsTotal)} gesamt`;
   const gap = 14;
   const total = measureText(best) + gap + STAR.width + 3 + measureText(stars);
   let x = centreX(r.display.viewWidth) - Math.floor(total / 2);
@@ -237,7 +237,8 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
 
   const values = [
     formatNumber(state.score),
-    formatNumber(view.records.highscore),
+    // The record of the mode the run was played in.
+    formatNumber(bestOf(view.records, run?.kid ?? state.kidMode)),
     formatNumber(state.stars),
     formatNumber(view.records.starsTotal),
     `${formatNumber(metres(state.distance))} m`,

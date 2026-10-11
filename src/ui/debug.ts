@@ -9,7 +9,7 @@ import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
-import { currentMenu } from './menu-state';
+import { currentMenu, trophyShown } from './menu-state';
 import { kidNoticeLayout } from './kid-notice';
 import type { PopupFeed } from './popup-feed';
 import type { HintKind } from './hint-plate';
@@ -57,8 +57,8 @@ export interface UiDebugHook {
    * (shows on the next redraw until the next tick); returns whether the hint shows.
    */
   previewKickerHint(): boolean;
-  /** Replaces the loaded records in memory (storage follows at the next game over). */
-  setRecords(highscore?: number, starsTotal?: number): void;
+  /** Replaces the loaded records in memory (storage follows at the next game over); `kidHighscore` is kid mode's record. */
+  setRecords(highscore?: number, starsTotal?: number, kidHighscore?: number): void;
   /** The hidden settings menu (or the kid mode notice, screen 'kidNotice'): screen and the logo hold progress (0..1). */
   settings(): { screen: SettingsScreen; holdProgress: number };
   /**
@@ -69,7 +69,7 @@ export interface UiDebugHook {
   layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; kidNoticeOk: Rect; logo: Rect; screen: MenuButtons | null };
   /**
    * The online list's state and tap areas (view px), or null without an online list: the title's
-   * trophy, the open screen's close button, the entry's field, submit and "Neuer Name" buttons.
+   * trophy, the open screen's close button, the entry's field and submit button.
    */
   highscores(): HighscoresDebug | null;
 }
@@ -78,18 +78,18 @@ export interface HighscoresDebug {
   screen: ScoreScreen;
   offered: boolean;
   name: string;
-  kid: boolean;
   message: string | null;
   topState: string;
   entries: number;
   highlight: number | null;
   scroll: number;
   maxScroll: number;
+  /** Where the title's trophy would be; `trophyShown` tells whether it shows and takes taps and B (never in kid mode). */
   trophy: Rect;
+  trophyShown: boolean;
   close: Rect;
   field: Rect;
   submit: Rect;
-  reroll: Rect | null;
 }
 
 declare global {
@@ -168,8 +168,8 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       view.hints.update(0, { highFive: false, trick: false, air: false, kicker: view.kickerHint.visible });
       return view.kickerHint.visible;
     },
-    setRecords(highscore = 0, starsTotal = 0) {
-      view.records = { highscore, starsTotal };
+    setRecords(highscore = 0, starsTotal = 0, kidHighscore = 0) {
+      view.records = { highscore, kidHighscore, starsTotal };
     },
     settings() {
       return { screen: view.settings.screen, holdProgress: view.logoHold.progress };
@@ -191,12 +191,11 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
       if (!flow) return null;
       const { display } = ctx;
       const metrics = uiMetrics(display);
-      const entry = scoreEntryLayout(display, flow.kid);
+      const entry = scoreEntryLayout(display);
       return {
         screen: flow.screen,
         offered: flow.offered,
         name: flow.name,
-        kid: flow.kid,
         message: flow.message,
         topState: flow.topState,
         entries: flow.entries.length,
@@ -204,10 +203,10 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed):
         scroll: flow.scroll,
         maxScroll: scoreListLayout(display, flow.entries.length, flow.message !== null).maxScroll,
         trophy: titleTrophy(display.viewWidth, view.fullscreenAvailable, metrics),
+        trophyShown: trophyShown(ctx.state, view),
         close: closeButton(display.viewWidth, metrics),
         field: entry.field,
         submit: entry.submit,
-        reroll: entry.reroll,
       };
     },
   };

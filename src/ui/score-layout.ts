@@ -118,10 +118,8 @@ export interface ScoreEntryLayout {
   scoreY: number;
   /** "Dein Name:" (top y), always at font scale 1, right above the field. */
   promptY: number;
-  /** The name field (adult mode: the native input lies on it). */
+  /** The name field (the native input lies on it). */
   field: Rect;
-  /** "Neuer Name" beside the field (kid mode only). */
-  reroll: Rect | null;
   /** "Als <Name> eintragen". */
   submit: Rect;
   messageY: number;
@@ -134,8 +132,8 @@ const FIELD_MAX_W = 200;
 const SUBMIT_MAX_W = 240;
 const GAP = 4;
 
-/** The name entry: title, points, the field (kid mode: the nickname and "Neuer Name"), the submit button, a message line. */
-export function scoreEntryLayout(input: ScreenInput, kid: boolean): ScoreEntryLayout {
+/** The name entry: title, points, the field, the submit button, a message line. */
+export function scoreEntryLayout(input: ScreenInput): ScoreEntryLayout {
   const m = uiMetrics(input);
   const textScale = input.portrait ? 2 : 1;
   const h = m.menuButtonH;
@@ -146,11 +144,8 @@ export function scoreEntryLayout(input: ScreenInput, kid: boolean): ScoreEntryLa
   const promptY = scoreY + 7 * textScale + GAP + 2;
   const fieldY = promptY + 7 + 3;
   const cx = Math.floor(input.viewWidth / 2);
-  const rerollW = kid ? Math.max(h, measureText('Neuer Name', h >= 24 ? 2 : 1) + 12) : 0;
-  const total = Math.min(input.viewWidth - 16, FIELD_MAX_W + (kid ? rerollW + GAP : 0));
-  const left = cx - Math.floor(total / 2);
-  const field: Rect = { x: left, y: fieldY, w: total - (kid ? rerollW + GAP : 0), h };
-  const reroll = kid ? { x: field.x + field.w + GAP, y: fieldY, w: rerollW, h } : null;
+  const fieldW = Math.min(input.viewWidth - 16, FIELD_MAX_W);
+  const field: Rect = { x: cx - Math.floor(fieldW / 2), y: fieldY, w: fieldW, h };
   const submitW = Math.min(input.viewWidth - 16, SUBMIT_MAX_W);
   const submit: Rect = { x: cx - Math.floor(submitW / 2), y: fieldY + h + GAP + 2, w: submitW, h };
   const messageY = submit.y + h + GAP;
@@ -160,7 +155,6 @@ export function scoreEntryLayout(input: ScreenInput, kid: boolean): ScoreEntryLa
     scoreY,
     promptY,
     field,
-    reroll,
     submit,
     messageY,
     keysY: input.touch ? null : VIEW_H - 2 - LINE,

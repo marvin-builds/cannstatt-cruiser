@@ -46,6 +46,11 @@ export function menuScreen(state: GameState, view: MenuView): MenuScreen | null 
   }
 }
 
+/** The title's trophy ("Bestenliste") shows: on the title with an online list, never in kid mode (ROADMAP 45). */
+export function trophyShown(state: GameState, view: MenuView): boolean {
+  return !!view.scores && !state.kidMode && menuScreen(state, view) === 'title';
+}
+
 /** Game-over buttons and prompt appear only after the input delay, so a tap at the crash hits nothing. */
 export function gameOverReady(state: GameState): boolean {
   return state.modeTime >= GAMEOVER_INPUT_DELAY;

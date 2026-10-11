@@ -87,35 +87,31 @@ describe('Bestenliste layout', () => {
 });
 
 describe('name entry layout', () => {
-  it('fits title, field, buttons and message without overlap, touch sized, adult and kid', () => {
+  it('fits title, field, buttons and message without overlap, touch sized', () => {
     for (const c of cases()) {
-      for (const kid of [false, true]) {
-        const label = `${c.label} kid=${kid}`;
-        const m = uiMetrics(c);
-        const l = scoreEntryLayout(c, kid);
-        const rects: [string, Rect][] = [
-          ['close', l.close],
-          ['title', l.title],
-          ['field', l.field],
-          ['submit', l.submit],
-          ...(l.reroll ? [['reroll', l.reroll] as [string, Rect]] : []),
-        ];
-        for (const [id, r] of rects) expect(inside(r, c.viewWidth) && whole(r), `${label} ${id} ${JSON.stringify(r)}`).toBe(true);
-        rects.forEach(([id, a], i) => {
-          for (const [other, b] of rects.slice(i + 1)) expect(overlap(a, b), `${label}: ${id} vs ${other}`).toBe(false);
-        });
-        for (const r of [l.close, l.field, l.submit, ...(l.reroll ? [l.reroll] : [])]) {
-          expect(r.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
-          if (c.touch) expect(r.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
-        }
-        expect(!!l.reroll, label).toBe(kid);
-        expect(l.field.w, `${label}: room for 16 characters`).toBeGreaterThanOrEqual(120);
-        expect(l.messageY, label).toBeGreaterThanOrEqual(l.submit.y + l.submit.h);
-        expect(l.messageY + 7 * l.textScale, label).toBeLessThanOrEqual(VIEW_H);
-        expect(l.promptY + 7, label).toBeLessThanOrEqual(l.field.y);
-        expect(l.keysY !== null, label).toBe(!c.touch);
-        if (l.keysY !== null) expect(l.keysY, label).toBeGreaterThanOrEqual(l.messageY + 7 * l.textScale);
+      const { label } = c;
+      const m = uiMetrics(c);
+      const l = scoreEntryLayout(c);
+      const rects: [string, Rect][] = [
+        ['close', l.close],
+        ['title', l.title],
+        ['field', l.field],
+        ['submit', l.submit],
+      ];
+      for (const [id, r] of rects) expect(inside(r, c.viewWidth) && whole(r), `${label} ${id} ${JSON.stringify(r)}`).toBe(true);
+      rects.forEach(([id, a], i) => {
+        for (const [other, b] of rects.slice(i + 1)) expect(overlap(a, b), `${label}: ${id} vs ${other}`).toBe(false);
+      });
+      for (const r of [l.close, l.field, l.submit]) {
+        expect(r.h, label).toBeGreaterThanOrEqual(m.menuButtonH);
+        if (c.touch) expect(r.h * c.cssPerPx, label).toBeGreaterThanOrEqual(44);
       }
+      expect(l.field.w, `${label}: room for 16 characters`).toBeGreaterThanOrEqual(120);
+      expect(l.messageY, label).toBeGreaterThanOrEqual(l.submit.y + l.submit.h);
+      expect(l.messageY + 7 * l.textScale, label).toBeLessThanOrEqual(VIEW_H);
+      expect(l.promptY + 7, label).toBeLessThanOrEqual(l.field.y);
+      expect(l.keysY !== null, label).toBe(!c.touch);
+      if (l.keysY !== null) expect(l.keysY, label).toBeGreaterThanOrEqual(l.messageY + 7 * l.textScale);
     }
   });
 });

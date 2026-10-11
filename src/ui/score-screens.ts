@@ -13,7 +13,7 @@ import { drawDismiss } from './menu-screens';
 import { SCROLLBAR_W, type ScoreEntryLayout, type ScoreListLayout } from './score-layout';
 
 export const LIST_KEYS = 'Pfeiltasten = blättern, Esc/B = schließen';
-export const entryKeys = (kid: boolean) => (kid ? 'Enter = eintragen, N = neuer Name, Esc = zurück' : 'Enter = eintragen, Esc = zurück');
+export const ENTRY_KEYS = 'Enter = eintragen, Esc = zurück';
 
 /** The bigger scale where `s` fits `maxW`, else 1. */
 function fitScale(s: string, maxW: number, preferred: number): number {
@@ -93,14 +93,10 @@ function drawScrollbar(r: RenderContext, list: Rect, contentH: number, scroll: n
   g.fillRect(x, y, SCROLLBAR_W, thumb);
 }
 
-/**
- * The submit button's label: "Als <Name> eintragen" once the name is valid.
- * Kid mode keeps "Eintragen": the nickname shows in the field above, and the
- * long label would shrink below the "Neuer Name" button's size.
- */
+/** The submit button's label: "Als <Name> eintragen" once the name is valid. */
 export function submitButtonLabel(flow: HighscoreFlow): string {
   if (flow.sending) return SCORE_TEXT.sending;
-  return flow.canSubmit && !flow.kid ? `Als ${flow.name.trim()} eintragen` : SCORE_TEXT.submit;
+  return flow.canSubmit ? `Als ${flow.name.trim()} eintragen` : SCORE_TEXT.submit;
 }
 
 export function drawScoreEntry(r: RenderContext, flow: HighscoreFlow, l: ScoreEntryLayout): void {
@@ -109,19 +105,18 @@ export function drawScoreEntry(r: RenderContext, flow: HighscoreFlow, l: ScoreEn
   text(r, SCORE_TEXT.entryTitle, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
   drawDismiss(r, l.close);
   centredLine(r, `${formatNumber(flow.score)} Punkte`, l.scoreY, UI.white, l.textScale, l.close.x);
-  text(r, flow.kid ? SCORE_TEXT.kidPrompt : SCORE_TEXT.namePrompt, l.field.x, l.promptY, { color: UI.muted });
-  // The field (adult mode: the native input lies on it; the text shows in canvas captures).
+  text(r, SCORE_TEXT.namePrompt, l.field.x, l.promptY, { color: UI.muted });
+  // The field (the native input lies on it; the text shows in canvas captures).
   const { field } = l;
   g.fillStyle = UI.buttonEdge;
   g.fillRect(field.x, field.y, field.w, field.h);
   g.fillStyle = UI.buttonFace;
   g.fillRect(field.x + 2, field.y + 2, field.w - 4, field.h - 4);
   const nameScale = fitScale(flow.name, field.w - 12, field.h >= 24 ? 2 : 1);
-  text(r, flow.name, field.x + 6, field.y + Math.floor((field.h - 7 * nameScale) / 2), { color: flow.kid ? UI.white : UI.yellow, scale: nameScale });
-  if (l.reroll) menuButton(r, l.reroll, SCORE_TEXT.newName, UI.teal);
+  text(r, flow.name, field.x + 6, field.y + Math.floor((field.h - 7 * nameScale) / 2), { color: UI.yellow, scale: nameScale });
   const label = submitButtonLabel(flow);
   const scale = fitScale(label, l.submit.w - 12, l.submit.h >= 24 ? 2 : 1);
   menuButton(r, l.submit, label, flow.canSubmit ? UI.yellow : UI.muted, scale);
   if (flow.message) centredLine(r, flow.message, l.messageY, UI.yellow, fitScale(flow.message, display.viewWidth - 8, l.textScale));
-  if (l.keysY !== null) centredLine(r, entryKeys(flow.kid), l.keysY, UI.muted, 1);
+  if (l.keysY !== null) centredLine(r, ENTRY_KEYS, l.keysY, UI.muted, 1);
 }
