@@ -366,3 +366,16 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
 65. **Stars give points (USER 2026-10-11: "stars are quite useless right now"):** today a star only counts towards `state.stars` (contacts.ts, `starCollected`) and gives no points. First step of 52 item 9: every star gives points (e.g. +10, times the combo multiplier like other points) and a whole star arc taken in one jump gives a bonus with its own popup ("Sternenbogen! +…"); the existing "Stern!" popup shows the points. Kid mode too. Update `server/src/plausibility.ts` (comment and numbers if needed) since point values change. Test-first in gameplay; owner `src/gameplay` (+ `src/ui` popup text, `server/` plausibility). Starts after the running 61+62 slice (same directory). The rest of item 9 (an arc keeps the combo alive) can follow.
     - Status 2026-10-11: built, not released (10 per star, 50 per whole arc, both x multiplier; plausibility limits unchanged, about 8.6 points per metre at most from stars). Follow-ups: a `starArc` event in src/types.ts instead of the popup feed inferring the bonus from the score delta; let the stunt bot link arcs to measure line arc bonuses.
 66. **No duck chains longer than one swipe (USER 2026-10-11, Android):** a chain of 4 overheads (a bus stop, then 3 construction-site signs; mixes.ts random chains put signs 0.15-0.5 s apart, "ducked in one go") could not be ducked on Android, because a swipe ducks for a fixed `SWIPE_DUCK_TICKS` (72 ticks, 1.2 s, src/core/input.ts) while the solver plans with a held duck like the keyboard. The USER finds 4 ducks in a row no fun and wants the ducking itself unchanged (swipe-and-hold was considered and dropped). Fix in gameplay: overheads that must be ducked in one go span at most about 1 s of riding at the current speed (margin below the 1.2 s swipe duck), and between such groups there is enough street to stand up and swipe again; the solver/fairness check gets the touch duck limit (a duck lasts at most the swipe duck time, a new duck needs a new swipe), so it also rejects chains from two patterns meeting by chance. Test-first: a 4-sign chain is rejected or never generated, the longest one-go duck span over many seeds and speeds stays under the limit, human bots with the touch duck model pass. Owner: `src/gameplay`. Queued after the running wave (gameplay is busy).
+67. **A gear that reads as a gear (USER 2026-10-11):** the title's settings icon (`ICON_GEAR`, src/ui/art.ts, 8x8: two teeth per side and a square hole) is ugly and not recognisable as settings. Replace it with the USER's reference (9x9, eight teeth: one on each side and a 2x1 pair on each diagonal, a small hole in the middle):
+    ```
+    ....w....
+    .ww.w.ww.
+    .wwwwwww.
+    ..wwwww..
+    wwww.wwww
+    ..wwwww..
+    .wwwwwww.
+    .ww.w.ww.
+    ....w....
+    ```
+    If `PixelIcon` or the button layout needs 8x8 (or even sizes) for crisp centring, adapt the icon box rather than the shape, and check it at 1x and 2x on desktop, phone landscape and portrait next to the trophy, fullscreen and speaker icons. Owner: `src/ui`; queued for the next ui slice (the running feedback-status slice owns src/ui).
