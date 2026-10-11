@@ -566,6 +566,16 @@ npm run playtest -- --headed
   logic itself has unit tests in `src/core/sw.test.ts` (sw.js in a vm with
   fake caches, network and clients).
 
+### Quiet time (ROADMAP 52)
+
+`src/gameplay/quiet-time.test.ts` rides the spawner for 20 seeds x 6 min (slow,
+about a minute; it runs in a `beforeAll`) and pins the quiet cap and the mean
+quiet stretch at minutes 1, 3 and 6, plus a ride with a starved planning budget
+(`workPerTick`). `scripts/scenarios/quiet-time.ts` rides 3 minutes with the
+solver bot, logs the measured quiet time and shoots a stunt line and the park
+with their street obstacles:
+`npm run playtest -- --scenario scripts/scenarios/quiet-time.ts --name quiet-time`.
+
 ### Custom scenarios
 
 A scenario module default-exports an async function that receives a

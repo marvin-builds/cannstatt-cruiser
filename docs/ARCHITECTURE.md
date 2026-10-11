@@ -48,7 +48,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   world/art/flags.ts    hanging window flags: FlagSpec (PST_FLAG, TRANS_FLAG), withFlag(), flagSpan() (see Flags)
   world/art/mombach.ts  the Mombachquelle scene on the far Neckar bank (mid layer, see Zones); MOMBACH_FOCUS = the basin span the near layer keeps uncovered
   world/debug.ts        window.__world (test only): trafficDensity(), traffic() {vehicles, puffs, shake}
-  gameplay/difficulty.ts  speedAt(distance): BASE_SPEED 90 eases out to TOP_SPEED 190 over SPEED_RAMP_DISTANCE (46 000 px, ~5.3 min); gapAt, tierAt over RAMP_DISTANCE (24 000 px, ~3.5 min)
+  gameplay/difficulty.ts  speedAt(distance): BASE_SPEED 90 eases out to TOP_SPEED 190 over SPEED_RAMP_DISTANCE (46 000 px, ~5.3 min); gapAt over RAMP_DISTANCE (17 400 px, ~2.5 min); tierAt at TIER_DISTANCES 740 / 4800 / 9600 px (~8 s, ~50 s, ~1.5 min)
   gameplay/fairness.ts  human take-off windows (takeoffWindowAt), people margins, drunk margin (DRUNK_TEMPLATES, DRUNK_HOLD, drunkFairness)
   gameplay/rules.ts     contact rules shared with the solver (landsOnRail/Ledge, pastLedge, landsOnHead, STOMP_DEPTH, stompReach)
   gameplay/stomp.ts     stompPeople(): stomp detection and knockOver (see Stomp and carried items)
@@ -66,6 +66,9 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/bail.ts      landedLate() / duckLanding() / bail(): a kickflip still turning on the landing is a crash unless down is held, never excused while drunk (KICKFLIP_BAIL_GRACE_TICKS, see Air trick)
   player/air-trick.ts   canStartAirTrick(), airTrickTicks(), airTicksLeft(): the kickflip start rule and length (see Air trick, src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
+  gameplay/street.ts    what counts as something to react to on the street (shared by the quiet cap and quiet-time.ts)
+  gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line or the park (ROADMAP 52)
+  gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
   gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
   gameplay/combos.ts    combo templates (COMBO_TEMPLATES, COMBO_NAMES): grind lines of rails, benches and low obstacles (see Combo patterns)
   gameplay/line-guide.ts  lineGuide() / spreadStars(): the guide stars along a combo's human line (see Combo patterns)
@@ -1362,6 +1365,18 @@ Such patterns:
   pushed out by `EFFECT_PUSH_SECONDS` 0 / 0.5 / 1 s of riding until it is
   fair after the previous pattern) when nothing fair is found, instead of
   empty street.
+
+**Quiet cap (ROADMAP 52).** From `QUIET_FROM_SECONDS` (15 s) of a run on,
+sober patterns are followed by a gap short enough that the free street after
+the pattern, the gap and the next lead fit `QUIET_SECONDS` (2.2 s of riding),
+never below the minimum gap, so the 1.1 s after each pattern and the 1 s around
+people stay. Planning lag only uses what the cap leaves, and the planner's
+fallback is a lone low obstacle or a star arc, never empty street. What counts
+as "something to react to" is `gameplay/street.ts` (obstacles, people, rails,
+stars, kickers, the joint, the high fiver; not the stars above a ledge deck).
+`quiet-time.test.ts` pins at most 2.5 s from 20 s on over 20 seeds x 6 min.
+Take-off windows are unchanged. From tier 2 on, threat-free templates (stars,
+rail, pipeUp, pipeStairs) weigh about 5 % of the mix.
 
 No joint comes while the player may be drunk: it waits until sober. Test
 tooling `effect-street.ts` `rideEffect(seed, from, 'drunk' | 'chill')` rides
