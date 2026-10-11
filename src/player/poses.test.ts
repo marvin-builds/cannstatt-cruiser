@@ -41,10 +41,15 @@ describe('poses', () => {
     // On the rail like the normal grind.
     for (const step of [...TIMELINES.grindTurn.steps, ...TIMELINES.grindTrick.steps]) {
       expect(step.boardDy).toBe(TIMELINES.grind.steps[0]!.boardDy);
-      expect(step.board).toBe(BD.flat);
     }
     // The trick only exists on the rail.
     expect(timelineFor({ ...view, anim: 'air', trick: 'front' }, 5)).toBe('airFall');
+  });
+
+  it('turns the board across the rail for the boardslide: half-turned in between, end-on when facing the camera', () => {
+    for (const step of TIMELINES.grind.steps) expect(step.board).toBe(BD.flat);
+    expect(TIMELINES.grindTurn.steps.map((s) => s.board)).toEqual([BD.halfTurn]);
+    for (const step of TIMELINES.grindTrick.steps) expect(step.board).toBe(BD.endOn);
   });
 
   it('the crash ends standing on the board under the skater within CRASH_TIME', () => {

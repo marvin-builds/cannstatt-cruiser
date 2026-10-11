@@ -315,9 +315,14 @@ in any slice's Vitest tests.
   off the rail, jump, rail end, crash, run start). Down on a rail never
   ducks and never leaves the rail; `player.state` stays `grind` and the hitbox
   is the standing one. Gameplay scores it and emits `grindTrick`.
-- Look: one in-between frame (`TRICK_TURN_TIME`, timeline `grindTurn`) turning
-  to the camera, then the front view (`grindTrick`, the only frame with the
-  moustache), and the in-between frame again when the trick ends on the rail.
+- Look (a boardslide): one in-between frame (`TRICK_TURN_TIME`, timeline
+  `grindTurn`) turning to the camera with the board half turned across the rail
+  (board frame `halfTurn`), then the front view (`grindTrick`, the only frame with
+  the moustache) with the board across the rail, seen end-on (`endOn`: a short,
+  wide deck with a wheel at each side), and the in-between frame again when the
+  trick ends on the rail. Both board frames keep the grip tape row and the wheel
+  bottom of the side view, so the board stays on the rail line and the feet on the
+  deck; every other pose keeps the side-view board.
 
 ## Duck
 

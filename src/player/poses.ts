@@ -129,14 +129,15 @@ export const TIMELINES: Record<TimelineName, Timeline> = {
       { t: 0.3, body: B.grindB, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY },
     ],
   },
-  // Grind trick (down held on the rail): one in-between frame turning to the camera (also on the way
-  // back), then the front view, bobbing on the rail like the normal grind.
-  grindTurn: { loop: false, steps: [{ t: 1, body: B.grindTurn, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY }] },
+  // Grind trick, a boardslide (down held on the rail): one in-between frame turning to the camera with
+  // the board half across the rail (also on the way back), then the front view with the board end-on
+  // across the rail, the skater bobbing on it like the normal grind.
+  grindTurn: { loop: false, steps: [{ t: 1, body: B.grindTurn, board: BD.halfTurn, bodyDy: GRIND_DY, boardDy: GRIND_DY }] },
   grindTrick: {
     loop: true,
     steps: [
-      { t: 0.3, body: B.grindFront, board: BD.flat, bodyDy: GRIND_DY, boardDy: GRIND_DY },
-      { t: 0.3, body: B.grindFront, board: BD.flat, bodyDy: GRIND_DY + 1, boardDy: GRIND_DY },
+      { t: 0.3, body: B.grindFront, board: BD.endOn, bodyDy: GRIND_DY, boardDy: GRIND_DY },
+      { t: 0.3, body: B.grindFront, board: BD.endOn, bodyDy: GRIND_DY + 1, boardDy: GRIND_DY },
     ],
   },
   // Thrown off, board flies ahead and lands, tumble, lie, kneel, back on the board.
