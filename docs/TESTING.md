@@ -279,10 +279,11 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu wacklig!" popup while drunk, "Zu entspannt!" while chilled, else "Zu spät geflippt!") / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Boardslide!") shows now |
+| `window.__ui.whatsNew()` | the "Neu in dieser Version" list while it shows, else `null`: `{sheet, offset, maxScroll, rows, headings, list}` (`sheet` true for the portrait DOM sheet, whose offsets are CSS px; else view px) |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
 | `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
 | `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown, ownBest}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
-| `window.__audio.log` / `status()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
+| `window.__audio.log` / `status()` / `gain()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
 Types: `import type {} from '../../src/gameplay/debug'` (declares
 `window.__gameplay`; likewise `src/world/debug` for `window.__world` and
@@ -569,6 +570,30 @@ npm run playtest -- --headed
   start, and the next reload runs the new build from the cache. The worker
   logic itself has unit tests in `src/core/sw.test.ts` (sw.js in a vm with
   fake caches, network and clients).
+
+- `scripts/scenarios/audio-always-on.ts` (ROADMAP 63, all viewports; first
+  input is a key on `desktop`, a click on `laptop`, a touch on phones): the
+  AudioContext ends `running` with a non-zero master gain
+  (`window.__audio.gain()`), mute and unmute, a context suspended from
+  outside comes back without toggling mute, a hidden then visible tab keeps
+  the sound. Page scripts are passed as strings on purpose (tsx adds a
+  `__name` helper that breaks functions run in the page).
+- `scripts/scenarios/head-jump.ts` (ROADMAP 60, `desktop,phone-landscape`):
+  the plain stomp bounce, a tap and a full hold off the same head (apex
+  heights in the log, the high arc photographed at its apex) and a buffered
+  head jump with the viewport's real input.
+- `scripts/scenarios/whats-new.ts` (ROADMAP 59, `desktop,phone-landscape,phone-portrait`):
+  an old last-seen version shows the newest 10 entries under version
+  headings, scrolling by wheel, touch drag and keys with a scroll bar, at a
+  320 px wide view and the viewport's own size; the "Neu laden" card on the
+  title at 800x400 and 844x390 with an update forced ready.
+- `scripts/scenarios/portrait-forms.ts` (ROADMAP 58, touch viewports only):
+  the installed app is faked, feedback goes to a fake endpoint and the list
+  to a route; the feedback and name entry sheets in portrait (text >= 16 CSS
+  px, buttons >= 48 CSS px), rotating while typing keeps text and focus.
+- `scripts/scenarios/insights-triage.ts` (ROADMAP 56, `desktop,phone-portrait`):
+  the board against a fake worker route: card actions, the issue editor,
+  "Todo #N", the delete confirm and the status filter.
 
 ### Quiet time (ROADMAP 52)
 
