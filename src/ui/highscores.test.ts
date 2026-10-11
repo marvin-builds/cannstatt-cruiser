@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GAMEOVER_INPUT_DELAY, TICK_DT } from '../core/config';
 import { Game } from '../core/game';
-import { keyDown, keyUp } from '../core/input';
+import { keyDown, keyUp, PointerControls } from '../core/input';
 import { createMemoryStore } from '../core/storage';
 import type { ScoreEntry } from '../net/api';
 import type { RunStats } from '../net/payload';
@@ -47,9 +47,11 @@ function setup(options: { fullscreen?: boolean } = {}) {
   };
   const placed: (Rect | null)[] = [];
   let focused = 0;
+  let blurred = 0;
   const nameField: NameField = {
     place: (rect) => void placed.push(rect),
     focus: () => void focused++,
+    blur: () => void blurred++,
   };
   const store = createMemoryStore();
   const ui = createUiSystem({ store, fullscreenAvailable: () => !!options.fullscreen, scores: service, nameField, openPage: (url) => (opened.push(url), true) });
@@ -81,7 +83,14 @@ function setup(options: { fullscreen?: boolean } = {}) {
       newRecord: true,
       submit: true,
     }).buttons.submit!;
-  return { game, flow, service, sent, outcomes, store, placed, key, crash, submitRect, refreshes: () => refreshes, focused: () => focused, opened };
+  const pointers = new PointerControls(game);
+  /** A whole tap at view px (x, y), which may lie outside the view (the letterbox, the page). */
+  const tap = (x: number, y: number) => {
+    pointers.down(1, x, y, true);
+    pointers.up(1);
+    for (let i = 0; i < 8; i++) game.tick();
+  };
+  return { game, flow, service, sent, outcomes, store, placed, key, crash, submitRect, tap, refreshes: () => refreshes, focused: () => focused, blurred: () => blurred, opened };
 }
 
 describe('Bestenliste from the title', () => {
@@ -337,5 +346,35 @@ describe('"Datenschutz" link on the Bestenliste', () => {
     expect(t.opened).toEqual(['datenschutz.html']);
     expect(t.flow.screen).toBe('list');
     expect(loadStatsOptOut(t.store)).toBe(false);
+  });
+});
+
+describe('the open highscore screens are modal everywhere (taps outside the canvas)', () => {
+  const outside = [
+    [100, -30],
+    [100, 220],
+    [-12, 90],
+    [-500, 2000],
+  ] as const;
+
+  it('a tap outside the canvas on the name entry neither restarts nor closes it, it only blurs the input', () => {
+    const { game, flow, crash, submitRect, tap, blurred } = setup();
+    crash(4500);
+    game.hitHotspot(...centre(submitRect()));
+    game.tick();
+    expect(flow.screen).toBe('entry');
+    for (const [x, y] of outside) tap(x, y);
+    expect(game.state.mode).toBe('gameover');
+    expect(flow.screen).toBe('entry');
+    expect(blurred()).toBeGreaterThan(0);
+  });
+
+  it('a tap outside the canvas on the "Bestenliste" starts no run behind it', () => {
+    const { game, flow, tap } = setup();
+    game.tick();
+    flow.openList();
+    for (const [x, y] of outside) tap(x, y);
+    expect(game.state.mode).toBe('title');
+    expect(flow.screen).toBe('list');
   });
 });

@@ -8,7 +8,10 @@
  * report send none; the thank-you, rate-limit and offline states; kid mode
  * offers neither entry. On desktop F opens the form on the title and while
  * riding (pausing the run) without typing an 'f' into the field. Phone
- * landscape runs at 320 view px wide (640 x 360).
+ * landscape runs at 320 view px wide (640 x 360). The 2026-10-11.5 phone bug:
+ * with text typed, taps beside the open form (the letterbox, the page
+ * corners, the form's background) on the title and in pause only blur the
+ * field, never start or resume a run; game over and restart work after it.
  *
  *   npm run playtest -- --scenario scripts/scenarios/feedback.ts --viewports desktop,phone-landscape,phone-portrait --name feedback
  */
@@ -198,6 +201,66 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     await t.game.resumeGame();
     await t.game.step(5);
   }
+
+  // The 2026-10-11.5 phone bug: taps beside the open form start or resume nothing, they only blur the field.
+  /** Page points beside the form: the page corners, the letterbox bands (portrait) and the form's background. */
+  const besideForm = async (): Promise<[number, number][]> => {
+    const box = (await page.locator('#game').boundingBox())!;
+    const { width, height } = page.viewportSize()!;
+    const k = box.height / 180;
+    const points: [number, number][] = [
+      [3, 3],
+      [width - 4, height - 4],
+      [box.x + 3 * k, box.y + 3 * k],
+    ];
+    if (box.y > 8) points.push([width / 2, box.y / 2]);
+    if (box.y + box.height < height - 8) points.push([width / 2, (box.y + box.height + height) / 2]);
+    if (box.x > 8) points.push([box.x / 2, height / 2]);
+    return points;
+  };
+  const pageTap = async (x: number, y: number) => {
+    if (t.viewport.touch) await page.touchscreen.tap(x, y);
+    else await page.mouse.click(x, y);
+    await t.game.step(3);
+  };
+  const fieldFocused = () => page.evaluate(() => document.activeElement?.tagName === 'TEXTAREA');
+  const tapBeside = async (where: string, mode: string) => {
+    await type(' und noch mehr');
+    t.check(`${where}: the field has the focus after typing`, await fieldFocused());
+    for (const [x, y] of await besideForm()) await pageTap(x, y);
+    await t.game.step(10);
+    const now = await t.game.state();
+    state = await fb();
+    t.check(`${where}: taps beside the form start or resume nothing`, now.mode === mode && state.open, { mode: now.mode, open: state.open, points: await besideForm() });
+    t.check(`${where}: the field lost the focus, still shown with the text`, !(await fieldFocused()) && (await page.locator('textarea').isVisible()) && state.text.includes('und noch mehr'), state.text);
+    await t.screenshot(`${where} after taps beside the form`);
+    await tap(state.form.cancel);
+    t.check(`${where}: Abbrechen closes the form`, !(await fb()).open && (await t.game.state()).mode === mode);
+  };
+  await t.game.pauseGame();
+  await t.game.step(3);
+  await tap((await screen()).screen!.feedback!);
+  await tapBeside('pause', 'paused');
+  await t.game.resumeGame();
+  await t.game.endRun();
+  await t.game.step(60);
+  await page.keyboard.press('Escape');
+  await t.game.step(5);
+  t.check('back on the title', (await t.game.state()).mode === 'title', (await t.game.state()).mode);
+  await tap((await screen()).screen!.feedback!);
+  await tapBeside('title', 'title');
+  // A run, game over with its buttons, and a tap restarts.
+  await t.game.startRun();
+  await t.game.step(20);
+  await t.game.endRun();
+  await t.game.step(60);
+  const over = await screen();
+  t.check('game over shows its buttons', (await t.game.state()).mode === 'gameover' && !!over.screen?.toTitle && !(await fb()).open, over.screen);
+  t.check('game over: the textarea is hidden', !(await page.locator('textarea').isVisible()));
+  await t.canvasShot('game over after the form');
+  await t.realTapView(4, 100);
+  await t.game.step(5);
+  t.check('a tap on game over restarts', (await t.game.state()).mode === 'playing', (await t.game.state()).mode);
 
   // Kid mode: neither the title icon nor the pause button nor F.
   await page.evaluate(() => {

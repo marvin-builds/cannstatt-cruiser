@@ -816,6 +816,36 @@ describe('update, what is new, install hint and pause navigation', () => {
   });
 });
 
+describe('modal screens catch taps outside the canvas (phone letterbox)', () => {
+  const tapAt = (game: Game, x: number, y: number) => {
+    const pointers = new PointerControls(game);
+    pointers.down(1, x, y, true);
+    pointers.up(1);
+    for (let i = 0; i < 8; i++) game.tick();
+  };
+
+  it('the open settings menu starts no run on the title', () => {
+    const { game } = setup();
+    game.display.touch = true;
+    game.tick();
+    keyDown(game, 'KeyK');
+    for (let i = 0; i < 180; i++) game.tick();
+    keyUp(game, 'KeyK');
+    game.tick();
+    for (const [x, y] of [[100, -30], [100, 220], [-500, 2000]] as const) tapAt(game, x, y);
+    expect(game.state.mode).toBe('title');
+  });
+
+  it('the portrait rotate hint: a tap outside the canvas only dismisses it, no run starts behind it', () => {
+    const { game } = setup();
+    game.display.touch = true;
+    game.display.portrait = true;
+    game.tick();
+    tapAt(game, 100, -30);
+    expect(game.state.mode).toBe('title');
+  });
+});
+
 describe('anonymous statistics', () => {
   function withTelemetry(options: { kidMode?: boolean; touch?: boolean; portrait?: boolean } = {}) {
     const calls: { kind: string; args: unknown[] }[] = [];

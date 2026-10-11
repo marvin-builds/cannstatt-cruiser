@@ -18,6 +18,8 @@ export interface NameField {
   place(rect: Rect | null, value: string): void;
   /** Focuses the input (opens the phone keyboard when called inside a user gesture). */
   focus(): void;
+  /** Takes the focus away (closes the phone keyboard) and leaves the field shown: a tap beside it on the modal screen. */
+  blur(): void;
 }
 
 export interface NameFieldHandlers {
@@ -109,6 +111,9 @@ export function createDomNameField(handlers: NameFieldHandlers, canvas: () => HT
     },
     focus() {
       input?.focus({ preventScroll: true });
+    },
+    blur() {
+      input?.blur();
     },
   };
 }
