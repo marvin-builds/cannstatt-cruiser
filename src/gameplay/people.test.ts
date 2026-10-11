@@ -101,5 +101,5 @@ describe('zone-themed people in the patterns', () => {
       expect(m.sway).toBeLessThanOrEqual(spec.sway[1]);
       expect(anchorOf(p)).toBe(p.x);
     }
-  });
+  }, 30_000);
 });

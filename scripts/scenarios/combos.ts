@@ -6,11 +6,24 @@
  * +-4 ticks, three hold lengths), which follows the line where its window
  * allows: a shot after every grind and at the end. Checks per combo: no
  * crash, at least one grind on its pieces, and most of its stars collected.
+ *
+ * Then the combinations (ROADMAP 52 6a, src/gameplay/mixes.ts) on a real
+ * street: a fresh run started at a tier 2 distance (`__gameplay.startAt`),
+ * ridden 3 min by the careful solver bot with real keys (Space jump,
+ * ArrowDown duck) on the frozen clock. The spawner's log
+ * (`__gameplay.patterns()`) names every template laid; a shot is taken as
+ * the skater enters each of the first MIX_SHOTS different combinations.
+ * Logged: the templates seen, elements per pattern and crashes (with the
+ * pattern ridden). Checks: at least MIX_SHOTS different combinations met,
+ * the careful bot never crashed inside one. The highscore worker is never
+ * reached (the harness blocks it).
  *   npm run playtest -- --scenario scripts/scenarios/combos.ts --viewports desktop,phone-landscape --name combos
  */
 import { Rng } from '../../src/core/rng';
 import { COMBO_NAMES } from '../../src/gameplay/combos';
-import { HumanBot } from '../../src/gameplay/testing';
+import { MIX_NAMES } from '../../src/gameplay/mixes';
+import type { LaidPattern } from '../../src/gameplay/pattern-log';
+import { HumanBot, SolverBot } from '../../src/gameplay/testing';
 import type { GameEvents } from '../../src/types';
 import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
 
@@ -81,8 +94,78 @@ async function rideCombo(t: PlaytestContext, name: string, zone: number): Promis
   await t.log(`${name} ridden`, { grinds: ground.length, collected, stars });
 }
 
+/** The mixed street ride: seed, start distance (tier 2, ~50 s into a run), seconds ridden, combinations shot. */
+const MIX_SEED = 7;
+const MIX_FROM = 5000;
+const MIX_SECONDS = 180;
+const MIX_SHOTS = 6;
+/** Ticks between reads of the spawner's log. */
+const LOG_EVERY = 6;
+
+/** The pattern the skater rides at run distance `distance`: the last one laid that starts before it. */
+function riddenAt(log: readonly LaidPattern[], distance: number): LaidPattern | undefined {
+  return log.filter((p) => p.street <= distance).pop();
+}
+
+async function rideMixes(t: PlaytestContext): Promise<void> {
+  const { game } = t;
+  const kb = t.page.keyboard;
+  if ((await game.state()).mode === 'playing') await game.endRun();
+  await game.setSpeed(null);
+  await game.seed(MIX_SEED);
+  await game.startRun();
+  await t.page.evaluate((d) => window.__gameplay!.startAt(d), MIX_FROM);
+  const bot = new SolverBot();
+  const shot = new Set<string>();
+  const crashes: { t: number; pattern?: string }[] = [];
+  let log: LaidPattern[] = [];
+  let s = await game.state();
+  let health = s.health;
+  let ducking = false;
+  for (let tick = 0; tick < MIX_SECONDS * 60 && s.mode === 'playing'; tick++) {
+    const move = bot.next(s);
+    if (move === 'press') await kb.down('Space');
+    if (move === 'release') await kb.up('Space');
+    const duck = bot.duck(s);
+    if (duck !== ducking) await (duck ? kb.down('ArrowDown') : kb.up('ArrowDown'));
+    ducking = duck;
+    s = await game.step(1);
+    if (s.health < health) {
+      crashes.push({ t: +s.time.toFixed(1), pattern: riddenAt(log, s.distance)?.name });
+      await game.setHealth(s.maxHealth);
+    }
+    health = s.health;
+    if (tick % LOG_EVERY !== 0) continue;
+    log = await t.page.evaluate(() => window.__gameplay!.patterns());
+    // A combination whose start the skater just passed: it lies ahead on screen.
+    const entering = log.find((p) => MIX_NAMES.includes(p.name) && !shot.has(p.name) && p.street <= s.distance && s.distance - p.street < s.speed * 0.15);
+    if (entering && shot.size < MIX_SHOTS) {
+      shot.add(entering.name);
+      await t.canvasShot(`mix ${entering.name} (${entering.elements} elements) t${Math.round(s.time)}`);
+    }
+  }
+  await kb.up('Space');
+  await kb.up('ArrowDown');
+  const templates = log.filter((p) => p.street >= MIX_FROM);
+  const mixes = templates.filter((p) => MIX_NAMES.includes(p.name));
+  const inMix = crashes.filter((c) => c.pattern !== undefined && MIX_NAMES.includes(c.pattern));
+  await t.log('mixed street', {
+    seed: MIX_SEED,
+    from: MIX_FROM,
+    patterns: templates.map((p) => `${p.name}(${p.elements})`),
+    combinations: mixes.length,
+    distinct: new Set(templates.map((p) => p.name)).size,
+    elementsPerPattern: +(templates.reduce((n, p) => n + p.elements, 0) / Math.max(1, templates.length)).toFixed(2),
+    crashes,
+    shots: [...shot],
+  });
+  t.check(`met at least ${MIX_SHOTS} different combinations in ${MIX_SECONDS} s`, shot.size >= MIX_SHOTS, [...shot]);
+  t.check('the careful bot never crashed inside a combination', inMix.length === 0, inMix);
+}
+
 export default async function combos(t: PlaytestContext): Promise<void> {
   await t.game.pause();
   await dismissRotateHint(t);
   for (const [i, name] of COMBO_NAMES.entries()) await rideCombo(t, name, ZONES[i % ZONES.length]!);
+  await rideMixes(t);
 }

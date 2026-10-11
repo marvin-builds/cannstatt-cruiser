@@ -8,10 +8,13 @@
  *   every speed (and chill jump) checked (Solver.fair): wider in the first
  *   ~90 s, while the player is still learning. The window only counts jumps
  *   that land on free street (or a rail), so it also keeps landing room;
- * - a person (moving, as tall as the skater's tuck) always comes alone in its
- *   pattern (lead before, runout after), so with the gap between patterns
- *   there are >= PERSON_ROOM_SECONDS of free street on both sides and nobody
- *   walks into other obstacles.
+ * - a person (moving, as tall as the skater's tuck) has >= PERSON_ROOM_SECONDS
+ *   of free street on both sides, so nobody walks into other obstacles: alone
+ *   in its pattern (lead before, runout after, plus the gap between
+ *   patterns), or inside a combination (mixes.ts, ROADMAP 52 6a) with that
+ *   much street to every other piece from its swaying edges, where every
+ *   stomp must also come down where the rest is fair (Solver.stompsLeadOn;
+ *   measured: from ~0.85 s at 190 px/s, so 1 s keeps both windows full).
  * - while the player may be drunk (spawner.ts) patterns come only from
  *   DRUNK_TEMPLATES (no people, nothing overhead, no rails) with a longer
  *   run-up, and must stay fair for the worst-case drunk

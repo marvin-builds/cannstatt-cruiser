@@ -64,7 +64,7 @@ export const COMBO_TEMPLATES: ComboTemplate[] = [
     name: 'pipeUp',
     tier: 2,
     weight: 0.5,
-    late: 0.15,
+    late: 0.3,
     build: (b) => stairs(b, [STEP_HEIGHTS[0]!, STEP_HEIGHTS[2]!], [[48, 64], [90, 130]]),
   },
   {
@@ -72,7 +72,7 @@ export const COMBO_TEMPLATES: ComboTemplate[] = [
     name: 'pipeStairs',
     tier: 2,
     weight: 0.5,
-    late: 0.15,
+    late: 0.3,
     build: (b) => stairs(b, STEP_HEIGHTS, [[40, 52], [40, 52], [56, 80]]),
   },
   {

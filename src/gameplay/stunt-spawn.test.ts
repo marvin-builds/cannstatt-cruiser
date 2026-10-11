@@ -95,8 +95,9 @@ describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
       for (let i = 1; i < times.length; i++) {
         const gap = times[i]! - times[i - 1]!;
         const park = parks.find((t) => t > times[i - 1]! && t < times[i]!);
-        // A line due in the chill street after a joint waits until it is over (at most CHILL_REACH at the slowest speed).
-        const joint = joints.find((t) => t > times[i - 1]! && t < times[i]!);
+        // A line due in the chill street after a joint waits until it is over (at most CHILL_REACH at the slowest speed);
+        // with two joints between the lines (a park in between) the later one is what it waits for.
+        const joint = joints.filter((t) => t > times[i - 1]! && t < times[i]!).pop();
         const due = Math.max(STUNT_LINE_INTERVAL[1], park === undefined ? 0 : park - times[i - 1]! + STUNT_LINE_INTERVAL[0]);
         const chillWait = joint === undefined ? 0 : joint - times[i - 1]! + CHILL_REACH / BASE_SPEED;
         expect(gap).toBeGreaterThanOrEqual(STUNT_LINE_INTERVAL[0] - 1);
@@ -165,6 +166,7 @@ describe('stunt lines in the spawner', { timeout: 120_000 }, () => {
         for (const j of joints) expect(k.street < j || k.street > j + CHILL_REACH).toBe(true);
       }
     }
-    expect(lines).toBeGreaterThan(20);
+    // About 5 per ride: a due line waits for the pattern in progress, and the combinations (ROADMAP 52 6a) are longer.
+    expect(lines).toBeGreaterThanOrEqual(18);
   });
 });

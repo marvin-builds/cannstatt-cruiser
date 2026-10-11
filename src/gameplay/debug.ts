@@ -2,8 +2,9 @@
  * Test-only tooling (enabled together with window.__game): lets playtest
  * scenarios put a specific obstacle, person, the joint or stunt pieces on the
  * street, see the dropped items (they are no entities, so window.__game
- * misses them) and the running stunt line, plan a NorDIY park right ahead, and
- * lay a named spawn pattern (the combos).
+ * misses them) and the running stunt line, plan a NorDIY park right ahead,
+ * lay a named spawn pattern (the combos), see which patterns the spawner laid
+ * and start a run further down the street.
  * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts and combos.ts.
  */
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
@@ -11,6 +12,7 @@ import { Rng } from '../core/rng';
 import type { CarriedItem, Entity, GameContext, ObstacleKind, ParkPlan, Rect, StuntKind } from '../types';
 import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect } from './catalogue';
 import type { DroppedItems } from './drop';
+import type { LaidPattern } from './pattern-log';
 import { withMotion } from './motion';
 import { parkPiecesOf, planParkLine } from './park-line';
 import { planPattern } from './patterns';
@@ -69,6 +71,14 @@ export interface GameplayDebugHook {
   parkPlan(): ParkPlan | null;
   /** Removes every entity (spawning goes on as planned). */
   clear(): void;
+  /** The last patterns the spawner laid (name, street distance of the start, elements), oldest first; read-only. */
+  patterns(): LaidPattern[];
+  /**
+   * Puts a run that has not ticked yet at street distance `distance`, so it
+   * starts there with that distance's difficulty (speed, gap, pattern tier).
+   * Throws once the run has moved.
+   */
+  startAt(distance: number): void;
   /** Snapshot of the items knocked out of people's hands (drop.ts), falling or lying; read-only. */
   drops(): DroppedItemView[];
 }
@@ -89,7 +99,13 @@ let nextLine = -1;
 /** Keeps run distances [start, end) free of spawned patterns (spawner.reserve), given the current distance. */
 export type ReserveStreet = (start: number, end: number, distance: number) => void;
 
-export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, stunts: StuntLines, reserve: ReserveStreet = () => {}): void {
+export function installGameplayDebug(
+  ctx: GameContext,
+  dropped: DroppedItems,
+  stunts: StuntLines,
+  reserve: ReserveStreet = () => {},
+  laid: () => readonly LaidPattern[] = () => [],
+): void {
   /** The line placed last: its id and pieces. */
   let line = { id: 0, pieces: [] as Entity[] };
   function placeStunt(kind: StuntKind, x: number, variant: number): number {
@@ -171,6 +187,14 @@ export function installGameplayDebug(ctx: GameContext, dropped: DroppedItems, st
     },
     clear() {
       ctx.state.entities.splice(0);
+    },
+    patterns() {
+      return laid().map((p) => ({ ...p }));
+    },
+    startAt(distance) {
+      const { state } = ctx;
+      if (state.mode !== 'playing' || state.time > 0) throw new Error('startAt: only before the first tick of a run');
+      state.distance = distance;
     },
     drops() {
       return dropped.items.map(({ item, x, y, w, h, lying }) => ({ item, x, y, w, h, lying }));

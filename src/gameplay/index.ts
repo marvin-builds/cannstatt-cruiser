@@ -44,10 +44,11 @@ import { DroppedItems } from './drop';
 import { drawDrops, drawToss } from './item-art';
 import { ITEM_POINTS, itemOf } from './items';
 import { ParkSession } from './park';
+import { PatternLog } from './pattern-log';
 import { anchorOf, moveTo } from './motion';
 import { addPoints, breakCombo } from './scoring';
 import { StuntLines } from './stunts';
-import { PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
+import { PLAN_WORK_PER_TICK, Spawner, type SpawnerOptions, type SpawnSituation } from './spawner';
 import { ItemToss, type Point } from './toss';
 import { countDownDrunk, useCarriedItem } from './use';
 
@@ -56,6 +57,8 @@ export interface GameplayOptions {
   spawning?: boolean;
   /** Solver units the spawner plans per tick (default PLAN_WORK_PER_TICK; tests starve it to force the budget lag). */
   workPerTick?: number;
+  /** Called with every pattern the spawner lays and the street distance of its start (test tooling, variety.ts). */
+  onPattern?: SpawnerOptions['onSpawn'];
 }
 
 interface Sparkle {
@@ -63,6 +66,9 @@ interface Sparkle {
   y: number;
   age: number;
 }
+
+/** Patterns the debug hook's log keeps (about 3 min of riding). */
+const LAID_KEPT = 120;
 
 /** Thrown balls get ids from here (the spawner counts from 1, the debug hook from 800 000). */
 const BALL_IDS = 700_000;
@@ -83,7 +89,14 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const spawning = options.spawning ?? true;
   /** Mirror of the world's zone schedule, so people match the zone their pattern lies in. */
   const route = new ZoneRoute();
-  const spawner = new Spawner((street) => route.zoneAt(street), { workPerTick: options.workPerTick ?? PLAN_WORK_PER_TICK });
+  /** The last patterns laid, for the debug hook (kept only while it is on). */
+  const laid = new PatternLog(LAID_KEPT);
+  const debugging = typeof window !== 'undefined' && testHookEnabled();
+  const onSpawn: SpawnerOptions['onSpawn'] = (pattern, street) => {
+    if (debugging) laid.add(pattern, street);
+    options.onPattern?.(pattern, street);
+  };
+  const spawner = new Spawner((street) => route.zoneAt(street), { workPerTick: options.workPerTick ?? PLAN_WORK_PER_TICK, onSpawn });
   const situation: SpawnSituation = { drunk: false, kidMode: false };
   const sparkles: Sparkle[] = [];
   const toss = new ItemToss();
@@ -184,10 +197,11 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       game = ctx;
       // All art rasterised at startup: a first draw mid-run was a render spike on phones.
       warmArt();
-      if (typeof window !== 'undefined' && testHookEnabled()) installGameplayDebug(ctx, drops, stunts, (start, end, distance) => spawner.reserve(start, end, distance));
+      if (debugging) installGameplayDebug(ctx, drops, stunts, (start, end, distance) => spawner.reserve(start, end, distance), () => laid.list());
       ctx.bus.on('runStarted', () => {
         route.snap(START_ZONE, 0);
         spawner.reset(new Rng(ctx.rng.int(0, 0xffffffff)));
+        laid.clear();
         sparkles.length = 0;
         toss.reset();
         drops.reset();
