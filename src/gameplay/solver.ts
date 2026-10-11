@@ -84,8 +84,8 @@ export function constantPace(speed: number, jumpScale = 1): Pace {
 
 /** Hold lengths the solver tries (1 = tap ... 20 = full hold). */
 export const HOLDS = [1, 3, 6, 9, 12, 16, 20] as const;
-/** Obstacles are grown by this much to absorb sub-tick phase differences. */
-const SAFETY = 1;
+/** Obstacles are grown by this much to absorb sub-tick phase differences (duck-span.ts measures duck zones with it too). */
+export const SAFETY = 1;
 /** Give up on a single flight after this many ticks. */
 const MAX_FLIGHT = 240;
 /** Node key layout (keyOf): ticks, then supports (0 = ground), then stomped bits; jump keys add the hold. */

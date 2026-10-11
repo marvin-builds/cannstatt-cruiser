@@ -16,14 +16,22 @@
  * piece, and every stomp on them comes down where the rest is fair
  * (Solver.stompsLeadOn, checked by patterns.ts).
  *
+ * Signs ducked in one go (no jump between them) stay within one swipe
+ * (duck-span.ts, ROADMAP 66): at most MAX_ONE_GO_SIGNS of them, spanning at
+ * most ONE_GO_DUCK_SECONDS; a sign that does not fit comes after the swipe
+ * ran out and the skater stood up (DUCK_REPEAT_SECONDS), as a new duck.
+ *
  * Tier 2 and up, so never while chilled (spawner.ts CHILLED_TIER) and never
  * while drunk (fairness.ts DRUNK_TEMPLATES).
  */
+import { DUCK_TRANSITION, HITBOX_W } from '../player/tuning';
 import type { ObstacleKind, RailKind } from '../types';
-import { OBSTACLES } from './catalogue';
+import { OBSTACLES, OVERHEAD_KINDS } from './catalogue';
 import type { PieceBuilder } from './combos';
 import type { Piece } from './course';
+import { DUCK_REPEAT_SECONDS, MAX_ONE_GO_SIGNS, ONE_GO_DUCK_SECONDS } from './duck-span';
 import { PERSON_ROOM_SECONDS } from './fairness';
+import { SAFETY } from './solver';
 
 /** What a combination template needs from patterns.ts's Builder on top of PieceBuilder. */
 export interface MixBuilder extends PieceBuilder {
@@ -85,6 +93,44 @@ const HIGH_RAIL_LENGTH: [number, number] = [96, 130];
 /** The most a person sways to either side (catalogue): the free street around a person is measured from its swaying edges. */
 const MAX_SWAY = Math.max(OBSTACLES.vfbFan.motion!.sway[1], OBSTACLES.wasenGuest.motion!.sway[1]);
 
+/**
+ * Share of ONE_GO_DUCK_SECONDS a chain fills at its builder's (fastest)
+ * speed: the pattern is also ridden a little slower (patterns.ts checks
+ * every speed and rerolls the rest).
+ */
+const ONE_GO_FILL = 0.9;
+/** Extra seconds a new duck may come later than DUCK_REPEAT_SECONDS. */
+const REPEAT_SPREAD = 0.3;
+/** Pattern x offsets of the overhead boxes: the right end of the widest, the left start of the closest. */
+const SIGN_BOX_END = Math.max(...OVERHEAD_KINDS.map((k) => OBSTACLES[k].box.x + OBSTACLES[k].box.w));
+const SIGN_BOX_START = Math.min(...OVERHEAD_KINDS.map((k) => OBSTACLES[k].box.x));
+
+/** Steps the skater has to jump (or stomp): the jump ends a swipe duck, so the next sign starts a new duck. */
+const JUMPED: readonly Step[] = ['low', 'bench', 'person'];
+
+/** The signs ducked in one go so far: the left edge of the first one's box and how many. */
+interface Duck {
+  from: number;
+  signs: number;
+}
+
+/**
+ * Where a sign goes that would come at `x` after a duck (`duck`): there if it
+ * still fits in one go, else after the swipe ran out (a new duck). After a
+ * sign (`sign>sign`) the gap is drawn from what still fits.
+ */
+function signAt(b: MixBuilder, x: number, prev: Step, duck: Duck): number {
+  const fitsTo = duck.from + b.seconds(ONE_GO_FILL * (ONE_GO_DUCK_SECONDS - DUCK_TRANSITION)) - 2 * SAFETY - HITBOX_W - SIGN_BOX_END;
+  if (duck.signs < MAX_ONE_GO_SIGNS) {
+    if (prev === 'sign') {
+      const [lo, hi] = STEP_GAPS['sign>sign']!.map((t) => b.seconds(t)) as [number, number];
+      const most = Math.min(hi, fitsTo - b.end);
+      if (most >= lo) return b.end + b.rng.int(lo, most);
+    } else if (x <= fitsTo) return x;
+  }
+  return Math.max(x, duck.from - SIGN_BOX_START + Math.ceil(b.seconds(DUCK_REPEAT_SECONDS + b.rng.range(0, REPEAT_SPREAD))));
+}
+
 /** Street from the end of step `prev` to the start of step `next` (a person's sway not included). */
 function gapBetween(b: MixBuilder, prev: Step, next: Step): number {
   if (prev === 'person' || next === 'person') return Math.ceil(b.seconds(PERSON_ROOM_SECONDS + b.rng.range(0, PERSON_SPREAD)));
@@ -107,16 +153,25 @@ function place(b: MixBuilder, step: Step, x: number): Piece {
   }
 }
 
-/** Lays `steps` one after the other from the lead, each gap from gapBetween (around a person from its swaying edges). */
+/**
+ * Lays `steps` one after the other from the lead, each gap from gapBetween
+ * (around a person from its swaying edges), signs within one swipe (signAt).
+ */
 function chain(b: MixBuilder, steps: readonly Step[]): void {
   let prev: Step | null = null;
+  let duck: Duck | null = null;
   for (const step of steps) {
     let x = b.lead;
     if (prev) {
       // b.end is the person's rest edge: its sway comes on top, on both sides.
       x = b.end + gapBetween(b, prev, step) + (prev === 'person' ? MAX_SWAY : 0) + (step === 'person' ? MAX_SWAY : 0);
+      if (step === 'sign' && duck) x = signAt(b, x, prev, duck);
     }
-    place(b, step, x);
+    const piece = place(b, step, x);
+    if (step === 'sign') {
+      const from = piece.x + OBSTACLES[piece.kind as ObstacleKind].box.x;
+      duck = duck && from - duck.from < b.seconds(DUCK_REPEAT_SECONDS) ? { from: duck.from, signs: duck.signs + 1 } : { from, signs: 1 };
+    } else if (JUMPED.includes(step)) duck = null;
     prev = step;
   }
 }
@@ -131,12 +186,17 @@ function shuffled(b: MixBuilder, steps: readonly Step[]): Step[] {
   return out;
 }
 
-/** `count` random steps from `from`, never two rails in a row (that is a grind line, combos.ts). */
+/**
+ * `count` random steps from `from`, never two rails in a row (that is a
+ * grind line, combos.ts) and never more signs in a row than are ducked in
+ * one go (MAX_ONE_GO_SIGNS, ROADMAP 66).
+ */
 function randomSteps(b: MixBuilder, from: readonly Step[], count: number): Step[] {
   const steps: Step[] = [];
   while (steps.length < count) {
     const step = b.rng.pick(from);
     if (step === 'rail' && steps[steps.length - 1] === 'rail') continue;
+    if (step === 'sign' && steps.length >= MAX_ONE_GO_SIGNS && steps.slice(-MAX_ONE_GO_SIGNS).every((s) => s === 'sign')) continue;
     steps.push(step);
   }
   return steps;
