@@ -22,8 +22,12 @@ export const MAX_RUN_SECONDS = 3600;
 /** Active play seconds of a session (`end`), capped. */
 export const MAX_END_SECONDS = 4 * 3600;
 export const MAX_EVENT_BYTES = 1024;
-/** The board's ranges in days. */
-export const STATS_RANGES = [7, 30, 90] as const;
+/** Raw events are deleted after this many days; older days live on as daily summaries (ROADMAP 48). */
+export const RAW_RETENTION_DAYS = 90;
+/** The range value meaning "Alles": every day since the first recorded one. */
+export const ALL_RANGE = 0;
+/** The board's ranges in days; ALL_RANGE is everything. Ranges beyond RAW_RETENTION_DAYS come from the summaries. */
+export const STATS_RANGES = [7, 30, 90, 365, ALL_RANGE] as const;
 /** Country, region or city groups need this many sessions in the range (USER: every place counts); unknown places are "other". */
 export const MIN_GROUP_SESSIONS = 1;
 /** BUILD_VERSION shape (`YYYY-MM-DD.n`, see changelog.ts). */
@@ -88,6 +92,7 @@ export interface DayStats {
 
 /** The `GET /stats?days=N` answer (aggregates only, never raw rows). */
 export interface InsightsStats {
+  /** The asked range; ALL_RANGE (0) for "Alles". */
   days: StatsRange;
   /** ISO timestamp (UTC). */
   generatedAt: string;
@@ -95,7 +100,7 @@ export interface InsightsStats {
   perDay: DayStats[];
   sessions: {
     total: number;
-    /** Over sessions that sent an `end`; 0 when none did. */
+    /** Over sessions that sent an `end`; 0 when none did. For ranges beyond RAW_RETENTION_DAYS the session-weighted mean of daily medians (approximate). */
     medianSeconds: number;
     avgSeconds: number;
   };

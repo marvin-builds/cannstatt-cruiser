@@ -18,6 +18,12 @@ describe('telemetry contract', () => {
     expect(client.SESSION_ID_PATTERN.test('not-an-id')).toBe(false);
   });
 
+  it('offers long ranges and "Alles" beyond the raw retention (ROADMAP 48)', () => {
+    expect(client.STATS_RANGES).toEqual([7, 30, 90, 365, client.ALL_RANGE]);
+    expect(client.ALL_RANGE).toBe(0);
+    expect(client.RAW_RETENTION_DAYS).toBe(90);
+  });
+
   it('is mirrored exactly by the server', () => {
     expect(server.EVENT_KINDS).toEqual(client.EVENT_KINDS);
     expect(server.INPUTS).toEqual(client.INPUTS);
@@ -32,6 +38,8 @@ describe('telemetry contract', () => {
     expect(server.MAX_END_SECONDS).toBe(client.MAX_END_SECONDS);
     expect(server.MAX_EVENT_BYTES).toBe(client.MAX_EVENT_BYTES);
     expect(server.MIN_GROUP_SESSIONS).toBe(client.MIN_GROUP_SESSIONS);
+    expect(server.ALL_RANGE).toBe(client.ALL_RANGE);
+    expect(server.RAW_RETENTION_DAYS).toBe(client.RAW_RETENTION_DAYS);
     expect(server.VERSION_PATTERN.source).toBe(client.VERSION_PATTERN.source);
     expect(server.SESSION_ID_PATTERN.source).toBe(client.SESSION_ID_PATTERN.source);
   });
