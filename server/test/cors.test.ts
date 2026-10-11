@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { corsHeaders } from '../src/cors';
+import { corsHeaders, isAllowedOrigin } from '../src/cors';
 
 describe('corsHeaders', () => {
   it('allows the GitHub Pages origin and local dev servers', () => {
@@ -17,7 +17,18 @@ describe('corsHeaders', () => {
   it('names the methods and headers and varies on Origin', () => {
     const headers = corsHeaders('https://marvinmai.github.io');
     expect(headers['Access-Control-Allow-Methods']).toBe('GET, POST, OPTIONS');
-    expect(headers['Access-Control-Allow-Headers']).toBe('Content-Type');
+    expect(headers['Access-Control-Allow-Headers']).toBe('Content-Type, Authorization');
     expect(headers.Vary).toBe('Origin');
+    expect(headers['Access-Control-Allow-Credentials']).toBeUndefined();
+  });
+});
+
+describe('isAllowedOrigin', () => {
+  it('is true only for the game origins', () => {
+    expect(isAllowedOrigin('https://marvinmai.github.io')).toBe(true);
+    expect(isAllowedOrigin('http://localhost:5173')).toBe(true);
+    for (const origin of [null, '', 'null', 'https://evil.example', 'https://marvinmai.github.io.evil.example']) {
+      expect(isAllowedOrigin(origin), String(origin)).toBe(false);
+    }
   });
 });
