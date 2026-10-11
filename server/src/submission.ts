@@ -26,6 +26,11 @@ export type Parsed = { ok: true; value: Submission } | { ok: false; error: Submi
 const DEVICE = /^[A-Za-z0-9-]{8,64}$/;
 const VERSION = /^[A-Za-z0-9._+-]{1,32}$/;
 
+/** Whether `value` is a well-formed client device id (as sent in a body or query). */
+export function isDeviceId(value: unknown): value is string {
+  return isText(value, DEVICE);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -38,7 +43,7 @@ export function parseSubmission(body: unknown): Parsed {
   if (!isRecord(body)) return { ok: false, error: 'bad-request' };
   const { score, distance, duration, version, device } = body;
   if (![score, distance, duration].every(Number.isSafeInteger)) return { ok: false, error: 'bad-request' };
-  if (!isText(version, VERSION) || !isText(device, DEVICE)) return { ok: false, error: 'bad-request' };
+  if (!isText(version, VERSION) || !isDeviceId(device)) return { ok: false, error: 'bad-request' };
   const name = normalizeName(body.name);
   if (name === null || isOffensive(name)) return { ok: false, error: 'name' };
   const run = { score: score as number, distance: distance as number, duration: duration as number };
