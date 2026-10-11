@@ -58,3 +58,13 @@ describe('dayChart', () => {
     expect(chart.slots[29]!.label).toBe(true);
   });
 });
+
+describe('dayChart labels', () => {
+  const box = { width: 200, height: 100, padLeft: 0, padBottom: 0, padTop: 0, gap: 2 };
+  it('takes any periods and thins labels further on a narrow chart', () => {
+    const many = Array.from({ length: 30 }, () => ({ sessions: 1, runs: 1, entries: 0 }));
+    const narrow = dayChart(many, ['sessions'], { ...box, width: 150 });
+    expect(narrow.slots.filter((s) => s.label).length).toBeLessThanOrEqual(3);
+    expect(narrow.slots[29]!.item).toBe(many[29]);
+  });
+});

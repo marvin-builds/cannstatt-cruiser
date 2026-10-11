@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countryName, formatDay, formatDecimal, formatDuration, formatNumber, formatPercent } from './format';
+import { countryName, formatDate, formatDay, formatDecimal, formatDuration, formatNumber, formatPercent } from './format';
 
 describe('formatDuration', () => {
   it('shows seconds below a minute', () => {
@@ -41,5 +41,12 @@ describe('countryName', () => {
     expect(countryName('DE')).toBe('Deutschland');
     expect(countryName('CH')).toBe('Schweiz');
     expect(countryName('Atlantis')).toBe('Atlantis');
+  });
+});
+
+describe('formatDate', () => {
+  it('adds the year to the short day', () => {
+    expect(formatDate('2026-10-11')).toBe('11.10.2026');
+    expect(formatDate('2025-05-03')).toBe('3.5.2025');
   });
 });

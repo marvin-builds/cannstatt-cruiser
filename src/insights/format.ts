@@ -31,6 +31,11 @@ export function formatDay(day: string): string {
   return `${Number(date)}.${Number(month)}.`;
 }
 
+/** 'YYYY-MM-DD' -> '9.10.2026' */
+export function formatDate(day: string): string {
+  return `${formatDay(day)}${day.slice(0, 4)}`;
+}
+
 const regions = new Intl.DisplayNames('de-DE', { type: 'region' });
 
 /** German name of a two-letter country code ('DE' -> 'Deutschland'); other values unchanged. */

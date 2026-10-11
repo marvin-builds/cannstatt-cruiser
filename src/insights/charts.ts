@@ -1,11 +1,14 @@
 /** Chart elements of the board: inline SVG bar charts and HTML split / ranked bars. */
-import type { CountEntry, DayStats } from '../net/telemetry-types';
+import type { CountEntry } from '../net/telemetry-types';
 import { type DaySeries, dayChart } from './day-chart';
 import { h, s } from './dom';
-import { formatDay, formatNumber, formatPercent } from './format';
+import { formatNumber, formatPercent } from './format';
+import type { Grain, Period } from './periods';
 import type { RankedRow, Segment } from './split';
 
 export const SERIES_LABEL: Record<DaySeries, string> = { sessions: 'Sessions', runs: 'Runs', entries: 'Einträge' };
+/** 'pro Tag', 'pro Woche', 'pro Monat'. */
+export const GRAIN_UNIT: Record<Grain, string> = { day: 'Tag', week: 'Woche', month: 'Monat' };
 
 /** Value labels need this much room per bar (px). */
 const MIN_LABEL_BAR = 18;
@@ -19,21 +22,24 @@ export function legend(items: { label: string; color: string }[]): HTMLElement {
   );
 }
 
-/** Grouped per-day bars, sized to `width` px so text stays at its real size. */
-export function dayBars(days: readonly DayStats[], series: DaySeries[], width: number): SVGSVGElement {
+/** Left room of the period chart for the value axis (px). */
+export const CHART_PAD_LEFT = 34;
+
+/** Grouped bars per day, week or month, sized to `width` px so text stays at its real size. */
+export function periodBars(periods: readonly Period[], grain: Grain, series: DaySeries[], width: number): SVGSVGElement {
   const height = 200;
-  const chart = dayChart(days, series, { width, height, padLeft: 34, padTop: 16, padBottom: 22, gap: 2 });
+  const chart = dayChart(periods, series, { width, height, padLeft: CHART_PAD_LEFT, padTop: 16, padBottom: 22, gap: 2 });
   const svg = s('svg', { class: 'chart', width, height, viewBox: `0 0 ${width} ${height}`, role: 'img' });
-  svg.append(s('title', {}, `${series.map((k) => SERIES_LABEL[k]).join(' und ')} pro Tag`));
+  svg.append(s('title', {}, `${series.map((k) => SERIES_LABEL[k]).join(' und ')} pro ${GRAIN_UNIT[grain]}`));
   for (const tick of chart.ticks) {
     svg.append(
-      s('line', { class: 'grid', x1: 34, x2: width, y1: tick.y, y2: tick.y }),
+      s('line', { class: 'grid', x1: CHART_PAD_LEFT, x2: width, y1: tick.y, y2: tick.y }),
       s('text', { class: 'axis', x: 28, y: tick.y + 4, 'text-anchor': 'end' }, formatNumber(tick.value)),
     );
   }
   for (const slot of chart.slots) {
     const group = s('g', { class: 'slot' });
-    const tip = `${formatDay(slot.day)}: ${slot.bars.map((b) => `${formatNumber(b.value)} ${SERIES_LABEL[b.series]}`).join(', ')}`;
+    const tip = `${slot.item.title}: ${slot.bars.map((b) => `${formatNumber(b.value)} ${SERIES_LABEL[b.series]}`).join(', ')}`;
     group.append(s('title', {}, tip), s('rect', { class: 'hit', x: slot.x, y: 0, width: slot.width, height: chart.baseline }));
     for (const bar of slot.bars) {
       if (bar.height > 0) {
@@ -45,11 +51,11 @@ export function dayBars(days: readonly DayStats[], series: DaySeries[], width: n
       }
     }
     if (slot.label) {
-      group.append(s('text', { class: 'axis', x: slot.x + slot.width / 2, y: chart.baseline + 15, 'text-anchor': 'middle' }, formatDay(slot.day)));
+      group.append(s('text', { class: 'axis', x: slot.x + slot.width / 2, y: chart.baseline + 15, 'text-anchor': 'middle' }, slot.item.label));
     }
     svg.append(group);
   }
-  svg.append(s('line', { class: 'baseline', x1: 34, x2: width, y1: chart.baseline, y2: chart.baseline }));
+  svg.append(s('line', { class: 'baseline', x1: CHART_PAD_LEFT, x2: width, y1: chart.baseline, y2: chart.baseline }));
   return svg;
 }
 

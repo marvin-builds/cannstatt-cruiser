@@ -2,7 +2,7 @@
  * A realistic GET /stats answer for unit tests and the insights playtest
  * (scripts/scenarios/insights.ts). Never imported by the board itself.
  */
-import type { DayStats, InsightsStats, StatsRange } from '../net/telemetry-types';
+import { ALL_RANGE, type DayStats, type InsightsStats, type StatsRange } from '../net/telemetry-types';
 
 function days(count: number, end: string): DayStats[] {
   const last = Date.parse(`${end}T00:00:00Z`);
@@ -14,8 +14,9 @@ function days(count: number, end: string): DayStats[] {
   });
 }
 
-export function sampleStats(range: StatsRange, end = '2026-10-11'): InsightsStats {
-  const perDay = days(range, end);
+/** `allDays` is how much history the 'Alles' range (ALL_RANGE) has. */
+export function sampleStats(range: StatsRange, end = '2026-10-11', allDays = 500): InsightsStats {
+  const perDay = days(range === ALL_RANGE ? allDays : range, end);
   const sessions = perDay.reduce((a, d) => a + d.sessions, 0);
   const runs = perDay.reduce((a, d) => a + d.runs, 0);
   const share = (f: number) => Math.round(sessions * f);
