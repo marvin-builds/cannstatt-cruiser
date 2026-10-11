@@ -186,7 +186,7 @@ describe('GET /stats answer', () => {
     expect(nonZero).toEqual([{ key: '0', count: 4 }, { key: '100', count: 2 }, { key: '1300', count: 3 }, { key: '5000', count: 1 }]);
   });
 
-  it('splits sessions largest first and merges small or unknown places into other', async () => {
+  it('splits sessions largest first, shows every place from one session on and merges unknown places into other', async () => {
     const bw = { country: 'DE', region: 'Baden-Württemberg' };
     seedSessions(6, { day: '2026-10-11', ...bw, city: 'Stuttgart', input: 'keys', platform: 'other' });
     seedSessions(4, { day: '2026-10-09', ...bw, city: 'Esslingen', kid: 1, version: '2026-10-08.3' });
@@ -201,7 +201,7 @@ describe('GET /stats answer', () => {
       version: [{ key: '2026-10-11.1', count: 7 }, { key: '2026-10-08.3', count: 4 }],
       country: [{ key: 'DE', count: 10 }, { key: 'other', count: 1 }],
       region: [{ key: 'Baden-Württemberg', count: 10 }, { key: 'other', count: 1 }],
-      city: [{ key: 'Stuttgart', count: 6 }, { key: 'other', count: 5 }],
+      city: [{ key: 'Stuttgart', count: 6 }, { key: 'Esslingen', count: 4 }, { key: 'other', count: 1 }],
     });
   });
 

@@ -206,8 +206,8 @@ without the secret, without the header or with a wrong token it answers
   0/30/60/180/600, `distance` per 100 m (0..5000), `score` per score bucket.
 - `split`: sessions by `input`, `orientation`, `platform`, `kid`
   (`true`/`false`), `version`, `country`, `region`, `city`, largest first.
-  Country, region and city groups with fewer than 5 sessions in the range, and
-  unknown places, are merged into `other`.
+  Every country, region and city is listed from its first session on
+  (`MIN_GROUP_SESSIONS` = 1); only unknown places are merged into `other`.
 - `topScores`: the current top 20 (`name`, `score`, `date`), as `GET /top`.
 
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
@@ -237,8 +237,8 @@ the data is anonymous and coarse, so a person cannot be identified from it.
   Cloudflare derives them from the IP (`request.cf`, coarse IP geolocation,
   often only the nearest larger town). The worker never reads or stores the IP
   itself, and `run`/`end` rows carry no location.
-- `GET /stats` returns aggregates only; places with fewer than 5 sessions in
-  the range are shown as `other`.
+- `GET /stats` returns aggregates only (session counts per place, no rows);
+  places without a location are shown as `other`.
 - Retention: events older than 90 days are deleted (checked on the first
   event of each UTC day); `event_days` keeps only today's counter and
   `event_meta` only the day of the last deletion.
