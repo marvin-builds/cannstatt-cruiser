@@ -136,6 +136,9 @@ await t.page.route(`${API}/**`, async (route) => {
   takes precedence. Play statistics never go out from localhost anyway; the
   telemetry scenario (`scripts/scenarios/telemetry.ts`) sets
   `window.__telemetryUrl` to a fake endpoint and logs the `/event` bodies.
+- Feedback never goes out from localhost: `scripts/scenarios/feedback.ts`
+  sets `window.__feedbackUrl` to a fake endpoint, routes it and logs the
+  bodies; `window.__ui.feedback()` reports the feedback flow.
 - The insights board scenario (`scripts/scenarios/insights.ts`) stubs
   `**/stats**` with a fixture and a 401 case and screenshots the board on
   desktop and phone, light and dark.
