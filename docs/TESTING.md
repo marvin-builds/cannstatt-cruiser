@@ -158,7 +158,8 @@ await t.page.route(`${API}/**`, async (route) => {
   fakes a punch-hole camera; remove the property afterwards.
 - The insights board scenario (`scripts/scenarios/insights.ts`) stubs
   `**/stats**` with a fixture and a 401 case and screenshots the board on
-  desktop and phone, light and dark.
+  desktop and phone, light and dark; the device splits are "Eingabe",
+  "System" and "Modus" only (no "Lage" since ROADMAP 69).
 - The test device scenario (`scripts/scenarios/test-device.ts`) checks the
   `session` flags (`returning` false on a cleared device, true after a
   reload; `tester` only with the marker) and screenshots the hidden settings
@@ -672,8 +673,9 @@ npm run playtest -- --headed
   title, the running HUD (with the item button) and the pause screen inside
   the safe span, real taps still work and the world stays full-bleed; a
   left-only cutout moves only the left corner; removing it restores the
-  layout. On `phone-portrait` its first mute-tap check fails because the
-  rotate screen covers the title (known, not a bug).
+  layout. On `phone-portrait` its first mute-tap check fails by design: the
+  rotate screen covers the title and consumes the first tap. The scenario is
+  meant for `phone-landscape` and `desktop` only.
 
 - `scripts/scenarios/ramp-only.ts` (ROADMAP 61/62, `desktop,phone-landscape`):
   a street jump passes in front of a stunt ledge and a park container without
@@ -711,6 +713,17 @@ npm run playtest -- --headed
   "Ja, löschen" gets a 500 (the report stays, the confirm says so), the next
   a 204 and the list shows "Feedback gelöscht" without it. The POST body is
   exactly `{id, key}` of the kept report.
+- `scripts/scenarios/ui-polish.ts` (ROADMAP 84 ui polish, touch viewports
+  only, run it on `phone-portrait`; feedback to a fake endpoint, the online
+  list routed): landscape at a 320 px view (640x360) with the red dot on
+  "Mein Feedback" clear of the tab border and the log toggle's box apart
+  from its label; portrait at 320x568 with the sheet's tabs on one line, a
+  report's details and "Das wurde gesendet" with the version on one line, and
+  "Wirklich löschen?" centred as one block with its buttons (again at
+  390x844); the rotate screen at 320x568, 390x844 and a tablet (820x1180)
+  with the arrow above the phone on one centre line and the taller button on
+  the tablet.
+  `npm run playtest -- --scenario scripts/scenarios/ui-polish.ts --viewports phone-portrait --name ui-polish`.
 
 - `scripts/scenarios/duck-swipe.ts` (ROADMAP 66, `phone-landscape`): sign
   mixes at 90 and 190 px/s ridden by the touch bot (swipe ducks): at most 2
