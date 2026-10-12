@@ -6,7 +6,7 @@
  * texts and submission as the canvas screens. This module holds what a sheet
  * shows (pure, from the flow) and the sizes they share.
  */
-import { FEEDBACK_TEXT, type FeedbackFlow, type FeedbackPage, type FeedbackTab } from './feedback-flow';
+import type { FeedbackFlow, FeedbackPage, FeedbackTab } from './feedback-flow';
 import type { FeedbackKind } from '../net/feedback-types';
 import { pageTitle } from './feedback-page-layout';
 import type { PageSection, ReportDetail, ReportRow } from './feedback-pages';
@@ -15,7 +15,8 @@ import type { HighscoreFlow } from './highscore-flow';
 import { formatNumber } from './layout';
 import { submitButtonLabel } from './score-screens';
 import type { ChangelogEntry } from '../types';
-import { versionHeading } from './whats-new';
+import { entryLines, versionHeading } from './whats-new';
+import { texts } from './i18n';
 
 /** CSS sizes of the sheets: body and small text, the headline, buttons (at least 48 px tall). */
 export const SHEET_STYLE = { textPx: 18, smallPx: 16, titlePx: 26, buttonPx: 52, gapPx: 12, padPx: 16 } as const;
@@ -69,7 +70,7 @@ export function feedbackSheetModel(flow: FeedbackFlow): FeedbackSheetModel {
     withLog: flow.withLog && flow.logAvailable,
     canSend: flow.canSend,
     counter: flow.counter,
-    line: { text: message ?? FEEDBACK_TEXT.hint, message: message !== null },
+    line: { text: message ?? texts().feedback.hint, message: message !== null },
     title: pageTitle(flow.page),
     sections: flow.sections,
     rows: flow.page === 'list' ? flow.rows : [],
@@ -90,7 +91,7 @@ export interface EntrySheetModel {
 }
 
 export function entrySheetModel(flow: Pick<HighscoreFlow, 'score' | 'name' | 'canSubmit' | 'sending' | 'message'>): EntrySheetModel {
-  return { score: `${formatNumber(flow.score)} Punkte`, name: flow.name, submit: submitButtonLabel(flow), canSubmit: flow.canSubmit, message: flow.message };
+  return { score: texts().score.points(formatNumber(flow.score)), name: flow.name, submit: submitButtonLabel(flow), canSubmit: flow.canSubmit, message: flow.message };
 }
 
 export interface WhatsNewSection {
@@ -100,5 +101,5 @@ export interface WhatsNewSection {
 
 /** The "Neu in dieser Version" sheet: each changelog entry under its version heading, in the given order. */
 export function whatsNewSections(entries: readonly ChangelogEntry[]): WhatsNewSection[] {
-  return entries.map((e) => ({ heading: versionHeading(e.version), items: e.items }));
+  return entries.map((e) => ({ heading: versionHeading(e.version), items: entryLines(e) }));
 }

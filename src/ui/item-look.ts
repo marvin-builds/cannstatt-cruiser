@@ -5,19 +5,17 @@
  */
 import type { CarriedItem } from '../types';
 import { UI } from './art';
+import { texts } from './i18n';
 
 export interface CatchPopup {
   text: string;
   color: string;
 }
 
-const POPUPS: Record<CarriedItem, CatchPopup> = {
-  football: { text: 'Ball geschnappt!', color: UI.white },
-  pretzel: { text: 'Brezel!', color: UI.orange },
-  beer: { text: 'Prost!', color: UI.yellow },
-  gingerbread: { text: 'Lebkuchenherz!', color: UI.pink },
-};
+const COLORS: Record<CarriedItem, string> = { football: UI.white, pretzel: UI.orange, beer: UI.yellow, gingerbread: UI.pink };
 
+/** The catch popup in the active language (texts in i18n/ items). */
 export function catchPopup(item: CarriedItem, kidMode: boolean): CatchPopup {
-  return POPUPS[kidMode && item === 'beer' ? 'pretzel' : item];
+  const shown = kidMode && item === 'beer' ? 'pretzel' : item;
+  return { text: texts().items[shown], color: COLORS[shown] };
 }

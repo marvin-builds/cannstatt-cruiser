@@ -15,6 +15,7 @@ import type { Store } from '../core/storage';
 import type { Rect } from '../types';
 import { fitHintRows, type HintRow, hintPlateRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
 import { popupScale, type UiDisplay, uiMetrics } from './layout';
+import { perLanguage } from './i18n';
 
 const SEEN_KEY = 'airTrickSeen';
 /** Ticks a launch waits for the take-off (the player leaves the street on the tick after `launch`). */
@@ -81,10 +82,10 @@ export class AirTrickHint {
   }
 }
 
-const DESKTOP_ROWS: readonly HintRow[] = [['In der Luft', KEY_DOWN, '= Kickflip!']];
-const TOUCH_ROWS: readonly HintRow[] = [['In der Luft'], ['runterwischen = Kickflip!']];
+const desktopRows = perLanguage((t): readonly HintRow[] => [[t.hints.airKey[0]!, KEY_DOWN, t.hints.airKey[1]!]]);
+const touchRows = perLanguage((t): readonly HintRow[] => t.hints.airTouch.map((line) => [line]));
 /** The big portrait font: the compact swipe row, as the grind trick hint. */
-const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [[SWIPE_DOWN, 'wischen = Kickflip!']];
+const touchPortraitRows = perLanguage((t): readonly HintRow[] => [[SWIPE_DOWN, t.hints.airSwipe]]);
 
 /** The plate's rows, font scale and rect for `display`. */
 export function airTrickHintPlate(display: UiDisplay): {
@@ -93,6 +94,10 @@ export function airTrickHintPlate(display: UiDisplay): {
   rect: Rect;
 } {
   const scale = popupScale(display, false);
-  const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : fitHintRows([TOUCH_ROWS, TOUCH_PORTRAIT_ROWS], scale, display.viewWidth, uiMetrics(display));
+  const rows = !display.touch
+    ? desktopRows()
+    : display.portrait
+      ? touchPortraitRows()
+      : fitHintRows([touchRows(), touchPortraitRows()], scale, display.viewWidth, uiMetrics(display));
   return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }

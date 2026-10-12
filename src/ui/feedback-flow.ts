@@ -20,7 +20,8 @@ import type { FeedbackContext, FeedbackSenderLike } from '../net/feedback';
 import type { KeptReport } from '../net/feedback-reports';
 import type { FeedbackDeleteResult, FeedbackInboxLike } from '../net/feedback-status';
 import { type FeedbackBody, type FeedbackKind, MAX_FEEDBACK_TEXT, MIN_FEEDBACK_TEXT } from '../net/feedback-types';
-import { FEEDBACK_PAGE_TEXT, type PageSection, previewSections, type ReportDetail, reportDetail, type ReportRow, reportRows } from './feedback-pages';
+import { type Texts, texts } from './i18n';
+import { type PageSection, previewSections, type ReportDetail, reportDetail, type ReportRow, reportRows } from './feedback-pages';
 
 export type FeedbackStatus = 'idle' | 'short' | 'sending' | 'sent' | 'rate' | 'offline' | 'invalid';
 export type FeedbackTab = 'new' | 'mine';
@@ -32,41 +33,22 @@ export type DeleteState = 'idle' | 'deleting' | Exclude<FeedbackDeleteResult, 'd
 /** Where "Zurück" leads from each page (none from the tabs' first pages). */
 const BACK: Record<FeedbackPage, FeedbackPage | null> = { form: null, preview: 'form', list: null, detail: 'list', sent: 'detail', confirm: 'detail' };
 
-/** All texts of the screen (German, kid-safe, game font). */
-export const FEEDBACK_TEXT = {
-  title: 'Feedback',
-  bug: 'Fehler',
-  idea: 'Idee',
-  log: 'Fehlerprotokoll mitsenden',
-  /** The log label's short form where the long one does not fit beside "Ansehen". */
-  logShort: 'Protokoll mitsenden',
-  send: 'Senden',
-  hint: 'Bitte keine persönlichen Daten.',
-  bugPlaceholder: 'Was ist passiert?',
-  ideaPlaceholder: 'Was wünschst du dir?',
-  sending: 'Wird gesendet ...',
-  sent: 'Danke für dein Feedback!',
-  rate: 'Heute schon genug Feedback – danke!',
-  offline: 'Keine Verbindung. Später nochmal.',
-  invalid: 'Ging leider nicht. Text ändern.',
-  short: `Bitte mindestens ${MIN_FEEDBACK_TEXT} Zeichen schreiben.`,
-} as const;
-
-const MESSAGES: Record<FeedbackStatus, string | null> = {
+/** The status line of each send status (texts in i18n/), read in the language active when it shows. */
+const MESSAGES: Record<FeedbackStatus, ((t: Texts) => string) | null> = {
   idle: null,
-  short: FEEDBACK_TEXT.short,
-  sending: FEEDBACK_TEXT.sending,
-  sent: FEEDBACK_TEXT.sent,
-  rate: FEEDBACK_TEXT.rate,
-  offline: FEEDBACK_TEXT.offline,
-  invalid: FEEDBACK_TEXT.invalid,
+  short: (t) => t.feedback.short(String(MIN_FEEDBACK_TEXT)),
+  sending: (t) => t.feedback.sending,
+  sent: (t) => t.feedback.sent,
+  rate: (t) => t.feedback.rate,
+  offline: (t) => t.feedback.offline,
+  invalid: (t) => t.feedback.invalid,
 };
 
-const DELETE_MESSAGES: Record<DeleteState, string | null> = {
+const DELETE_MESSAGES: Record<DeleteState, ((t: Texts) => string) | null> = {
   idle: null,
-  deleting: FEEDBACK_PAGE_TEXT.deleting,
-  offline: FEEDBACK_TEXT.offline,
-  failed: FEEDBACK_PAGE_TEXT.deleteFailed,
+  deleting: (t) => t.feedbackPages.deleting,
+  offline: (t) => t.feedback.offline,
+  failed: (t) => t.feedbackPages.deleteFailed,
 };
 
 export class FeedbackFlow {
@@ -108,12 +90,12 @@ export class FeedbackFlow {
 
   /** The line over the "Mein Feedback" rows: "Feedback gelöscht" right after a delete, else the thanks after sending, else none. */
   get listNote(): string | null {
-    return this.deleted ? FEEDBACK_PAGE_TEXT.deleted : this.thanks ? FEEDBACK_TEXT.sent : null;
+    return this.deleted ? texts().feedbackPages.deleted : this.thanks ? texts().feedback.sent : null;
   }
 
   /** The line of the confirm page: deleting, or why the last try failed; null before the first try. */
   get deleteMessage(): string | null {
-    return DELETE_MESSAGES[this.deleteState];
+    return DELETE_MESSAGES[this.deleteState]?.(texts()) ?? null;
   }
 
   /** The log box shows for bug reports only. */
@@ -136,7 +118,7 @@ export class FeedbackFlow {
 
   /** The status line in place of the hint, or null for the hint. */
   get message(): string | null {
-    return MESSAGES[this.status];
+    return MESSAGES[this.status]?.(texts()) ?? null;
   }
 
   /** The red dot on "Mein Feedback" (and on the title icon and the pause button): something changed that the player has not seen. */

@@ -11,13 +11,14 @@ import type { ReportStatus } from '../net/feedback-reports';
 import type { Rect, RenderContext } from '../types';
 import { UI } from './art';
 import { centred, fill, menuButton, redDot, scrollBar, text } from './draw-kit';
-import { FEEDBACK_TEXT, type FeedbackFlow } from './feedback-flow';
+import type { FeedbackFlow } from './feedback-flow';
 import { DOT, DOT_ROOM, type FeedbackLayout, feedbackLayout, tabDot } from './feedback-layout';
 import { listRowRect, type PageLayout, pageLayout, pageMaxScroll, pageTextRows, pageTitle, rowsHeight, type TextTone } from './feedback-page-layout';
-import { FEEDBACK_PAGE_TEXT, type ReportRow, STATUS_COLOR } from './feedback-pages';
+import { type ReportRow, STATUS_COLOR } from './feedback-pages';
 import { drawDismiss } from './menu-screens';
 import { SCROLLBAR_W } from './score-layout';
 import { wrapText } from './wrap-text';
+import { texts } from './i18n';
 
 /** Space between the field's edge and the drawn text, and between text lines. */
 const FIELD_PAD = 5;
@@ -30,7 +31,7 @@ const TONE_COLOR: Record<Exclude<TextTone, ReportStatus | 'space'>, string> = { 
 
 /** The placeholder of the textarea for the chosen kind. */
 export function feedbackPlaceholder(flow: Pick<FeedbackFlow, 'kind'>): string {
-  return flow.kind === 'bug' ? FEEDBACK_TEXT.bugPlaceholder : FEEDBACK_TEXT.ideaPlaceholder;
+  return flow.kind === 'bug' ? texts().feedback.bugPlaceholder : texts().feedback.ideaPlaceholder;
 }
 
 function drawField(r: RenderContext, flow: FeedbackFlow, field: Rect): void {
@@ -60,10 +61,10 @@ function choiceButton(r: RenderContext, rect: Rect, label: string, chosen: boole
 
 /** The tabs; "Mein Feedback" carries the red dot after its label (in the room the layout left for it). */
 function drawTabs(r: RenderContext, flow: FeedbackFlow, newTab: Rect, mineTab: Rect, scale: number): void {
-  choiceButton(r, newTab, FEEDBACK_PAGE_TEXT.newTab, flow.tab === 'new', scale);
+  choiceButton(r, newTab, texts().feedbackPages.newTab, flow.tab === 'new', scale);
   const labelRect = { ...mineTab, w: mineTab.w - DOT_ROOM * scale };
   choiceButton(r, mineTab, '', flow.tab === 'mine', scale);
-  text(r, FEEDBACK_PAGE_TEXT.mineTab, mineTab.x + Math.floor(labelRect.w / 2), mineTab.y + Math.floor((mineTab.h - 7 * scale) / 2), {
+  text(r, texts().feedbackPages.mineTab, mineTab.x + Math.floor(labelRect.w / 2), mineTab.y + Math.floor((mineTab.h - 7 * scale) / 2), {
     align: 'center',
     color: flow.tab === 'mine' ? UI.yellow : UI.muted,
     scale,
@@ -99,15 +100,15 @@ function logToggle(r: RenderContext, l: FeedbackLayout, on: boolean, enabled: bo
 function drawForm(r: RenderContext, flow: FeedbackFlow, l: FeedbackLayout): void {
   drawTabs(r, flow, l.newTab, l.mineTab, l.labelScale);
   drawDismiss(r, l.close);
-  choiceButton(r, l.bug, FEEDBACK_TEXT.bug, flow.kind === 'bug', l.labelScale);
-  choiceButton(r, l.idea, FEEDBACK_TEXT.idea, flow.kind === 'idea', l.labelScale);
+  choiceButton(r, l.bug, texts().feedback.bug, flow.kind === 'bug', l.labelScale);
+  choiceButton(r, l.idea, texts().feedback.idea, flow.kind === 'idea', l.labelScale);
   drawField(r, flow, l.field);
   const message = flow.message;
-  text(r, message ?? FEEDBACK_TEXT.hint, l.line.x, l.line.y, { color: message ? UI.yellow : UI.muted, scale: l.lineScale });
+  text(r, message ?? texts().feedback.hint, l.line.x, l.line.y, { color: message ? UI.yellow : UI.muted, scale: l.lineScale });
   text(r, flow.counter, l.counter.x + l.counter.w, l.counter.y, { align: 'right', color: UI.muted, scale: l.lineScale });
   if (flow.logShown) logToggle(r, l, flow.withLog && flow.logAvailable, flow.logAvailable);
-  menuButton(r, l.view, FEEDBACK_PAGE_TEXT.view, UI.white, l.labelScale);
-  menuButton(r, l.send, FEEDBACK_TEXT.send, flow.canSend ? UI.yellow : UI.muted, l.labelScale);
+  menuButton(r, l.view, texts().feedbackPages.view, UI.white, l.labelScale);
+  menuButton(r, l.send, texts().feedback.send, flow.canSend ? UI.yellow : UI.muted, l.labelScale);
 }
 
 /** A 1 px frame just inside `rect`. */
@@ -166,7 +167,7 @@ function drawList(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
   const rows = flow.rows;
   if (rows.length === 0) {
     panel(r, l.content, () => {});
-    const lines = wrapText(FEEDBACK_PAGE_TEXT.empty, Math.floor(l.textW / l.scale));
+    const lines = wrapText(texts().feedbackPages.empty, Math.floor(l.textW / l.scale));
     lines.forEach((line, i) => centred(r, line, l.content.y + Math.floor(l.content.h / 2) - 4 * l.scale + i * 9 * l.scale, { color: UI.muted, scale: l.scale }));
     return;
   }
@@ -182,12 +183,12 @@ function drawList(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
 
 /** "Das wird gesendet", a report's details, "Das wurde gesendet", "Wirklich löschen?": "Zurück", the headline, the text in its panel, the buttons under it. */
 function drawTextPage(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
-  menuButton(r, l.back!, FEEDBACK_PAGE_TEXT.back, UI.white, l.labelScale);
+  menuButton(r, l.back!, texts().feedbackPages.back, UI.white, l.labelScale);
   drawDismiss(r, l.close);
-  if (l.view) menuButton(r, l.view, FEEDBACK_PAGE_TEXT.view, UI.white, l.labelScale);
-  if (l.del) menuButton(r, l.del, FEEDBACK_PAGE_TEXT.delete, UI.white, l.labelScale);
-  if (l.no) menuButton(r, l.no, FEEDBACK_PAGE_TEXT.cancel, UI.white, l.labelScale);
-  if (l.yes) menuButton(r, l.yes, FEEDBACK_PAGE_TEXT.confirmYes, flow.deleteState === 'deleting' ? UI.muted : UI.red, l.labelScale);
+  if (l.view) menuButton(r, l.view, texts().feedbackPages.view, UI.white, l.labelScale);
+  if (l.del) menuButton(r, l.del, texts().feedbackPages.delete, UI.white, l.labelScale);
+  if (l.no) menuButton(r, l.no, texts().feedbackPages.cancel, UI.white, l.labelScale);
+  if (l.yes) menuButton(r, l.yes, texts().feedbackPages.confirmYes, flow.deleteState === 'deleting' ? UI.muted : UI.red, l.labelScale);
   const title = pageTitle(flow.page);
   if (l.title && title) text(r, title, l.title.x, l.title.y, { color: UI.yellow, scale: l.title.scale });
   const rows = pageTextRows(flow, l);

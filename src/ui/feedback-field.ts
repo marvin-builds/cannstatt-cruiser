@@ -13,6 +13,7 @@ import { VIEW_H } from '../core/config';
 import { MAX_FEEDBACK_TEXT } from '../net/feedback-types';
 import type { Rect } from '../types';
 import { UI } from './art';
+import { texts } from './i18n';
 
 export interface FeedbackField {
   /** Shows the textarea over view rect `rect` holding `value`, or hides (and blurs) it for null. Called every tick. */
@@ -40,7 +41,6 @@ export function createDomFeedbackField(handlers: FeedbackFieldHandlers, canvas: 
   function create(): HTMLTextAreaElement {
     const el = document.createElement('textarea');
     Object.assign(el, { maxLength: MAX_FEEDBACK_TEXT, spellcheck: true, rows: 3 });
-    el.setAttribute('aria-label', 'Dein Feedback');
     el.setAttribute('autocomplete', 'off');
     Object.assign(el.style, {
       position: 'fixed',
@@ -87,6 +87,9 @@ export function createDomFeedbackField(handlers: FeedbackFieldHandlers, canvas: 
       area ??= create();
       if (area.value !== value) area.value = value;
       if (area.placeholder !== placeholder) area.placeholder = placeholder;
+      // In the active language (ROADMAP 71).
+      const label = texts().feedback.fieldAria;
+      if (area.getAttribute('aria-label') !== label) area.setAttribute('aria-label', label);
       const box = canvas()?.getBoundingClientRect();
       if (!box) return;
       const k = box.height / VIEW_H;

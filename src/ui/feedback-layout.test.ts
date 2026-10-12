@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { FEEDBACK_TEXT } from './feedback-flow';
+
 import { DOT_ROOM, feedbackIcon, feedbackLayout, tabDot } from './feedback-layout';
-import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
+
 import { uiMetrics } from './layout';
+import { de } from './i18n/de';
+import { en } from './i18n/en';
 
 const VARIANTS = [
   { name: 'desktop', touch: false, portrait: false, widths: [320, 360, 427] },
@@ -73,13 +75,13 @@ describe('feedback screen layout', () => {
     for (const d of landscape()) {
       const l = feedbackLayout(d);
       const fits = (label: string, r: Rect, scale: number) => expect(measureText(label, scale), `${d.label}: ${label}`).toBeLessThanOrEqual(r.w - 4);
-      fits(FEEDBACK_TEXT.bug, l.bug, l.labelScale);
-      fits(FEEDBACK_TEXT.idea, l.idea, l.labelScale);
-      fits(FEEDBACK_TEXT.send, l.send, l.labelScale);
-      fits(FEEDBACK_PAGE_TEXT.view, l.view, l.labelScale);
-      fits(FEEDBACK_PAGE_TEXT.newTab, l.newTab, l.labelScale);
-      expect(measureText(FEEDBACK_PAGE_TEXT.mineTab, l.labelScale) + DOT_ROOM * l.labelScale, d.label).toBeLessThanOrEqual(l.mineTab.w - 4);
-      expect(l.logLines, d.label).toEqual([FEEDBACK_TEXT.log]);
+      fits(de.feedback.bug, l.bug, l.labelScale);
+      fits(de.feedback.idea, l.idea, l.labelScale);
+      fits(de.feedback.send, l.send, l.labelScale);
+      fits(de.feedbackPages.view, l.view, l.labelScale);
+      fits(de.feedbackPages.newTab, l.newTab, l.labelScale);
+      expect(measureText(de.feedbackPages.mineTab, l.labelScale) + DOT_ROOM * l.labelScale, d.label).toBeLessThanOrEqual(l.mineTab.w - 4);
+      expect(l.logLines, d.label).toEqual([de.feedback.log]);
       const labelW = Math.max(...l.logLines.map((s) => measureText(s, l.logScale)));
       expect(l.logText + labelW + 4, d.label).toBeLessThanOrEqual(l.log.x + l.log.w);
       expect(l.logLines.length * 7 * l.logScale + (l.logLines.length - 1) * 2, d.label).toBeLessThanOrEqual(l.log.h - 4);
@@ -90,7 +92,9 @@ describe('feedback screen layout', () => {
   it('the status line fits the longest message, the counter fits its rect', () => {
     for (const d of landscape()) {
       const l = feedbackLayout(d);
-      const longest = Math.max(...[FEEDBACK_TEXT.hint, FEEDBACK_TEXT.offline, FEEDBACK_TEXT.rate, FEEDBACK_TEXT.invalid, FEEDBACK_TEXT.short].map((s) => measureText(s, l.lineScale)));
+      const longest = Math.max(
+        ...[de, en].flatMap((t) => [t.feedback.hint, t.feedback.offline, t.feedback.rate, t.feedback.invalid, t.feedback.short('3')]).map((s) => measureText(s, l.lineScale)),
+      );
       expect(longest, d.label).toBeLessThanOrEqual(l.line.w);
       expect(measureText('500/500', l.lineScale), d.label).toBeLessThanOrEqual(l.counter.w);
       expect(l.line.h, d.label).toBe(7 * l.lineScale);
@@ -110,7 +114,7 @@ describe('feedback screen layout', () => {
       const l = feedbackLayout(d);
       const s = l.labelScale;
       const dot = tabDot(l.mineTab, s);
-      const labelRight = l.mineTab.x + Math.floor((l.mineTab.w - DOT_ROOM * s) / 2) + Math.ceil(measureText(FEEDBACK_PAGE_TEXT.mineTab, s) / 2);
+      const labelRight = l.mineTab.x + Math.floor((l.mineTab.w - DOT_ROOM * s) / 2) + Math.ceil(measureText(de.feedbackPages.mineTab, s) / 2);
       // The dot has a 1 px ink outline; the button border is 2 px wide.
       expect(dot.x - 1 - labelRight, d.label).toBeGreaterThanOrEqual(s);
       expect(l.mineTab.x + l.mineTab.w - 2 - (dot.x + dot.w + 1), d.label).toBeGreaterThanOrEqual(s);

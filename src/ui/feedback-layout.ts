@@ -18,9 +18,8 @@ import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import { MAX_FEEDBACK_TEXT } from '../net/feedback-types';
 import type { Rect, SafeInsets } from '../types';
-import { FEEDBACK_TEXT } from './feedback-flow';
-import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
 import { centredWidth, safeSpan, type UiMetrics, uiMetrics } from './layout';
+import { texts } from './i18n';
 
 export interface FeedbackDisplay {
   viewWidth: number;
@@ -110,14 +109,14 @@ export const closeRect = (c: DialogColumn): Rect => ({ x: c.right - c.h, y: c.to
 
 /** The top row's tabs at `scale`: "Neu", then "Mein Feedback" with room for its dot. */
 export function tabRects(c: DialogColumn, scale: number): { newTab: Rect; mineTab: Rect } {
-  const newTab: Rect = { x: c.x, y: c.top, w: labelW(FEEDBACK_PAGE_TEXT.newTab, scale, c.m), h: c.h };
-  const mineW = labelW(FEEDBACK_PAGE_TEXT.mineTab, scale, c.m) + DOT_ROOM * scale;
+  const newTab: Rect = { x: c.x, y: c.top, w: labelW(texts().feedbackPages.newTab, scale, c.m), h: c.h };
+  const mineW = labelW(texts().feedbackPages.mineTab, scale, c.m) + DOT_ROOM * scale;
   return { newTab, mineTab: { x: newTab.x + newTab.w + 2, y: c.top, w: mineW, h: c.h } };
 }
 
 /** The red dot after the "Mein Feedback" label of tab `mineTab` (label `scale`), clear of the label and the border. */
 export function tabDot(mineTab: Rect, scale: number): Rect {
-  const labelRight = mineTab.x + Math.floor((mineTab.w - DOT_ROOM * scale) / 2) + Math.ceil(measureText(FEEDBACK_PAGE_TEXT.mineTab, scale) / 2);
+  const labelRight = mineTab.x + Math.floor((mineTab.w - DOT_ROOM * scale) / 2) + Math.ceil(measureText(texts().feedbackPages.mineTab, scale) / 2);
   return { x: labelRight + DOT_GAP * scale, y: mineTab.y + Math.floor((mineTab.h - GLYPH_H * scale) / 2), w: DOT * scale, h: DOT * scale };
 }
 
@@ -139,8 +138,8 @@ interface LogPlacement {
  */
 function placeLog(scale: number, c: DialogColumn, viewW: number, sendW: number, bottomFree: number): LogPlacement {
   const groupW = (lines: readonly string[], s: number) => logW(lines, s, c.m) + GAP + viewW;
-  const full = [FEEDBACK_TEXT.log];
-  const short = [FEEDBACK_TEXT.logShort];
+  const full = [texts().feedback.log];
+  const short = [texts().feedback.logShort];
   const place = (lines: string[], s: number, ownRow: boolean, viewBySend = false) => ({ lines, scale: s, ownRow, viewBySend });
   if (groupW(full, scale) + GAP + sendW <= c.w) return place(full, scale, false);
   if (groupW(full, scale) <= c.w) return place(full, scale, true);
@@ -157,11 +156,11 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
   const labelScale = tabRects(c, big).mineTab.x + tabRects(c, big).mineTab.w + GAP + c.h <= right ? big : 1;
   const { newTab, mineTab } = tabRects(c, labelScale);
   const close = closeRect(c);
-  const bugW = labelW(FEEDBACK_TEXT.bug, labelScale, m);
-  const ideaW = labelW(FEEDBACK_TEXT.idea, labelScale, m);
+  const bugW = labelW(texts().feedback.bug, labelScale, m);
+  const ideaW = labelW(texts().feedback.idea, labelScale, m);
   const kindsW = bugW + 2 + ideaW;
-  const viewW = labelW(FEEDBACK_PAGE_TEXT.view, labelScale, m);
-  const sendW = labelW(FEEDBACK_TEXT.send, labelScale, m);
+  const viewW = labelW(texts().feedbackPages.view, labelScale, m);
+  const sendW = labelW(texts().feedback.send, labelScale, m);
   const rowY = bottom - h;
   const send: Rect = { x: right - sendW, y: rowY, w: sendW, h };
   // The kinds: in the top row where they fit, else beside "Senden" when the log has its own row, else on a row of their own.

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { blinkOn, iconOnPlate, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, TEST_DEVICE_LABEL, uiMetrics } from './layout';
+import { blinkOn, iconOnPlate, popupScale, buttonPlate, centreX, fitCentred, formatNumber, POPUP_MARGIN, popupLeft, hudButtons, metres, rightAnchor, settingsLayout, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
+import { de } from './i18n/de';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const inside = (r: Rect, w: number, h = 180) => r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= h;
@@ -113,7 +114,7 @@ describe('layout helpers', () => {
         const l = settingsLayout(width, m);
         const at = `${name} ${width}`;
         const t = l.testDevice;
-        const line: Rect = { x: t.x, y: t.y, w: measureText(TEST_DEVICE_LABEL, t.scale), h: 7 * t.scale };
+        const line: Rect = { x: t.x, y: t.y, w: measureText(de.settings.testDevice, t.scale), h: 7 * t.scale };
         expect(inside(line, width) && whole(line), `${at} ${JSON.stringify(line)}`).toBe(true);
         const titleW = measureText('Einstellungen', 2);
         const title: Rect = { x: centreX(width) - Math.ceil(titleW / 2), y: l.titleY, w: titleW, h: 14 };
@@ -207,7 +208,7 @@ describe('layout helpers', () => {
         const noteRow = (y: number): Rect => ({ x: 0, y, w: width, h: 7 * l.noteScale });
         const keys = l.keysY === null ? [] : [noteRow(l.keysY)];
         const t = l.testDevice;
-        const testDevice: Rect = { x: t.x, y: t.y, w: measureText(TEST_DEVICE_LABEL, t.scale), h: 7 * t.scale };
+        const testDevice: Rect = { x: t.x, y: t.y, w: measureText(de.settings.testDevice, t.scale), h: 7 * t.scale };
         for (const r of [title, l.toggle, l.stats, l.privacyLink, l.back, noteRow(l.kidNoteY), noteRow(l.statsNoteY), testDevice, ...keys]) {
           expect(overlaps(button, r), `${at} vs ${JSON.stringify(r)}`).toBe(false);
         }

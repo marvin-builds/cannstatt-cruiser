@@ -3,7 +3,7 @@
  * arrive in the same tick (gameplay emits them back to back), so the feed
  * collects them and the ui flushes once per tick: a stomp and the points of
  * the same person become one "Stomp! +150", a ball hit and its points one
- * "Treffer! +200". Every text is German; kid mode never mentions beer.
+ * "Treffer! +200". Texts come from the catalogue (i18n/) in the active language; kid mode never mentions beer.
  * A full kickflip gets the big stunt callout instead (stunt-callout.ts); a
  * reduced one (ROADMAP 41) only a plain popup here. A star (ROADMAP 65)
  * shows "Stern!" with the points of the score change gameplay emits right
@@ -15,6 +15,7 @@ import type { CrowdTheme } from '../gameplay/crowd-tag';
 import type { GameBus, GameState, ItemAction } from '../types';
 import { UI } from './art';
 import { plusPoints } from './layout';
+import { texts } from './i18n';
 
 export interface PopupSpec {
   text: string;
@@ -31,7 +32,6 @@ export interface PopupSpec {
  */
 export type BailCause = 'late' | 'wobbly' | 'relaxed';
 
-const BAIL_TEXT: Record<BailCause, string> = { late: 'Zu spät geflippt!', wobbly: 'Zu wacklig!', relaxed: 'Zu entspannt!' };
 
 /** The cause of a bail from the state at the moment it happens: drunk before chilled before late. */
 export function bailCause(state: Pick<GameState, 'drunkTimer' | 'chillTimer'>): BailCause {
@@ -51,11 +51,8 @@ type Entry =
   | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number }
   | { kind: 'crowd'; theme: CrowdTheme };
 
-/** A fan crowd ahead (ROADMAP 76): who blocks the street. */
-const CROWD_TEXT: Record<CrowdTheme, string> = { vfb: 'VfB-Fans!', wasen: 'Wasen!' };
-
-/** Events that take the points of a clear of the same entity into their own popup. */
-const MERGED = { stomp: ['Stomp!', UI.orange], ballHit: ['Treffer!', UI.yellow] } as const;
+/** Events that take the points of a clear of the same entity into their own popup: their colour (texts in i18n/ popups.stomp, popups.ballHit). */
+const MERGED_COLOR = { stomp: UI.orange, ballHit: UI.yellow } as const;
 
 const NONE: readonly PopupSpec[] = [];
 
@@ -149,54 +146,55 @@ export class PopupFeed {
     if (entries.length === 0) return NONE;
     this.entries = [];
     const out: PopupSpec[] = [];
+    const t = texts().popups;
     const add = (text: string, color: string, icon: PopupSpec['icon'] = null) => out.push({ text, color, icon });
     entries.forEach((e, i) => {
       switch (e.kind) {
         case 'cleared': {
           const merge = entries.find((m) => (m.kind === 'stomp' || m.kind === 'ballHit') && m.entityId === e.entityId);
           if (merge) {
-            const [text, color] = MERGED[merge.kind as keyof typeof MERGED];
-            add(`${text} ${plusPoints(e.points)}`, color);
+            const kind = merge.kind as keyof typeof MERGED_COLOR;
+            add(`${t[kind]} ${plusPoints(e.points)}`, MERGED_COLOR[kind]);
           } else add(plusPoints(e.points), UI.white);
           break;
         }
         case 'stomp':
         case 'ballHit':
-          if (!entries.some((c) => c.kind === 'cleared' && c.entityId === e.entityId)) add(MERGED[e.kind][0], MERGED[e.kind][1]);
+          if (!entries.some((c) => c.kind === 'cleared' && c.entityId === e.entityId)) add(t[e.kind], MERGED_COLOR[e.kind]);
           break;
         case 'used':
-          if (e.action === 'throw') add('Wurf!', UI.white);
-          else if (e.action === 'drink' && !kidMode) add('Gluck gluck gluck!', UI.yellow);
-          else if (entries.some((h) => h.kind === 'healthGained')) add('Lecker! +1', UI.pink, 'heart');
+          if (e.action === 'throw') add(t.throw, UI.white);
+          else if (e.action === 'drink' && !kidMode) add(t.drink, UI.yellow);
+          else if (entries.some((h) => h.kind === 'healthGained')) add(`${t.eat} +1`, UI.pink, 'heart');
           // Gameplay scores the bonus right after itemUsed; the score before it may belong to a clear.
-          else add(`Lecker! ${bonus(entries[i + 1]) ?? bonus(entries[i - 1]) ?? '+Punkte'}`, UI.pink);
+          else add(`${t.eat} ${bonus(entries[i + 1]) ?? bonus(entries[i - 1]) ?? t.eatPoints}`, UI.pink);
           break;
         case 'ballBack':
-          add('Achtung, der Ball!', UI.red);
+          add(t.ballBack, UI.red);
           break;
         case 'crash':
-          add(e.bail ? BAIL_TEXT[e.bail] : 'Autsch!', UI.red);
+          add(e.bail ? t.bail[e.bail] : t.crash, UI.red);
           break;
         case 'grindTrick':
-          add(`Boardslide! ${plusPoints(e.points)}`, UI.teal);
+          add(`${t.boardslide} ${plusPoints(e.points)}`, UI.teal);
           break;
         case 'highFive':
-          add(`High Five! ${plusPoints(e.points)}`, UI.yellow);
+          add(`${t.highFive} ${plusPoints(e.points)}`, UI.yellow);
           break;
         case 'reducedKickflip':
-          add(`Kickflip ${plusPoints(e.points)}`, UI.palePink);
+          add(`${t.kickflip} ${plusPoints(e.points)}`, UI.palePink);
           break;
         case 'star': {
           const own = entries[i + 1];
           const points = own?.kind === 'score' ? own.delta : 0;
-          out.push(points > 0 ? { text: 'Stern!', color: UI.yellow, icon: null, points } : { text: 'Stern!', color: UI.yellow, icon: null });
+          out.push(points > 0 ? { text: t.star, color: UI.yellow, icon: null, points } : { text: t.star, color: UI.yellow, icon: null });
           break;
         }
         case 'starArc':
-          out.push({ text: 'Sternenbogen!', color: UI.orange, icon: null, points: e.points });
+          out.push({ text: t.starArc, color: UI.orange, icon: null, points: e.points });
           break;
         case 'crowd':
-          add(CROWD_TEXT[e.theme], e.theme === 'vfb' ? UI.white : UI.orange);
+          add(t.crowd[e.theme], e.theme === 'vfb' ? UI.white : UI.orange);
           break;
       }
     });

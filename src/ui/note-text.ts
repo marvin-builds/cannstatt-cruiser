@@ -11,12 +11,6 @@ import { measureText } from '../core/font';
 /** Room for a note in the narrowest view (4 px on each side). */
 export const PORTRAIT_NOTE_W = VIEW_W - 8;
 
-/** The settings menu's Kindermodus notes, long form first. */
-export const KID_NOTE = {
-  off: ['Für Kinder: freundliche Bilder und Texte.', 'Freundliche Bilder und Texte.'],
-  on: ['Kindgerechte Bilder und Texte sind an.', 'Kindgerechte Bilder sind an.'],
-} as const;
-
 /** The first of `texts` (long form first) that fits `maxW` at `scale`, else the first at scale 1. */
 export function fittingNote(texts: readonly string[], scale: number, maxW: number): { text: string; scale: number } {
   for (const text of texts) if (measureText(text, scale) <= maxW) return { text, scale };

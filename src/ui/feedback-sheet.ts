@@ -19,12 +19,13 @@
 import type { FeedbackKind } from '../net/feedback-types';
 import { MAX_FEEDBACK_TEXT } from '../net/feedback-types';
 import { UI } from './art';
-import { FEEDBACK_TEXT, type FeedbackTab } from './feedback-flow';
+import type { FeedbackTab } from './feedback-flow';
 import { confirmItems, type TextTone } from './feedback-page-layout';
-import { FEEDBACK_PAGE_TEXT, type PageSection, type ReportDetail, type ReportRow, STATUS_COLOR } from './feedback-pages';
+import { texts } from './i18n';
+import { type PageSection, type ReportDetail, type ReportRow, STATUS_COLOR } from './feedback-pages';
 import { type FeedbackSheetModel, SHEET_STYLE } from './portrait-sheets';
 import { sheetScrollTo } from './whats-new';
-import { buttonColour, createSheet, FIELD_STYLE, line, row, scrollPanel, setText, sheetButton, styled, title } from './sheet-dom';
+import { buttonColour, createSheet, FIELD_STYLE, line, row, scrollPanel, setText, SheetParts, sheetButton, styled, title } from './sheet-dom';
 
 export interface FeedbackSheet {
   /** Shows the sheet with `model`, or hides it (and drops its focus) for null. Called every tick. */
@@ -121,7 +122,7 @@ function fillSections(list: HTMLElement, sections: readonly PageSection[]): void
 function fillRows(list: HTMLElement, rows: readonly ReportRow[], open: (id: number) => void): void {
   if (rows.length === 0) {
     const empty = styled(line(SHEET_STYLE.textPx, UI.muted), { margin: '24px 0', textAlign: 'center' });
-    empty.textContent = FEEDBACK_PAGE_TEXT.empty;
+    empty.textContent = texts().feedbackPages.empty;
     list.append(empty);
     return;
   }
@@ -168,7 +169,7 @@ function fillConfirm(list: HTMLElement, d: ReportDetail, message: string | null)
 }
 
 export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): FeedbackSheet {
-  let parts: ReturnType<typeof build> | null = null;
+  const parts = new SheetParts(build);
   /** What the scrolling panel shows now (it is rebuilt only when this changes). */
   let pageKey = '';
   /** A list or text page shows (the scroll keys move it). */
@@ -176,8 +177,8 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
 
   /** The scroll keys on a list or text page: a line, a page or to an end (whats-new.ts: sheetScrollTo). */
   function scrollKey(code: string): boolean {
-    if (!parts || !panelShown) return false;
-    const { list } = parts.panel;
+    if (!parts.built || !panelShown) return false;
+    const { list } = parts.built.panel;
     const lineH = parseFloat(getComputedStyle(list).lineHeight) || SHEET_STYLE.textPx;
     const to = sheetScrollTo(code, list.scrollTop, { max: list.scrollHeight - list.clientHeight, line: 2 * lineH, page: list.clientHeight });
     if (to === null) return false;
@@ -186,35 +187,39 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
   }
 
   function build() {
-    const sheet = createSheet(FEEDBACK_TEXT.title, () => handlers.onBack());
+    const t = texts().feedback;
+    const pages = texts().feedbackPages;
+    // A new build (another language) fills its panel afresh.
+    pageKey = '';
+    const sheet = createSheet(t.title, () => handlers.onBack());
     sheet.root.style.overflowY = 'hidden';
     // Keys stop at the sheet while a button in it has the focus: it scrolls its page itself.
     sheet.root.addEventListener('keydown', (e) => {
       if (e.target !== area && scrollKey(e.code)) e.preventDefault();
     });
-    const newTab = sheetButton(FEEDBACK_PAGE_TEXT.newTab, () => handlers.onTab('new'));
-    const mineTab = sheetButton(FEEDBACK_PAGE_TEXT.mineTab, () => handlers.onTab('mine'));
+    const newTab = sheetButton(pages.newTab, () => handlers.onTab('new'));
+    const mineTab = sheetButton(pages.mineTab, () => handlers.onTab('mine'));
     const mineDot = dot();
     mineTab.append(mineDot);
     for (const tab of [newTab, mineTab]) styled(tab, NARROW_BUTTON);
     styled(newTab, { flex: '0 0 auto' });
     styled(mineTab, { flex: '1 1 auto' });
     const close = sheetButton('×', () => handlers.onClose());
-    close.setAttribute('aria-label', 'Schließen');
+    close.setAttribute('aria-label', t.close);
     styled(close, { flex: '0 0 auto' });
     const tabs = styled(row(newTab, mineTab, close), { gap: '6px' });
-    const back = sheetButton(FEEDBACK_PAGE_TEXT.back, () => handlers.onBack());
+    const back = sheetButton(pages.back, () => handlers.onBack());
     styled(back, { flex: '0 0 auto' });
     const heading = styled(title(''), { fontSize: `${SHEET_STYLE.textPx + 2}px` });
-    const sentView = sheetButton(FEEDBACK_PAGE_TEXT.view, () => handlers.onSentLog());
+    const sentView = sheetButton(pages.view, () => handlers.onSentLog());
     styled(sentView, { flex: '0 0 auto' });
     const subHeader = row(back, heading, sentView);
 
-    const bug = sheetButton(FEEDBACK_TEXT.bug, () => handlers.onKind('bug'));
-    const idea = sheetButton(FEEDBACK_TEXT.idea, () => handlers.onKind('idea'));
+    const bug = sheetButton(t.bug, () => handlers.onKind('bug'));
+    const idea = sheetButton(t.idea, () => handlers.onKind('idea'));
     const area = styled(document.createElement('textarea'), { ...FIELD_STYLE, flex: '1 1 auto', minHeight: '6em', resize: 'none' });
     Object.assign(area, { maxLength: MAX_FEEDBACK_TEXT, spellcheck: true });
-    area.setAttribute('aria-label', 'Dein Feedback');
+    area.setAttribute('aria-label', t.fieldAria);
     area.setAttribute('autocomplete', 'off');
     area.addEventListener('input', () => handlers.onInput(area.value));
     const status = styled(line(SHEET_STYLE.smallPx, UI.muted), { flex: '1 1 auto' });
@@ -231,29 +236,29 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       minHeight: `${SHEET_STYLE.buttonPx}px`,
       fontSize: `${SHEET_STYLE.smallPx}px`,
     });
-    log.append(box, FEEDBACK_TEXT.log);
-    const view = sheetButton(FEEDBACK_PAGE_TEXT.view, () => handlers.onPreview());
+    log.append(box, t.log);
+    const view = sheetButton(pages.view, () => handlers.onPreview());
     // 320 px phones: "Fehlerprotokoll mitsenden" and "Ansehen" share the row within the gutters.
     styled(view, { flex: '0 0 auto', padding: '0 8px' });
-    const send = sheetButton(FEEDBACK_TEXT.send, () => handlers.onSend());
+    const send = sheetButton(t.send, () => handlers.onSend());
     const logRow = row(log, view);
     const form = [row(bug, idea), area, row(status, counter), logRow, row(send)];
     const note = styled(line(SHEET_STYLE.textPx + 2, UI.yellow), { textAlign: 'center', fontWeight: 'bold' });
     note.setAttribute('role', 'status');
-    const panel = scrollPanel(FEEDBACK_TEXT.title);
+    const panel = scrollPanel(t.title);
     // Narrow phones: the rows and texts get the width, the scroll bar keeps its room at the right. The list
     // fills the frame as a flex child, so a frame sized to its content (the confirm) still scrolls when it must shrink.
     styled(panel.list, { padding: '4px 18px 8px 8px', height: 'auto', flex: '1 1 auto', minHeight: '0' });
     styled(panel.frame, { flexDirection: 'column' });
-    const del = sheetButton(FEEDBACK_PAGE_TEXT.delete, () => handlers.onDelete());
+    const del = sheetButton(pages.delete, () => handlers.onDelete());
     styled(del, { flex: '0 0 auto' });
     const delRow = row(del);
-    const no = sheetButton(FEEDBACK_PAGE_TEXT.cancel, () => handlers.onBack());
-    const yes = sheetButton(FEEDBACK_PAGE_TEXT.confirmYes, () => handlers.onConfirmDelete());
+    const no = sheetButton(pages.cancel, () => handlers.onBack());
+    const yes = sheetButton(pages.confirmYes, () => handlers.onConfirmDelete());
     for (const b of [no, yes]) styled(b, NARROW_BUTTON);
     const confirmRow = row(no, yes);
     // "Wirklich löschen?" heads its own block (question, what deleting means, the buttons) instead of the top row.
-    const question = styled(title(FEEDBACK_PAGE_TEXT.confirmTitle), { flex: '0 0 auto', textAlign: 'center' });
+    const question = styled(title(pages.confirmTitle), { flex: '0 0 auto', textAlign: 'center' });
     sheet.root.append(tabs, subHeader, ...form, note, question, panel.frame, delRow, confirmRow);
     return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, note, question, panel, del, delRow, no, yes, confirmRow };
   }
@@ -264,7 +269,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
   };
 
   /** The scrolling panel's content for a list or text page, rebuilt when it changes. */
-  function fillPanel(p: NonNullable<typeof parts>, model: FeedbackSheetModel): void {
+  function fillPanel(p: ReturnType<typeof build>, model: FeedbackSheetModel): void {
     const key = JSON.stringify([model.page, model.rows, model.sections, model.detail, model.deleteMessage]);
     if (key === pageKey) return;
     pageKey = key;
@@ -278,7 +283,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     p.panel.placeThumb();
   }
 
-  function showForm(p: NonNullable<typeof parts>, model: FeedbackSheetModel): void {
+  function showForm(p: ReturnType<typeof build>, model: FeedbackSheetModel): void {
     setText(p.counter, model.counter);
     if (p.area.value !== model.text) p.area.value = model.text;
     if (p.area.placeholder !== model.placeholder) p.area.placeholder = model.placeholder;
@@ -294,7 +299,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
   }
 
   /** A keyboard player on "Löschen" lands on "Abbrechen" of the confirm, and back on "Löschen" after it (the pressed button hides). */
-  function moveFocus(p: NonNullable<typeof parts>, page: FeedbackSheetModel['page']): void {
+  function moveFocus(p: ReturnType<typeof build>, page: FeedbackSheetModel['page']): void {
     const active = document.activeElement;
     if (page === 'confirm' && active === p.del) p.no.focus({ preventScroll: true });
     else if (page === 'detail' && (active === p.no || active === p.yes)) p.del.focus({ preventScroll: true });
@@ -304,7 +309,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
    * "Wirklich löschen?" holds a few lines: the question, a panel of only their height and the buttons
    * sit as one block in the middle of the free space, instead of a tall empty panel over the buttons.
    */
-  function placeConfirm(p: NonNullable<typeof parts>, confirm: boolean): void {
+  function placeConfirm(p: ReturnType<typeof build>, confirm: boolean): void {
     toggle([p.question], confirm, 'block');
     const flex = confirm ? '0 1 auto' : '1 1 auto';
     if (p.panel.frame.style.flex === flex) return;
@@ -316,12 +321,11 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
   return {
     show(model) {
       if (!model) {
-        parts?.sheet.setShown(false);
+        parts.built?.sheet.setShown(false);
         panelShown = false;
         return;
       }
-      parts ??= build();
-      const p = parts;
+      const p = parts.get();
       const onTab = model.page === 'form' || model.page === 'list';
       const form = model.page === 'form';
       toggle([p.tabs], onTab);
@@ -348,13 +352,13 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       p.sheet.setShown(true);
     },
     focus() {
-      parts?.area.focus({ preventScroll: true });
+      parts.built?.area.focus({ preventScroll: true });
     },
     blur() {
-      parts?.area.blur();
+      parts.built?.area.blur();
     },
     isFocused() {
-      return !!parts && document.activeElement === parts.area;
+      return !!parts.built && document.activeElement === parts.built.area;
     },
     scrollKey,
   };

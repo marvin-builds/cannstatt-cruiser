@@ -11,6 +11,7 @@ import type { Store } from '../core/storage';
 import type { Rect } from '../types';
 import { type HintRow, hintPlateRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
 import { popupScale, type UiDisplay, uiMetrics } from './layout';
+import { perLanguage } from './i18n';
 
 /** Grinds per run that show the hint. */
 export const TRICK_HINT_GRINDS = 3;
@@ -56,9 +57,9 @@ export class TrickHint {
   }
 }
 
-const DESKTOP_ROWS: readonly HintRow[] = [[KEY_DOWN, '= Boardslide!']];
-const TOUCH_ROWS: readonly HintRow[] = [['Runterwischen = Boardslide!']];
-const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [[SWIPE_DOWN, 'wischen = Boardslide!']];
+const desktopRows = perLanguage((t): readonly HintRow[] => [[KEY_DOWN, t.hints.trickKey]]);
+const touchRows = perLanguage((t): readonly HintRow[] => [[t.hints.trickTouch]]);
+const touchPortraitRows = perLanguage((t): readonly HintRow[] => [[SWIPE_DOWN, t.hints.trickSwipe]]);
 
 /** The plate's rows, font scale (as the other hints) and rect at the hint spot for `display`. */
 export function trickHintPlate(display: UiDisplay): {
@@ -67,6 +68,6 @@ export function trickHintPlate(display: UiDisplay): {
   rect: Rect;
 } {
   const scale = popupScale(display, false);
-  const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : TOUCH_ROWS;
+  const rows = !display.touch ? desktopRows() : display.portrait ? touchPortraitRows() : touchRows();
   return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }

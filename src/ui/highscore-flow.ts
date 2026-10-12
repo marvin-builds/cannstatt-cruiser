@@ -8,6 +8,7 @@ import type { Store } from '../core/storage';
 import type { ScoreEntry } from '../net/api';
 import type { RunStats } from '../net/payload';
 import type { ScoreService } from '../net/service';
+import { type Texts, texts } from './i18n';
 import { formatNumber } from './layout';
 import { loadName, nameProblem, cleanName, qualifies, saveName, stripNameInput } from './score-rules';
 
@@ -15,32 +16,8 @@ export type ScoreServiceLike = Pick<ScoreService, 'top' | 'topState' | 'pending'
 
 export type ScoreScreen = 'closed' | 'list' | 'entry';
 
-/** The texts of both screens (German, kid-safe, game font). */
-export const SCORE_TEXT = {
-  title: 'Bestenliste',
-  entryTitle: 'Eintragen',
-  submit: 'Eintragen',
-  loading: 'Lade Bestenliste ...',
-  offline: 'Offline – Bestenliste nicht verfügbar',
-  empty: 'Noch keine Einträge – fahr los!',
-  privacy: 'Die Bestenliste speichert Name, Punkte, Strecke, Datum.',
-  /** The privacy line where the long one does not fit (portrait, see note-text.ts). */
-  privacyShort: 'Liste: Name, Punkte, Strecke, Datum.',
-  sending: 'Wird gesendet ...',
-  queued: 'Wird gesendet, sobald du online bist',
-  queuedLater: 'Wird später gesendet',
-  badName: 'Dieser Name geht leider nicht',
-  rate: 'Bitte kurz warten',
-  failed: 'Das hat leider nicht geklappt',
-  short: 'Mindestens 2 Zeichen',
-  namePrompt: 'Dein Name:',
-  outside: 'Eingetragen! Leider nicht unter den Top 20',
-} as const;
-
-/** The note when the server kept the device's better entry instead of the run. */
-export function keptText(best: number): string {
-  return `Dein Eintrag bleibt: ${formatNumber(best)} Punkte`;
-}
+/** A status or error line of the screens, read in the language active when it is shown (texts in i18n/). */
+type ScoreMessage = (t: Texts) => string;
 
 export interface HighscoreFlowDeps {
   service: ScoreServiceLike;
@@ -52,7 +29,7 @@ export class HighscoreFlow {
   /** The name in the entry field. */
   name = '';
   /** Status or error line of the screen, or null. */
-  message: string | null = null;
+  private note: ScoreMessage | null = null;
   sending = false;
   /** List scroll offset in view px (clamped by the layout, clampScroll). */
   scroll = 0;
@@ -65,6 +42,11 @@ export class HighscoreFlow {
 
   get open(): boolean {
     return this.screen !== 'closed';
+  }
+
+  /** The status or error line in the active language, or null. */
+  get message(): string | null {
+    return this.note?.(texts()) ?? null;
   }
 
   /** The last fetched list (empty while none is known). */
@@ -125,7 +107,7 @@ export class HighscoreFlow {
     this.screen = 'list';
     this.scroll = 0;
     this.revealOwn = true;
-    this.message = this.deps.service.pending ? SCORE_TEXT.queued : null;
+    this.note = this.deps.service.pending ? (t) => t.score.queued : null;
     void this.deps.service.refreshTop();
     void this.deps.service.retryPending();
   }
@@ -133,7 +115,7 @@ export class HighscoreFlow {
   /** The name entry with the remembered name. */
   openEntry(): void {
     this.screen = 'entry';
-    this.message = null;
+    this.note = null;
     this.name = loadName(this.deps.store);
   }
 
@@ -141,13 +123,13 @@ export class HighscoreFlow {
   setName(raw: string): void {
     if (this.sending) return;
     this.name = stripNameInput(raw);
-    this.message = null;
+    this.note = null;
   }
 
   close(): void {
     if (this.sending) return;
     this.screen = 'closed';
-    this.message = null;
+    this.note = null;
   }
 
   scrollBy(dy: number): void {
@@ -163,16 +145,17 @@ export class HighscoreFlow {
   async submit(): Promise<void> {
     if (!this.run || this.sending || this.screen !== 'entry') return;
     if (nameProblem(this.name) !== null) {
-      this.message = SCORE_TEXT.short;
+      this.note = (t) => t.score.short;
       return;
     }
     const name = cleanName(this.name);
     this.sending = true;
-    this.message = SCORE_TEXT.sending;
+    this.note = (t) => t.score.sending;
     const outcome = await this.deps.service.submit(this.run, name);
     this.sending = false;
     if (outcome.kind === 'failed') {
-      this.message = outcome.error === 'name' ? SCORE_TEXT.badName : outcome.error === 'rate' ? SCORE_TEXT.rate : SCORE_TEXT.failed;
+      const error = outcome.error;
+      this.note = (t) => (error === 'name' ? t.score.badName : error === 'rate' ? t.score.rate : t.score.failed);
       return;
     }
     this.submitted = true;
@@ -180,8 +163,12 @@ export class HighscoreFlow {
     this.screen = 'list';
     this.scroll = 0;
     this.revealOwn = true;
-    if (outcome.kind === 'queued') this.message = outcome.reason === 'offline' ? SCORE_TEXT.queued : SCORE_TEXT.queuedLater;
-    else if (!outcome.stored) this.message = keptText(outcome.best);
-    else this.message = outcome.rank === null ? SCORE_TEXT.outside : null;
+    if (outcome.kind === 'queued') {
+      const offline = outcome.reason === 'offline';
+      this.note = (t) => (offline ? t.score.queued : t.score.queuedLater);
+    } else if (!outcome.stored) {
+      const best = outcome.best;
+      this.note = (t) => t.score.kept(formatNumber(best));
+    } else this.note = outcome.rank === null ? (t) => t.score.outside : null;
   }
 }

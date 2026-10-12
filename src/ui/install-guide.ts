@@ -11,12 +11,7 @@ import { measureText } from '../core/font';
 import type { InstallPlatform, Rect } from '../types';
 import { MENU_DOTS_ICON, SHARE_ICON } from './art';
 import { centreX, uiMetrics } from './layout';
-
-export const INSTALL_GUIDE_TEXT = {
-  title: 'App installieren',
-  reason: 'Als App: Vollbild und offline',
-  ok: 'OK',
-} as const;
+import { texts } from './i18n';
 
 /** A piece of a step line: text, or an icon drawn at the text's scale. */
 export type GuidePart = string | { icon: keyof typeof ICONS };
@@ -28,11 +23,12 @@ const SHARE: GuidePart = { icon: 'share' };
 /** Space around an icon inside a line (at scale 1). */
 export const ICON_GAP = 3;
 
-/** The steps of the platform, one line each. */
+/** The steps of the platform in the active language, one line each; the first line of Android and iOS shows its icon. */
 export function guideLines(platform: InstallPlatform): GuidePart[][] {
-  if (platform === 'android') return [['Oben rechts auf', MENU, 'tippen,'], ['dann "App installieren"'], ['oder "Zum Startbildschirm".']];
-  if (platform === 'ios') return [['Auf Teilen', SHARE, 'tippen,'], ['dann "Zum Home-Bildschirm".']];
-  return [['In der Adressleiste das'], ['Symbol "Installieren" wählen'], ['(oder im Browser-Menü).']];
+  const t = texts().install;
+  if (platform === 'other') return t.other.map((line) => [line]);
+  const { first, rest } = t[platform];
+  return [[first[0]!, platform === 'android' ? MENU : SHARE, first[1]!], ...rest.map((line) => [line])];
 }
 
 /** Width of one part at `scale` (an icon with its gaps). */

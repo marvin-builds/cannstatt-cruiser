@@ -14,7 +14,8 @@ import type { Sprite } from '../core/sprite';
 import { ROTATE_ARROW, ROTATE_PHONE, UI } from './art';
 import { drawLogo, logoRect } from './logo';
 import { SHEET_STYLE } from './portrait-sheets';
-import { createSheet, line, sheetButton, styled } from './sheet-dom';
+import { createSheet, line, SheetParts, sheetButton, styled } from './sheet-dom';
+import { texts } from './i18n';
 
 export interface RotateSheet {
   /** Shows or hides the overlay. Called every tick. */
@@ -25,12 +26,6 @@ export interface RotateSheetHandlers {
   /** "Trotzdem weiter", a tap anywhere, Esc. */
   onDismiss(): void;
 }
-
-export const ROTATE_TEXT = {
-  title: 'Bitte Gerät drehen',
-  reason: 'Im Querformat fährt es sich besser.',
-  dismiss: 'Trotzdem weiter',
-} as const;
 
 /** One turn: upright, a quarter turn clockwise, sideways, and back (ms). */
 const TURN_MS = 2600;
@@ -78,11 +73,12 @@ export function rotateButtonPx(height: number): number {
 }
 
 export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet {
-  let parts: ReturnType<typeof build> | null = null;
+  const parts = new SheetParts(build);
   let shown = false;
 
   function build() {
-    const sheet = createSheet(ROTATE_TEXT.title, () => handlers.onDismiss());
+    const t = texts().rotate;
+    const sheet = createSheet(t.title, () => handlers.onDismiss());
     styled(sheet.root, { alignItems: 'center', justifyContent: 'space-evenly', textAlign: 'center', touchAction: 'manipulation', zIndex: '4' });
     const { w, h } = logoRect(0);
     const logo = pixelCanvas(w, h, (g) => drawLogo(g, 0, 0));
@@ -101,10 +97,10 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
       lineHeight: '1.15',
       color: UI.yellow,
     });
-    heading.textContent = ROTATE_TEXT.title;
+    heading.textContent = t.title;
     const reason = styled(line(SHEET_STYLE.textPx, UI.white), { fontSize: `max(${SHEET_STYLE.textPx}px, 3vw)` });
-    reason.textContent = ROTATE_TEXT.reason;
-    const button = sheetButton(ROTATE_TEXT.dismiss, () => handlers.onDismiss());
+    reason.textContent = t.reason;
+    const button = sheetButton(t.dismiss, () => handlers.onDismiss());
     styled(button, { flex: 'none', width: 'min(100%, 420px)', color: UI.yellow });
     const words = styled(document.createElement('div'), { display: 'flex', flexDirection: 'column', gap: `${SHEET_STYLE.gapPx}px` });
     words.append(heading, reason);
@@ -117,7 +113,7 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
   }
 
   /** Sizes the art for the screen now, and turns the phone unless reduced motion is wanted. */
-  function layout(p: NonNullable<typeof parts>): void {
+  function layout(p: ReturnType<typeof build>): void {
     const s = rotateScales(window.innerWidth, window.innerHeight);
     scaleTo(p.logo, s.logo);
     scaleTo(p.phone, s.phone);
@@ -141,17 +137,18 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
   return {
     show(next) {
       if (!next) {
-        if (shown) {
-          parts?.turn?.cancel();
-          if (parts) parts.turn = null;
-          parts?.sheet.setShown(false);
+        const p = parts.built;
+        if (shown && p) {
+          p.turn?.cancel();
+          p.turn = null;
+          p.sheet.setShown(false);
         }
         shown = false;
         return;
       }
-      parts ??= build();
-      parts.sheet.setShown(true);
-      layout(parts);
+      const p = parts.get();
+      p.sheet.setShown(true);
+      layout(p);
       shown = true;
     },
   };

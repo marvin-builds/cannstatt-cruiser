@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { InstallPlatform, Rect } from '../types';
-import { guideLines, guideLineWidth, INSTALL_GUIDE_TEXT, installGuideLayout } from './install-guide';
+import { guideLines, guideLineWidth, installGuideLayout } from './install-guide';
 import { uiMetrics } from './layout';
 import { measureText } from '../core/font';
+import { de } from './i18n/de';
 
 const DEVICES = [
   { touch: false, portrait: false },
@@ -28,8 +29,8 @@ describe('install guide (manual steps)', () => {
           const m = uiMetrics(d);
           const l = installGuideLayout({ viewWidth, ...d }, p);
           expect(l.scale).toBe(d.portrait ? 2 : 1);
-          expect(measureText(INSTALL_GUIDE_TEXT.title, 2)).toBeLessThanOrEqual(viewWidth - 8);
-          expect(measureText(INSTALL_GUIDE_TEXT.reason, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
+          expect(measureText(de.install.title, 2)).toBeLessThanOrEqual(viewWidth - 8);
+          expect(measureText(de.install.reason, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
           for (const line of guideLines(p)) expect(guideLineWidth(line, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
           const textBottom = l.lines + guideLines(p).length * l.lineH;
           expect(l.reason).toBeGreaterThanOrEqual(l.title + 14);

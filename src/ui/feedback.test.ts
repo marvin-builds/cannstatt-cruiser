@@ -15,12 +15,13 @@ import type { FeedbackSheetModel } from './portrait-sheets';
 import { feedbackIcon, feedbackLayout } from './feedback-layout';
 import { createUiSystem } from './index';
 import { listRowRect, pageLayout } from './feedback-page-layout';
-import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
+
 import { uiMetrics } from './layout';
 import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
 import { fakeRotateSheet } from './rotate-sheet.fake';
 import { fakeHistory } from './back-nav.fake';
 import type { SettleCover } from './settle-cover';
+import { de } from './i18n/de';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -1036,7 +1037,7 @@ describe('deleting an own report in the game (ROADMAP 78)', () => {
     expect(t.press(rects(t).yes)).toBe(true);
     await settle(t);
     expect(t.inbox.removed).toEqual([3]);
-    expect([t.flow.page, t.flow.listNote, t.flow.rows.map((r) => r.id)]).toEqual(['list', FEEDBACK_PAGE_TEXT.deleted, [5]]);
+    expect([t.flow.page, t.flow.listNote, t.flow.rows.map((r) => r.id)]).toEqual(['list', de.feedbackPages.deleted, [5]]);
   });
 
   it('"Abbrechen", Esc and Android back close the confirm first and delete nothing', () => {
@@ -1071,10 +1072,10 @@ describe('deleting an own report in the game (ROADMAP 78)', () => {
     expect(t.sheet.model?.page).toBe('detail');
     t.sheet.actions!.onDelete();
     t.game.tick();
-    expect(t.sheet.model).toMatchObject({ page: 'confirm', title: FEEDBACK_PAGE_TEXT.confirmTitle, deleteMessage: null });
+    expect(t.sheet.model).toMatchObject({ page: 'confirm', title: de.feedbackPages.confirmTitle, deleteMessage: null });
     t.sheet.actions!.onConfirmDelete();
     await settle(t);
-    expect(t.sheet.model).toMatchObject({ page: 'list', note: FEEDBACK_PAGE_TEXT.deleted });
+    expect(t.sheet.model).toMatchObject({ page: 'list', note: de.feedbackPages.deleted });
     expect(t.sheet.model!.rows.map((r) => r.id)).toEqual([5]);
   });
 });

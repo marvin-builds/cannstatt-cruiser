@@ -2,18 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { TICK_DT } from '../core/config';
 import { createInitialState } from '../core/state';
 import { createStore } from '../core/storage';
-import {
-  LONG_PRESS_HINT_DELAY,
-  LONG_PRESS_TIME,
-  loadKidMode,
-  LongPress,
-  saveKidMode,
-  SettingsMenu,
-  STATS_TEXT,
-} from './settings';
+import { LONG_PRESS_HINT_DELAY, LONG_PRESS_TIME, loadKidMode, LongPress, saveKidMode, SettingsMenu } from './settings';
 import { measureText } from '../core/font';
 import { loadStatsOptOut, saveStatsOptOut } from '../net/telemetry';
 import { TEST_DEVICE_KEY } from '../net/telemetry-types';
+import { de } from './i18n/de';
 
 function memoryStore() {
   const raw = new Map<string, string>();
@@ -200,13 +193,13 @@ describe('anonymous statistics switch', () => {
   });
 
   it('labels and notes fit the 320 px view at font scale 1', () => {
-    for (const s of [STATS_TEXT.label(true), STATS_TEXT.label(false), STATS_TEXT.note, STATS_TEXT.listNote, STATS_TEXT.offNote]) {
+    for (const s of [de.stats.label(true), de.stats.label(false), de.stats.note, de.stats.listNote, de.stats.offNote]) {
       expect(measureText(s, 1), s).toBeLessThanOrEqual(300);
     }
-    expect(STATS_TEXT.label(true)).toBe('Anonyme Statistik: AN');
-    expect(STATS_TEXT.label(false)).toBe('Anonyme Statistik: AUS');
-    expect(STATS_TEXT.note).toMatch(/Stadt/);
-    expect(STATS_TEXT.note).toMatch(/keine IP/i);
+    expect(de.stats.label(true)).toBe('Anonyme Statistik: AN');
+    expect(de.stats.label(false)).toBe('Anonyme Statistik: AUS');
+    expect(de.stats.note).toMatch(/Stadt/);
+    expect(de.stats.note).toMatch(/keine IP/i);
   });
 });
 

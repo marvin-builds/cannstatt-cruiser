@@ -12,6 +12,7 @@ import type { CarriedItem, Rect, SafeInsets } from '../types';
 import { measureText } from '../core/font';
 import { rightAnchor, riding, safeSpan, uiMetrics } from './layout';
 import { statsLayout } from './stats';
+import { texts } from './i18n';
 
 export type ItemControl = 'button' | 'keycap';
 
@@ -74,15 +75,12 @@ export function itemHintPlace(button: Rect, w: number, h: number, viewWidth: num
   return { x: Math.min(button.x + button.w + HINT_GAP, viewWidth - w), y, pointsRight: false };
 }
 
-/** The first-time hint's label. */
-export const ITEM_HINT_LABEL = 'Tippe auf den Gegenstand';
-
 /** Where a hint beside the touch item button (`label` at font `scale`, on its plate) sits: the first-time hint by default. */
 export function itemHintRect(
   viewWidth: number,
   display: ItemDisplay,
   scale: number,
-  label = ITEM_HINT_LABEL,
+  label = texts().hints.item,
 ): Rect & { pointsRight: boolean } {
   const w = measureText(label, scale) + 8;
   const h = 8 * scale + 6;

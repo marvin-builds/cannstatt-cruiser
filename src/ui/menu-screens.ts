@@ -18,12 +18,10 @@ import {
   installParts,
   titleKeys,
   LINE,
-  MENU_TEXT,
   type MenuLayout,
-  PAUSE_KEYS,
   pausePrompt,
-  RESULT_ROWS,
   reloadLabel,
+  resultRows,
   reloadParts,
   startPrompt,
   submitLabel,
@@ -34,9 +32,9 @@ import {
 } from './menu-layout';
 import { gameOverReady } from './menu-state';
 import { SCROLLBAR_W } from './score-layout';
-import { PRIVACY_LABEL } from './privacy-link';
 import { bestOf, type Records, type RunResult } from './records';
-import { STATS_TEXT } from './settings';
+import { language, texts } from './i18n';
+import type { LanguageSwitch } from './language-switch';
 
 /** What the menu screens read from the ui view. */
 export interface MenuScreensView {
@@ -79,7 +77,7 @@ function cardPlate(r: RenderContext, card: Rect): void {
 function drawReloadCard(r: RenderContext, card: Rect): void {
   const parts = reloadParts(card, uiMetrics(r.display), r.display.touch);
   cardPlate(r, card);
-  text(r, MENU_TEXT.reload, parts.textX, parts.textY, { color: UI.yellow });
+  text(r, texts().menu.reload, parts.textX, parts.textY, { color: UI.yellow });
   menuButton(r, parts.button, reloadLabel(r.display.touch), UI.yellow);
 }
 
@@ -87,21 +85,22 @@ function drawReloadCard(r: RenderContext, card: Rect): void {
 function drawInstallCard(r: RenderContext, card: Rect): void {
   const parts = installParts(card, uiMetrics(r.display));
   cardPlate(r, card);
-  menuButton(r, parts.button, MENU_TEXT.installApp, UI.teal);
+  menuButton(r, parts.button, texts().menu.installApp, UI.teal);
   drawDismiss(r, parts.dismiss);
 }
 
 /** The "Anonyme Statistik: AN/AUS" button (settings menu and "Bestenliste"); scale 1 where scale 2 would not fit. */
 export function drawStatsSwitch(r: RenderContext, rect: Rect, on: boolean): void {
-  const label = STATS_TEXT.label(on);
+  const label = texts().stats.label(on);
   const scale = rect.h >= 24 && measureText(label, 2) <= rect.w - 8 ? 2 : 1;
   menuButton(r, rect, label, on ? UI.white : UI.muted, scale);
 }
 
 /** The "Datenschutz" link button beside the statistics switch: scale 2 where its rect has room (portrait), else small. */
 export function drawPrivacyLink(r: RenderContext, rect: Rect): void {
-  const scale = rect.h >= 24 && measureText(PRIVACY_LABEL, 2) <= rect.w - 8 ? 2 : 1;
-  menuButton(r, rect, PRIVACY_LABEL, UI.muted, scale);
+  const label = texts().privacy.label;
+  const scale = rect.h >= 24 && measureText(label, 2) <= rect.w - 8 ? 2 : 1;
+  menuButton(r, rect, label, UI.muted, scale);
 }
 
 /** A "×" button (install card, the highscore screens' close): an empty button face with a pixel cross sized to the button. */
@@ -157,7 +156,7 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   drawHoldProgress(r, view.logoHold.progress, logo);
   const y = (id: string) => l.blocks.get(id)?.y;
   const tagline = y('tagline');
-  if (tagline !== undefined) centred(r, 'Mit dem Longboard durch Stuttgart', tagline, { color: UI.muted });
+  if (tagline !== undefined) centred(r, texts().title.tagline, tagline, { color: UI.muted });
   const prompt = l.blocks.get('prompt');
   if (prompt && blinkOn(r.state.modeTime)) text(r, startPrompt(r.display.touch), prompt.x, prompt.y, { color: UI.yellow });
   const controls = l.blocks.get('controls');
@@ -169,13 +168,35 @@ export function drawTitle(r: RenderContext, view: MenuScreensView, l: MenuLayout
   drawNotices(r, l, !!view.feedback?.dot);
   const records = y('records');
   if (records !== undefined) drawRecordsRow(r, bestOf(view.records, r.state.kidMode), view.records.starsTotal, records);
+  if (l.language) drawLanguageSwitch(r, l.language);
+}
+
+/** The language switch "DE | EN" (language-switch.ts): one plate split by a bar, the active language yellow and underlined, the other muted. */
+export function drawLanguageSwitch(r: RenderContext, s: LanguageSwitch): void {
+  const { g } = r;
+  const { plate, scale } = s;
+  menuButton(r, plate, '');
+  const mid = plate.x + Math.floor(plate.w / 2);
+  g.fillStyle = UI.buttonEdge;
+  g.fillRect(mid, plate.y + 3, 1, plate.h - 6);
+  const active = language();
+  const labelY = plate.y + Math.floor((plate.h - 7 * scale) / 2);
+  for (const lang of ['de', 'en'] as const) {
+    const left = lang === 'de' ? plate.x + 1 : mid + 1;
+    const w = lang === 'de' ? mid - left : plate.x + plate.w - 1 - left;
+    const on = lang === active;
+    text(r, texts().language[lang], left + Math.floor(w / 2), labelY, { align: 'center', scale, color: on ? UI.yellow : UI.muted });
+    if (!on) continue;
+    g.fillStyle = UI.yellow;
+    g.fillRect(left + 2, plate.y + plate.h - 2 - scale, w - 4, scale);
+  }
 }
 
 
 /** "Highscore 1.234   ★ 56 gesamt" (the highscore of the mode in play), centred. */
 function drawRecordsRow(r: RenderContext, highscore: number, starsTotal: number, y: number): void {
-  const best = `Highscore ${formatNumber(highscore)}`;
-  const stars = `${formatNumber(starsTotal)} gesamt`;
+  const best = texts().title.highscore(formatNumber(highscore));
+  const stars = texts().title.starsTotal(formatNumber(starsTotal));
   const gap = 14;
   const total = measureText(best) + gap + STAR.width + 3 + measureText(stars);
   let x = centreX(r.display.viewWidth) - Math.floor(total / 2);
@@ -190,7 +211,7 @@ export function drawWhatsNew(r: RenderContext, l: MenuLayout, scroll: number): v
   const { g } = r;
   fill(r, UI.dim);
   const title = l.blocks.get('title')!;
-  text(r, MENU_TEXT.whatsNew, title.x, title.y, { scale: 2, color: UI.yellow });
+  text(r, texts().menu.whatsNew, title.x, title.y, { scale: 2, color: UI.yellow });
   const list = l.list!;
   const { rect, rowH, scale } = list;
   g.fillStyle = UI.panel;
@@ -216,7 +237,7 @@ export function drawWhatsNew(r: RenderContext, l: MenuLayout, scroll: number): v
   });
   g.restore();
   if (list.maxScroll > 0) scrollBar(r, rect, list.contentH, offset, SCROLLBAR_W * scale);
-  if (l.buttons.next) menuButton(r, l.buttons.next, MENU_TEXT.next, UI.yellow);
+  if (l.buttons.next) menuButton(r, l.buttons.next, texts().menu.next, UI.yellow);
 }
 
 export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout): void {
@@ -229,7 +250,7 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
   const pause = l.blocks.get('pause');
   if (pause) {
     textPlate(r, pause);
-    centredIn(r, MENU_TEXT.pause, pause, { scale: 2 });
+    centredIn(r, texts().menu.pause, pause, { scale: 2 });
   }
   const scale = l.textScale;
   const prompt = l.blocks.get('prompt');
@@ -238,7 +259,7 @@ export function drawPause(r: RenderContext, view: MenuScreensView, l: MenuLayout
     if (blinkOn(r.state.modeTime)) centredIn(r, pausePrompt(r.display.touch), { ...prompt, y: prompt.y + 4 }, { color: UI.yellow, scale });
   }
   const keys = l.blocks.get('keys');
-  if (keys) centredIn(r, PAUSE_KEYS, keys, { color: UI.muted, scale });
+  if (keys) centredIn(r, texts().menu.pauseKeys, keys, { color: UI.muted, scale });
   const trick = l.blocks.get('trick');
   if (trick) centredIn(r, trickKeysHint(r.display.touch, scale === 2), trick, { color: UI.muted, scale });
   drawNotices(r, l, !!view.feedback?.dot);
@@ -264,12 +285,12 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
   const run = view.lastRun;
   const title = l.blocks.get('title')!;
   textPlate(r, title);
-  text(r, MENU_TEXT.gameOver, title.x, title.y, { scale: 2, color: UI.red });
+  text(r, texts().menu.gameOver, title.x, title.y, { scale: 2, color: UI.red });
   // The blinking lines take their plate with them: no empty plate in the off phase.
   const record = l.blocks.get('record');
   if (record && blinkOn(state.modeTime * 2)) {
     textPlate(r, record);
-    centredIn(r, MENU_TEXT.newRecord, record, { scale: 2, color: UI.yellow });
+    centredIn(r, texts().menu.newRecord, record, { scale: 2, color: UI.yellow });
   }
 
   const values = [
@@ -278,9 +299,9 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
     formatNumber(bestOf(view.records, run?.kid ?? state.kidMode)),
     formatNumber(state.stars),
     formatNumber(view.records.starsTotal),
-    `${formatNumber(metres(state.distance))} m`,
+    texts().menu.metres(formatNumber(metres(state.distance))),
   ];
-  const rows = RESULT_ROWS.map((label, i) => ({ label, value: values[i]!, rect: l.blocks.get(`row${i}`) })).filter((x) => x.rect);
+  const rows = resultRows().map((label, i) => ({ label, value: values[i]!, rect: l.blocks.get(`row${i}`) })).filter((x) => x.rect);
   // Labels end and values start 4 px from the centre line: the plate is as wide as the longer side, twice.
   const half = 4 + Math.max(...rows.flatMap((x) => [measureText(x.label), measureText(x.value)]));
   const top = rows[0]!.rect!.y;

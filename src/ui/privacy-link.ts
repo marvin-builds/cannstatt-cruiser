@@ -8,13 +8,18 @@
  * retried on the following gesture; a press whose release never comes is
  * forgotten after PRIVACY_PENDING_SECONDS.
  */
-import { measureText } from '../core/font';
+import { type Lang, language, widestText } from './i18n';
 
 /** The privacy page, a Vite input next to index.html, relative to the game's URL. */
 export const PRIVACY_PAGE = 'datenschutz.html';
-export const PRIVACY_LABEL = 'Datenschutz';
-/** The link button: the label at scale 1 plus the button's padding. */
-export const PRIVACY_LINK_W = measureText(PRIVACY_LABEL, 1) + 12;
+
+/** The privacy page in `lang`: its English section is `#en`, German the default. */
+export function privacyPage(lang: Lang): string {
+  return lang === 'en' ? `${PRIVACY_PAGE}#en` : PRIVACY_PAGE;
+}
+
+/** The link button: the label at scale 1 in its longest language plus the button's padding. */
+export const PRIVACY_LINK_W = widestText((t) => t.privacy.label) + 12;
 /** Space between the statistics switch and the link. */
 export const PRIVACY_LINK_GAP = 4;
 /** How long a press waits for its release gesture. */
@@ -39,7 +44,7 @@ export class PrivacyLink {
     if (this.pending <= 0 || !this.open) return;
     let opened = false;
     try {
-      opened = this.open(PRIVACY_PAGE);
+      opened = this.open(privacyPage(language()));
     } catch {
       // A blocked popup must never break the game; the next gesture retries.
     }

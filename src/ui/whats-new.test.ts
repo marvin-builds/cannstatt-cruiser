@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { ChangelogEntry, Rect } from '../types';
 import { hudButtons, uiMetrics } from './layout';
 import type { MenuInput } from './menu-layout';
-import { clampScroll, versionHeading, whatsNewLayout, whatsNewRows } from './whats-new';
+import { setLanguage } from './i18n';
+import { clampScroll, entryLines, versionHeading, whatsNewLayout, whatsNewRows } from './whats-new';
+
+afterEach(() => setLanguage('de'));
 
 const entry = (version: string, ...items: string[]): ChangelogEntry => ({ version, date: version.slice(0, 10), items });
 const LONG = 'Gefangene Sachen benutzen (E / Knopf) xx';
@@ -44,6 +47,21 @@ describe("what's new rows", () => {
 
   it('names the version with its German date and build number', () => {
     expect(versionHeading('2026-10-09.2')).toBe('Version vom 9.10.2026 (Nr. 2)');
+  });
+
+  it('names the version in English while English is on (ROADMAP 71)', () => {
+    setLanguage('en');
+    expect(versionHeading('2026-10-09.2')).toBe('Version of Oct 9, 2026 (no. 2)');
+  });
+
+  it("shows an entry's English lines in English, its German items otherwise and for entries without English", () => {
+    const both: ChangelogEntry = { ...entry('2026-10-09.2', 'Neu A', 'Neu B'), en: ['New A', 'New B'] };
+    const old = entry('2026-10-08.1', 'Alt C');
+    expect(entryLines(both)).toEqual(['Neu A', 'Neu B']);
+    setLanguage('en');
+    expect(entryLines(both)).toEqual(['New A', 'New B']);
+    expect(entryLines(old)).toEqual(['Alt C']);
+    expect(whatsNewRows([both, old], 300, 1).filter((r) => r.kind === 'item').map((r) => r.text)).toEqual(['New A', 'New B', 'Alt C']);
   });
 
   it('wraps an item too wide for the list at the text scale; the rest of it is indented without a bullet', () => {
