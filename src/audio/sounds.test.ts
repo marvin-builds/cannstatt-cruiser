@@ -310,3 +310,43 @@ describe('sounds: NorDIY park', () => {
     expect((both + duckedTraffic) * MASTER_GAIN).toBeLessThanOrEqual(0.9);
   });
 });
+
+describe('sounds: missions', () => {
+  const end = (cue: Cue) => Math.max(...SOUNDS[cue].map((v) => v.at + v.dur));
+  /** The square melody notes of a cue in time order (the tune you hear). */
+  const melody = (cue: Cue) =>
+    SOUNDS[cue]
+      .filter((v) => v.wave === 'square')
+      .sort((a, b) => a.at - b.at)
+      .map((v) => v.freq);
+
+  it('ends a mission with a rising 3-4 note arpeggio', () => {
+    const tune = melody('missionDone');
+    expect(tune.length).toBeGreaterThanOrEqual(3);
+    expect(tune.length).toBeLessThanOrEqual(4);
+    for (let i = 1; i < tune.length; i++) expect(tune[i]!).toBeGreaterThan(tune[i - 1]!);
+    expect(end('missionDone')).toBeLessThanOrEqual(1);
+  });
+
+  it('gives the mission jingle its own melody, unlike the star, trick, stunt and kickflip sounds', () => {
+    const tune = (cue: Cue) => melody(cue).map(Math.round).join();
+    for (const other of ['star', 'cleared', 'trick', 'stuntFanfare', 'airTrick', 'airTrickBig', 'heart'] as const) {
+      expect(tune('missionDone')).not.toBe(tune(other));
+    }
+  });
+
+  it('starts a mission with one soft, short ding, quieter than the jingle', () => {
+    const tones = new Set(SOUNDS.missionStart.map((v) => v.at));
+    expect(tones.size).toBe(1);
+    expect(end('missionStart')).toBeLessThanOrEqual(0.6);
+    expect(summedPeak([{ cue: 'missionStart' }])).toBeLessThan(summedPeak([{ cue: 'missionDone' }]));
+  });
+
+  it('keeps the jingle on top of a finished line, a star and a ledge grind under the clipping level', () => {
+    const level = summedPeak([{ cue: 'missionDone' }, { cue: 'stuntFanfare' }, { cue: 'star' }, { cue: 'land' }]);
+    const { noise, hiss, drone } = TRAFFIC_RUMBLE;
+    const duckedTraffic = (noise.gain + hiss.gain + drone.gain + drone.throbDepth) * TRAFFIC.duckTo;
+    const grind = GRIND.noise.gain + GRIND.buzz.gain;
+    expect((level + grind + duckedTraffic) * MASTER_GAIN).toBeLessThanOrEqual(0.9);
+  });
+});

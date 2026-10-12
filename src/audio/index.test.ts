@@ -1157,3 +1157,39 @@ describe('audio system: NorDIY park', () => {
     expect(cues()).toEqual(['highFive', 'cheerSmall', 'cheerBig', 'sessionRoar', 'fingerWhistle']);
   });
 });
+
+describe('audio system: missions', () => {
+  function listening() {
+    const backend = new FakeBackend();
+    const heard: [string, boolean][] = [];
+    const game = new Game({
+      systems: [createAudioSystem({ backend, store: createStore(null), onSound: (name, muted) => heard.push([name, muted]) })],
+    });
+    game.commands.startRun();
+    return { game, backend, heard };
+  }
+
+  it('plays a soft ding when a mission starts', () => {
+    const { game, backend } = listening();
+    game.bus.emit('missionStart', { kind: 'stomp', goal: 3 });
+    expect(backend.played.map((p) => p.cue)).toEqual(['missionStart']);
+  });
+
+  it('plays the mission jingle when a mission is done', () => {
+    const { game, backend } = listening();
+    game.bus.emit('missionDone', { kind: 'grind', goal: 3, points: 200 });
+    expect(backend.played.map((p) => p.cue)).toEqual(['missionDone']);
+  });
+
+  it('keeps both mission sounds inaudible while muted', () => {
+    const { game, backend, heard } = listening();
+    game.commands.setMuted(true);
+    game.bus.emit('missionStart', { kind: 'stars', goal: 5 });
+    game.bus.emit('missionDone', { kind: 'stars', goal: 5, points: 150 });
+    expect(heard).toEqual([
+      ['missionStart', true],
+      ['missionDone', true],
+    ]);
+    expect(backend.muted).toBe(true);
+  });
+});
