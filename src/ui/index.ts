@@ -334,17 +334,12 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.install.runStarted();
       view.banner.show(zoneName(state.zoneIndex));
     });
-    bus.on('obstacleCleared', (e) => feed.cleared(e.entityId, e.points));
-    bus.on('stomp', (e) => feed.stomp(e.entityId));
+    feed.listen(bus);
     bus.on('crash', (e) => feed.crash(e.kind === 'bail' ? bailCause(state) : null));
-    bus.on('scoreChanged', (e) => feed.scoreChanged(e.delta, e.multiplier));
     bus.on('itemUsed', (e) => {
       feed.itemUsed(e.action);
       view.itemHint.hide();
     });
-    bus.on('healthGained', () => feed.healthGained());
-    bus.on('ballHit', (e) => feed.ballHit(e.entityId));
-    bus.on('ballBack', () => feed.ballBack());
     bus.on('grindTrick', (e) => {
       feed.grindTrick(e.points);
       view.trickHint.trickDone();
@@ -379,8 +374,6 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       view.hints.dismiss('highFive');
     });
     bus.on('sessionEnd', (e) => view.stunt.session(e.points));
-    bus.on('starCollected', () => feed.star());
-    bus.on('crowdAhead', (e) => feed.crowdAhead(e.theme));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
       popup(look.text, look.color, true, CATCH_RISE);
@@ -803,7 +796,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     const { state, display } = ctx;
     if (sessionReported || !telemetry || state.mode !== 'title') return;
     sessionReported = true;
-    telemetry.session({ touch: display.touch, portrait: display.portrait, platform: state.install.platform, kid: state.kidMode });
+    telemetry.session({ touch: display.touch, platform: state.install.platform, kid: state.kidMode });
   }
 
   /** What each riding hint wants this tick (reused). */

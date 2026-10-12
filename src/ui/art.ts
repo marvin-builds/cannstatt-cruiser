@@ -247,8 +247,11 @@ export const ICON_FULLSCREEN = new PixelIcon(ICON, [
 `,
 ]);
 
-/** The phone of the rotate screen (ROADMAP 73), upright: a light frame with a speaker and a home button, a skateboard on its teal screen. */
-export const ROTATE_PHONE = sprite({ w: UI.white, m: UI.muted, k: UI.ink, s: UI.teal, y: UI.yellow, r: UI.red, o: UI.orange }, [`
+/**
+ * The phone of the rotate screen (ROADMAP 73), upright: a 1 px muted frame with rounded corners, equal
+ * light bezels above (speaker) and below (home button) the screen, a skateboard on its teal screen.
+ */
+export const ROTATE_PHONE_ROWS = rowsFromString(`
   .mmmmmmmmmmmm.
   mwwwwwwwwwwwwm
   mwwwwkkkkwwwwm
@@ -269,21 +272,25 @@ export const ROTATE_PHONE = sprite({ w: UI.white, m: UI.muted, k: UI.ink, s: UI.
   mwoooooooooowm
   mwwwwwwwwwwwwm
   mwwwwwkkwwwwwm
-  mwwwwwkkwwwwwm
   mwwwwwwwwwwwwm
   .mmmmmmmmmmmm.
-`]);
+`);
+export const ROTATE_PHONE = sprite({ w: UI.white, m: UI.muted, k: UI.ink, s: UI.teal, y: UI.yellow, r: UI.red, o: UI.orange }, [ROTATE_PHONE_ROWS]);
 
-/** The yellow arrow beside it: turn the phone clockwise. */
+/**
+ * The yellow arrow above it: a 2 px arc over the phone, turning clockwise, with a big head pointing down on
+ * the right. As wide as the turning phone's square box, so both share one centre line.
+ */
 export const ROTATE_ARROW = sprite({ y: UI.yellow }, [`
-  ..yyyyy....
-  .yy...yy...
-  yy.....yy..
-  y.......y..
-  y.......y..
-  y.....yyyyy
-  y......yyy.
-  ........y..
+  .......yyyyyyyy.......
+  .....yyyyyyyyyyyy.....
+  ....yyy........yyy....
+  ...yyy..........yyy...
+  ...yy............yy...
+  ...yy.........yyyyyyyy
+  ...yy..........yyyyyy.
+  ................yyyy..
+  .................yy...
 `]);
 
 /** Down arrow on the desktop key cap of the grind trick hint (ink on the light cap face). */

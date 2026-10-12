@@ -12,7 +12,7 @@ import type { Rect, RenderContext } from '../types';
 import { UI } from './art';
 import { centred, fill, menuButton, redDot, scrollBar, text } from './draw-kit';
 import { FEEDBACK_TEXT, type FeedbackFlow } from './feedback-flow';
-import { DOT_ROOM, type FeedbackLayout, feedbackLayout } from './feedback-layout';
+import { DOT, DOT_ROOM, type FeedbackLayout, feedbackLayout, tabDot } from './feedback-layout';
 import { listRowRect, type PageLayout, pageLayout, pageMaxScroll, pageTextRows, pageTitle, rowsHeight, type TextTone } from './feedback-page-layout';
 import { FEEDBACK_PAGE_TEXT, type ReportRow, STATUS_COLOR } from './feedback-pages';
 import { drawDismiss } from './menu-screens';
@@ -25,8 +25,6 @@ const TEXT_LINE = 9;
 /** The log toggle's label lines: glyph height at scale 1 and the unscaled space between lines (as feedbackLayout counts them). */
 const LABEL_GLYPH = 7;
 const LABEL_LEADING = 2;
-/** The red dot's size at scale 1. */
-const DOT = 3;
 
 const TONE_COLOR: Record<Exclude<TextTone, ReportStatus | 'space'>, string> = { label: UI.teal, text: UI.white, muted: UI.muted, log: UI.muted, message: UI.yellow };
 
@@ -71,9 +69,8 @@ function drawTabs(r: RenderContext, flow: FeedbackFlow, newTab: Rect, mineTab: R
     scale,
   });
   if (flow.dot) {
-    const size = DOT * scale;
-    const x = mineTab.x + Math.floor(labelRect.w / 2) + Math.ceil(measureText(FEEDBACK_PAGE_TEXT.mineTab, scale) / 2) + scale;
-    redDot(r, x, mineTab.y + Math.floor((mineTab.h - 7 * scale) / 2), size);
+    const dot = tabDot(mineTab, scale);
+    redDot(r, dot.x, dot.y, dot.w);
   }
 }
 
@@ -96,7 +93,7 @@ function logToggle(r: RenderContext, l: FeedbackLayout, on: boolean, enabled: bo
   const lineH = LABEL_GLYPH * l.logScale + LABEL_LEADING;
   const textY = rect.y + Math.floor((rect.h - l.logLines.length * lineH + LABEL_LEADING) / 2);
   const color = on ? UI.white : enabled ? UI.muted : UI.empty;
-  l.logLines.forEach((line, i) => text(r, line, x + box + 3, textY + i * lineH, { color, scale: l.logScale }));
+  l.logLines.forEach((line, i) => text(r, line, l.logText, textY + i * lineH, { color, scale: l.logScale }));
 }
 
 function drawForm(r: RenderContext, flow: FeedbackFlow, l: FeedbackLayout): void {

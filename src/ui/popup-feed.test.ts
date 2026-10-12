@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import { UI } from './art';
 import { POPUP_MARGIN } from './layout';
-import { STAR_ARC_BONUS, STAR_POINTS } from '../gameplay/star-arcs';
+import { STAR_POINTS } from '../gameplay/star-arcs';
+import { EventBus } from '../core/events';
+import type { GameEvents } from '../types';
 import { bailCause, PopupFeed } from './popup-feed';
 
 const texts = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map((p) => p.text);
@@ -194,24 +196,25 @@ describe('bailCause (ROADMAP 42)', () => {
       expect(specs(feed)).toEqual([{ text: 'Stern!', points: STAR_POINTS * 3 }]);
     });
 
-    it('the arc bonus right after a star\'s points gets its own "Sternenbogen!" popup', () => {
+    it('a starArc event shows "Sternenbogen!" with its points after the star popup', () => {
       const feed = new PopupFeed();
       feed.star();
       feed.scoreChanged(STAR_POINTS * 2, 2);
-      feed.scoreChanged(STAR_ARC_BONUS * 2, 2);
+      feed.scoreChanged(100, 2);
+      feed.starArc(100);
       expect(specs(feed)).toEqual([
         { text: 'Stern!', points: STAR_POINTS * 2 },
-        { text: 'Sternenbogen!', points: STAR_ARC_BONUS * 2 },
+        { text: 'Sternenbogen!', points: 100 },
       ]);
     });
 
-    it('two stars in one tick give two star popups (merged by the pool), other points after a star are no arc', () => {
+    it('score changes after a star are never taken for an arc bonus without a starArc event', () => {
       const feed = new PopupFeed();
       feed.star();
       feed.scoreChanged(STAR_POINTS, 1);
       feed.star();
       feed.scoreChanged(STAR_POINTS, 1);
-      feed.scoreChanged(120, 1);
+      feed.scoreChanged(50, 1);
       expect(specs(feed)).toEqual([
         { text: 'Stern!', points: STAR_POINTS },
         { text: 'Stern!', points: STAR_POINTS },
@@ -222,8 +225,23 @@ describe('bailCause (ROADMAP 42)', () => {
       const feed = new PopupFeed();
       feed.star();
       feed.scoreChanged(STAR_POINTS, 1);
-      feed.scoreChanged(STAR_ARC_BONUS, 1);
+      feed.scoreChanged(50, 1);
+      feed.starArc(50);
       expect(specs(feed, true).map((p) => p.text)).toEqual(['Stern!', 'Sternenbogen!']);
+    });
+
+    it('listens to the bus: starCollected, scoreChanged and starArc as gameplay emits them', () => {
+      const bus = new EventBus<GameEvents>();
+      const feed = new PopupFeed();
+      feed.listen(bus);
+      bus.emit('starCollected', { entityId: 4, stars: 1 });
+      bus.emit('scoreChanged', { score: 30, delta: 30, combo: 3, multiplier: 3 });
+      bus.emit('scoreChanged', { score: 180, delta: 150, combo: 3, multiplier: 3 });
+      bus.emit('starArc', { stars: 5, points: 150 });
+      expect(specs(feed)).toEqual([
+        { text: 'Stern!', points: 30 },
+        { text: 'Sternenbogen!', points: 150 },
+      ]);
     });
 
     it('other popups carry no points to sum', () => {

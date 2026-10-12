@@ -1068,7 +1068,7 @@ describe('anonymous statistics', () => {
     const t = withTelemetry({ kidMode: true, touch: true, portrait: true });
     t.game.state.install.platform = 'ios';
     t.ticks(3);
-    expect(t.calls).toEqual([{ kind: 'session', args: [{ touch: true, portrait: true, platform: 'ios', kid: true }] }]);
+    expect(t.calls).toEqual([{ kind: 'session', args: [{ touch: true, platform: 'ios', kid: true }] }]);
     t.game.commands.startRun();
     t.ticks(2);
     t.game.commands.toTitle();

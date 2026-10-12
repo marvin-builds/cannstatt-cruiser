@@ -146,7 +146,7 @@ export interface ReportDetail {
 }
 
 export function reportDetail(r: KeptReport): ReportDetail {
-  const log = r.kind === 'idea' ? [] : [r.log.length > 0 ? `Fehlerprotokoll (${r.log.length} Zeilen)` : 'ohne Fehlerprotokoll'];
+  const log = r.kind === 'idea' ? [] : [r.log.length > 0 ? `Fehlerprotokoll (${r.log.length} ${r.log.length === 1 ? 'Zeile' : 'Zeilen'})` : 'ohne Fehlerprotokoll'];
   return {
     status: r.status,
     headline: r.doneVersion && r.status === 'done' ? `${STATUS_LABEL[r.status]} in Version ${r.doneVersion}` : STATUS_LABEL[r.status],

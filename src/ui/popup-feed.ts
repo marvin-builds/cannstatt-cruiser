@@ -7,13 +7,12 @@
  * A full kickflip gets the big stunt callout instead (stunt-callout.ts); a
  * reduced one (ROADMAP 41) only a plain popup here. A star (ROADMAP 65)
  * shows "Stern!" with the points of the score change gameplay emits right
- * after it, and an arc bonus right after those its own "Sternenbogen!"
+ * after it, and a whole arc (`starArc`) its own "Sternenbogen! +points"
  * (gameplay/star-arcs.ts); the pool sums star points of quick repeats.
  * A fan crowd coming on screen (ROADMAP 76) shows "VfB-Fans!" or "Wasen!".
  */
-import { STAR_ARC_BONUS } from '../gameplay/star-arcs';
 import type { CrowdTheme } from '../gameplay/crowd-tag';
-import type { GameState, ItemAction } from '../types';
+import type { GameBus, GameState, ItemAction } from '../types';
 import { UI } from './art';
 import { plusPoints } from './layout';
 
@@ -46,6 +45,7 @@ type Entry =
   | { kind: 'used'; action: ItemAction }
   | { kind: 'score'; delta: number; multiplier: number }
   | { kind: 'star' }
+  | { kind: 'starArc'; points: number }
   | { kind: 'healthGained' | 'ballBack' }
   | { kind: 'crash'; bail: BailCause | null }
   | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number }
@@ -61,6 +61,22 @@ const NONE: readonly PopupSpec[] = [];
 
 export class PopupFeed {
   private entries: Entry[] = [];
+
+  /**
+   * Collects the events that only feed popups. Events with more to them (crash, item use, tricks,
+   * high fives) are wired by the ui system, which calls the methods below.
+   */
+  listen(bus: GameBus): void {
+    bus.on('obstacleCleared', (e) => this.cleared(e.entityId, e.points));
+    bus.on('stomp', (e) => this.stomp(e.entityId));
+    bus.on('scoreChanged', (e) => this.scoreChanged(e.delta, e.multiplier));
+    bus.on('healthGained', () => this.healthGained());
+    bus.on('ballHit', (e) => this.ballHit(e.entityId));
+    bus.on('ballBack', () => this.ballBack());
+    bus.on('starCollected', () => this.star());
+    bus.on('starArc', (e) => this.starArc(e.points));
+    bus.on('crowdAhead', (e) => this.crowdAhead(e.theme));
+  }
 
   /** Drops everything collected (a new run starts). */
   clear(): void {
@@ -93,6 +109,11 @@ export class PopupFeed {
 
   star(): void {
     this.entries.push({ kind: 'star' });
+  }
+
+  /** Every star of an arc taken in one flight; `points` is the bonus gameplay added. */
+  starArc(points: number): void {
+    this.entries.push({ kind: 'starArc', points });
   }
 
   ballBack(): void {
@@ -165,8 +186,14 @@ export class PopupFeed {
         case 'reducedKickflip':
           add(`Kickflip ${plusPoints(e.points)}`, UI.palePink);
           break;
-        case 'star':
-          addStar(out, entries[i + 1], entries[i + 2]);
+        case 'star': {
+          const own = entries[i + 1];
+          const points = own?.kind === 'score' ? own.delta : 0;
+          out.push(points > 0 ? { text: 'Stern!', color: UI.yellow, icon: null, points } : { text: 'Stern!', color: UI.yellow, icon: null });
+          break;
+        }
+        case 'starArc':
+          out.push({ text: 'Sternenbogen!', color: UI.orange, icon: null, points: e.points });
           break;
         case 'crowd':
           add(CROWD_TEXT[e.theme], e.theme === 'vfb' ? UI.white : UI.orange);
@@ -180,13 +207,4 @@ export class PopupFeed {
 /** The bonus points of a score change right next to an eat (full health). */
 function bonus(e: Entry | undefined): string | null {
   return e?.kind === 'score' && e.delta > 0 ? plusPoints(e.delta) : null;
-}
-
-/** "Stern!" with the points of the star's score change (`own`), and "Sternenbogen!" when the arc bonus follows it (`next`). */
-function addStar(out: PopupSpec[], own: Entry | undefined, next: Entry | undefined): void {
-  const points = own?.kind === 'score' ? own.delta : 0;
-  out.push(points > 0 ? { text: 'Stern!', color: UI.yellow, icon: null, points } : { text: 'Stern!', color: UI.yellow, icon: null });
-  if (own?.kind === 'score' && next?.kind === 'score' && next.delta === STAR_ARC_BONUS * next.multiplier) {
-    out.push({ text: 'Sternenbogen!', color: UI.orange, icon: null, points: next.delta });
-  }
 }

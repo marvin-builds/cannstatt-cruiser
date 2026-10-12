@@ -8,7 +8,9 @@
  * the text field fills the middle with the hint (or status) line and the
  * character counter under it; "Fehlerprotokoll mitsenden" and "Ansehen" sit
  * side by side, in the bottom row left of "Senden" or on their own row above
- * it (then the kinds move beside "Senden" when the top row had no room). Every
+ * it (then the kinds move beside "Senden" when the top row had no room); on the
+ * narrowest phones the whole log label takes its row alone and "Ansehen" moves
+ * left of "Senden" too, before the label is shortened. Every
  * button is a menu button high (44 view px in portrait, where the sheet of
  * feedback-sheet.ts shows instead).
  */
@@ -49,10 +51,11 @@ export interface FeedbackLayout {
   send: Rect;
   /** Font scale of the tab, kind, view and send labels. */
   labelScale: number;
-  /** The log toggle's label lines, their scale and its box size. */
+  /** The log toggle's label lines, their scale, its box size and the label's left edge. */
   logLines: readonly string[];
   logScale: number;
   logBox: number;
+  logText: number;
 }
 
 /** The widest form: wider would not read better. */
@@ -62,8 +65,11 @@ const SIDE = 4;
 const GAP = 4;
 const BUTTON_PAD = 6;
 /** Room after the "Mein Feedback" label for the red dot (px at label scale 1). */
-export const DOT_ROOM = 5;
-/** The log toggle's check box (px at label scale 1; doubled with the label) and the space after it. */
+export const DOT_ROOM = 6;
+/** The red dot's size and its gap after a label (px at scale 1). */
+export const DOT = 3;
+const DOT_GAP = 2;
+/** The log toggle's check box and the space after it (px at label scale 1; doubled with the label). */
 const BOX = 7;
 const BOX_GAP = 3;
 /** Font cell height at scale 1 and the space between rows. */
@@ -75,7 +81,7 @@ const COUNTER_MAX = `${MAX_FEEDBACK_TEXT}/${MAX_FEEDBACK_TEXT}`;
 export const labelW = (label: string, scale: number, m: UiMetrics) => Math.max(m.menuButtonH, measureText(label, scale) + 2 * BUTTON_PAD);
 const linesW = (lines: readonly string[], scale: number) => Math.max(...lines.map((s) => measureText(s, scale)));
 const logW = (lines: readonly string[], scale: number, m: UiMetrics) =>
-  Math.max(m.menuButtonH, BOX * scale + BOX_GAP + linesW(lines, scale) + 2 * BUTTON_PAD);
+  Math.max(m.menuButtonH, (BOX + BOX_GAP) * scale + linesW(lines, scale) + 2 * BUTTON_PAD);
 
 /** The column of the dialog's pages: x, width and the top / bottom of its rows. */
 export interface DialogColumn {
@@ -109,24 +115,39 @@ export function tabRects(c: DialogColumn, scale: number): { newTab: Rect; mineTa
   return { newTab, mineTab: { x: newTab.x + newTab.w + 2, y: c.top, w: mineW, h: c.h } };
 }
 
+/** The red dot after the "Mein Feedback" label of tab `mineTab` (label `scale`), clear of the label and the border. */
+export function tabDot(mineTab: Rect, scale: number): Rect {
+  const labelRight = mineTab.x + Math.floor((mineTab.w - DOT_ROOM * scale) / 2) + Math.ceil(measureText(FEEDBACK_PAGE_TEXT.mineTab, scale) / 2);
+  return { x: labelRight + DOT_GAP * scale, y: mineTab.y + Math.floor((mineTab.h - GLYPH_H * scale) / 2), w: DOT * scale, h: DOT * scale };
+}
+
 /** How the log toggle reads and where it goes. */
 interface LogPlacement {
   lines: readonly string[];
   scale: number;
   /** On its own row above the bottom row (else in the bottom row, at the left). */
   ownRow: boolean;
+  /** "Ansehen" in the bottom row left of "Senden" (else right of the log toggle). */
+  viewBySend: boolean;
 }
 
 /**
- * The log label (with "Ansehen" beside it): in the bottom row left of "Senden" where the long or
- * short label fits, else on its own row (long, then short), else small on its own row.
+ * The log label (with "Ansehen" beside it): the whole label in the bottom row left of "Senden", else on
+ * its own row with "Ansehen", else alone on its row with "Ansehen" moved left of "Senden" (where the
+ * bottom row has room, `bottomFree` px left of "Senden"); only then the short label (bottom row, own
+ * row), and last the whole label small on its own row.
  */
-function placeLog(scale: number, c: DialogColumn, viewW: number, sendW: number): LogPlacement {
-  const options = [[FEEDBACK_TEXT.log], [FEEDBACK_TEXT.logShort]];
+function placeLog(scale: number, c: DialogColumn, viewW: number, sendW: number, bottomFree: number): LogPlacement {
   const groupW = (lines: readonly string[], s: number) => logW(lines, s, c.m) + GAP + viewW;
-  for (const lines of options) if (groupW(lines, scale) + GAP + sendW <= c.w) return { lines, scale, ownRow: false };
-  for (const lines of options) if (groupW(lines, scale) <= c.w) return { lines, scale, ownRow: true };
-  return { lines: options[0]!, scale: 1, ownRow: true };
+  const full = [FEEDBACK_TEXT.log];
+  const short = [FEEDBACK_TEXT.logShort];
+  const place = (lines: string[], s: number, ownRow: boolean, viewBySend = false) => ({ lines, scale: s, ownRow, viewBySend });
+  if (groupW(full, scale) + GAP + sendW <= c.w) return place(full, scale, false);
+  if (groupW(full, scale) <= c.w) return place(full, scale, true);
+  if (logW(full, scale, c.m) <= c.w && viewW + GAP <= bottomFree) return place(full, scale, true, true);
+  if (groupW(short, scale) + GAP + sendW <= c.w) return place(short, scale, false);
+  if (groupW(short, scale) <= c.w) return place(short, scale, true);
+  return place(full, 1, true);
 }
 
 export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
@@ -141,16 +162,18 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
   const kindsW = bugW + 2 + ideaW;
   const viewW = labelW(FEEDBACK_PAGE_TEXT.view, labelScale, m);
   const sendW = labelW(FEEDBACK_TEXT.send, labelScale, m);
-  const logPlace = placeLog(labelScale, c, viewW, sendW);
-
   const rowY = bottom - h;
   const send: Rect = { x: right - sendW, y: rowY, w: sendW, h };
-  const logY = logPlace.ownRow ? rowY - GAP - h : rowY;
-  const log: Rect = { x, y: logY, w: logW(logPlace.lines, logPlace.scale, m), h };
-  const view: Rect = { x: log.x + log.w + GAP, y: logY, w: viewW, h };
   // The kinds: in the top row where they fit, else beside "Senden" when the log has its own row, else on a row of their own.
   const inTop = mineTab.x + mineTab.w + GAP + kindsW + GAP <= close.x;
-  const besideSend = !inTop && logPlace.ownRow && x + kindsW + GAP <= send.x;
+  const kindsFit = x + kindsW + GAP <= send.x;
+  // Room left of "Senden" for "Ansehen", after the kinds when they come down there too.
+  const bottomFree = send.x - x - (inTop || !kindsFit ? 0 : kindsW + GAP);
+  const logPlace = placeLog(labelScale, c, viewW, sendW, bottomFree);
+  const logY = logPlace.ownRow ? rowY - GAP - h : rowY;
+  const log: Rect = { x, y: logY, w: logW(logPlace.lines, logPlace.scale, m), h };
+  const view: Rect = logPlace.viewBySend ? { x: send.x - GAP - viewW, y: rowY, w: viewW, h } : { x: log.x + log.w + GAP, y: logY, w: viewW, h };
+  const besideSend = !inTop && logPlace.ownRow && kindsFit;
   const kindsY = inTop ? top : besideSend ? rowY : top + h + ROW_GAP;
   const kindsX = inTop ? close.x - GAP - kindsW : x;
   const bug: Rect = { x: kindsX, y: kindsY, w: bugW, h };
@@ -180,6 +203,7 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
     logLines: logPlace.lines,
     logScale: logPlace.scale,
     logBox: BOX * logPlace.scale,
+    logText: x + BUTTON_PAD + (BOX + BOX_GAP) * logPlace.scale,
   };
 }
 
