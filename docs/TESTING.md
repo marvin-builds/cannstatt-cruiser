@@ -138,7 +138,14 @@ await t.page.route(`${API}/**`, async (route) => {
   `window.__telemetryUrl` to a fake endpoint and logs the `/event` bodies.
 - Feedback never goes out from localhost: `scripts/scenarios/feedback.ts`
   sets `window.__feedbackUrl` to a fake endpoint, routes it and logs the
-  bodies; `window.__ui.feedback()` reports the feedback flow.
+  bodies; `window.__ui.feedback()` reports the feedback flow. It also checks
+  the dialog staying open after sending, a marked test device sending its
+  tester pass, and in portrait a faked 48 px display cutout.
+- Safe area: Chromium cannot fake `env(safe-area-inset-*)`, so the DOM sheets
+  read the custom property `--cc-safe-<side>` (`top`, `right`, `bottom`,
+  `left`) on the root element first:
+  `document.documentElement.style.setProperty('--cc-safe-top', '48px')`
+  fakes a punch-hole camera; remove the property afterwards.
 - The insights board scenario (`scripts/scenarios/insights.ts`) stubs
   `**/stats**` with a fixture and a 401 case and screenshots the board on
   desktop and phone, light and dark.
@@ -259,7 +266,7 @@ g.endRun();                                     // game-over screen now
 | `window.__gameplay.stuntLine(x, seed?)` | places a whole designed stunt line (`stunt-line.ts`) for the current speed and zone with its first kicker at screen x; returns the entity ids (stars included) |
 | `window.__gameplay.stunts()` | the running stunt line `{line, steps, made, multiplier, points}` (points so far, without the line bonus) or null (read-only) |
 | `window.__gameplay.park(offset?, seed?)` / `parkPlan()` | plans the NorDIY park for the current speed with its start `offset` run distance ahead of the skater (default: just beyond the widest view's right edge; `seed` default 1), puts it into `state.park` and lays its kickers, ledges and the `highFiver`, removing what stood there; returns the plan. The speed ramp does not pause for it (pin the speed with `setSpeed`). `parkPlan()` reads `state.park`. Used by `scripts/scenarios/nordiy.ts`, which falls back to riding Bad Cannstatt until the spawner plans a park if the hook is missing |
-| `window.__gameplay.pattern(name, x?, seed?)` | plans the spawn template `name` (`patterns.ts` `PlanOptions.template`, e.g. a combo from `COMBO_NAMES` in `combos.ts`) for the current speed and zone with its origin (where the skater is when it starts, before its run-up; default `PLAYER_X`) at screen x, removes whatever stood right of x, keeps that street free of spawned patterns and returns the entity ids (stars included). `seed` (default 1) picks the layout; throws when nothing fair fits the speed. Used by `scripts/scenarios/combos.ts` |
+| `window.__gameplay.pattern(name, x?, seed?)` | plans the spawn template `name` (`patterns.ts` `PlanOptions.template`, e.g. a combo from `COMBO_NAMES` in `combos.ts`) for the current speed and zone with its origin (where the skater is when it starts, before its run-up; default `PLAYER_X`) at screen x, removes whatever stood right of x, keeps that street free of spawned patterns and returns the entity ids (stars included). `seed` (default 1) picks the layout; throws when nothing fair fits the speed. `'fanCrowd'` lays a fan crowd (`crowd.ts` `planCrowd`, four heads in kid mode). Used by `scripts/scenarios/combos.ts` and `fan-crowd.ts` |
 | `window.__gameplay.clear()` | removes every entity (spawning goes on) |
 | `window.__gameplay.drops()` | snapshot of the [dropped items](ARCHITECTURE.md#dropped-items) (no entities, so `state()` misses them): `[{item, x, y, w, h, lying}]`, the pickup box in screen space and whether it already lies on the street |
 | `window.__world.trafficDensity()` | traffic density as drawn: `LIGHT_TRAFFIC` 0.05 outside Mitte (light traffic, one vehicle at a time), ramping to 1 in Mitte; also on the title and game over (where `state.trafficDensity` is 0) |
@@ -589,10 +596,14 @@ npm run playtest -- --headed
 - `scripts/scenarios/portrait-forms.ts` (ROADMAP 58, touch viewports only):
   the installed app is faked, feedback goes to a fake endpoint and the list
   to a route; the feedback and name entry sheets in portrait (text >= 16 CSS
-  px, buttons >= 48 CSS px), rotating while typing keeps text and focus.
+  px, buttons >= 48 CSS px), rotating while typing keeps text and focus;
+  after "Senden" the sheet stays with the thanks until "Schließen", which
+  shows the settle cover during the turn back to landscape and then the
+  full-size canvas (ROADMAP 75).
 - `scripts/scenarios/insights-triage.ts` (ROADMAP 56, `desktop,phone-portrait`):
   the board against a fake worker route: card actions, the issue editor,
-  "Todo #N", the delete confirm and the status filter.
+  "Geplant #N" (issue and status in one request, with the developer
+  addition), the delete confirm and the status filter.
 - `scripts/scenarios/rotate-screen.ts` (ROADMAP 73, touch viewports only, a
   plain browser tab; feedback and the online list are faked): the full-screen
   overlay at 320x568, 390x844 and a tablet (820x1180), the turning phone and
@@ -605,6 +616,24 @@ npm run playtest -- --headed
   `localStorage` (never the real token, nor in the URL), a reload without
   asking again, "Abmelden", and a rejected session (key rotated), an expired
   one and an unticked sign-in all leaving nothing stored.
+- `scripts/scenarios/insights-tester-pass.ts` (ROADMAP 75, `desktop,phone-portrait`):
+  against a fake worker route, the first unlock marks the device and stores a
+  pass under `cannstatt-cruiser:testerPass` (a plain JSON string, as the game
+  reads it); switching "Dieses Gerät ist ein Testgerät" off drops it, on
+  fetches a new one; a worker without `BOARD_SESSION_KEY` (503) leaves a note
+  and no pass; the real token is never stored.
+- `scripts/scenarios/back-navigation.ts` (ROADMAP 75, all three viewports;
+  feedback to a fake endpoint, the online list routed): Android back through
+  `page.goBack()`: feedback details -> "Mein Feedback" -> closed -> title; a
+  run pauses, the pause screen stays, "Zum Startbildschirm" drops the entry;
+  settings and game over go to the title; the history never grows by more
+  than one entry (back on the title is not pressed: it would leave the page).
+- `scripts/scenarios/fan-crowd.ts` (ROADMAP 76, `desktop,phone-landscape`):
+  a VfB and a Wasen crowd laid with `__gameplay.pattern('fanCrowd', x, seed)`
+  in Bad Cannstatt at a pinned 150 px/s, an overview shot, then crossed head
+  to head by the HumanBot (plans with stomps while a crowd is ahead): at
+  least two stomps, no crash, back on the street, no beer; then the kid mode
+  row (four heads) and a plain jump into a crowd (a crash).
 
 - `scripts/scenarios/ramp-only.ts` (ROADMAP 61/62, `desktop,phone-landscape`):
   a street jump passes in front of a stunt ledge and a park container without
@@ -628,7 +657,8 @@ npm run playtest -- --headed
   and keys in the body, never the URL): the red dot on the title and the pause
   menu, "Neu" with "Ansehen", "Das wird gesendet" (the online list is routed
   to a 503 so the log has a line; `feedback.ts` and `portrait-forms.ts` do the
-  same), "Senden" posting exactly that snapshot, the list with every status,
+  same), "Senden" posting exactly that snapshot (the dialog then stays open
+  on "Mein Feedback" with the thanks), the list with every status,
   a detail with reply and version, the empty state, nothing in kid mode.
 
 - `scripts/scenarios/duck-swipe.ts` (ROADMAP 66, `phone-landscape`): sign
