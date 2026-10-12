@@ -730,14 +730,14 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   }
 
   /**
-   * Frees portrait while the feedback form or the name entry takes text, after any path that opened or
-   * closed them this tick; the portrait feedback sheet keeps it until it is closed. Closing one in
+   * Frees portrait while the feedback dialog is open (on any of its pages, ticket #6) or the name entry
+   * takes text, after any path that opened or closed them this tick. Closing one in
    * portrait (ROADMAP 75) first drops the keyboard, then (with the keyboard up or a turn to landscape
    * ahead) covers the screen until the view settled, and only then locks landscape again, so no
    * half-sized frame shows while the app turns.
    */
   function updateOrientation(ctx: GameContext): void {
-    const typing = !!dialog?.typing(ctx) || flow?.screen === 'entry';
+    const typing = !!dialog?.typing() || flow?.screen === 'entry';
     if (wasTyping && !typing && ctx.display.portrait) {
       const keyboard = !!dialog?.isFocused() || entrySurface.isFocused();
       dialog?.blur();

@@ -7,8 +7,8 @@
  * the own reports when the title shows (adult mode only). index.ts creates it
  * when there is a feedback sender and calls it every tick.
  *
- * Keys on the canvas: Esc goes back a page or closes; on the form other keys
- * type into the field; on the list
+ * Keys on the canvas: Esc goes back a page (from "Wirklich löschen?" to the
+ * report) or closes; on the form other keys type into the field; on the list
  * and the text pages the arrow keys (and W / S), Page Up / Down, Home and End
  * scroll. M always mutes.
  */
@@ -80,6 +80,8 @@ export class FeedbackDialog {
         onTab: (tab) => this.showTab(tab),
         onOpenReport: (id) => flow.openReport(id),
         onSentLog: () => flow.openSentLog(),
+        onDelete: () => flow.askDelete(),
+        onConfirmDelete: () => void flow.confirmDelete(),
         onBack: () => this.back(),
         onClose: () => flow.close(),
       }) ?? null;
@@ -125,10 +127,12 @@ export class FeedbackDialog {
     this.surface.blur();
   }
 
-  /** The player takes text now (the form shows, or the portrait sheet, which stays until closed): portrait stays free. */
-  typing(ctx: GameContext): boolean {
-    const { flow } = this;
-    return flow.open && (this.onSheet(ctx) || flow.page === 'form');
+  /**
+   * Portrait stays free while the dialog is open, on every page (ticket #6): each page has its
+   * portrait sheet, so a turn on "Mein Feedback" or a report goes there and back like on "Neu".
+   */
+  typing(): boolean {
+    return this.flow.open;
   }
 
   /** Every tick, first: the dialog closes as soon as the screen it was opened on is gone (any path out of title or pause), so all ui comes back. */
@@ -177,8 +181,8 @@ export class FeedbackDialog {
 
   /** The canvas list or text page's layout while it shows, else null. */
   private canvasPage(ctx: GameContext): PageLayout | null {
-    const { page, thanks } = this.flow;
-    return this.shown() && !this.onSheet(ctx) && page !== 'form' ? pageLayout(ctx.display, page, thanks) : null;
+    const { page, listNote } = this.flow;
+    return this.shown() && !this.onSheet(ctx) && page !== 'form' ? pageLayout(ctx.display, page, listNote) : null;
   }
 
   /** The native textarea over the canvas form's field, or the portrait sheet, else both hidden; a pending desktop focus goes to the one shown. */
@@ -220,7 +224,7 @@ export class FeedbackDialog {
     else if (flow.page === 'form') this.surface.focus();
     else if (this.onSheet(ctx)) this.sheet!.scrollKey(code);
     else {
-      const page = this.canvasPage(ctx) ?? pageLayout(ctx.display, flow.page, flow.thanks);
+      const page = this.canvasPage(ctx) ?? pageLayout(ctx.display, flow.page, flow.listNote);
       this.keyScroll = scrollDirection(code);
       const jump = pageScroll(code, { rect: page.content });
       if (this.keyScroll !== 0) flow.scrollBy(this.keyScroll * 9 * page.scale);
@@ -266,6 +270,9 @@ export class FeedbackDialog {
     add(page((l) => l.close), () => flow.close());
     add(page((l) => l.back), () => this.back());
     add(page((l) => l.view), () => flow.openSentLog());
+    add(page((l) => l.del), () => flow.askDelete());
+    add(page((l) => l.no), () => this.back());
+    add(page((l) => l.yes), () => void flow.confirmDelete());
     // A list row opens its report when let go, unless the list was dragged meanwhile.
     for (let i = 0; i < MAX_STATUS_ITEMS; i++) {
       const rect = page((l) => (flow.page === 'list' && i < flow.rows.length ? listRowRect(l, i, flow.scroll) : null));

@@ -30,6 +30,14 @@ export const FEEDBACK_PAGE_TEXT = {
   notIncluded: 'Nicht dabei: Name, IP-Adresse, Geräte-ID, Highscores, deine Eingaben im Spiel.',
   testerPass: 'Testerpass',
   testerPassSent: 'Wird mitgesendet (Testgerät, ohne Tageslimit)',
+  delete: 'Löschen',
+  confirmTitle: 'Wirklich löschen?',
+  confirmHint: 'Dein Feedback ist dann ganz weg.',
+  confirmYes: 'Ja, löschen',
+  cancel: 'Abbrechen',
+  deleting: 'Wird gelöscht ...',
+  deleted: 'Feedback gelöscht',
+  deleteFailed: 'Ging leider nicht. Später nochmal.',
 } as const;
 
 export const STATUS_LABEL: Record<ReportStatus, string> = {

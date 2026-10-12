@@ -7,7 +7,8 @@
  * message, and exactly that snapshot is what "Senden" sends while the draft
  * is unchanged) and the answer of the last send. "Mein Feedback" lists the
  * reports sent from this device (the inbox, src/net/feedback-status.ts): a row
- * opens its details, whose "Ansehen" shows what was sent. Opening that tab
+ * opens its details, whose "Ansehen" shows what was sent and whose "Löschen"
+ * asks "Wirklich löschen?" before the report is deleted (ROADMAP 78). Opening that tab
  * marks every change as seen (the red dot) while the rows that changed keep
  * their dot as long as the dialog shows. Opened from the pause menu and the
  * title's speech-bubble icon (adult mode). A draft is kept in memory for this
@@ -17,17 +18,19 @@
  */
 import type { FeedbackContext, FeedbackSenderLike } from '../net/feedback';
 import type { KeptReport } from '../net/feedback-reports';
-import type { FeedbackInboxLike } from '../net/feedback-status';
+import type { FeedbackDeleteResult, FeedbackInboxLike } from '../net/feedback-status';
 import { type FeedbackBody, type FeedbackKind, MAX_FEEDBACK_TEXT, MIN_FEEDBACK_TEXT } from '../net/feedback-types';
-import { type PageSection, previewSections, type ReportDetail, reportDetail, type ReportRow, reportRows } from './feedback-pages';
+import { FEEDBACK_PAGE_TEXT, type PageSection, previewSections, type ReportDetail, reportDetail, type ReportRow, reportRows } from './feedback-pages';
 
 export type FeedbackStatus = 'idle' | 'short' | 'sending' | 'sent' | 'rate' | 'offline' | 'invalid';
 export type FeedbackTab = 'new' | 'mine';
-/** form / preview ("Ansehen") on "Neu"; list / detail / sent (a report's "Ansehen") on "Mein Feedback". */
-export type FeedbackPage = 'form' | 'preview' | 'list' | 'detail' | 'sent';
+/** form / preview ("Ansehen") on "Neu"; list / detail / sent (a report's "Ansehen") / confirm ("Wirklich löschen?") on "Mein Feedback". */
+export type FeedbackPage = 'form' | 'preview' | 'list' | 'detail' | 'sent' | 'confirm';
+/** A delete: none asked yet, under way, or why the last one failed. */
+export type DeleteState = 'idle' | 'deleting' | Exclude<FeedbackDeleteResult, 'deleted'>;
 
 /** Where "Zurück" leads from each page (none from the tabs' first pages). */
-const BACK: Record<FeedbackPage, FeedbackPage | null> = { form: null, preview: 'form', list: null, detail: 'list', sent: 'detail' };
+const BACK: Record<FeedbackPage, FeedbackPage | null> = { form: null, preview: 'form', list: null, detail: 'list', sent: 'detail', confirm: 'detail' };
 
 /** All texts of the screen (German, kid-safe, game font). */
 export const FEEDBACK_TEXT = {
@@ -59,6 +62,13 @@ const MESSAGES: Record<FeedbackStatus, string | null> = {
   invalid: FEEDBACK_TEXT.invalid,
 };
 
+const DELETE_MESSAGES: Record<DeleteState, string | null> = {
+  idle: null,
+  deleting: FEEDBACK_PAGE_TEXT.deleting,
+  offline: FEEDBACK_TEXT.offline,
+  failed: FEEDBACK_PAGE_TEXT.deleteFailed,
+};
+
 export class FeedbackFlow {
   open = false;
   kind: FeedbackKind = 'bug';
@@ -68,6 +78,7 @@ export class FeedbackFlow {
   status: FeedbackStatus = 'idle';
   tab: FeedbackTab = 'new';
   page: FeedbackPage = 'form';
+  deleteState: DeleteState = 'idle';
   /** The open page's scroll offset in view px (the canvas pages; the portrait sheet scrolls natively). */
   scroll = 0;
   /** The report whose details show. */
@@ -76,6 +87,8 @@ export class FeedbackFlow {
   private marked: number[] = [];
   /** The report the last send added to the inbox (highlighted while the thanks shows), or null. */
   private fresh: number | null = null;
+  /** A report was just deleted: the list says so until the player moves on. */
+  private deleted = false;
   /** The "Ansehen" snapshot and the draft it was taken from. */
   private snapshot: { body: FeedbackBody; draft: string } | null = null;
 
@@ -91,6 +104,16 @@ export class FeedbackFlow {
   /** Just sent: "Mein Feedback" thanks the player (until they leave the list's tab or close). */
   get thanks(): boolean {
     return this.status === 'sent';
+  }
+
+  /** The line over the "Mein Feedback" rows: "Feedback gelöscht" right after a delete, else the thanks after sending, else none. */
+  get listNote(): string | null {
+    return this.deleted ? FEEDBACK_PAGE_TEXT.deleted : this.thanks ? FEEDBACK_TEXT.sent : null;
+  }
+
+  /** The line of the confirm page: deleting, or why the last try failed; null before the first try. */
+  get deleteMessage(): string | null {
+    return DELETE_MESSAGES[this.deleteState];
   }
 
   /** The log box shows for bug reports only. */
@@ -158,7 +181,7 @@ export class FeedbackFlow {
   }
 
   close(): void {
-    if (!this.sending) this.open = false;
+    if (!this.sending && this.deleteState !== 'deleting') this.open = false;
   }
 
   /**
@@ -198,8 +221,29 @@ export class FeedbackFlow {
     if (this.page === 'detail' && this.report) this.go('mine', 'sent');
   }
 
-  /** "Zurück" (and Esc): the page before, or false on a tab's first page. */
+  /** "Löschen" on a report's details: "Wirklich löschen?" first. */
+  askDelete(): void {
+    if (this.page === 'detail' && this.report) this.go('mine', 'confirm');
+  }
+
+  /**
+   * "Ja, löschen": one request at a time; once the report is gone the list shows with "Feedback
+   * gelöscht", otherwise the confirm stays with the reason (another press tries again).
+   */
+  async confirmDelete(): Promise<void> {
+    const report = this.page === 'confirm' ? this.report : null;
+    if (!report || !this.inbox || this.deleteState === 'deleting') return;
+    this.deleteState = 'deleting';
+    const result = await this.inbox.remove(report.id);
+    this.deleteState = result === 'deleted' ? 'idle' : result;
+    if (result !== 'deleted' || !this.open || this.page !== 'confirm') return;
+    this.go('mine', 'list');
+    this.deleted = true;
+  }
+
+  /** "Zurück" (and Esc): the page before, or false on a tab's first page; a delete under way holds the confirm. */
   back(): boolean {
+    if (this.deleteState === 'deleting') return true;
     const to = BACK[this.page];
     if (to === null) return false;
     this.go(this.tab, to);
@@ -265,6 +309,8 @@ export class FeedbackFlow {
     this.tab = tab;
     this.page = page;
     this.scroll = 0;
+    this.deleted = false;
+    if (this.deleteState !== 'deleting') this.deleteState = 'idle';
   }
 
   private draft() {

@@ -8,7 +8,8 @@
  */
 import { FEEDBACK_TEXT, type FeedbackFlow, type FeedbackPage, type FeedbackTab } from './feedback-flow';
 import type { FeedbackKind } from '../net/feedback-types';
-import { FEEDBACK_PAGE_TEXT, type PageSection, type ReportDetail, type ReportRow } from './feedback-pages';
+import { pageTitle } from './feedback-page-layout';
+import type { PageSection, ReportDetail, ReportRow } from './feedback-pages';
 import { feedbackPlaceholder } from './feedback-screen';
 import type { HighscoreFlow } from './highscore-flow';
 import { formatNumber } from './layout';
@@ -29,8 +30,8 @@ export interface FeedbackSheetModel {
   page: FeedbackPage;
   /** The red dot on "Mein Feedback". */
   dot: boolean;
-  /** Just sent: the thanks over "Mein Feedback" (ROADMAP 75). */
-  thanks: boolean;
+  /** The note over "Mein Feedback": the thanks just after sending (ROADMAP 75), "Feedback gelöscht" (ROADMAP 78), else null. */
+  note: string | null;
   kind: FeedbackKind;
   text: string;
   placeholder: string;
@@ -42,22 +43,24 @@ export interface FeedbackSheetModel {
   counter: string;
   /** The privacy hint, or a status message (`message` true) in its place. */
   line: { text: string; message: boolean };
-  /** The headline of "Das wird gesendet" / "Das wurde gesendet", else null. */
+  /** The headline of "Das wird gesendet" / "Das wurde gesendet" / "Wirklich löschen?", else null. */
   title: string | null;
-  /** Their sections, the "Mein Feedback" rows, a report's details (each empty / null off its page). */
+  /** Their sections, the "Mein Feedback" rows, a report's details (also under "Wirklich löschen?"; each empty / null off its page). */
   sections: PageSection[];
   rows: ReportRow[];
   detail: ReportDetail | null;
+  /** "Wirklich löschen?": deleting, or why the last try failed; null before a try. */
+  deleteMessage: string | null;
+  deleting: boolean;
 }
 
 export function feedbackSheetModel(flow: FeedbackFlow): FeedbackSheetModel {
   const message = flow.message;
-  const title = flow.page === 'preview' ? FEEDBACK_PAGE_TEXT.previewTitle : flow.page === 'sent' ? FEEDBACK_PAGE_TEXT.sentTitle : null;
   return {
     tab: flow.tab,
     page: flow.page,
     dot: flow.dot,
-    thanks: flow.thanks,
+    note: flow.page === 'list' ? flow.listNote : null,
     kind: flow.kind,
     text: flow.text,
     placeholder: feedbackPlaceholder(flow),
@@ -67,10 +70,12 @@ export function feedbackSheetModel(flow: FeedbackFlow): FeedbackSheetModel {
     canSend: flow.canSend,
     counter: flow.counter,
     line: { text: message ?? FEEDBACK_TEXT.hint, message: message !== null },
-    title,
+    title: pageTitle(flow.page),
     sections: flow.sections,
     rows: flow.page === 'list' ? flow.rows : [],
-    detail: flow.page === 'detail' ? flow.detail : null,
+    detail: flow.page === 'detail' || flow.page === 'confirm' ? flow.detail : null,
+    deleteMessage: flow.page === 'confirm' ? flow.deleteMessage : null,
+    deleting: flow.deleteState === 'deleting',
   };
 }
 

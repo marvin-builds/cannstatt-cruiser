@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
 import { type KeptReport, reportSignature } from '../net/feedback-reports';
-import type { FeedbackInboxLike } from '../net/feedback-status';
+import type { FeedbackDeleteResult, FeedbackInboxLike } from '../net/feedback-status';
 import { type FeedbackBody, MAX_FEEDBACK_TEXT } from '../net/feedback-types';
 import { FEEDBACK_TEXT, FeedbackFlow } from './feedback-flow';
+import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
 
 const CONTEXT: FeedbackContext = { platform: 'other', touch: false, portrait: false, viewWidth: 320, mode: 'title' };
 
@@ -83,6 +84,19 @@ function fakeInbox(reports: KeptReport[]) {
       for (const r of reports) r.seen = reportSignature(r);
     },
     checkIfDue: () => Promise.resolve(),
+    /** The worker's answer to a delete; 'hold' waits for finishRemove. */
+    answer: 'deleted' as FeedbackDeleteResult | 'hold',
+    removed: [] as number[],
+    finishRemove: (_r: FeedbackDeleteResult) => {},
+    remove(id: number): Promise<FeedbackDeleteResult> {
+      inbox.removed.push(id);
+      const done = (r: FeedbackDeleteResult) => {
+        if (r === 'deleted') reports.splice(reports.findIndex((k) => k.id === id), 1);
+        return r;
+      };
+      if (inbox.answer === 'hold') return new Promise((resolve) => (inbox.finishRemove = (r) => resolve(done(r))));
+      return Promise.resolve(done(inbox.answer));
+    },
   } satisfies FeedbackInboxLike & Record<string, unknown>;
   return inbox;
 }
@@ -380,5 +394,99 @@ describe('"Ansehen": what is shown is what is sent (ROADMAP 70)', () => {
     const labels = flow.sections.map((s) => s.label);
     expect(labels).toContain('Sitzungsnummer (nur gegen Spam, wird nicht gespeichert)');
     expect(labels).not.toContain('Fehlerprotokoll');
+  });
+});
+
+describe('deleting an own report (ROADMAP 78)', () => {
+  const onDetail = (inbox: ReturnType<typeof fakeInbox>) => {
+    const flow = new FeedbackFlow(fakeSender().sender, inbox);
+    flow.openForm();
+    flow.showTab('mine');
+    flow.openReport(3);
+    return flow;
+  };
+
+  it('"Löschen" on the details asks first; "Abbrechen" and back return to the details', () => {
+    const inbox = fakeInbox([kept(5), kept(3)]);
+    const flow = onDetail(inbox);
+    flow.askDelete();
+    expect(flow.page).toBe('confirm');
+    expect(flow.report?.id).toBe(3);
+    expect(flow.deleteMessage).toBeNull();
+    expect(flow.back()).toBe(true);
+    expect(flow.page).toBe('detail');
+    expect(inbox.removed).toEqual([]);
+  });
+
+  it('asks only from a report\'s details', () => {
+    const flow = new FeedbackFlow(fakeSender().sender, fakeInbox([kept(3)]));
+    flow.openForm();
+    flow.askDelete();
+    expect(flow.page).toBe('form');
+    flow.showTab('mine');
+    flow.askDelete();
+    expect(flow.page).toBe('list');
+  });
+
+  it('"Ja, löschen": the report is gone, the list shows with "Feedback gelöscht" until the player moves on', async () => {
+    const inbox = fakeInbox([kept(5), kept(3)]);
+    const flow = onDetail(inbox);
+    flow.askDelete();
+    await flow.confirmDelete();
+    expect(inbox.removed).toEqual([3]);
+    expect([flow.tab, flow.page, flow.listNote]).toEqual(['mine', 'list', FEEDBACK_PAGE_TEXT.deleted]);
+    expect(flow.rows.map((r) => r.id)).toEqual([5]);
+    flow.openReport(5);
+    flow.back();
+    expect(flow.listNote).toBeNull();
+  });
+
+  it('offline or refused: the report stays, the confirm shows why, and "Ja, löschen" may try again', async () => {
+    const inbox = fakeInbox([kept(3)]);
+    const flow = onDetail(inbox);
+    flow.askDelete();
+    inbox.answer = 'offline';
+    await flow.confirmDelete();
+    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', FEEDBACK_TEXT.offline]);
+    inbox.answer = 'failed';
+    await flow.confirmDelete();
+    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', FEEDBACK_PAGE_TEXT.deleteFailed]);
+    expect(flow.rows.map((r) => r.id)).toEqual([3]);
+    flow.back();
+    flow.askDelete();
+    expect(flow.deleteMessage).toBeNull();
+  });
+
+  it('while it deletes: one request, back and close wait, the message says so', async () => {
+    const inbox = fakeInbox([kept(3)]);
+    inbox.answer = 'hold';
+    const flow = onDetail(inbox);
+    flow.askDelete();
+    const deleting = flow.confirmDelete();
+    void flow.confirmDelete();
+    expect(flow.deleteMessage).toBe(FEEDBACK_PAGE_TEXT.deleting);
+    expect(flow.back()).toBe(true);
+    flow.close();
+    expect([flow.open, flow.page]).toEqual([true, 'confirm']);
+    inbox.finishRemove('deleted');
+    await deleting;
+    expect(inbox.removed).toEqual([3]);
+    expect([flow.page, flow.listNote]).toEqual(['list', FEEDBACK_PAGE_TEXT.deleted]);
+  });
+
+  it('the note after deleting wins over the thanks of a just sent report', async () => {
+    const inbox = fakeInbox([kept(3)]);
+    const { sender } = fakeSender('sent');
+    const send = sender.send;
+    sender.send = (body) => (inbox.reports.unshift(kept(4)), send(body));
+    const flow = new FeedbackFlow(sender, inbox);
+    flow.openForm();
+    flow.setText('Mehr Musik');
+    await flow.send(CONTEXT);
+    expect(flow.listNote).toBe(FEEDBACK_TEXT.sent);
+    flow.openReport(4);
+    flow.askDelete();
+    await flow.confirmDelete();
+    expect(flow.listNote).toBe(FEEDBACK_PAGE_TEXT.deleted);
   });
 });

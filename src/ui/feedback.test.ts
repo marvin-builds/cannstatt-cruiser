@@ -6,7 +6,7 @@ import { createStore, type Store } from '../core/storage';
 import type { OrientationEnv } from '../core/orientation';
 import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feedback';
 import { type KeptReport, reportSignature } from '../net/feedback-reports';
-import type { FeedbackInboxLike } from '../net/feedback-status';
+import type { FeedbackDeleteResult, FeedbackInboxLike } from '../net/feedback-status';
 import type { FeedbackBody } from '../net/feedback-types';
 import type { Rect } from '../types';
 import type { FeedbackField } from './feedback-field';
@@ -15,6 +15,7 @@ import type { FeedbackSheetModel } from './portrait-sheets';
 import { feedbackIcon, feedbackLayout } from './feedback-layout';
 import { createUiSystem } from './index';
 import { listRowRect, pageLayout } from './feedback-page-layout';
+import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
 import { uiMetrics } from './layout';
 import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
 import { fakeRotateSheet } from './rotate-sheet.fake';
@@ -54,6 +55,14 @@ function fakeInbox(reports: KeptReport[]) {
     checkIfDue() {
       inbox.checks++;
       return Promise.resolve();
+    },
+    /** The worker's answer to a delete (ROADMAP 78) and the ids asked for. */
+    answer: 'deleted' as FeedbackDeleteResult,
+    removed: [] as number[],
+    remove(id: number): Promise<FeedbackDeleteResult> {
+      inbox.removed.push(id);
+      if (inbox.answer === 'deleted') reports.splice(reports.findIndex((r) => r.id === id), 1);
+      return Promise.resolve(inbox.answer);
     },
   } satisfies FeedbackInboxLike & Record<string, unknown>;
   return inbox;
@@ -322,7 +331,7 @@ describe('feedback in the game', () => {
     t.press(t.icon());
     t.game.tick();
     expect(t.field.rect).toBeNull();
-    expect(t.sheet.model).toMatchObject({ thanks: false, kind: 'bug', text: '', logShown: true });
+    expect(t.sheet.model).toMatchObject({ note: null, kind: 'bug', text: '', logShown: true });
     // The canvas form under the sheet takes no taps.
     t.press(t.form().idea);
     expect(t.flow.kind).toBe('bug');
@@ -340,7 +349,7 @@ describe('feedback in the game', () => {
     expect(t.sent[0]!.context).toMatchObject({ touch: true, portrait: true });
     // Sent: the sheet stays with the thanks on "Mein Feedback" (ROADMAP 75); the player closes it.
     expect(t.flow.open).toBe(true);
-    expect(t.sheet.model).toMatchObject({ tab: 'mine', page: 'list', thanks: true });
+    expect(t.sheet.model).toMatchObject({ tab: 'mine', page: 'list', note: 'Danke für dein Feedback!' });
     a.onClose();
     t.game.tick();
     expect(t.flow.open).toBe(false);
@@ -379,7 +388,7 @@ describe('feedback in the game', () => {
     expect([t.flow.open, t.flow.page, t.flow.thanks]).toEqual([true, 'list', true]);
     t.game.tick();
     expect(t.field.rect).toBeNull();
-    expect(t.press(pageLayout(t.game.display, 'list', true).close)).toBe(true);
+    expect(t.press(pageLayout(t.game.display, 'list', t.flow.listNote).close)).toBe(true);
     expect(t.flow.open).toBe(false);
 
     t.key('KeyF');
@@ -529,7 +538,7 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.locks).toEqual(['any', 'landscape']);
   });
 
-  it('Esc, "Senden" (the list after it has nothing to type) and a closing textarea lock landscape again', async () => {
+  it('Esc locks landscape again; after "Senden" portrait stays free on the list until the dialog closes', async () => {
     const t = app({ installed: true });
     t.key('KeyF');
     t.key('Escape');
@@ -541,6 +550,8 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     await Promise.resolve();
     t.game.tick();
     expect([t.flow.open, t.flow.thanks]).toEqual([true, true]);
+    expect(t.locks).toEqual(['any', 'landscape', 'any']);
+    t.key('Escape');
     expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
   });
 
@@ -554,7 +565,7 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     await Promise.resolve();
     await Promise.resolve();
     t.game.tick();
-    expect(t.sheet.model).toMatchObject({ page: 'list', thanks: true });
+    expect(t.sheet.model).toMatchObject({ page: 'list', note: 'Danke für dein Feedback!' });
     expect(t.locks).toEqual(['any']);
     t.sheet.actions!.onClose();
     t.game.tick();
@@ -768,14 +779,42 @@ describe('"Mein Feedback" and "Ansehen" in the game (ROADMAP 70)', () => {
     expect(t.flow.scroll).toBe(0);
   });
 
-  it('frees portrait only while the form takes text, not on the list', () => {
-    const t = app({ installed: true });
+  it('keeps portrait free on every page of the dialog (ticket #6), not only on the form', () => {
+    const t = app({ installed: true, inbox: fakeInbox(reports()) });
     t.key('KeyF');
     t.game.tick();
-    expect(t.locks.at(-1)).toBe('any');
+    expect(t.locks).toEqual(['any']);
     t.press(t.form().mineTab);
     t.game.tick();
-    expect(t.locks.at(-1)).toBe('landscape');
+    tapRect(t, listRowRect(page(t), 0, 0));
+    tapRect(t, pageLayout(t.game.display, 'detail').view);
+    expect(t.locks).toEqual(['any']);
+    t.key('Escape');
+    t.key('Escape');
+    t.key('Escape');
+    expect(t.flow.open).toBe(false);
+    expect(t.locks).toEqual(['any', 'landscape']);
+  });
+
+  it('turned on the list or the details, the sheet follows portrait and the canvas page comes back in landscape (ticket #6)', () => {
+    const t = app({ installed: true, touch: true, inbox: fakeInbox(reports()) });
+    t.press(t.icon());
+    t.game.tick();
+    t.press(t.form().mineTab);
+    t.game.tick();
+    for (const go of [() => {}, () => t.flow.openReport(5), () => t.flow.openSentLog()]) {
+      go();
+      t.game.tick();
+      const page = t.flow.page;
+      t.game.display.portrait = true;
+      t.game.tick();
+      expect([t.rotate.shown, t.sheet.model?.page], page).toEqual([false, page]);
+      t.game.display.portrait = false;
+      t.game.tick();
+      expect(t.sheet.model, page).toBeNull();
+      expect(t.flow.page, page).toBe(page);
+    }
+    expect(t.locks).toEqual(['any']);
   });
 });
 
@@ -968,5 +1007,74 @@ describe('Android back (ROADMAP 75)', () => {
     expect(t.flow.open).toBe(true);
     t.history.pressBack();
     expect([t.flow.open, t.game.state.mode]).toEqual([false, 'paused']);
+  });
+});
+
+describe('deleting an own report in the game (ROADMAP 78)', () => {
+  const settle = async (t: ReturnType<typeof app>) => {
+    await Promise.resolve();
+    await Promise.resolve();
+    t.game.tick();
+  };
+  const onDetail = (options: AppOptions = {}) => {
+    const inbox = fakeInbox([keptReport(5), keptReport(3)]);
+    const t = app({ inbox, ...options });
+    t.press(t.icon());
+    t.game.tick();
+    t.flow.showTab('mine');
+    t.flow.openReport(3);
+    t.game.tick();
+    return { ...t, inbox };
+  };
+  const rects = (t: ReturnType<typeof app>) => pageLayout(t.game.display, t.flow.page as 'detail');
+
+  it('touch on the canvas: "Löschen", then "Ja, löschen" deletes it and the list says "Feedback gelöscht"', async () => {
+    const t = onDetail({ touch: true });
+    expect(t.press(rects(t).del)).toBe(true);
+    t.game.tick();
+    expect(t.flow.page).toBe('confirm');
+    expect(t.press(rects(t).yes)).toBe(true);
+    await settle(t);
+    expect(t.inbox.removed).toEqual([3]);
+    expect([t.flow.page, t.flow.listNote, t.flow.rows.map((r) => r.id)]).toEqual(['list', FEEDBACK_PAGE_TEXT.deleted, [5]]);
+  });
+
+  it('"Abbrechen", Esc and Android back close the confirm first and delete nothing', () => {
+    const t = onDetail({ touch: true });
+    t.press(rects(t).del);
+    t.game.tick();
+    t.press(rects(t).no);
+    expect(t.flow.page).toBe('detail');
+    t.press(rects(t).del);
+    t.key('Escape');
+    expect([t.flow.open, t.flow.page]).toEqual([true, 'detail']);
+    t.press(rects(t).del);
+    t.game.tick();
+    t.history.pressBack();
+    expect([t.flow.open, t.flow.page]).toEqual([true, 'detail']);
+    expect(t.inbox.removed).toEqual([]);
+  });
+
+  it('offline: the report stays and the confirm says so', async () => {
+    const t = onDetail();
+    t.inbox.answer = 'offline';
+    t.press(rects(t).del);
+    t.press(rects(t).yes);
+    await settle(t);
+    expect([t.flow.page, t.flow.deleteMessage, t.flow.rows.length]).toEqual(['confirm', 'Keine Verbindung. Später nochmal.', 2]);
+  });
+
+  it('the portrait sheet: "Löschen" and "Ja, löschen" act the same', async () => {
+    const t = onDetail({ touch: true });
+    t.game.display.portrait = true;
+    t.game.tick();
+    expect(t.sheet.model?.page).toBe('detail');
+    t.sheet.actions!.onDelete();
+    t.game.tick();
+    expect(t.sheet.model).toMatchObject({ page: 'confirm', title: FEEDBACK_PAGE_TEXT.confirmTitle, deleteMessage: null });
+    t.sheet.actions!.onConfirmDelete();
+    await settle(t);
+    expect(t.sheet.model).toMatchObject({ page: 'list', note: FEEDBACK_PAGE_TEXT.deleted });
+    expect(t.sheet.model!.rows.map((r) => r.id)).toEqual([5]);
   });
 });
