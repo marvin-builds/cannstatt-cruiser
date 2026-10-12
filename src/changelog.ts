@@ -20,6 +20,17 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-12.2',
+    date: '2026-10-12',
+    items: [
+      'Fan-Massen: über die Köpfe springen!',
+      'Feedback: Danke-Seite nach dem Senden',
+      'Zurück-Taste führt zurück ins Menü',
+      'Knöpfe nicht mehr unter der Kamera',
+      'Weicher Wechsel nach dem Feedback',
+    ],
+  },
+  {
     version: '2026-10-12.1',
     date: '2026-10-12',
     items: [
