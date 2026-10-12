@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FEEDBACK_KEY_PATTERN, MAX_STATUS_ITEMS } from '../src/feedback-rules';
-import { parseStatusItems } from '../src/feedback-status-parse';
+import { parseDeleteBody, parseStatusItems } from '../src/feedback-status-parse';
 
 const KEY = '0123456789abcdef0123456789abcdef';
 const OTHER_KEY = 'fedcba9876543210fedcba9876543210';
@@ -49,6 +49,22 @@ describe('parseStatusItems', () => {
       JSON.stringify({ items: [{ id: 1, key: KEY }], ids: [1] }),
     ]) {
       expect(parseStatusItems(json), json).toBeNull();
+    }
+  });
+});
+
+describe('parseDeleteBody (ROADMAP 78)', () => {
+  it('reads exactly {id, key}', () => {
+    expect(parseDeleteBody(JSON.stringify({ id: 4, key: KEY }))).toEqual({ id: 4, key: KEY });
+  });
+
+  it('rejects bad ids, bad keys and any other shape', () => {
+    for (const json of [
+      JSON.stringify({ id: 0, key: KEY }), JSON.stringify({ id: '4', key: KEY }), JSON.stringify({ id: 4, key: KEY.toUpperCase() }),
+      JSON.stringify({ id: 4 }), JSON.stringify({ key: KEY }), JSON.stringify({ id: 4, key: KEY, all: true }),
+      JSON.stringify({ items: [{ id: 4, key: KEY }] }), '[]', 'null', '', '{',
+    ]) {
+      expect(parseDeleteBody(json), json).toBeNull();
     }
   });
 });

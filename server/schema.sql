@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS event_days (
   accepted INTEGER NOT NULL
 );
 
--- Small key-value store; 'pruned' holds the UTC day of the last condense + retention prune.
+-- Small key-value store; 'pruned' holds the UTC day of the last condense + retention prune,
+-- 'feedback-pruned' that of the feedback prune, 'issues-read' the time (ms) of the last GitHub issue read.
 CREATE TABLE IF NOT EXISTS event_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -97,7 +98,10 @@ CREATE TABLE IF NOT EXISTS feedback (
   reply TEXT,
   -- The player's status check (migrations/0008_feedback_keys.sql documents them).
   key_hash TEXT,
-  done_version TEXT
+  done_version TEXT,
+  -- The linked GitHub issue as last read (migrations/0009_issue_state.sql documents them).
+  issue_state TEXT CHECK (issue_state IN ('open', 'completed', 'notPlanned', 'missing')),
+  issue_closed_day TEXT
 );
 CREATE INDEX IF NOT EXISTS feedback_day ON feedback (day, id);
 

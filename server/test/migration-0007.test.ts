@@ -6,6 +6,7 @@ import { D1_MAX_COMPOUND_TERMS, FakeD1 } from './d1-fake';
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url).href), 'utf8');
 const migration = read('../migrations/0007_feedback_triage.sql');
 const migration0008 = read('../migrations/0008_feedback_keys.sql');
+const migration0009 = read('../migrations/0009_issue_state.sql');
 const schema = read('../schema.sql');
 
 let db: FakeD1;
@@ -45,9 +46,10 @@ describe('migration 0007_feedback_triage', () => {
     expect(() => db.sqlite.prepare("UPDATE feedback SET status = 'later'").run()).toThrow(/CHECK/);
   });
 
-  it('followed by 0008 matches schema.sql, which is harmless after them', () => {
+  it('followed by 0008 and 0009 matches schema.sql, which is harmless after them', () => {
     db.sqlite.exec(migration);
     db.sqlite.exec(migration0008);
+    db.sqlite.exec(migration0009);
     expect(() => db.sqlite.exec(schema)).not.toThrow();
     expect(columns(db, 'feedback')).toEqual(columns(new FakeD1(), 'feedback'));
   });

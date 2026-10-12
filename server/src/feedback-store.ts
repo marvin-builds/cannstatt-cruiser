@@ -6,7 +6,7 @@
  */
 import { utcDay } from './aggregate';
 import { FEEDBACK_LIST_LIMIT, FEEDBACK_PER_SESSION_PER_DAY, FEEDBACK_RETENTION_DAYS } from './feedback-rules';
-import type { FeedbackStatus, TriagedFeedbackEntry } from './feedback-triage-types';
+import type { FeedbackStatus, IssueState, TriagedFeedbackEntry } from './feedback-triage-types';
 import type { FeedbackKind, ReceivedFeedback } from './feedback-types';
 import type { InputKind, Orientation, Platform } from './insights-types';
 
@@ -90,18 +90,25 @@ interface FeedbackRow {
   issue: number | null;
   reply: string | null;
   done_version: string | null;
+  issue_state: IssueState | null;
+  issue_closed_day: string | null;
 }
 
-/** The newest FEEDBACK_LIST_LIMIT entries (day, then id descending) with the log parsed back and the triage fields; never the key hash. */
+/**
+ * The newest FEEDBACK_LIST_LIMIT entries (day, then id descending) with the log parsed back and the triage fields
+ * (the issue state only with an issue); never the key hash.
+ */
 export async function listFeedback(db: D1Database): Promise<TriagedFeedbackEntry[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, day, kind, text, version, platform, input, orientation, view_width, log, status, issue, reply, done_version
+      `SELECT id, day, kind, text, version, platform, input, orientation, view_width, log, status, issue, reply, done_version,
+         issue_state, issue_closed_day
        FROM feedback ORDER BY day DESC, id DESC LIMIT ?`,
     )
     .bind(FEEDBACK_LIST_LIMIT)
     .all<FeedbackRow>();
-  return results.map(({ view_width, log, done_version, ...row }) => ({
+  return results.map(({ view_width, log, done_version, issue_state, issue_closed_day, ...row }) => ({
     ...row, viewWidth: view_width, log: JSON.parse(log) as string[], doneVersion: done_version,
+    issueState: row.issue === null ? null : issue_state, issueClosedDay: row.issue === null ? null : issue_closed_day,
   }));
 }

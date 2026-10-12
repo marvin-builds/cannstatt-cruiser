@@ -5,6 +5,11 @@
  */
 
 export const FEEDBACK_STATUSES = ['open', 'todo', 'done', 'rejected'] as const;
+/**
+ * A linked GitHub issue as the worker last read it (ROADMAP 82): open, closed as done, closed as not planned
+ * (GitHub's `not_planned` or `duplicate`), or gone (404, transferred or deleted).
+ */
+export const ISSUE_STATES = ['open', 'completed', 'notPlanned', 'missing'] as const;
 /** The public repository that gets the issues (the fine-grained token may write only there). */
 export const ISSUE_REPO = 'marvinmai/cannstatt-cruiser';
 /** Every feedback issue carries this label plus its kind (`bug` or `idea`). */

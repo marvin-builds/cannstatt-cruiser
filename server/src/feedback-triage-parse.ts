@@ -1,7 +1,7 @@
-/** Strict parsing of the triage routes' path id and bodies (`POST /feedback/:id/issue`, `PATCH /feedback/:id`). */
+/** Strict parsing of the triage routes' path id and bodies (`POST /feedback/:id/issue`, `POST /feedback/:id/link`, `PATCH /feedback/:id`). */
 import { VERSION_PATTERN } from './events';
 import { FEEDBACK_STATUSES, MAX_ISSUE_ADDITION, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE } from './feedback-triage-rules';
-import type { FeedbackStatus, IssueDraft, TriagePatch } from './feedback-triage-types';
+import type { FeedbackStatus, IssueDraft, IssueLink, TriagePatch } from './feedback-triage-types';
 
 const CONTROL = /\p{Cc}/u;
 /** The issue body may keep line breaks and tabs (log lines, quotes). */
@@ -32,10 +32,13 @@ function multiLine(value: string): string | null {
   return CONTROL_EXCEPT_LINES.test(text) ? null : text;
 }
 
-/** The draft with a one-line title, a trimmed body and a trimmed addition (left out when empty), or null. */
+/**
+ * The draft with a one-line title, a trimmed body, a trimmed addition (left out when empty) and, when given, the
+ * player message (ROADMAP 83; '' and null become null), or null.
+ */
 export function parseIssueDraft(json: string): IssueDraft | null {
   const body = parseObject(json);
-  if (!body || !onlyKeys(body, ['title', 'body', 'addition']) || typeof body.title !== 'string' || typeof body.body !== 'string') return null;
+  if (!body || !onlyKeys(body, ['title', 'body', 'addition', 'reply']) || typeof body.title !== 'string' || typeof body.body !== 'string') return null;
   if (Object.hasOwn(body, 'addition') && typeof body.addition !== 'string') return null;
   const title = body.title.replace(/\s+/g, ' ').trim();
   const text = multiLine(body.body);
@@ -43,7 +46,22 @@ export function parseIssueDraft(json: string): IssueDraft | null {
   if (CONTROL.test(title) || text === null || addition === null) return null;
   if (title.length < MIN_ISSUE_TITLE || title.length > MAX_ISSUE_TITLE || !text || text.length > MAX_ISSUE_BODY) return null;
   if (addition.length > MAX_ISSUE_ADDITION) return null;
-  return addition ? { title, body: text, addition } : { title, body: text };
+  const draft: IssueDraft = addition ? { title, body: text, addition } : { title, body: text };
+  return withReply(draft, body);
+}
+
+/** An issue number to link with the optional player message (ROADMAP 83), or null. */
+export function parseIssueLink(json: string): IssueLink | null {
+  const body = parseObject(json);
+  if (!body || !onlyKeys(body, ['issue', 'reply']) || !Number.isSafeInteger(body.issue) || (body.issue as number) < 1) return null;
+  return withReply<IssueLink>({ issue: body.issue as number }, body);
+}
+
+/** `target` with the body's reply when the body has one, the target alone without, or null for an invalid reply. */
+function withReply<T extends { reply?: string | null }>(target: T, body: Record<string, unknown>): T | null {
+  if (!Object.hasOwn(body, 'reply')) return target;
+  const reply = parseReply(body.reply);
+  return reply === undefined ? null : { ...target, reply };
 }
 
 /** A trimmed one-line reply ('' and null clear it), or undefined when invalid. */
