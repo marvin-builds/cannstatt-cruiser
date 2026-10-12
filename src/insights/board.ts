@@ -1,4 +1,7 @@
-/** The unlocked dashboard: header with range switch, tiles, charts, lists and the feedback card at the end. */
+/**
+ * The unlocked dashboard: header, then two tabs (ROADMAP 79): 'Statistik' (range switch, owner switches,
+ * tiles, charts, lists) and 'Feedback' (the ticket card), whose label counts the tickets that need action.
+ */
 import { type InsightsStats, STATS_RANGES, type StatsRange } from '../net/telemetry-types';
 import { distanceGroups, runLengthGroups, scoreGroups } from './buckets';
 import { CHART_PAD_LEFT, GRAIN_UNIT, histogram, legend, periodBars, rankedList, splitBar } from './charts';
@@ -10,12 +13,16 @@ import { countryName, formatDecimal, formatDuration, formatNumber } from './form
 import { chartPeriods } from './periods';
 import { isApproximate, rangeButtonLabel, rangeNote } from './ranges';
 import { rankedRows, type SplitKey, splitSegments } from './split';
+import { BOARD_TABS, type BoardTab } from './tabs';
+import { actionCount } from './ticket-actions';
 import { visitsSummary } from './visits';
 
 export interface BoardHandlers extends DeviceSwitchesHandlers {
   onRange(days: StatsRange): void;
   onReload(): void;
   onLock(): void;
+  /** The operator picked a tab (to remember it); the board already shows it. */
+  onTab(tab: BoardTab): void;
   feedback: FeedbackHandlers;
 }
 
@@ -27,6 +34,7 @@ export interface BoardView {
   /** A failed reload, shown above the (older) data. */
   error: string | null;
   feedback: FeedbackView;
+  tab: BoardTab;
   /** This device carries the test-device marker. */
   testDevice: boolean;
   /** The numbers include test devices. */
@@ -77,15 +85,6 @@ function playTimeTile(stats: InsightsStats): HTMLElement {
 
 function header(view: BoardView, handlers: BoardHandlers): HTMLElement {
   const generated = new Date(view.stats.generatedAt);
-  const ranges = h(
-    'div',
-    { class: 'segmented', role: 'group', 'aria-label': 'Zeitraum' },
-    ...STATS_RANGES.map((days) => {
-      const button = h('button', { type: 'button', 'aria-pressed': String(days === view.range) }, rangeButtonLabel(days));
-      button.addEventListener('click', () => handlers.onRange(days));
-      return button;
-    }),
-  );
   const reload = h('button', { type: 'button', class: 'ghost', disabled: view.loading }, view.loading ? 'Lädt …' : 'Neu laden');
   reload.addEventListener('click', handlers.onReload);
   const lock = h('button', { type: 'button', class: 'ghost' }, view.remembered ? 'Abmelden' : 'Sperren');
@@ -99,8 +98,70 @@ function header(view: BoardView, handlers: BoardHandlers): HTMLElement {
       h('h1', {}, 'Insights'),
       h('p', {}, `Cannstatt Cruiser · Stand ${Number.isNaN(generated.getTime()) ? '–' : timeFormat.format(generated)}`),
     ),
-    h('div', { class: 'controls' }, ranges, reload, lock),
+    h('div', { class: 'controls' }, reload, lock),
   );
+}
+
+function rangeSwitch(view: BoardView, handlers: BoardHandlers): HTMLElement {
+  return h(
+    'div',
+    { class: 'segmented', role: 'group', 'aria-label': 'Zeitraum' },
+    ...STATS_RANGES.map((days) => {
+      const button = h('button', { type: 'button', 'aria-pressed': String(days === view.range) }, rangeButtonLabel(days));
+      button.addEventListener('click', () => handlers.onRange(days));
+      return button;
+    }),
+  );
+}
+
+const TAB_LABELS: Record<BoardTab, string> = { stats: 'Statistik', feedback: 'Feedback' };
+
+/** The count on the Feedback tab: the number as a badge, read out as 'n zu bearbeiten'; nothing at 0. */
+function fillCount(badge: HTMLElement, count: number): void {
+  badge.hidden = count === 0;
+  badge.replaceChildren(h('span', { 'aria-hidden': 'true' }, String(count)), h('span', { class: 'visually-hidden' }, ` (${count} zu bearbeiten)`));
+}
+
+/**
+ * ARIA tabs over the two panels: arrow keys, Home and End move between them (automatic activation).
+ * Returns the tab list and a setter for the Feedback count.
+ */
+function tabs(panels: Record<BoardTab, HTMLElement>, initial: BoardTab, count: number, onSelect: (tab: BoardTab) => void) {
+  const badge = h('span', { class: 'tab-count' });
+  fillCount(badge, count);
+  const buttons = BOARD_TABS.map((tab) =>
+    h(
+      'button',
+      { type: 'button', role: 'tab', id: `tab-${tab}`, 'aria-controls': `panel-${tab}`, class: 'tab' },
+      TAB_LABELS[tab],
+      tab === 'feedback' ? badge : null,
+    ),
+  );
+  const select = (tab: BoardTab, focus: boolean) => {
+    BOARD_TABS.forEach((t, i) => {
+      const on = t === tab;
+      buttons[i]!.setAttribute('aria-selected', String(on));
+      buttons[i]!.tabIndex = on ? 0 : -1;
+      panels[t].hidden = !on;
+    });
+    if (focus) buttons[BOARD_TABS.indexOf(tab)]!.focus();
+  };
+  const choose = (tab: BoardTab, focus: boolean) => {
+    select(tab, focus);
+    onSelect(tab);
+  };
+  BOARD_TABS.forEach((tab, i) => {
+    buttons[i]!.addEventListener('click', () => choose(tab, false));
+    buttons[i]!.addEventListener('keydown', (event) => {
+      const last = BOARD_TABS.length - 1;
+      const to = { ArrowRight: (i + 1) % BOARD_TABS.length, ArrowLeft: (i + last) % BOARD_TABS.length, Home: 0, End: last }[event.key];
+      if (to === undefined) return;
+      event.preventDefault();
+      choose(BOARD_TABS[to]!, true);
+    });
+  });
+  select(initial, false);
+  return { list: h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Ansicht' }, ...buttons), setCount: (n: number) => fillCount(badge, n) };
 }
 
 function card(title: string, ...children: (Node | null)[]): HTMLElement {
@@ -167,45 +228,70 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
     { class: 'top' },
     ...stats.topScores.map((t) => h('li', {}, h('span', { class: 'top-name' }, t.name), h('span', { class: 'top-score' }, formatNumber(t.score)))),
   );
+  const statsPanel = h(
+    'section',
+    { class: 'tab-panel', role: 'tabpanel', id: 'panel-stats', 'aria-labelledby': 'tab-stats' },
+    h('div', { class: 'stats-controls' }, rangeSwitch(view, handlers)),
+    deviceSwitches({ testDevice: view.testDevice, testers: view.testers, loading: view.loading, testerPassNote: view.testerPassNote }, handlers),
+    tiles,
+    card(`${DAY_CHARTS.sessions!.title} pro Tag`, legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
+    visitsCard(stats),
+    h(
+      'div',
+      { class: 'grid three' },
+      card('Run-Länge', histogram(runLengthGroups(stats.runs.seconds), 'c2')),
+      card('Distanz', histogram(distanceGroups(stats.runs.distance), 'c2')),
+      card('Punkte', histogram(scoreGroups(stats.runs.score), 'c2')),
+    ),
+    card('Sessions nach Gerät und Modus', h('div', { class: 'splits' }, ...SPLITS.map((sp) => splitBar(sp.title, splitSegments(stats.split[sp.field], sp.keys))))),
+    h(
+      'div',
+      { class: 'grid two' },
+      rankedList('Städte', rankedRows(stats.split.city)),
+      rankedList('Regionen', rankedRows(stats.split.region)),
+      rankedList('Länder', rankedRows(stats.split.country, countryName)),
+      rankedList('Versionen', rankedRows(stats.split.version)),
+    ),
+    h(
+      'div',
+      { class: 'grid two' },
+      card(
+        `${DAY_CHARTS.entries!.title} pro Tag`,
+        h('p', { class: 'card-note' }, `${formatNumber(entriesTotal)} Einträge im Zeitraum`),
+        h('div', { class: 'chart-holder', 'data-day-chart': 'entries' }),
+      ),
+      card('Aktuelle Bestenliste', stats.topScores.length ? top : h('p', { class: 'empty-note' }, 'Noch keine Einträge')),
+    ),
+    h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte ohne Angabe zählen als „Andere“'),
+  );
+  // The card reports every changed list; the tab count follows it.
+  const feedbackHandlers: FeedbackHandlers = {
+    ...handlers.feedback,
+    onEntries(entries) {
+      handlers.feedback.onEntries(entries);
+      tabBar.setCount(actionCount(entries));
+    },
+  };
+  const feedbackPanel = h(
+    'section',
+    { class: 'tab-panel', role: 'tabpanel', id: 'panel-feedback', 'aria-labelledby': 'tab-feedback' },
+    feedbackCard(view.feedback, feedbackHandlers),
+  );
+  const tabBar = tabs({ stats: statsPanel, feedback: feedbackPanel }, view.tab, actionCount(view.feedback.entries ?? []), (tab) => {
+    handlers.onTab(tab);
+    // Charts are sized to their holder, which has no width while its panel is hidden.
+    if (tab === 'stats') drawDayCharts(root, stats);
+  });
   root.replaceChildren(
     h(
       'main',
       { class: 'board', 'aria-busy': String(view.loading) },
       header(view, handlers),
-      deviceSwitches({ testDevice: view.testDevice, testers: view.testers, loading: view.loading, testerPassNote: view.testerPassNote }, handlers),
+      tabBar.list,
       view.error ? h('p', { class: 'banner', role: 'alert' }, view.error) : null,
-      tiles,
-      card(`${DAY_CHARTS.sessions!.title} pro Tag`, legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
-      visitsCard(stats),
-      h(
-        'div',
-        { class: 'grid three' },
-        card('Run-Länge', histogram(runLengthGroups(stats.runs.seconds), 'c2')),
-        card('Distanz', histogram(distanceGroups(stats.runs.distance), 'c2')),
-        card('Punkte', histogram(scoreGroups(stats.runs.score), 'c2')),
-      ),
-      card('Sessions nach Gerät und Modus', h('div', { class: 'splits' }, ...SPLITS.map((sp) => splitBar(sp.title, splitSegments(stats.split[sp.field], sp.keys))))),
-      h(
-        'div',
-        { class: 'grid two' },
-        rankedList('Städte', rankedRows(stats.split.city)),
-        rankedList('Regionen', rankedRows(stats.split.region)),
-        rankedList('Länder', rankedRows(stats.split.country, countryName)),
-        rankedList('Versionen', rankedRows(stats.split.version)),
-      ),
-      h(
-        'div',
-        { class: 'grid two' },
-        card(
-          `${DAY_CHARTS.entries!.title} pro Tag`,
-          h('p', { class: 'card-note' }, `${formatNumber(entriesTotal)} Einträge im Zeitraum`),
-          h('div', { class: 'chart-holder', 'data-day-chart': 'entries' }),
-        ),
-        card('Aktuelle Bestenliste', stats.topScores.length ? top : h('p', { class: 'empty-note' }, 'Noch keine Einträge')),
-      ),
-      feedbackCard(view.feedback, handlers.feedback),
-      h('p', { class: 'foot' }, 'Anonyme Aggregate · Orte ohne Angabe zählen als „Andere“'),
+      statsPanel,
+      feedbackPanel,
     ),
   );
-  drawDayCharts(root, stats);
+  if (view.tab === 'stats') drawDayCharts(root, stats);
 }

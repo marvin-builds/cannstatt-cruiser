@@ -1,6 +1,6 @@
 /**
  * Pure helpers of feedback triage on the board (ROADMAP 56): status labels and
- * filter, the GitHub issue draft (title, body, optional log) and German error texts.
+ * filter chips, the GitHub issue draft (title, body, optional log) and German error texts.
  * The repo is public, so the draft quotes the player and defuses @mentions;
  * the operator reviews and edits it before it is sent.
  */
@@ -10,10 +10,8 @@ import {
   DONE_VERSION_PATTERN, FEEDBACK_STATUSES, ISSUE_REPO, MAX_ISSUE_TITLE, type FeedbackStatus, type FeedbackTriage, type TriagedFeedbackEntry,
 } from './triage-types';
 
-export type StatusFilter = 'all' | FeedbackStatus;
-
-/** The stored value 'todo' reads 'Geplant', as in the game's "Mein Feedback" (ROADMAP 75). */
-const STATUSES: Record<FeedbackStatus, string> = { open: 'Offen', todo: 'Geplant', done: 'Erledigt', rejected: 'Abgelehnt' };
+/** The stored value 'todo' reads 'Geplant', as in the game's "Mein Feedback" (ROADMAP 75); 'open' reads 'Neu' (ROADMAP 80). */
+const STATUSES: Record<FeedbackStatus, string> = { open: 'Neu', todo: 'Geplant', done: 'Erledigt', rejected: 'Abgelehnt' };
 
 export function statusLabel(status: FeedbackStatus): string {
   return STATUSES[status];
@@ -36,13 +34,30 @@ export function logNote(entry: TriagedFeedbackEntry): string | null {
   return entry.log.length ? 'mit Fehlerprotokoll' : null;
 }
 
-export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'Alle Status' },
-  ...FEEDBACK_STATUSES.map((value) => ({ value, label: STATUSES[value] })),
-];
+/** The status filter chips (ROADMAP 80), in workflow order. */
+export const STATUS_CHIPS: { value: FeedbackStatus; label: string }[] = FEEDBACK_STATUSES.map((value) => ({ value, label: STATUSES[value] }));
+
+/** On by default: Neu and Geplant, so closed tickets stay out of the way. */
+export const DEFAULT_STATUSES: readonly FeedbackStatus[] = ['open', 'todo'];
+
+/** Turns one status chip on or off; the result keeps the chip order. */
+export function toggleStatus(statuses: readonly FeedbackStatus[], status: FeedbackStatus): FeedbackStatus[] {
+  const on = statuses.includes(status);
+  return FEEDBACK_STATUSES.filter((s) => (s === status ? !on : statuses.includes(s)));
+}
+
+const ISSUES_PAGE = `https://github.com/${ISSUE_REPO}/issues/`;
 
 export function issueUrl(issue: number): string {
-  return `https://github.com/${ISSUE_REPO}/issues/${issue}`;
+  return `${ISSUES_PAGE}${issue}`;
+}
+
+/** The issue number field of 'Bestehendes Issue verknüpfen': '12', '#12' or a link to an issue of the repo; null otherwise. */
+export function parseIssueNumber(raw: string): number | null {
+  const value = raw.trim();
+  const digits = value.startsWith(ISSUES_PAGE) ? /^(\d+)(?:[#?].*)?$/.exec(value.slice(ISSUES_PAGE.length))?.[1] : /^#?(\d+)$/.exec(value)?.[1];
+  const issue = digits ? Number(digits) : NaN;
+  return Number.isSafeInteger(issue) && issue > 0 ? issue : null;
 }
 
 const TITLE_WORDS = 8;
@@ -88,7 +103,7 @@ export function toggleLog(body: string, log: readonly string[], on: boolean): st
 }
 
 export type TriageError =
-  | { error: 'auth' | 'offline' | 'server' | 'not-found' | 'bad-request' | 'github-token-missing' }
+  | { error: 'auth' | 'offline' | 'server' | 'not-found' | 'bad-request' | 'github-token-missing' | 'issue-not-found' | 'no-issue' }
   | { error: 'github'; status: number }
   | { error: 'exists'; issue: number };
 
@@ -104,5 +119,7 @@ export function triageErrorText(failure: TriageError): string {
       if (failure.status === 401) return 'GitHub-Token ungültig, neu setzen';
       return failure.status ? `GitHub hat abgelehnt (Status ${failure.status}).` : 'GitHub nicht erreichbar.';
     case 'exists': return `Hat schon Issue #${failure.issue}.`;
+    case 'issue-not-found': return 'Dieses Issue gibt es nicht (Nummer prüfen).';
+    case 'no-issue': return 'Ohne Issue geht das nicht: erst ein Issue verknüpfen.';
   }
 }

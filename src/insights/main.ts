@@ -10,11 +10,14 @@ import type { FetchLike } from '../net/api';
 import type { InsightsStats, StatsRange } from '../net/telemetry-types';
 import { drawDayCharts, renderBoard } from './board';
 import { showTesterPassNote } from './device-switches';
-import { apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, patchFeedback, type StatsError, type TriageResult } from './client';
+import {
+  apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, linkIssue, patchFeedback, type StatsError, type TriageResult,
+} from './client';
 import type { FeedbackFilter } from './feedback';
 import type { FeedbackHandlers } from './feedback-card';
-import type { StatusFilter } from './triage';
-import type { TriagedFeedbackEntry } from './triage-types';
+import { type BoardTab, initialTab, readStoredTab, storeTab, tabFromHash, tabHash } from './tabs';
+import { DEFAULT_STATUSES } from './triage';
+import type { FeedbackStatus, TriagedFeedbackEntry } from './triage-types';
 import { renderLocked } from './locked';
 import { BoardAuth, type Rejection } from './session';
 import { markOnUnlock, refreshTesterPass, switchTestDevice, testDeviceState, testerPassNote } from './test-device';
@@ -44,7 +47,16 @@ let stats: InsightsStats | null = null;
 /** null while GET /feedback fails; the stats still render. */
 let feedback: TriagedFeedbackEntry[] | null = null;
 let feedbackFilter: FeedbackFilter = 'all';
-let statusFilter: StatusFilter = 'all';
+let statusFilter: readonly FeedbackStatus[] = DEFAULT_STATUSES;
+/** sessionStorage keeps only the tab name (ROADMAP 79); null where it is blocked. */
+const tabStore = (() => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+})();
+let tab: BoardTab = initialTab(window.location.hash, readStoredTab(tabStore));
 /** The test-device marker as the board shows it; written only through test-device.ts. */
 let testDevice = testDeviceState(store) === true;
 /** 'inkl. Testgeräte': off on every page load, never stored. */
@@ -66,13 +78,14 @@ function showBoard(loading: boolean, error: string | null = null): void {
   renderBoard(
     root,
     {
-      stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter, status: statusFilter }, testDevice, testers,
+      stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter, statuses: statusFilter }, tab, testDevice, testers,
       testerPassNote: passNote, remembered: auth.remembered,
     },
     {
       onRange: switchRange,
       onReload: () => void load(),
       onLock: lock,
+      onTab: rememberTab,
       feedback: feedbackHandlers,
       onTestDevice: toggleTestDevice,
       onTesters: switchTesters,
@@ -98,14 +111,15 @@ async function triage<T>(call: (token: string) => Promise<TriageResult<T>>): Pro
 }
 
 const feedbackHandlers: FeedbackHandlers = {
-  onFilter(filter, status) {
+  onFilter(filter, statuses) {
     feedbackFilter = filter;
-    statusFilter = status;
+    statusFilter = statuses;
   },
   onEntries(entries) {
     feedback = entries;
   },
   createIssue: (id, draft) => triage((t) => createIssue(fetchFn, { base, token: t, id, draft })),
+  linkIssue: (id, link) => triage((t) => linkIssue(fetchFn, { base, token: t, id, link })),
   patch: (id, patch) => triage((t) => patchFeedback(fetchFn, { base, token: t, id, patch })),
   remove: (id) => triage((t) => deleteFeedback(fetchFn, { base, token: t, id })),
 };
@@ -186,6 +200,22 @@ function switchTesters(on: boolean): void {
   testers = on;
   void load();
 }
+
+/** Keeps the shown tab in the hash (replacing the history entry, so Back leaves the board) and in sessionStorage. */
+function rememberTab(next: BoardTab): void {
+  tab = next;
+  storeTab(tabStore, next);
+  history.replaceState(history.state, '', tabHash(next));
+}
+
+/** A link to #feedback or #statistik opened on the board switches the tab. */
+window.addEventListener('hashchange', () => {
+  const next = tabFromHash(window.location.hash);
+  if (!next || next === tab) return;
+  tab = next;
+  storeTab(tabStore, next);
+  if (stats) showBoard(false);
+});
 
 /** "Sperren" / "Abmelden": forgets the token and the kept session. */
 function lock(): void {

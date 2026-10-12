@@ -1,6 +1,6 @@
 /**
  * Reads GET /stats and GET /feedback of the highscore worker with the admin token and sends the
- * feedback triage (issue, status and reply, delete; ROADMAP 56), trades the token for a board session
+ * feedback triage (issue, linked issue, status and reply, delete; ROADMAP 56, 83), trades the token for a board session
  * (ROADMAP 74) and fetches a tester pass for a test device (ROADMAP 75). The token is passed in per call and never stored here. Every failure maps to an error code,
  * nothing throws; `fetch` is passed in so tests never reach the live worker.
  */
@@ -9,7 +9,7 @@ import { FEEDBACK_KINDS, type FeedbackEntry, MAX_TESTER_PASS_CHARS } from '../ne
 import { type CountEntry, INPUTS, type InsightsStats, ORIENTATIONS, PLATFORMS, STATS_RANGES, STATS_TESTERS_PARAM, type StatsRange } from '../net/telemetry-types';
 import type { TriageError } from './triage';
 import {
-  FEEDBACK_STATUSES, type FeedbackTriage, type IssueDraft, type TriagedFeedbackEntry, type TriagePatch,
+  FEEDBACK_STATUSES, type FeedbackTriage, type IssueDraft, type IssueLink, ISSUE_STATES, type IssueState, type TriagedFeedbackEntry, type TriagePatch,
 } from './triage-types';
 
 export type StatsError = 'auth' | 'offline' | 'server';
@@ -84,15 +84,19 @@ const isIssue = (v: unknown): v is number => Number.isSafeInteger(v) && (v as nu
 
 const isOptionalText = (v: unknown) => v === undefined || v === null || typeof v === 'string';
 
-/** The triage fields; each may be missing (a worker before ROADMAP 56 or 70), but never of the wrong type. */
+const isIssueState = (v: unknown) => v === undefined || v === null || isIn(ISSUE_STATES, v);
+
+/** The triage fields; each may be missing (a worker before ROADMAP 56, 70 or 82), but never of the wrong type. */
 function hasValidTriage(v: unknown): boolean {
   return isRecord(v) && (v.status === undefined || isIn(FEEDBACK_STATUSES, v.status)) &&
     (v.issue === undefined || v.issue === null || isIssue(v.issue)) &&
-    isOptionalText(v.reply) && isOptionalText(v.doneVersion);
+    isOptionalText(v.reply) && isOptionalText(v.doneVersion) && isIssueState(v.issueState) && isOptionalText(v.issueClosedDay);
 }
 
-const withTriage = (v: FeedbackEntry & Partial<FeedbackTriage>): TriagedFeedbackEntry =>
-  ({ ...v, status: v.status ?? 'open', issue: v.issue ?? null, reply: v.reply ?? null, doneVersion: v.doneVersion ?? null });
+const withTriage = (v: FeedbackEntry & Partial<FeedbackTriage>): TriagedFeedbackEntry => ({
+  ...v, status: v.status ?? 'open', issue: v.issue ?? null, reply: v.reply ?? null, doneVersion: v.doneVersion ?? null,
+  issueState: v.issueState ?? null, issueClosedDay: v.issueClosedDay ?? null,
+});
 
 /** Checks the GET /feedback answer (the triage fields optional); anything else counts as a server error. */
 export function isFeedbackList(v: unknown): v is { entries: (FeedbackEntry & Partial<FeedbackTriage>)[] } {
@@ -128,6 +132,8 @@ function triageFailure(status: number, body: unknown): TriageError {
   if (status === 400) return { error: 'bad-request' };
   if (status === 404) return { error: 'not-found' };
   if (status === 409 && isIssue(answer.issue)) return { error: 'exists', issue: answer.issue };
+  if (status === 409 && answer.error === 'no-issue') return { error: 'no-issue' };
+  if (status === 422 && answer.error === 'issue-not-found') return { error: 'issue-not-found' };
   if (status === 502 && typeof answer.status === 'number') return { error: 'github', status: answer.status };
   if (status === 503 && answer.error === 'github-token-missing') return { error: 'github-token-missing' };
   return { error: 'server' };
@@ -142,19 +148,42 @@ export async function createIssue(fetchFn: FetchLike, request: TriageRequest & {
   return isIssue(issue) ? { ok: true, issue } : { ok: false, error: 'server' };
 }
 
+/** The issue state fields of an answer; both missing (a worker before ROADMAP 82) or both valid. */
+const issueStateOf = (v: Record<string, unknown>): Pick<FeedbackTriage, 'issueState' | 'issueClosedDay'> | null | undefined => {
+  if (v.issueState === undefined && v.issueClosedDay === undefined) return undefined;
+  if ((v.issueState !== null && !isIn(ISSUE_STATES, v.issueState)) || !(v.issueClosedDay === null || typeof v.issueClosedDay === 'string')) return null;
+  return { issueState: v.issueState as IssueState | null, issueClosedDay: v.issueClosedDay };
+};
+
+/** POST /feedback/:id/link: the worker checks the issue on GitHub, links it and sets the row to todo (ROADMAP 83). */
+export async function linkIssue(
+  fetchFn: FetchLike,
+  request: TriageRequest & { link: IssueLink },
+): Promise<TriageResult<{ issue: number } & Pick<FeedbackTriage, 'issueState' | 'issueClosedDay'>>> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}/link`, request, 'POST', request.link);
+  if (!r.ok) return r;
+  if (r.status !== 200) return { ok: false, ...triageFailure(r.status, r.body) };
+  const state = isRecord(r.body) ? issueStateOf(r.body) : null;
+  const issue = isRecord(r.body) ? r.body.issue : undefined;
+  return isIssue(issue) && state ? { ok: true, issue, ...state } : { ok: false, error: 'server' };
+}
+
+/** The triage fields a PATCH answers; the issue state only from a worker since ROADMAP 82. */
+export type TriageUpdate = Omit<FeedbackTriage, 'issueState' | 'issueClosedDay'> & Partial<Pick<FeedbackTriage, 'issueState' | 'issueClosedDay'>>;
+
 /** The PATCH answer's triage fields; doneVersion may be missing (a worker before ROADMAP 70). */
 const isTriage = (v: unknown): v is Omit<FeedbackTriage, 'doneVersion'> & Partial<FeedbackTriage> =>
   isRecord(v) && isIn(FEEDBACK_STATUSES, v.status) && (v.issue === null || isIssue(v.issue)) && (v.reply === null || typeof v.reply === 'string') &&
-  isOptionalText(v.doneVersion);
+  isOptionalText(v.doneVersion) && issueStateOf(v) !== null;
 
 /** PATCH /feedback/:id with status, reply and/or doneVersion; the row's triage fields afterwards. */
-export async function patchFeedback(fetchFn: FetchLike, request: TriageRequest & { patch: TriagePatch }): Promise<TriageResult<{ triage: FeedbackTriage }>> {
+export async function patchFeedback(fetchFn: FetchLike, request: TriageRequest & { patch: TriagePatch }): Promise<TriageResult<{ triage: TriageUpdate }>> {
   const r = await authorizedRequest(fetchFn, `${request.base}/feedback/${request.id}`, request, 'PATCH', request.patch);
   if (!r.ok) return r;
   if (r.status !== 200) return { ok: false, ...triageFailure(r.status, r.body) };
   if (!isTriage(r.body)) return { ok: false, error: 'server' };
   const { status, issue, reply, doneVersion } = r.body;
-  return { ok: true, triage: { status, issue, reply, doneVersion: doneVersion ?? null } };
+  return { ok: true, triage: { status, issue, reply, doneVersion: doneVersion ?? null, ...issueStateOf(r.body) } };
 }
 
 /** DELETE /feedback/:id. */

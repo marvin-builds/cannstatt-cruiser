@@ -107,10 +107,12 @@ const handlers: BoardHandlers = {
   onLock() {},
   onTestDevice() {},
   onTesters() {},
+  onTab() {},
   feedback: {
     onFilter() {},
     onEntries() {},
     createIssue: async () => ({ ok: true, issue: 1 }),
+    linkIssue: async () => ({ ok: true, issue: 1, issueState: 'open', issueClosedDay: null }),
     patch: async () => ({ ok: true, triage: { status: 'open', issue: null, reply: null, doneVersion: null } }),
     remove: async () => ({ ok: true }),
   },
@@ -135,7 +137,7 @@ describe('board render with injection payloads', () => {
       root as unknown as HTMLElement,
       {
         stats, range: 7, loading: false, error: null, remembered: false,
-        feedback: { entries: feedback, filter: 'all', status: 'all' }, testDevice: false, testers: false, testerPassNote: null,
+        feedback: { entries: feedback, filter: 'all', statuses: ['open', 'todo', 'done', 'rejected'] }, tab: 'feedback', testDevice: false, testers: false, testerPassNote: null,
       },
       handlers,
     );
