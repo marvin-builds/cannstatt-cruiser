@@ -3,6 +3,7 @@ import { BASE_SPEED, GROUND_Y } from '../core/config';
 import { Rng } from '../core/rng';
 import { isObstacle, isOverhead, isPerson, isRail, obstacleRect } from './catalogue';
 import { drunkFairness, EARLY_TAKEOFF_WINDOW } from './fairness';
+import { brezelShare, itemOf } from './items';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { courseOf, mixAt, type Piece, planPattern, TEMPLATE_NAMES } from './patterns';
 import { Solver } from './solver';
@@ -169,4 +170,24 @@ describe('spawn patterns', () => {
       expect(s.x).toBeGreaterThan(0);
     }
   });
+});
+
+describe('Brezel share of the planned Wasen visitors (ROADMAP 52 point 8)', () => {
+  /** Share of Brezeln among the Wasen visitors of `n` seeded lone-person patterns planned with `share`. */
+  function plannedBrezeln(share: number | undefined, n = 400): number {
+    const rng = new Rng(11);
+    let brezeln = 0;
+    for (let i = 0; i < n; i++) {
+      const guest = planPattern(rng, 3, [150], { zone: 2, template: 'person', brezelShare: share }).pieces.find((p) => p.kind === 'wasenGuest')!;
+      if (itemOf(guest, false) === 'pretzel') brezeln++;
+    }
+    return brezeln / n;
+  }
+
+  it('plans clearly fewer Brezeln with the late share, and the early share by default', () => {
+    const early = plannedBrezeln(undefined);
+    expect(plannedBrezeln(brezelShare(0, false))).toBe(early);
+    expect(early).toBeCloseTo(0.5, 1);
+    expect(plannedBrezeln(brezelShare(1, false))).toBeLessThan(early * 0.65);
+  }, 30_000);
 });

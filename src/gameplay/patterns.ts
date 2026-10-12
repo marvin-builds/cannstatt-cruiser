@@ -43,7 +43,7 @@ import { isGrindable, isObstacle, isPerson, isRail, jointRect, OBSTACLES, obstac
 import { buildCourse, type Piece } from './course';
 import { touchDuckable } from './duck-span';
 import { DRUNK_TEMPLATES, drunkFairness, humanFair, LATE_TAKEOFF_WINDOW, soberFairness, solversFor } from './fairness';
-import { PROPS } from './items';
+import { drawProp, HEAL_SHARE } from './items';
 import { groundBody, hitboxOf, railBody, stepBody } from './jumpsim';
 import { lineGuide, type Point, spreadStars } from './line-guide';
 import { asArc } from './star-arcs';
@@ -73,6 +73,8 @@ export interface PlanOptions {
   template?: string;
   /** Kid mode: the moving hazards and waves keep gentler numbers (hazards.ts, waves.ts). */
   kidMode?: boolean;
+  /** Share of Wasen visitors holding a Brezel (items.ts brezelShare: scarcer late in a run). Default HEAL_SHARE. */
+  brezelShare?: number;
 }
 
 export interface Pattern {
@@ -157,6 +159,7 @@ class Builder implements MixBuilder, WaveBuilder {
     private readonly zone: number,
     drunk: boolean,
     readonly kidMode = false,
+    private readonly brezelShare = HEAL_SHARE,
   ) {
     this.lead = leadFor(speed, drunk);
   }
@@ -193,7 +196,7 @@ class Builder implements MixBuilder, WaveBuilder {
     const motion = OBSTACLES[kind].motion;
     if (motion) {
       const m: Motion = { walk: this.rng.range(...motion.walk), sway: this.rng.range(...motion.sway), phase: this.rng.range(0, 2 * Math.PI) };
-      piece.data = { ...m, ax: piece.x, variant: this.rng.int(0, 1), prop: this.rng.int(0, PROPS - 1) };
+      piece.data = { ...m, ax: piece.x, variant: this.rng.int(0, 1), prop: drawProp(this.rng, this.brezelShare) };
     }
     this.pieces.push(piece);
     return piece;
@@ -448,7 +451,7 @@ export function* planSteps(rng: Rng, tier: number, speeds: number[], options: Pl
   }
   for (let i = 0; i < ATTEMPTS; i++) {
     const template = pickTemplate(rng, tier, zone, drunk, effect, options.template);
-    const builder = new Builder(rng, fast, zone, drunk, options.kidMode);
+    const builder = new Builder(rng, fast, zone, drunk, options.kidMode, options.brezelShare);
     template.build(builder);
     const pattern = finish(template.name, builder.pieces, fast);
     const solvers = yield* fairSolvers(pattern);

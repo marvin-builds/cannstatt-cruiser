@@ -67,6 +67,11 @@
  * of it (`slack`), and the empty street before a park gets star arcs
  * (leadStars).
  *
+ * Scarcer healing (ROADMAP 52 point 8): the street patterns are planned with
+ * the Brezel share of items.ts brezelShare at their street distance, which
+ * lateHealRamp places where the run has ridden LATE_HEAL_FROM_SECONDS and
+ * LATE_HEAL_FULL_SECONDS (at the difficulty speed, or the pinned one).
+ *
  * Planning ahead (`workPerTick`): the game plans up to PLAN_AHEAD patterns
  * ahead, spending at most `workPerTick` solver units per tick (patterns.ts
  * planSteps), so no tick stalls on a hard pattern. If a pattern is due before
@@ -82,7 +87,7 @@ import { CHILL_SPEED_SCALE, chillStreet } from './chill';
 import { gapAt, speedAt, tierAt, TOP_SPEED } from './difficulty';
 import { takeoffWindowAt } from './fairness';
 import { isObstacle, isRail } from './catalogue';
-import { itemOf } from './items';
+import { brezelShare, itemOf, LATE_HEAL_FROM_SECONDS, LATE_HEAL_FULL_SECONDS } from './items';
 import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, jumpArcStars, leadFor, type Pattern, type Piece, planSteps } from './patterns';
 import { HIGH_FIVER_X, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
@@ -257,6 +262,8 @@ export class Spawner {
   private slack = Infinity;
   /** Street distance from which the quiet cap holds (null: not drawn yet, set at the run's first plan). */
   private quietFrom: number | null = null;
+  /** Street distances of the late-healing ramp (lateHealRamp; null: not set yet, set at the run's first plan). */
+  private lateHeal: [number, number] | null = null;
   private readonly budget: WorkBudget = { left: UNLIMITED };
   private readonly workPerTick: number | null;
   private readonly onSpawn: SpawnerOptions['onSpawn'];
@@ -325,6 +332,7 @@ export class Spawner {
     this.delayed = 0;
     this.slack = Infinity;
     this.quietFrom = null;
+    this.lateHeal = null;
   }
 
   /** The street moved left by dx (call together with moving the entities). */
@@ -525,7 +533,9 @@ export class Spawner {
     } else {
       const chilled = street < this.cursor.chilledUntil;
       const effect = drunk || chilled;
-      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, effect, budget: this.budget, kidMode };
+      this.lateHeal ??= lateHealRamp(this.runStart ?? street, pace);
+      const brezels = brezelShare(lateHealProgress(street, this.lateHeal), kidMode);
+      const options = { zone: this.zoneAt(street), chillSpeeds: undefined as number[] | undefined, before: this.cursor.previous, window: takeoffWindowAt(street), drunk, effect, budget: this.budget, kidMode, brezelShare: brezels };
       if (street < this.cursor.chillUntil) {
         // A pinned speed stays pinned while chilled; otherwise from the slowest chill speed through the ramp back up.
         const low = Math.min(...speeds) * CHILL_SPEED_SCALE;
@@ -576,6 +586,16 @@ export class Spawner {
 
 function freshCursor(nextJoint: number): Cursor {
   return { crowdArmed: true, crowdAt: null, crowdFrom: null, previous: [], nextJoint, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null, parkArmed: true, parkFrom: null, lineEnd: -Infinity, pauses: [] };
+}
+
+/** The street distances where a run started at `runStart` has ridden LATE_HEAL_FROM_SECONDS and LATE_HEAL_FULL_SECONDS (items.ts: healing gets scarcer in between). */
+export function lateHealRamp(runStart: number, pinned: number | null): [number, number] {
+  return [rideStreet(runStart, LATE_HEAL_FROM_SECONDS, pinned), rideStreet(runStart, LATE_HEAL_FULL_SECONDS, pinned)];
+}
+
+/** Progress at `street` through the late-healing `ramp` (lateHealRamp): 0 before it, 1 after it, linear in between. */
+export function lateHealProgress(street: number, [from, full]: [number, number]): number {
+  return Math.min(1, Math.max(0, (street - from) / (full - from)));
 }
 
 /** Street distance reached `seconds` of riding after `street`: at the difficulty speed, or at `pinned`. */

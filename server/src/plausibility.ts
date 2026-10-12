@@ -9,10 +9,13 @@
  *   stars 10 x 5 each plus 50 x 5 per whole star arc (star-arcs.ts; the
  *   street lays about 0.9 stars and 0.16 arcs per 10 m, so taking every one
  *   at x5 adds at most about 9 points per metre).
+ *   Since the combo grace (combo-grace.ts) the multiplier survives street
+ *   touches of up to 0.3 s, so a skilled player can hold x5 from obstacle to
+ *   obstacle: one 150-point obstacle every 8-10 m is about 75-95 points per
+ *   metre, plus every star.
  *   The best recorded playtest run made about 7 points per metre; a dense
  *   stunt line earns much more for a moment, which SCORE_ALLOWANCE covers.
- *   The rates below allow roughly five times the recorded average plus
- *   every star.
+ *   The rates below allow x5 on every obstacle plus every star.
  * Not cheat-proof (the game runs on the client), it only stops absurd entries.
  */
 export const MAX_SPEED_M_PER_S = 190 / 10;
@@ -22,7 +25,7 @@ const SPEED_MARGIN = 1.1;
 const DISTANCE_SLACK = 10;
 /** Points any run may have regardless of its length (one big stunt line). */
 const SCORE_ALLOWANCE = 5000;
-const MAX_POINTS_PER_METRE = 80;
+const MAX_POINTS_PER_METRE = 120;
 const MAX_POINTS_PER_SECOND = 1500;
 /** Four hours of skating. */
 const MAX_DURATION_S = 4 * 60 * 60;
