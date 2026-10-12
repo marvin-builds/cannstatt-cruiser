@@ -276,6 +276,29 @@ kid mode refers to drugs.
   Acceptance: a bot with human timing (take-off +-4 ticks, three press
   lengths, sloppy ducking) has no crash into or within 1 s of a person in 20
   runs of 3 minutes.
+- Adaptive density (ROADMAP 52 point 12, adult mode only): after 45 s at
+  full hearts the street gets slightly denser, reaching its most at 90 s
+  (gaps up to 25 % shorter, the quiet cap up to 12 % shorter, from halfway
+  one pattern tier harder, at most tier 3, not while drunk or chilled). Any
+  lost heart resets it at once. The fairness rules above still hold for
+  every pattern.
+
+## Missions
+
+ROADMAP 52 point 11 / ROADMAP 86: small goals per run, one at a time.
+
+- The first comes after 15 s of riding ("Neue Mission!" and a soft ding);
+  the goal shows in a small line under the HUD plate with its progress
+  ("2 Leute stompen 1/2"). Kinds: stomp people, grind for N seconds, ride
+  stunt lines, land kickflips, collect stars, give high fives in NorDIY.
+- Never the same kind twice in a row; stomps only where people walk,
+  high fives only with a park ahead (if the park passes, the mission ends
+  quietly). After a done mission a 6 s pause, then the next.
+- Goals grow a little with every mission done (kid mode at half the pace).
+  Done: "Mission geschafft! +N" and a jingle; the bonus is 250 + 50 per
+  mission done, at most 500, never multiplied. A crash does not cancel the
+  mission.
+- Game over shows "Missionen: N".
 
 ## Stunt lines
 
@@ -380,7 +403,7 @@ The art is recognisable but stylised.
   other way back to the title.
 - Desktop title hints name the keys: "Leertaste kurz = kleiner Sprung",
   "Halten = hoher Sprung", "P/Esc = Pause, M = Ton aus".
-- Game Over with Punkte, Highscore, Sterne, a restart and "Zum
+- Game Over with Punkte, Highscore, Sterne, Missionen, a restart and "Zum
   Startbildschirm" (T).
 - Highscore and the star total are stored in localStorage.
 - Mute button.
