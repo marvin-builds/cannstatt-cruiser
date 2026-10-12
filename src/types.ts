@@ -132,6 +132,24 @@ export type CarriedItem = 'football' | 'pretzel' | 'beer' | 'gingerbread';
 /** What using a carried item does: Maßkrug drink, Brezel / Lebkuchenherz eat, football throw. */
 export type ItemAction = 'drink' | 'eat' | 'throw';
 
+/**
+ * Kinds of small per-run missions (ROADMAP 52 point 11). Gameplay picks them, counts progress and
+ * pays them; the ui names them per language (and kid-safe), audio may cheer on missionDone.
+ * - `stomp`: land on people's heads (goal: number of stomps);
+ * - `grind`: grind on rails, benches or ledges (goal: seconds, progress in whole seconds);
+ * - `stuntLine`: complete stunt lines (goal: number);
+ * - `kickflip`: land kickflips (goal: number);
+ * - `stars`: collect stars (goal: number);
+ * - `highFive`: give high fives in the NorDIY park (goal: number).
+ */
+export type MissionKind = 'stomp' | 'grind' | 'stuntLine' | 'kickflip' | 'stars' | 'highFive';
+/** The running mission: `progress` counts up to `goal` (same unit, see MissionKind). */
+export interface Mission {
+  kind: MissionKind;
+  goal: number;
+  progress: number;
+}
+
 export interface GameState {
   mode: GameMode;
   /** Seconds spent in the current mode (title animations, game-over delays). */
@@ -151,6 +169,10 @@ export interface GameState {
   multiplier: number;
   /** Stars collected in this run. */
   stars: number;
+  /** The running mission (ROADMAP 52 point 11), or null between missions. Gameplay owns it; a run starts without one. */
+  mission: Mission | null;
+  /** Missions completed in this run. */
+  missionsDone: number;
   /**
    * Seconds left of the chill effect from a joint pickup (0 = off). Gameplay
    * sets and counts it down; the player reads it for the reduced jump
@@ -247,6 +269,10 @@ export interface GameEvents {
    * "Sternenbogen! +points" from it instead of inferring the bonus from score deltas.
    */
   starArc: { stars: number; points: number };
+  /** Gameplay: a new mission began (state.mission is set). The ui shows its goal. */
+  missionStart: { kind: MissionKind; goal: number };
+  /** Gameplay: the mission reached its goal and paid `points` (already in scoreChanged); state.mission is null. */
+  missionDone: { kind: MissionKind; goal: number; points: number };
   chillStart: { entityId: number; duration: number };
   /**
    * Gameplay: the falling skater landed on a person's head. The player bounces

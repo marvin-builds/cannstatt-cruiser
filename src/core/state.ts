@@ -31,6 +31,8 @@ export function createInitialState(): GameState {
     combo: 0,
     multiplier: 1,
     stars: 0,
+    mission: null,
+    missionsDone: 0,
     chillTimer: 0,
     carriedItem: null,
     drunkTimer: 0,
