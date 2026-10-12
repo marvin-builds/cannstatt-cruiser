@@ -5,6 +5,7 @@ import type { Rect } from '../types';
 import { itemButtonRect, itemHintRect, keycapChip } from './item-button';
 import { hudButtons, POPUP_MARGIN, popupScale, uiMetrics } from './layout';
 import { statsLayout } from './stats';
+import { MissionLine } from './mission-line';
 import {
   calloutBlockers,
   type CalloutScene,
@@ -170,9 +171,17 @@ describe('stunt callout', () => {
     /** The upper level: ledges 40-60 px above the street plus the skater and his star trail over them. */
     const ledgeBand = (w: number): Rect => ({ x: 0, y: GROUND_Y - 96, w, h: 56 });
 
-    function sceneFor(d: (typeof displays)[number], viewWidth: number, plate: Rect, banner: boolean, carrying: boolean): CalloutScene {
+    /** The widest mission line (German stunt lines, two-digit goal) under `plate`. */
+    function missionPlate(plate: Rect): Rect {
+      const line = new MissionLine();
+      line.update({ kind: 'stuntLine', goal: 10, progress: 10 }, plate);
+      return line.plate!;
+    }
+
+    function sceneFor(d: (typeof displays)[number], viewWidth: number, plate: Rect, banner: boolean, carrying: boolean, mission = false): CalloutScene {
       const touchItem = carrying && d.touch;
       return {
+        mission: mission ? missionPlate(plate) : null,
         viewWidth,
         plate,
         chip: carrying && !d.touch ? keycapChip(plate) : null,
@@ -185,11 +194,11 @@ describe('stunt callout', () => {
 
     for (const viewWidth of [320, 384, 427]) {
       for (const d of displays) {
-        it(`${d.name}, ${viewWidth} wide: never over the skater, the ledge band, the HUD plate, buttons, item button or zone banner`, () => {
+        it(`${d.name}, ${viewWidth} wide: never over the skater, the ledge band, the HUD plate, mission line, buttons, item button or zone banner`, () => {
           for (const plate of plates) {
-            for (const carrying of [false, true]) {
-              const scene = sceneFor(d, viewWidth, plate, false, carrying);
-              const blocked: Rect[] = [plate, ...[scene.chip, scene.itemButton, scene.itemHint].filter((r): r is Rect => r !== null)];
+            for (const [carrying, mission] of [[false, false], [true, false], [false, true], [true, true]]) {
+              const scene = sceneFor(d, viewWidth, plate, false, carrying, mission);
+              const blocked: Rect[] = [plate, ...[scene.chip, scene.itemButton, scene.itemHint, scene.mission].filter((r): r is Rect => r !== null)];
               blocked.push(scene.buttons.pause, scene.buttons.mute, scene.buttons.fullscreen!, SKATER, ledgeBand(viewWidth));
               for (const c of callouts()) {
                 for (const punch of [false, true]) {

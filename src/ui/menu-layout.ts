@@ -111,17 +111,18 @@ export function titleHelp(touch: boolean): string[] {
   return texts().title.help(touch);
 }
 
-/** Rows of the game-over results table (labels; values come from the run): score, highscore, stars, stars total, distance. */
+/** Rows of the game-over results table (labels; values come from the run): score, highscore, stars, stars total, distance, missions. */
 export function resultRows(): readonly string[] {
   return texts().menu.results;
 }
 
 /**
- * Results rows that give way to buttons: the stars total first, then (after
- * the record line) stars and distance, the highscore last; the score stays.
+ * Results rows that give way to buttons: the stars total first, then the
+ * missions done, then (after the record line) stars and distance, the
+ * highscore last; the score stays.
  * The install card outlasts the highscore row (it shows nowhere else).
  */
-const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5];
+const RESULT_ROW_DROP = [undefined, 0.25, 0.5, 2, 0.5, 1.5];
 /** On a crowded game over the install card stays longer than stars and distance (it shows nowhere else; the settings offer installing too). */
 const INSTALL_DROP_GAMEOVER = 0.2;
 /** The pause screen's "Feedback" gives way last, and only to the reload card (portrait; the title still offers feedback). */

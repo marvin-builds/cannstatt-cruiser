@@ -300,6 +300,7 @@ export function drawGameOver(r: RenderContext, view: MenuScreensView, l: MenuLay
     formatNumber(state.stars),
     formatNumber(view.records.starsTotal),
     texts().menu.metres(formatNumber(metres(state.distance))),
+    formatNumber(state.missionsDone),
   ];
   const rows = resultRows().map((label, i) => ({ label, value: values[i]!, rect: l.blocks.get(`row${i}`) })).filter((x) => x.rect);
   // Labels end and values start 4 px from the centre line: the plate is as wide as the longer side, twice.

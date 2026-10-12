@@ -23,6 +23,7 @@ import {
   ICON_TROPHY,
   ITEM_ICONS,
   JOINT_ICON,
+  MISSION_ICON,
   type PixelIcon,
   STAR,
   SWIPE_ARROW,
@@ -77,6 +78,7 @@ import type { Records, RunResult } from './records';
 import { fittingNote } from './note-text';
 import type { LongPress, SettingsMenu } from './settings';
 import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
+import { MISSION_ICON_W } from './mission-line';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
 import { type TrickHint, trickHintPlate } from './trick-hint';
@@ -215,6 +217,21 @@ function drawStats(r: RenderContext, view: UiView): void {
     ITEM_ICONS.beer.draw(g, 0, l.x + 1, l.drunk, 1);
     timerBar(r, l.barX, l.drunk + 2, timerBarFill(state.drunkTimer, view.drunkDuration), UI.drunkBar);
   }
+}
+
+const MISSION_PROGRESS: TextOptions = { color: UI.yellow };
+
+/** The mission line under the stats plate (mission-line.ts): bullseye, goal, progress; nothing without a mission. */
+function drawMission(r: RenderContext, view: UiView): void {
+  const line = view.hud.mission;
+  const p = line.plate;
+  if (!p) return;
+  const { g } = r;
+  g.fillStyle = UI.panel;
+  g.fillRect(p.x, p.y, p.w, p.h);
+  MISSION_ICON.draw(g, 0, line.textX - MISSION_ICON_W, line.y);
+  text(r, line.goal, line.textX, line.y);
+  text(r, line.progress, line.progressX, line.y, MISSION_PROGRESS);
 }
 
 /** A draining timer bar in the stats plate: ink frame, `fill` px of colour. */
@@ -566,6 +583,7 @@ export function drawUi(r: RenderContext, view: UiView): void {
       drawDrunk(r, view);
       drawChillTint(r);
       drawStats(r, view);
+      drawMission(r, view);
       drawItemControl(r, view);
       drawSparkle(r, view);
       drawLive(r, view);

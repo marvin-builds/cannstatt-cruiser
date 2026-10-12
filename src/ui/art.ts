@@ -365,6 +365,17 @@ export const GUM_ICON = sprite({ k: UI.ink, p: UI.pink, W: '#ffe0ef', d: '#d9508
   .kkkk...kk.
 `]);
 
+/** The HUD mission line's target (ROADMAP 52 point 11): a red and white bullseye, 7 px. */
+export const MISSION_ICON = sprite({ k: UI.ink, r: UI.red, w: UI.white }, [`
+  ..kkk..
+  .krrrk.
+  krwwwrk
+  krwrwrk
+  krwwwrk
+  .krrrk.
+  ..kkk..
+`]);
+
 /** Carried items (state.carriedItem), outlined like the skater's art; colours as the player draws them. */
 const ITEM_PALETTE = {
   k: UI.ink,
