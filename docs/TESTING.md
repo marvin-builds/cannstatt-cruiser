@@ -89,6 +89,14 @@ npm run typecheck
   update it together with `plausibility.ts` when `TOP_SPEED`,
   `PX_PER_METRE` or point values change (see ARCHITECTURE, Online
   highscores).
+- GitHub is never called: the worker gets an injected fetch.
+  `server/test/github-read.test.ts` covers the issue reads (state mapping,
+  pull requests skipped, timeouts with fake timers, the token only in the
+  header); `issue-state-handler.test.ts` the sync through `GET /feedback`
+  (throttle, cached states when GitHub fails), `/issue` with a reply, `/link`
+  and `PATCH` todo; `feedback-delete-handler.test.ts` the player delete.
+  Each migration has a `migration-00NN.test.ts` (columns, a match with
+  `schema.sql`, the second run failing).
 
 ## Never POST to the live highscore list
 
@@ -138,7 +146,9 @@ await t.page.route(`${API}/**`, async (route) => {
   `window.__telemetryUrl` to a fake endpoint and logs the `/event` bodies.
 - Feedback never goes out from localhost: `scripts/scenarios/feedback.ts`
   sets `window.__feedbackUrl` to a fake endpoint, routes it and logs the
-  bodies; `window.__ui.feedback()` reports the feedback flow. It also checks
+  bodies; `window.__ui.feedback()` reports the feedback flow (also
+  `listNote`, `deleteState` and `deleteMessage` of the delete confirm,
+  ROADMAP 78). It also checks
   the dialog staying open after sending, a marked test device sending its
   tester pass, and in portrait a faked 48 px display cutout.
 - Safe area: Chromium cannot fake `env(safe-area-inset-*)`, so the DOM sheets
@@ -600,10 +610,30 @@ npm run playtest -- --headed
   after "Senden" the sheet stays with the thanks until "Schließen", which
   shows the settle cover during the turn back to landscape and then the
   full-size canvas (ROADMAP 75).
-- `scripts/scenarios/insights-triage.ts` (ROADMAP 56, `desktop,phone-portrait`):
-  the board against a fake worker route: card actions, the issue editor,
-  "Geplant #N" (issue and status in one request, with the developer
-  addition), the delete confirm and the status filter.
+- `scripts/scenarios/insights-triage.ts` (ROADMAP 56, 79-83, `desktop,phone-portrait`,
+  light and dark): the board against a fake worker route that answers like
+  the real one (issue, link, PATCH with the issue state, DELETE; a fake
+  GitHub knows issues 30 and 31, any other number is `issue-not-found`). It
+  checks the tabs Statistik / Feedback with the action count (hash and
+  sessionStorage), the status chips (Neu and Geplant on by default), the
+  issue state next to the link ("#12 · offen", "erledigt am 12.10.", "bereit
+  zum Abschließen"), the state-driven actions (Umsetzen with a new or a
+  linked issue and the prefilled message, Ablehnen with templates,
+  Abschließen disabled with its reason until the issue is closed, Öffnen,
+  Wieder öffnen, Antwort ändern, Löschen with a confirm) and re-linking a
+  Geplant ticket whose issue is `missing` (an unknown number gives "Dieses
+  Issue gibt es nicht (Nummer prüfen).", then `POST /feedback/8/link`
+  replaces it). Keep the fake's `/link` rules in step with
+  `server/src/handler.ts` (409 `exists` only when the stored issue is not
+  `missing`), or the scenario cannot catch a mismatch.
+  **Firefox (ROADMAP 81):** `PLAYTEST_BROWSER=firefox` runs the scenario's
+  pages in Playwright Firefox (`scenarioBrowser` in `scripts/playtest-lib.ts`:
+  it drops `isMobile`, which Firefox does not support, and blocks the live
+  worker like the harness; the game itself still plays in Chromium). Install
+  the browser once with `npx playwright install firefox`, then
+  `PLAYTEST_BROWSER=firefox npm run playtest -- --scenario scripts/scenarios/insights-triage.ts --viewports desktop,phone-portrait --name triage-firefox`.
+  Headless Firefox cannot show a native `<select>` list, which is why the
+  board's Firefox dropdown bug could not be reproduced there.
 - `scripts/scenarios/rotate-screen.ts` (ROADMAP 73, touch viewports only, a
   plain browser tab; feedback and the online list are faked): the full-screen
   overlay at 320x568, 390x844 and a tablet (820x1180), the turning phone and
@@ -670,6 +700,17 @@ npm run playtest -- --headed
   same), "Senden" posting exactly that snapshot (the dialog then stays open
   on "Mein Feedback" with the thanks), the list with every status,
   a detail with reply and version, the empty state, nothing in kid mode.
+- `scripts/scenarios/feedback-delete.ts` (ROADMAP 77, 78, all three viewports;
+  feedback to a fake endpoint, the online list routed): on the phones every
+  page of the dialog ("Neu", "Mein Feedback", details, "Das wurde gesendet",
+  "Wirklich löschen?", the list with the thanks) turns portrait -> landscape
+  -> portrait and keeps the same page, with a shot of each (the installed
+  app's orientation lock itself is only in the unit tests: a browser tab
+  holds none). "Löschen" on the details asks "Wirklich löschen?"; browser
+  back (Android back) and on desktop Esc close the confirm first; the first
+  "Ja, löschen" gets a 500 (the report stays, the confirm says so), the next
+  a 204 and the list shows "Feedback gelöscht" without it. The POST body is
+  exactly `{id, key}` of the kept report.
 
 - `scripts/scenarios/duck-swipe.ts` (ROADMAP 66, `phone-landscape`): sign
   mixes at 90 and 190 px/s ridden by the touch bot (swipe ducks): at most 2
