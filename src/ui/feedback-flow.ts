@@ -11,7 +11,9 @@
  * marks every change as seen (the red dot) while the rows that changed keep
  * their dot as long as the dialog shows. Opened from the pause menu and the
  * title's speech-bubble icon (adult mode). A draft is kept in memory for this
- * page load until it was sent.
+ * page load until it was sent. A sent report keeps the dialog open (ROADMAP
+ * 75): it switches to "Mein Feedback" with the thanks and the new report
+ * highlighted on top, and the player closes it themselves.
  */
 import type { FeedbackContext, FeedbackSenderLike } from '../net/feedback';
 import type { KeptReport } from '../net/feedback-reports';
@@ -36,7 +38,6 @@ export const FEEDBACK_TEXT = {
   /** The log label's short form where the long one does not fit beside "Ansehen". */
   logShort: 'Protokoll mitsenden',
   send: 'Senden',
-  ok: 'OK',
   hint: 'Bitte keine persönlichen Daten.',
   bugPlaceholder: 'Was ist passiert?',
   ideaPlaceholder: 'Was wünschst du dir?',
@@ -73,6 +74,8 @@ export class FeedbackFlow {
   private selected: number | null = null;
   /** The reports that had changed when "Mein Feedback" was opened: their rows keep the dot. */
   private marked: number[] = [];
+  /** The report the last send added to the inbox (highlighted while the thanks shows), or null. */
+  private fresh: number | null = null;
   /** The "Ansehen" snapshot and the draft it was taken from. */
   private snapshot: { body: FeedbackBody; draft: string } | null = null;
 
@@ -85,8 +88,8 @@ export class FeedbackFlow {
     return this.status === 'sending';
   }
 
-  /** Sent: the screen thanks the player instead of the form. */
-  get done(): boolean {
+  /** Just sent: "Mein Feedback" thanks the player (until they leave the list's tab or close). */
+  get thanks(): boolean {
     return this.status === 'sent';
   }
 
@@ -101,7 +104,7 @@ export class FeedbackFlow {
   }
 
   get canSend(): boolean {
-    return !this.sending && !this.done && this.text.trim().length >= MIN_FEEDBACK_TEXT;
+    return !this.sending && this.text.trim().length >= MIN_FEEDBACK_TEXT;
   }
 
   get counter(): string {
@@ -120,7 +123,7 @@ export class FeedbackFlow {
 
   /** "Mein Feedback": a row per report, newest first. */
   get rows(): ReportRow[] {
-    return this.inbox ? reportRows(this.inbox.reports, this.marked) : [];
+    return this.inbox ? reportRows(this.inbox.reports, this.marked, this.thanks ? this.fresh : null) : [];
   }
 
   /** The report whose details (or sent message) show, or null. */
@@ -146,13 +149,8 @@ export class FeedbackFlow {
     return report ? previewSections(report, { session: null, logAvailable: true }) : [];
   }
 
-  /** Shows the dialog on "Neu": the draft as left, or a fresh one after a sent report. */
+  /** Shows the dialog on "Neu" with the draft as left (a sent one is gone). */
   openForm(): void {
-    if (this.done) {
-      this.kind = 'bug';
-      this.text = '';
-      this.withLog = false;
-    }
     if (!this.sending) this.status = 'idle';
     this.marked = [];
     this.go('new', 'form');
@@ -171,8 +169,9 @@ export class FeedbackFlow {
     this.open = false;
   }
 
-  /** A tab: "Mein Feedback" marks every change as seen (the rows that changed keep their dot). */
+  /** A tab: "Mein Feedback" marks every change as seen (the rows that changed keep their dot); "Neu" ends the thanks. */
   showTab(tab: FeedbackTab): void {
+    if (tab === 'new' && this.thanks) this.status = 'idle';
     if (tab === 'mine' && this.tab !== 'mine' && this.inbox) {
       this.marked = this.inbox.changedIds();
       this.inbox.markSeen();
@@ -182,7 +181,7 @@ export class FeedbackFlow {
 
   /** "Ansehen" on the form: a snapshot of the whole message as it would be sent now. */
   openPreview(context: FeedbackContext): void {
-    if (this.sending || this.done) return;
+    if (this.sending) return;
     this.snapshot = { body: this.sender.prepare(this.draft(), context), draft: this.draftKey() };
     this.go('new', 'preview');
   }
@@ -217,35 +216,49 @@ export class FeedbackFlow {
   }
 
   setKind(kind: FeedbackKind): void {
-    if (!this.sending && !this.done) this.kind = kind;
+    if (!this.sending) this.kind = kind;
   }
 
   toggleLog(): void {
-    if (!this.sending && !this.done && this.logShown && this.logAvailable) this.withLog = !this.withLog;
+    if (!this.sending && this.logShown && this.logAvailable) this.withLog = !this.withLog;
   }
 
   /** Typing: capped at MAX_FEEDBACK_TEXT; a refused or too short text may be sent again. */
   setText(raw: string): void {
-    if (this.sending || this.done) return;
+    if (this.sending) return;
     this.text = raw.slice(0, MAX_FEEDBACK_TEXT);
     if (this.status === 'short' || this.status === 'invalid') this.status = 'idle';
   }
 
   /**
    * "Senden": one request with the "Ansehen" snapshot while the draft is unchanged since, else a
-   * fresh one; the answer decides the status (the text stays unless it was sent).
+   * fresh one; the answer decides the status. Sent: a fresh draft, and an open dialog moves to
+   * "Mein Feedback" with the thanks and the new report on top; otherwise the form keeps the text.
    */
   async send(context: FeedbackContext): Promise<void> {
-    if (this.sending || this.done) return;
+    if (this.sending) return;
     if (!this.canSend) {
       this.status = 'short';
       return;
     }
     const body = this.snapshot?.draft === this.draftKey() ? this.snapshot.body : this.sender.prepare(this.draft(), context);
+    const newest = this.newestId();
     this.status = 'sending';
     const result = await this.sender.send(body);
     this.status = result;
-    if (result === 'sent') this.snapshot = null;
+    if (result !== 'sent') return;
+    this.snapshot = null;
+    this.kind = 'bug';
+    this.text = '';
+    this.withLog = false;
+    const added = this.newestId();
+    this.fresh = added !== newest ? added : null;
+    if (this.open) this.showTab('mine');
+  }
+
+  /** The id of the newest kept report, or null. */
+  private newestId(): number | null {
+    return this.inbox?.reports[0]?.id ?? null;
   }
 
   private go(tab: FeedbackTab, page: FeedbackPage): void {

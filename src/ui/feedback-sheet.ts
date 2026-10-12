@@ -5,7 +5,8 @@
  * "Neu": the kind ("Fehler" / "Idee"), a tall textarea, the privacy hint or
  * status line with the counter, "Fehlerprotokoll mitsenden" (bug reports
  * only, disabled while nothing was recorded) with "Ansehen", and "Senden";
- * once sent the thank-you and "OK". "Das wird gesendet", "Mein Feedback" and a
+ * once sent "Mein Feedback" with the thanks over it and the new report
+ * framed on top (ROADMAP 75). "Das wird gesendet", "Mein Feedback" and a
  * report's details scroll natively in a panel with a scroll bar, and by the
  * scroll keys (arrows, W / S, Page Up / Down, Home, End). It shows what
  * feedbackSheetModel says and reports the player's actions; the flow
@@ -48,7 +49,7 @@ export interface FeedbackSheetHandlers {
   onSentLog(): void;
   /** "Zurück" and Esc: the page before, else closes. */
   onBack(): void;
-  /** "×", and "OK" after sending. */
+  /** "×". */
   onClose(): void;
 }
 
@@ -93,7 +94,7 @@ function fillSections(list: HTMLElement, sections: readonly PageSection[]): void
   }
 }
 
-/** "Mein Feedback": a button per report (status in its colour, kind, date, the start of the text, a dot when changed), or the empty note. */
+/** "Mein Feedback": a button per report (status in its colour, kind, date, the start of the text, a dot when changed, a frame when just sent), or the empty note. */
 function fillRows(list: HTMLElement, rows: readonly ReportRow[], open: (id: number) => void): void {
   if (rows.length === 0) {
     const empty = styled(line(SHEET_STYLE.textPx, UI.muted), { margin: '24px 0', textAlign: 'center' });
@@ -104,6 +105,8 @@ function fillRows(list: HTMLElement, rows: readonly ReportRow[], open: (id: numb
   for (const r of rows) {
     const button = sheetButton('', () => open(r.id));
     styled(button, { display: 'block', width: '100%', textAlign: 'left', margin: '0 0 8px', padding: '6px 8px', fontWeight: 'normal' });
+    // The report just sent (ROADMAP 75) is framed in yellow.
+    if (r.fresh) styled(button, { borderColor: UI.yellow, borderWidth: '3px' });
     const head = styled(document.createElement('div'), { fontWeight: 'bold', color: STATUS_COLOR[r.status] });
     head.textContent = r.label;
     if (r.changed) head.append(dot());
@@ -200,15 +203,14 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     const send = sheetButton(FEEDBACK_TEXT.send, () => handlers.onSend());
     const logRow = row(log, view);
     const form = [row(bug, idea), area, row(status, counter), logRow, row(send)];
-    const thanks = styled(line(SHEET_STYLE.titlePx, UI.yellow), { margin: 'auto 0 0', textAlign: 'center' });
+    const thanks = styled(line(SHEET_STYLE.textPx + 2, UI.yellow), { textAlign: 'center', fontWeight: 'bold' });
     thanks.textContent = FEEDBACK_TEXT.sent;
-    const ok = sheetButton(FEEDBACK_TEXT.ok, () => handlers.onClose());
-    const done = [thanks, styled(row(ok), { marginBottom: 'auto' })];
+    thanks.setAttribute('role', 'status');
     const panel = scrollPanel(FEEDBACK_TEXT.title);
     // Narrow phones: the rows and texts get the width, the scroll bar keeps its room at the right.
     panel.list.style.padding = '4px 18px 8px 8px';
-    sheet.root.append(tabs, subHeader, ...form, ...done, panel.frame);
-    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, done, panel };
+    sheet.root.append(tabs, subHeader, ...form, thanks, panel.frame);
+    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, thanks, panel };
   }
 
   /** Shows `els` (display as given), or hides them. */
@@ -255,8 +257,8 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       parts ??= build();
       const p = parts;
       const onTab = model.page === 'form' || model.page === 'list';
-      const form = model.page === 'form' && !model.done;
-      toggle([p.tabs], onTab && !(model.page === 'form' && model.done));
+      const form = model.page === 'form';
+      toggle([p.tabs], onTab);
       toggle([p.subHeader], !onTab);
       toggle([p.sentView], model.page === 'detail', 'block');
       setText(p.heading, model.title ?? '');
@@ -265,7 +267,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       toggle([p.mineDot], model.dot, 'inline-block');
       toggle(p.form.filter((el) => el !== p.area), form);
       toggle([p.area], form, 'block');
-      toggle(p.done, model.page === 'form' && model.done);
+      toggle([p.thanks], model.page === 'list' && model.thanks, 'block');
       panelShown = model.page !== 'form';
       toggle([p.panel.frame], panelShown, 'block');
       if (form) showForm(p, model);

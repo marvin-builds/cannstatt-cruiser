@@ -42,20 +42,22 @@ describe('the portrait feedback sheet (ROADMAP 58)', () => {
     f.openForm();
     f.setText('Hallo');
     const m = feedbackSheetModel(f);
-    expect(m).toMatchObject({ tab: 'new', page: 'form', done: false, kind: 'bug', text: 'Hallo', placeholder: 'Was ist passiert?', logShown: true, logAvailable: true, withLog: false, canSend: true, counter: f.counter });
+    expect(m).toMatchObject({ tab: 'new', page: 'form', thanks: false, kind: 'bug', text: 'Hallo', placeholder: 'Was ist passiert?', logShown: true, logAvailable: true, withLog: false, canSend: true, counter: f.counter });
     expect(m.line).toEqual({ text: 'Bitte keine persönlichen Daten.', message: false });
     f.setKind('idea');
     expect(feedbackSheetModel(f)).toMatchObject({ kind: 'idea', placeholder: 'Was wünschst du dir?', logShown: false });
   });
 
-  it('shows a status message in place of the hint, and the thank-you once sent', async () => {
+  it('shows a status message in place of the hint, and once sent the thanks over "Mein Feedback" (ROADMAP 75)', async () => {
     const f = flow();
     f.openForm();
     await f.send(CONTEXT);
     expect(feedbackSheetModel(f).line).toEqual({ text: FEEDBACK_TEXT.short, message: true });
     f.setText('Ein langer Fehlerbericht');
     await f.send(CONTEXT);
-    expect(feedbackSheetModel(f).done).toBe(true);
+    expect(feedbackSheetModel(f)).toMatchObject({ tab: 'mine', page: 'list', thanks: true, line: { text: FEEDBACK_TEXT.sent, message: true } });
+    f.showTab('new');
+    expect(feedbackSheetModel(f).thanks).toBe(false);
   });
 
   it('carries the tabs, the dot and the pages of ROADMAP 70', () => {

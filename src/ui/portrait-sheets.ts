@@ -29,8 +29,8 @@ export interface FeedbackSheetModel {
   page: FeedbackPage;
   /** The red dot on "Mein Feedback". */
   dot: boolean;
-  /** Sent: the thank-you and OK instead of the form. */
-  done: boolean;
+  /** Just sent: the thanks over "Mein Feedback" (ROADMAP 75). */
+  thanks: boolean;
   kind: FeedbackKind;
   text: string;
   placeholder: string;
@@ -57,7 +57,7 @@ export function feedbackSheetModel(flow: FeedbackFlow): FeedbackSheetModel {
     tab: flow.tab,
     page: flow.page,
     dot: flow.dot,
-    done: flow.done,
+    thanks: flow.thanks,
     kind: flow.kind,
     text: flow.text,
     placeholder: feedbackPlaceholder(flow),

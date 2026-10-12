@@ -1,7 +1,7 @@
 /**
  * Layout of the feedback dialog's other canvas pages (ROADMAP 70): the
  * "Mein Feedback" list (the tabs and the close button above scrolling
- * two-line rows) and the sub-pages "Das wird gesendet", a report's details and
+ * two-line rows, right after sending with the thanks between them) and the sub-pages "Das wird gesendet", a report's details and
  * "Das wurde gesendet" ("Zurück" and the headline in the top row, the details
  * add "Ansehen", the text scrolling in one panel). Pure, shared by the
  * hotspots (index.ts) and the drawing (feedback-screen.ts); text pages are
@@ -10,7 +10,7 @@
 import { measureText } from '../core/font';
 import type { ReportStatus } from '../net/feedback-reports';
 import type { Rect } from '../types';
-import type { FeedbackPage } from './feedback-flow';
+import { FEEDBACK_TEXT, type FeedbackPage } from './feedback-flow';
 import { closeRect, dialogColumn, type FeedbackDisplay, labelW, tabRects } from './feedback-layout';
 import { FEEDBACK_PAGE_TEXT, type PageSection, type ReportDetail } from './feedback-pages';
 import { wrapText } from './wrap-text';
@@ -26,6 +26,8 @@ export interface PageLayout {
   title: { x: number; y: number; scale: number } | null;
   /** "Ansehen" (a report's details), else null. */
   view: Rect | null;
+  /** The thanks after sending (list page): its centre x, top and scale, else null. */
+  thanks: { x: number; y: number; scale: number } | null;
   close: Rect;
   /** The scrolling panel. */
   content: Rect;
@@ -47,18 +49,24 @@ const TEXT_ROW = 9;
 /** A list row: two text lines and some air (scale 1). */
 const LIST_ROW = 20;
 const SPACE = 5;
+/** Font cell height at scale 1. */
+const GLYPH_H = 7;
 
-export function pageLayout(display: FeedbackDisplay, page: Exclude<FeedbackPage, 'form'>): PageLayout {
+/** `thanks`: the list page right after sending (ROADMAP 75) puts the thanks above its rows. */
+export function pageLayout(display: FeedbackDisplay, page: Exclude<FeedbackPage, 'form'>, thanks = false): PageLayout {
   const c = dialogColumn(display);
   const tall = c.h >= 44;
   const scale = tall ? 2 : 1;
   const close = closeRect(c);
   const tabs = tabRects(c, c.big);
   const labelScale = tabs.mineTab.x + tabs.mineTab.w + GAP <= close.x ? c.big : 1;
-  const top = c.top + c.h + ROW_GAP;
+  const below = c.top + c.h + ROW_GAP;
+  const thanksScale = measureText(FEEDBACK_TEXT.sent, c.big) <= c.w ? c.big : 1;
+  const thanksAt = page === 'list' && thanks ? { x: c.x + Math.floor(c.w / 2), y: below, scale: thanksScale } : null;
+  const top = thanksAt ? below + GLYPH_H * thanksScale + ROW_GAP : below;
   const content: Rect = { x: c.x, y: top, w: c.w, h: c.bottom - top };
   const base = { close, content, labelScale, scale, rowH: Math.max(LIST_ROW * scale, c.h), pad: PAD, textW: content.w - 2 * PAD - SCROLLBAR_W * scale - 2 };
-  if (page === 'list') return { ...base, ...tabRects(c, labelScale), back: null, title: null, view: null };
+  if (page === 'list') return { ...base, ...tabRects(c, labelScale), back: null, title: null, view: null, thanks: thanksAt };
   const back: Rect = { x: c.x, y: c.top, w: labelW(FEEDBACK_PAGE_TEXT.back, labelScale, c.m), h: c.h };
   const viewW = labelW(FEEDBACK_PAGE_TEXT.view, labelScale, c.m);
   const view: Rect | null = page === 'detail' ? { x: close.x - GAP - viewW, y: c.top, w: viewW, h: c.h } : null;
@@ -66,7 +74,7 @@ export function pageLayout(display: FeedbackDisplay, page: Exclude<FeedbackPage,
   const titleText = page === 'sent' ? FEEDBACK_PAGE_TEXT.sentTitle : FEEDBACK_PAGE_TEXT.previewTitle;
   const titleScale = page !== 'detail' && titleX + measureText(titleText, c.big) <= close.x - GAP ? c.big : 1;
   const title = page === 'detail' ? null : { x: titleX, y: c.top + Math.floor((c.h - 7 * titleScale) / 2), scale: titleScale };
-  return { ...base, newTab: null, mineTab: null, back, title, view };
+  return { ...base, newTab: null, mineTab: null, back, title, view, thanks: null };
 }
 
 /** List row `i`'s tap area at scroll offset `scroll`, cut to the panel; null while out of sight. */

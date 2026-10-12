@@ -32,5 +32,12 @@ describe('typing orientation (ROADMAP 54)', () => {
 
   it('does nothing without an environment (tests, headless games)', () => {
     expect(() => new TypingOrientation(null).update(true)).not.toThrow();
+    expect(new TypingOrientation(null).turnsToLandscape()).toBe(false);
+  });
+
+  it('says whether closing a form turns the screen back to landscape (the settle cover waits for it, ROADMAP 75)', () => {
+    expect(new TypingOrientation(env(true).e).turnsToLandscape()).toBe(true);
+    expect(new TypingOrientation(env(false).e).turnsToLandscape()).toBe(false);
+    expect(new TypingOrientation(env(true, false).e).turnsToLandscape()).toBe(false);
   });
 });

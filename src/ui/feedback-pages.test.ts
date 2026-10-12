@@ -63,6 +63,16 @@ describe('"Das wird gesendet"', () => {
     expect(sections.find((s) => s.label === 'Fehlerprotokoll')!.lines).toEqual(['Nicht mitgesendet']);
   });
 
+  it('on a test device says that the tester pass goes with it, without showing the pass', () => {
+    const pass = 'tester.v1.1790000000000.secretsignature';
+    const sections = previewSections({ ...BODY, testerPass: pass }, { session: BODY.session, logAvailable: true });
+    const tester = sections.find((s) => s.label === FEEDBACK_PAGE_TEXT.testerPass);
+    expect(tester?.lines).toEqual([FEEDBACK_PAGE_TEXT.testerPassSent]);
+    expect(sections.indexOf(tester!)).toBe(sections.length - 2);
+    expect(JSON.stringify(sections)).not.toContain('secretsignature');
+    expect(previewSections(BODY, { session: BODY.session, logAvailable: true }).some((s) => s.label === FEEDBACK_PAGE_TEXT.testerPass)).toBe(false);
+  });
+
   it('names the device in German words', () => {
     const device = (b: Partial<FeedbackBody>) => previewSections({ ...BODY, ...b }, { session: null, logAvailable: true })[3]!.lines[0];
     expect(device({ platform: 'ios', input: 'keys', orientation: 'portrait', viewWidth: 320 })).toBe('iPhone/iPad, Tastatur, hochkant, 320 px breit');
@@ -75,12 +85,13 @@ describe('"Mein Feedback" list', () => {
     expect(STATUS_LABEL).toEqual({ open: 'Offen', todo: 'Geplant', done: 'Umgesetzt', rejected: 'Nicht geplant', removed: 'Entfernt' });
   });
 
-  it('a row per report in the given order: status, kind, date, the start of the text, and a dot on marked ones', () => {
-    const rows = reportRows([report(5, { status: 'done', kind: 'idea', text: 'Mehr Brezeln\nund Musik' }), report(3)], [5]);
+  it('a row per report in the given order: status, kind, date, the start of the text, a dot on marked ones, the fresh one highlighted', () => {
+    const rows = reportRows([report(5, { status: 'done', kind: 'idea', text: 'Mehr Brezeln\nund Musik' }), report(3)], [5], 3);
     expect(rows).toEqual([
-      { id: 5, status: 'done', label: 'Umgesetzt', kind: 'Idee', day: '11.10.2026', text: 'Mehr Brezeln und Musik', changed: true },
-      { id: 3, status: 'open', label: 'Offen', kind: 'Fehler', day: '11.10.2026', text: BODY.text, changed: false },
+      { id: 5, status: 'done', label: 'Umgesetzt', kind: 'Idee', day: '11.10.2026', text: 'Mehr Brezeln und Musik', changed: true, fresh: false },
+      { id: 3, status: 'open', label: 'Offen', kind: 'Fehler', day: '11.10.2026', text: BODY.text, changed: false, fresh: true },
     ]);
+    expect(reportRows([report(3)], [], null)[0]!.fresh).toBe(false);
   });
 
   it('says so when nothing was sent from this device', () => {

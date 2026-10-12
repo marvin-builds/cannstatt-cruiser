@@ -2,7 +2,8 @@
  * DOM kit of the portrait sheets (ROADMAP 58, portrait-sheets.ts): a
  * full-screen panel over the canvas in the game's colours, sized to the
  * visual viewport (so the phone keyboard never hides its buttons), with big
- * text and buttons. Events on it stop there, so the game's window listeners
+ * text and buttons, its content inside the screen's safe area (display cutouts,
+ * ROADMAP 75). Events on it stop there, so the game's window listeners
  * (keys, taps, the blocked page scrolling) never see them; key releases still
  * bubble, so no key stays held for the game. DOM-only, checked by playtest.
  */
@@ -15,6 +16,15 @@ const STOPPED_EVENTS = ['keydown', 'pointerdown', 'pointerup', 'touchstart', 'to
 
 const FONT = 'ui-monospace, Menlo, Consolas, monospace';
 
+/**
+ * A screen edge's safe-area inset (ROADMAP 75: a punch-hole camera or rounded corner). The custom
+ * property `--cc-safe-<side>` on the root element overrides it, so playtests can fake a cutout.
+ */
+export const safeInset = (side: 'top' | 'right' | 'bottom' | 'left'): string => `var(--cc-safe-${side}, env(safe-area-inset-${side}, 0px))`;
+
+/** A sheet's padding: SHEET_STYLE.padPx, or the safe-area inset where that is larger. */
+const SHEET_PADDING = (['top', 'right', 'bottom', 'left'] as const).map((side) => `max(${SHEET_STYLE.padPx}px, ${safeInset(side)})`).join(' ');
+
 /** A sheet's factory: index.ts passes its handlers, tests pass a fake. */
 export type SheetFactory<Handlers, Sheet> = (handlers: Handlers) => Sheet;
 
@@ -22,6 +32,11 @@ export interface SheetDom {
   root: HTMLDivElement;
   /** Shows or hides the sheet; while shown it follows the visual viewport. */
   setShown(shown: boolean): void;
+}
+
+/** Events on `el` stop there: the game's window listeners never see them (key releases still bubble). */
+export function keepEvents(el: HTMLElement): void {
+  for (const type of STOPPED_EVENTS) el.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
 }
 
 /** Applies `style` to `el`. */
@@ -42,8 +57,10 @@ export function createSheet(label: string, onEscape: () => void): SheetDom {
     flexDirection: 'column',
     gap: `${SHEET_STYLE.gapPx}px`,
     boxSizing: 'border-box',
-    padding: `${SHEET_STYLE.padPx}px`,
+    padding: SHEET_PADDING,
     background: UI.ink,
+    // The game colour also beyond the box, so a sheet still sized for the keyboard never shows the canvas around it.
+    boxShadow: `0 0 0 200vmax ${UI.ink}`,
     color: UI.white,
     fontFamily: FONT,
     fontSize: `${SHEET_STYLE.textPx}px`,
@@ -56,7 +73,7 @@ export function createSheet(label: string, onEscape: () => void): SheetDom {
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-modal', 'true');
   root.setAttribute('aria-label', label);
-  for (const type of STOPPED_EVENTS) root.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
+  keepEvents(root);
   root.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();

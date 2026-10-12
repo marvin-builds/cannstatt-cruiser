@@ -18,6 +18,8 @@ import { listRowRect, pageLayout } from './feedback-page-layout';
 import { uiMetrics } from './layout';
 import { gameOverLayout, type MenuInput, pauseLayout } from './menu-layout';
 import { fakeRotateSheet } from './rotate-sheet.fake';
+import { fakeHistory } from './back-nav.fake';
+import type { SettleCover } from './settle-cover';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -91,6 +93,8 @@ function app(options: AppOptions = {}) {
     },
   };
   const inbox = options.inbox ?? fakeInbox([]);
+  /** The order of blur, settle cover and orientation lock when a form closes (ROADMAP 75). */
+  const events: string[] = [];
   const field = {
     rect: null as Rect | null,
     value: '',
@@ -133,6 +137,7 @@ function app(options: AppOptions = {}) {
       sheet.hasFocus = true;
     },
     blur() {
+      if (sheet.hasFocus) events.push('blur');
       sheet.hasFocus = false;
     },
     isFocused(): boolean {
@@ -148,10 +153,15 @@ function app(options: AppOptions = {}) {
   if (options.kid) store.set('kidMode', true);
   /** The orientation locks asked for: a fake installed app (or a plain tab, which holds none). */
   const locks: string[] = [];
-  const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), Promise.resolve()) };
+  const orientation: OrientationEnv = { locked: () => !!options.installed, lock: (o) => (locks.push(o), events.push(`lock:${o}`), Promise.resolve()) };
   const feedbackSheet = (handlers: FeedbackSheetHandlers) => ((sheet.actions = handlers), sheet);
   const rotate = fakeRotateSheet();
-  const ui = createUiSystem({ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackInbox: inbox, feedbackField: field, feedbackSheet, rotateSheet: rotate.factory, orientation });
+  const history = fakeHistory();
+  const settleCover: SettleCover = { begin: (landscape) => void events.push(`cover:${landscape}`) };
+  const ui = createUiSystem({
+    ...{ store, fullscreenAvailable: () => true, scores: null, telemetry: null, feedback: sender, feedbackInbox: inbox, feedbackField: field, feedbackSheet },
+    ...{ rotateSheet: rotate.factory, orientation, history: history.env, settleCover },
+  });
   const game = new Game({ systems: [ui] });
   game.display.touch = options.touch ?? false;
   game.display.portrait = options.portrait ?? false;
@@ -181,7 +191,7 @@ function app(options: AppOptions = {}) {
     for (let i = 0; i < 8; i++) game.tick();
   };
   game.tick();
-  return { game, ui, flow: ui.feedback!, sent, field, sheet, rotate, locks, input, press, key, form, icon, tap, inbox, answer: (r: FeedbackResult) => answer(r) };
+  return { game, ui, flow: ui.feedback!, sent, field, sheet, rotate, locks, events, history, input, press, key, form, icon, tap, inbox, answer: (r: FeedbackResult) => answer(r) };
 }
 
 describe('feedback in the game', () => {
@@ -312,7 +322,7 @@ describe('feedback in the game', () => {
     t.press(t.icon());
     t.game.tick();
     expect(t.field.rect).toBeNull();
-    expect(t.sheet.model).toMatchObject({ done: false, kind: 'bug', text: '', logShown: true });
+    expect(t.sheet.model).toMatchObject({ thanks: false, kind: 'bug', text: '', logShown: true });
     // The canvas form under the sheet takes no taps.
     t.press(t.form().idea);
     expect(t.flow.kind).toBe('bug');
@@ -328,7 +338,9 @@ describe('feedback in the game', () => {
     t.game.tick();
     expect(t.sent[0]!.draft).toEqual({ kind: 'bug', text: 'Die Bank ist zu hoch', withLog: true });
     expect(t.sent[0]!.context).toMatchObject({ touch: true, portrait: true });
-    expect(t.sheet.model!.done).toBe(true);
+    // Sent: the sheet stays with the thanks on "Mein Feedback" (ROADMAP 75); the player closes it.
+    expect(t.flow.open).toBe(true);
+    expect(t.sheet.model).toMatchObject({ tab: 'mine', page: 'list', thanks: true });
     a.onClose();
     t.game.tick();
     expect(t.flow.open).toBe(false);
@@ -363,9 +375,11 @@ describe('feedback in the game', () => {
     expect(t.sent).toHaveLength(1);
     expect(t.sent[0]!.draft).toEqual({ kind: 'bug', text: 'Ich hänge in der Bank fest', withLog: false });
     expect(t.sent[0]!.context).toEqual({ platform: t.game.state.install.platform, touch: false, portrait: false, viewWidth: 320, mode: 'title' });
-    expect(t.flow.done).toBe(true);
-    // OK closes the thank-you.
-    t.press(t.form().ok);
+    // The dialog stays on "Mein Feedback" with the thanks; "×" there closes it (ROADMAP 75).
+    expect([t.flow.open, t.flow.page, t.flow.thanks]).toEqual([true, 'list', true]);
+    t.game.tick();
+    expect(t.field.rect).toBeNull();
+    expect(t.press(pageLayout(t.game.display, 'list', true).close)).toBe(true);
     expect(t.flow.open).toBe(false);
 
     t.key('KeyF');
@@ -515,7 +529,7 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     expect(t.locks).toEqual(['any', 'landscape']);
   });
 
-  it('Esc, "Senden" (the thank-you screen has nothing to type) and a closing textarea lock landscape again', async () => {
+  it('Esc, "Senden" (the list after it has nothing to type) and a closing textarea lock landscape again', async () => {
     const t = app({ installed: true });
     t.key('KeyF');
     t.key('Escape');
@@ -526,11 +540,11 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     await Promise.resolve();
     await Promise.resolve();
     t.game.tick();
-    expect(t.flow.done).toBe(true);
+    expect([t.flow.open, t.flow.thanks]).toEqual([true, true]);
     expect(t.locks).toEqual(['any', 'landscape', 'any', 'landscape']);
   });
 
-  it('the portrait sheet keeps portrait free over its thank-you until OK (ROADMAP 58)', async () => {
+  it('the portrait sheet keeps portrait free after sending until the player closes it (ROADMAP 58, 75)', async () => {
     const t = app({ installed: true, touch: true });
     t.press(t.icon());
     t.game.display.portrait = true;
@@ -540,8 +554,7 @@ describe('portrait while typing feedback in the installed app (ROADMAP 54)', () 
     await Promise.resolve();
     await Promise.resolve();
     t.game.tick();
-    expect(t.flow.done).toBe(true);
-    expect(t.sheet.model!.done).toBe(true);
+    expect(t.sheet.model).toMatchObject({ page: 'list', thanks: true });
     expect(t.locks).toEqual(['any']);
     t.sheet.actions!.onClose();
     t.game.tick();
@@ -822,5 +835,138 @@ describe('the rotate screen around the feedback dialog (ROADMAP 73)', () => {
     expect(t.rotate.shown).toBe(false);
     expect(t.sheet.model).not.toBeNull();
     expect(t.game.state.mode).toBe('paused');
+  });
+});
+
+describe('closing a portrait form smoothly (ROADMAP 75)', () => {
+  /** Opens the sheet in portrait with the keyboard up and text typed. */
+  function typing(options: AppOptions) {
+    const t = app({ touch: true, ...options });
+    t.press(t.icon());
+    t.game.display.portrait = true;
+    t.game.tick();
+    t.sheet.focus();
+    t.sheet.actions!.onInput('Die Bank ist zu hoch');
+    t.game.tick();
+    t.events.length = 0;
+    return t;
+  }
+
+  it('the installed app: the field is blurred first, then the cover, then the landscape lock', () => {
+    const t = typing({ installed: true });
+    t.sheet.actions!.onClose();
+    t.game.tick();
+    expect(t.events).toEqual(['blur', 'cover:true', 'lock:landscape']);
+    expect(t.sheet.model).toBeNull();
+    t.game.tick();
+    expect(t.events).toHaveLength(3);
+  });
+
+  it('after sending too, once the player closes the sheet', async () => {
+    const t = typing({ installed: true });
+    t.sheet.actions!.onSend();
+    await Promise.resolve();
+    t.game.tick();
+    // Off the form the keyboard goes down at once; portrait stays free.
+    expect(t.events).toEqual(['blur']);
+    t.sheet.actions!.onClose();
+    t.game.tick();
+    expect(t.events).toEqual(['blur', 'cover:true', 'lock:landscape']);
+  });
+
+  it('a plain browser tab covers until the keyboard is down, without waiting for landscape', () => {
+    const t = typing({});
+    t.sheet.actions!.onBack();
+    t.game.tick();
+    expect(t.events).toEqual(['blur', 'cover:false']);
+  });
+
+  it('a plain browser tab without the keyboard up needs no cover', () => {
+    const t = typing({});
+    t.sheet.blur();
+    t.events.length = 0;
+    t.sheet.actions!.onClose();
+    t.game.tick();
+    expect(t.events).toEqual([]);
+  });
+
+  it('closing the canvas form in landscape needs no cover', () => {
+    const t = app({ touch: true, installed: true });
+    t.press(t.icon());
+    t.game.tick();
+    t.press(t.form().close);
+    t.game.tick();
+    expect(t.events).toEqual(['lock:any', 'lock:landscape']);
+  });
+});
+
+describe('Android back (ROADMAP 75)', () => {
+  it('walks the feedback dialog back one level per press: details, list, closed; then the title lets go', () => {
+    const t = app({ touch: true, inbox: fakeInbox([keptReport(5), keptReport(3)]) });
+    t.press(t.icon());
+    t.game.tick();
+    expect([t.history.pushes, t.history.extra]).toEqual([1, 1]);
+    t.flow.showTab('mine');
+    t.flow.openReport(5);
+    t.game.tick();
+    t.history.pressBack();
+    expect([t.flow.open, t.flow.page]).toEqual([true, 'list']);
+    t.game.tick();
+    expect(t.history.extra).toBe(1);
+    t.history.pressBack();
+    expect(t.flow.open).toBe(false);
+    t.game.tick();
+    expect(t.history.extra).toBe(0);
+    expect(t.game.state.mode).toBe('title');
+    t.history.pressBack();
+    expect(t.history.left).toBe(true);
+    expect(t.history.pushes).toBe(2);
+  });
+
+  it('a run pauses on back and stays paused; leaving it by the menu drops the entry', () => {
+    const t = app({ touch: true });
+    t.game.commands.startRun();
+    t.game.tick();
+    expect(t.history.extra).toBe(1);
+    t.history.pressBack();
+    expect(t.game.state.mode).toBe('paused');
+    t.game.tick();
+    t.history.pressBack();
+    t.game.tick();
+    expect(t.game.state.mode).toBe('paused');
+    expect([t.history.extra, t.history.left]).toEqual([1, false]);
+    t.game.commands.toTitle();
+    t.game.tick();
+    expect(t.history.backs).toBe(1);
+    t.history.settle();
+    t.game.tick();
+    expect([t.history.extra, t.game.state.mode]).toEqual([0, 'title']);
+  });
+
+  it('closes the settings to the title, and goes from game over to the title', () => {
+    const t = app();
+    t.ui.settings.openMenu(false);
+    t.game.tick();
+    t.history.pressBack();
+    expect(t.ui.settings.open).toBe(false);
+    t.game.tick();
+    expect(t.history.extra).toBe(0);
+    t.game.commands.startRun();
+    t.game.tick();
+    t.game.commands.gameOver();
+    t.game.tick();
+    t.history.pressBack();
+    expect(t.game.state.mode).toBe('title');
+  });
+
+  it('the feedback dialog over the pause screen closes back to the pause screen', () => {
+    const t = app();
+    t.game.commands.startRun();
+    t.game.commands.pause();
+    t.game.tick();
+    t.key('KeyF');
+    expect(t.flow.open).toBe(true);
+    t.history.pressBack();
+    expect([t.flow.open, t.game.state.mode]).toEqual([false, 'paused']);
   });
 });

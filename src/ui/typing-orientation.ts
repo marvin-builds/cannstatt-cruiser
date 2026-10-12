@@ -9,8 +9,13 @@ import { createOrientationLock, type OrientationEnv, type OrientationLock } from
 export class TypingOrientation {
   private readonly lock: OrientationLock | null;
 
-  constructor(env: OrientationEnv | null) {
+  constructor(private readonly env: OrientationEnv | null) {
     this.lock = env ? createOrientationLock(env) : null;
+  }
+
+  /** Closing a form locks landscape again now (an installed app or fullscreen that can lock). */
+  turnsToLandscape(): boolean {
+    return !!this.env?.lock && this.env.locked();
   }
 
   /** Every tick, with whether a text form is open (only changes act). */

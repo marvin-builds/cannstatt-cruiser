@@ -12,7 +12,8 @@
  * - "Neu" shows "Ansehen" beside the log toggle; "Das wird gesendet" lists the
  *   whole message with the recorded error lines (the online list is routed to
  *   a 503, which the game logs); "Senden" posts exactly that
- *   snapshot (with a 32 hex key).
+ *   snapshot (with a 32 hex key), and the dialog then shows "Mein Feedback"
+ *   with the thanks and the new report framed on top (ROADMAP 75).
  * - "Mein Feedback" lists every status, newest first, the dot gone after
  *   opening it; a row opens its details (version, reply), "Ansehen" there
  *   shows what was sent; the empty state; kid mode asks nothing and shows no
@@ -140,7 +141,7 @@ export default async function feedbackInbox(t: PlaytestContext): Promise<void> {
     const label = `${viewWidth}px`;
     const sheet = page.locator(SHEET);
     const sheetButton = (name: string | RegExp) => sheet.getByRole('button', { name, exact: typeof name === 'string' });
-    const press = async (control: 'mineTab' | 'newTab' | 'view' | 'send' | 'log' | 'ok', sheetName?: string) => {
+    const press = async (control: 'mineTab' | 'newTab' | 'view' | 'send' | 'log', sheetName?: string) => {
       if (!portrait) return tap((await fb()).form[control]);
       if (control === 'log') await sheet.locator('input[type=checkbox]').tap();
       else await sheetButton(sheetName!).tap();
@@ -206,13 +207,12 @@ export default async function feedbackInbox(t: PlaytestContext): Promise<void> {
     await t.game.step(2);
     const posted = sent.at(-1);
     t.check(`${label}: Senden posts exactly the snapshot`, JSON.stringify(posted) === JSON.stringify(shown) && /^[0-9a-f]{32}$/.test(String(posted?.key)), { posted, shown });
-    await press('ok', 'OK');
 
-    // "Mein Feedback": all statuses, newest first; the dot goes.
-    await tap((await screen()).screen?.feedback);
-    await press('mineTab', 'Mein Feedback');
+    // Sent (ROADMAP 75): the dialog moves to "Mein Feedback" itself, all statuses, newest first, the new one framed; the dot goes.
     state = await fb();
+    t.check(`${label}: after Senden the dialog shows Mein Feedback with the thanks`, state.open && state.page === 'list' && state.thanks, state);
     t.check(`${label}: Mein Feedback lists every status, newest first`, JSON.stringify(state.rows.map((r) => r.label)) === JSON.stringify(['Offen', 'Entfernt', 'Nicht geplant', 'Umgesetzt', 'Geplant', 'Offen']), state.rows);
+    t.check(`${label}: the report just sent is on top, framed`, JSON.stringify(state.rows.map((r) => r.fresh)) === JSON.stringify([true, false, false, false, false, false]), state.rows);
     t.check(`${label}: changed rows keep their dot, the tab dot is gone`, !state.dot && JSON.stringify(state.rows.map((r) => r.changed)) === JSON.stringify([false, true, true, true, true, false]), state.rows);
     await t.screenshot(`${label} mein feedback list`);
     if (!portrait) await t.canvasShot(`${label} mein feedback list`);
@@ -220,6 +220,7 @@ export default async function feedbackInbox(t: PlaytestContext): Promise<void> {
     // The done report: details with version and reply, then what was sent.
     if (portrait) await sheet.getByRole('button', { name: /Umgesetzt/ }).tap();
     else await tap(state.rowRects[3]);
+    t.check(`${label}: the thanks stays while the player looks at a report`, (await fb()).thanks);
     await t.game.step(3);
     state = await fb();
     t.check(`${label}: details with version and reply`, state.page === 'detail' && state.detail?.headline === 'Umgesetzt in Version 2026-10-12.1' && state.detail.reply === `Antwort: „${REPLY}“`, state.detail);

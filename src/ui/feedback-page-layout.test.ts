@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
+import { FEEDBACK_TEXT } from './feedback-flow';
 import { FEEDBACK_PAGE_TEXT, type PageSection } from './feedback-pages';
 import { detailItems, listRowRect, pageLayout, sectionItems, textRows } from './feedback-page-layout';
 
@@ -25,6 +26,22 @@ describe('feedback dialog pages', () => {
       parts.forEach((a, i) => parts.slice(i + 1).forEach((b) => expect(overlap(a, b), d.label).toBe(false)));
       expect(l.rowH, d.label).toBeGreaterThanOrEqual(d.touch ? 24 : 18);
       expect(l.content.h, d.label).toBeGreaterThanOrEqual(4 * l.rowH);
+    }
+  });
+
+  it('after sending, the thanks sits between the tabs and the rows, whole and centred (ROADMAP 75)', () => {
+    for (const d of DISPLAYS) {
+      const plain = pageLayout(d, 'list');
+      const l = pageLayout(d, 'list', true);
+      const thanks = l.thanks!;
+      expect(plain.thanks, d.label).toBeNull();
+      const w = measureText(FEEDBACK_TEXT.sent, thanks.scale);
+      expect(thanks.y, d.label).toBeGreaterThanOrEqual(l.newTab!.y + l.newTab!.h);
+      expect(thanks.y + 7 * thanks.scale, d.label).toBeLessThanOrEqual(l.content.y);
+      expect(Math.abs(thanks.x - (l.content.x + l.content.w / 2)), d.label).toBeLessThanOrEqual(1);
+      expect(w, d.label).toBeLessThanOrEqual(l.content.w);
+      expect(l.content.y + l.content.h, d.label).toBe(plain.content.y + plain.content.h);
+      expect(l.content.h, d.label).toBeGreaterThanOrEqual(3 * l.rowH);
     }
   });
 

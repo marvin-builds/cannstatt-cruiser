@@ -8,7 +8,7 @@
  * when there is a feedback sender and calls it every tick.
  *
  * Keys on the canvas: Esc goes back a page or closes; on the form other keys
- * type into the field (the thank-you closes on Enter or Space); on the list
+ * type into the field; on the list
  * and the text pages the arrow keys (and W / S), Page Up / Down, Home and End
  * scroll. M always mutes.
  */
@@ -69,7 +69,7 @@ export class FeedbackDialog {
 
   constructor(private readonly options: FeedbackDialogOptions) {
     const flow = (this.flow = new FeedbackFlow(options.sender, options.inbox));
-    this.field = options.field({ onInput: (v) => flow.setText(v), onCancel: () => this.escape() });
+    this.field = options.field({ onInput: (v) => flow.setText(v), onCancel: () => this.back() });
     this.sheet =
       options.sheet?.({
         onInput: (v) => flow.setText(v),
@@ -80,7 +80,7 @@ export class FeedbackDialog {
         onTab: (tab) => this.showTab(tab),
         onOpenReport: (id) => flow.openReport(id),
         onSentLog: () => flow.openSentLog(),
-        onBack: () => this.escape(),
+        onBack: () => this.back(),
         onClose: () => flow.close(),
       }) ?? null;
     this.surface = new FormSurface({ field: this.field, sheet: this.sheet });
@@ -115,10 +115,20 @@ export class FeedbackDialog {
     this.flow.dismiss();
   }
 
+  /** The text field has the focus (on a phone: the keyboard is up). */
+  isFocused(): boolean {
+    return this.surface.isFocused();
+  }
+
+  /** Drops the text field's focus (the phone keyboard goes down). */
+  blur(): void {
+    this.surface.blur();
+  }
+
   /** The player takes text now (the form shows, or the portrait sheet, which stays until closed): portrait stays free. */
   typing(ctx: GameContext): boolean {
     const { flow } = this;
-    return flow.open && (this.onSheet(ctx) || (flow.page === 'form' && !flow.done));
+    return flow.open && (this.onSheet(ctx) || flow.page === 'form');
   }
 
   /** Every tick, first: the dialog closes as soon as the screen it was opened on is gone (any path out of title or pause), so all ui comes back. */
@@ -132,6 +142,8 @@ export class FeedbackDialog {
   /** Every tick, after the orientation: places the field or the sheet, scrolls, and checks the status on the title. */
   update(ctx: GameContext, dt: number): void {
     this.place(ctx);
+    // Off the form (sent, a list or text page) nothing takes text: the keyboard goes down.
+    if (this.flow.page !== 'form' && this.surface.isFocused()) this.surface.blur();
     const page = this.canvasPage(ctx);
     if (page) {
       if (this.keyScroll !== 0) this.flow.scrollBy(this.keyScroll * KEY_ROWS_PER_SECOND * 9 * page.scale * dt);
@@ -158,16 +170,15 @@ export class FeedbackDialog {
     return !!this.sheet && sheetShown(ctx.display, true);
   }
 
-  /** The canvas form's layout while it shows (not thanking), else null. */
+  /** The canvas form's layout while it shows, else null. */
   private canvasForm(ctx: GameContext): FeedbackLayout | null {
-    const { flow } = this;
-    return this.shown() && !this.onSheet(ctx) && flow.page === 'form' && !flow.done ? feedbackLayout(ctx.display) : null;
+    return this.shown() && !this.onSheet(ctx) && this.flow.page === 'form' ? feedbackLayout(ctx.display) : null;
   }
 
   /** The canvas list or text page's layout while it shows, else null. */
   private canvasPage(ctx: GameContext): PageLayout | null {
-    const { page } = this.flow;
-    return this.shown() && !this.onSheet(ctx) && page !== 'form' ? pageLayout(ctx.display, page) : null;
+    const { page, thanks } = this.flow;
+    return this.shown() && !this.onSheet(ctx) && page !== 'form' ? pageLayout(ctx.display, page, thanks) : null;
   }
 
   /** The native textarea over the canvas form's field, or the portrait sheet, else both hidden; a pending desktop focus goes to the one shown. */
@@ -190,8 +201,8 @@ export class FeedbackDialog {
     this.focusAfterNav();
   }
 
-  /** "Zurück" and Esc: the page before, else closes. */
-  private escape(): void {
+  /** "Zurück", Esc and Android back (back-nav.ts): the page before, else closes. */
+  back(): void {
     if (this.flow.back()) this.focusAfterNav();
     else this.flow.close();
   }
@@ -205,15 +216,11 @@ export class FeedbackDialog {
   private key(ctx: GameContext, code: string): boolean {
     const { flow } = this;
     if (code === 'KeyM') return false;
-    if (code === 'Escape') this.escape();
-    else if (flow.page === 'form') {
-      const confirm = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
-      if (flow.done && confirm) flow.close();
-      else if (!flow.done) this.surface.focus();
-    } else if (this.onSheet(ctx)) {
-      this.sheet!.scrollKey(code);
-    } else {
-      const page = this.canvasPage(ctx) ?? pageLayout(ctx.display, flow.page);
+    if (code === 'Escape') this.back();
+    else if (flow.page === 'form') this.surface.focus();
+    else if (this.onSheet(ctx)) this.sheet!.scrollKey(code);
+    else {
+      const page = this.canvasPage(ctx) ?? pageLayout(ctx.display, flow.page, flow.thanks);
       this.keyScroll = scrollDirection(code);
       const jump = pageScroll(code, { rect: page.content });
       if (this.keyScroll !== 0) flow.scrollBy(this.keyScroll * 9 * page.scale);
@@ -254,11 +261,10 @@ export class FeedbackDialog {
     add(form((l) => (flow.logShown ? l.log : null)), () => flow.toggleLog());
     add(form((l) => l.view), () => flow.openPreview(this.context(ctx)));
     add(form((l) => l.send), () => void flow.send(this.context(ctx)));
-    add(() => (this.shown() && flow.done && !this.onSheet(ctx) && flow.page === 'form' ? feedbackLayout(ctx.display).ok : null), () => flow.close());
     add(page((l) => l.newTab), () => this.showTab('new'));
     add(page((l) => l.mineTab), () => this.showTab('mine'));
     add(page((l) => l.close), () => flow.close());
-    add(page((l) => l.back), () => this.escape());
+    add(page((l) => l.back), () => this.back());
     add(page((l) => l.view), () => flow.openSentLog());
     // A list row opens its report when let go, unless the list was dragged meanwhile.
     for (let i = 0; i < MAX_STATUS_ITEMS; i++) {
