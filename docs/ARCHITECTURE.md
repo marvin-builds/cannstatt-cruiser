@@ -72,10 +72,12 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
   gameplay/star-arcs.ts star points (ROADMAP 65): STAR_POINTS 10 per star and STAR_ARC_BONUS 50 for a whole arc in one flight (both x multiplier, via addPoints, so stars never start or break a combo); asArc / linkArcs tag a pattern's stars with a run-wide arc id and size (data.arc, data.arcSize); StarArcs tracks the arc in progress (a street landing or a new run cancels it), and a whole arc emits `starArc`. A jump-arc pattern or combo guide line is one arc; stunt lines and the park get one arc per kicker-to-kicker stretch
   gameplay/combo-grace.ts  ComboGrace (ROADMAP 52 point 10): a street touch of up to COMBO_GRACE_SECONDS (0.3) after a landing keeps combo and multiplier, staying longer ends it; a crash ends it at once
+  gameplay/missions.ts  MissionDirector (ROADMAP 52 point 11): one small mission at a time, counted from the events, flat bonus via addBonus (MISSION_GOALS, missionGoal, missionBonus; see Missions and adaptive density)
+  gameplay/density.ts   AdaptiveDensity (ROADMAP 52 point 12, adult mode): a slightly denser street while every heart is kept (denseGap, denseQuiet, denseTier; see Missions and adaptive density)
   gameplay/mixes.ts     combination templates from tier 2 on (ROADMAP 52 6a): jump+duck mixes, rail sandwiches, people inside combinations, route choices, 4-5 element chains at tier 3
   gameplay/pattern-log.ts  small log of laid patterns (spawner onSpawn), for the debug hook patterns()
   gameplay/variety.ts   variety meter: templates laid, elements per pattern, distinct templates per ride
-  gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK; PlanOptions.template plans one named template
+  gameplay/patterns.ts  templates and the pattern builder: leadFor / runoutFor (free street before / after a pattern), EFFECT_FALLBACK, zoneHasPeople (people walk this zone); PlanOptions.template plans one named template
   gameplay/combos.ts    combo templates (COMBO_TEMPLATES, COMBO_NAMES): grind lines of rails, benches and low obstacles (see Combo patterns)
   gameplay/line-guide.ts  lineGuide() / spreadStars(): the guide stars along a combo's human line (see Combo patterns)
   gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
@@ -85,6 +87,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/crowd-art.ts drawCrowdFan(): chanting VfB fans with scarves and a flag, swaying Wasen visitors with Lebkuchenherzen, a shaded second row
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"), PopupFeed.listen(bus) subscribes the popup-only events; ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
+  ui/mission-line.ts    MissionLine: the HUD mission line under the stats plate (bullseye, goal, "1/3"), rebuilt only on change
   ui/item-button.ts     touch item button (landscape top right, portrait under the stats plate) / desktop "E" chip, first-catch hint (storage key itemHintSeen, itemHintRect, popupCeiling)
   ui/drunk-look.ts      drunk HUD row and woozy screen (two swaying double images, pulsing wash, vignette); ui/item-look.ts catch popups
   ui/notices.ts         rules for the menu notices: reloadOffered, installHintKind (INSTALL_HINT_MIN_VISITS), whatsNewLines (see Menu screens)
@@ -321,6 +324,7 @@ interface System {
 | `player.*` (position, velocity, grounded, grinding, grindTrick, airTrick, state, hitbox, invulnerableTimer) | player (gameplay changes grinding / crash only through the events it emits, and only reads `invulnerableTimer`, `grindTrick` and `airTrick`; see below and `src/player/CONTRACT.md`) |
 | `zoneIndex` | world (and `commands.setZone`); `resetRun` sets `START_ZONE` |
 | `park` | gameplay: the planned NorDIY park (`ParkPlan`), set once per Bad Cannstatt visit well before its start comes on screen and cleared (null) after its end has passed; core sets null at startup and `resetRun` clears it. World, audio and ui only read it (see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
+| `mission`, `missionsDone` | gameplay (`missions.ts`): the running `Mission {kind, goal, progress}` or null between missions, and the missions completed this run; core resets both per run (null, 0); the ui only reads them (the [ui test hooks](#missions-and-adaptive-density-roadmap-52-points-11-and-12) write them like gameplay) |
 | `trafficDensity` | world, every tick except while paused (during a run `LIGHT_TRAFFIC` 0.05 outside Mitte up to 1 in Mitte, 0 on the title and game over; see [Mitte traffic](#mitte-traffic)); audio reads it for the traffic noise |
 
 Coordinates are screen space in view pixels, with y pointing down. The world
@@ -399,6 +403,8 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `highFive` | `{entityId, points}` | gameplay (the use press inside a `highFiver`'s high five window; that press never uses the carried item; see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `sessionCheer` | `{level}` | gameplay (a grind trick, air trick or combo step inside the park; `level` 0..1 is the session's cheering so far; world animates the crowd, audio scales the cheers) |
 | `sessionEnd` | `{level, points}` | gameplay (the skater left the park; `points` = the "Session!" bonus scaled by `level`, 0 if none; the ui shows the callout) |
+| `missionStart` | `{kind, goal}` | gameplay (`missions.ts`: a new [mission](#missions-and-adaptive-density-roadmap-52-points-11-and-12) began, `state.mission` is set; the ui shows "Neue Mission!" and the HUD mission line, audio a soft ding) |
+| `missionDone` | `{kind, goal, points}` | gameplay (the mission reached its goal; emitted after the bonus's `scoreChanged`, `state.mission` is null and `missionsDone` counted up; the ui shows "Mission geschafft! +points" (that `scoreChanged` shows nothing), audio a jingle; a dropped high five mission ends without it) |
 | `crowdAhead` | `{theme}` | gameplay (`crowd-watch.ts`: a [fan crowd](#fan-crowds-roadmap-76)'s first fan, seat 0, came on screen; once per crowd, reset per run; `theme` `'vfb' \| 'wasen'`; the ui shows "VfB-Fans!" (white) or "Wasen!" (orange), also in kid mode; audio plays `cheerSmall`) |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
@@ -1077,7 +1083,12 @@ enough for friends and family.
   `422 implausible`. The server does not import from `src/`, so nothing
   catches this automatically. Example: the combo grace (ROADMAP 52 point 10)
   lets a skilled player hold x5 from obstacle to obstacle, so
-  `MAX_POINTS_PER_METRE` rose from 80 to 120.
+  `MAX_POINTS_PER_METRE` rose from 80 to 120. Missions (ROADMAP 52 point 11)
+  pay a flat bonus without the multiplier (at most 500, the next one at the
+  earliest 6 s later), which adds at most about 6 points/m and 56 points/s;
+  120 points/m still covers the worst case (about 110), so the worker stayed
+  unchanged. Raising `MISSION_BONUS_MOST` or shortening
+  `MISSION_PAUSE_SECONDS` means checking this again.
 
 ### Client (`src/net/` + `src/ui/`, owned by the ui slice)
 
@@ -2331,6 +2342,56 @@ events below).
   `window.__gameplay.park(offset?, seed?)` plans a ridable park right ahead;
   `window.__world.planPark(x?)` shows the scenery only; see
   docs/TESTING.md).
+
+## Missions and adaptive density (ROADMAP 52 points 11 and 12)
+
+Contract in `src/types.ts`: `MissionKind` (`stomp`, `grind`, `stuntLine`,
+`kickflip`, `stars`, `highFive`), `Mission {kind, goal, progress}`,
+`GameState.mission` / `missionsDone` and the events `missionStart` /
+`missionDone` (see [Events](#events-gameevents)).
+
+- **Missions** (`gameplay/missions.ts` `MissionDirector`, ROADMAP 86): the
+  first after `MISSION_FIRST_SECONDS` 15 s of playing, then one at a time, a
+  `MISSION_PAUSE_SECONDS` 6 s pause after each. The kind is drawn with
+  `ctx.rng`: never the same kind twice in a row, `stomp` only in zones with
+  people (`patterns.ts` `zoneHasPeople`), `highFive` only while a NorDIY park
+  is ahead (`state.park`, start not reached; weight 3). A high five mission
+  whose park passes ends quietly (no event, `state.mission` null) and the next
+  one comes `MISSION_RETRY_SECONDS` 3 s later. A crash never cancels a
+  mission.
+- **Progress** from existing events: `stomp`, `stuntEnd.completed`,
+  `airTrick.full` (kickflip), `starCollected`, `highFive`; grinding is counted
+  per tick while `player.grinding`, in whole seconds.
+- **Goals** (`MISSION_GOALS` `{first, step, most}`) grow with
+  `missionsDone`; kid mode has the same kinds, growing at half the pace.
+- **Bonus** (`missionBonus`): 250 + 50 per mission done, at most 500, paid
+  flat through `scoring.ts` `addBonus` (no multiplier, no combo; see the
+  plausibility note in [Online highscores](#online-highscores-roadmap-34)).
+- **Adaptive density** (`gameplay/density.ts` `AdaptiveDensity`, adult mode
+  only): seconds at full hearts become a factor 0 until
+  `DENSITY_FROM_SECONDS` 45, rising to 1 at `DENSITY_FULL_SECONDS` 90; any
+  lost heart or crash resets it. The gameplay system hands it to the spawner
+  as `SpawnSituation.density`; each pattern keeps the density it was planned
+  with. It cuts the gap after a pattern by up to `DENSE_GAP_CUT` 25 %
+  (`denseGap`) and the quiet cap by up to `DENSE_QUIET_CUT` 12 %
+  (`denseQuiet`), and from `DENSE_TIER_FROM` 0.5 steps the pattern tier up by
+  one (`denseTier`, at most 3, never from tier 0, not while drunk or
+  chilled). Every pattern is still solver-checked with the full human window,
+  so no window gets tighter.
+- **Ui**: `ui/mission-line.ts` draws the mission line right under the stats
+  plate, left-aligned (bullseye `MISSION_ICON`, goal text from
+  `texts().missions.goals`, progress "1/3" in yellow); in portrait it steps
+  right of the item button when it would cover it. It shows only while
+  `playing` (hidden in pause) and waits while the zone banner shows. Popups
+  and the stunt callout keep clear of its plate. Popups (`popup-feed.ts`):
+  "Neue Mission!" (teal) and "Mission geschafft! +N" (green). Game over has
+  a "Missionen: N" row (`menu-layout.ts`, dropped early when buttons need
+  room).
+- **Audio** (`audio/sounds.ts`): `missionStart` a soft bell ding,
+  `missionDone` a rising A major jingle.
+- Test hooks: `window.__ui.startMission(kind, goal)`,
+  `missionProgress(n)`, `finishMission(points)` and `layout().mission`;
+  playtest `scripts/scenarios/missions.ts` (see docs/TESTING.md).
 
 ## How state flows
 

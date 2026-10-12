@@ -306,9 +306,10 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.airTrick(points, full = true)` / `bail()` / `airHintVisible()` | emits `airTrick` (full: "Kickflip! +…" callout and sparkle; `full` false: the plain "Kickflip +…" popup; either way the first-time air trick hint is never shown again) / emits a kickflip bail like gameplay (`crash` kind `'bail'`, health unchanged: the "Zu wacklig!" popup while drunk, "Zu entspannt!" while chilled, else "Zu spät geflippt!") / whether the air trick hint wants to show now |
 | `window.__ui.previewKickerHint()` | feeds the kicker hint one kicker just ahead of the skater; returns whether the ramp hint ("Auf der Rampe springen! (Leertaste)" / "Auf der Rampe tippen!") shows |
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Boardslide!") shows now |
+| `window.__ui.startMission(kind, goal)` / `missionProgress(n)` / `finishMission(points)` | missions like gameplay (ROADMAP 52 point 11): sets `state.mission` (progress 0) and emits `missionStart` / sets its progress / adds the points (`scoreChanged`), counts `missionsDone`, clears the mission and emits `missionDone`. Used by `scripts/scenarios/missions.ts` |
 | `window.__ui.whatsNew()` | the "Neu in dieser Version" list while it shows, else `null`: `{sheet, offset, maxScroll, rows, headings, list}` (`sheet` true for the portrait DOM sheet, whose offsets are CSS px; else view px) |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
-| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, language, ...}, logo, screen, plate, itemButton, language}`; `language` is the title's "DE | EN" switch `{de, en, plate, scale}` (null off the title), `menu.language` the settings menu's; `plate` is the HUD stats plate as last laid out, `itemButton` the touch item button's rect; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back, language, ...}, logo, screen, plate, itemButton, language}`; `language` is the title's "DE | EN" switch `{de, en, plate, scale}` (null off the title), `menu.language` the settings menu's; `plate` is the HUD stats plate as last laid out, `mission` the HUD mission line's plate while it shows (else null), `itemButton` the touch item button's rect; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
 | `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown, ownBest}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
 | `window.__audio.log` / `status()` / `gain()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
@@ -749,6 +750,18 @@ npm run playtest -- --headed
   leaderboard and name entry, feedback, the install steps, what's new and the
   portrait rotate screen and sheets.
   `npm run playtest -- --scenario scripts/scenarios/i18n-en.ts --viewports desktop,phone-landscape,phone-portrait --name i18n-en`.
+- `scripts/scenarios/missions.ts` (ROADMAP 52 point 11, all three viewports;
+  the online list routed): per language a stomp mission just started
+  (popup), its progress, the widest goal under a plate grown by the drunk row
+  while carrying an item (in portrait the line steps right of the item
+  button), the "Mission geschafft!" popup and game over with "Missionen: 1",
+  all set through the `__ui` mission hooks on a cleared street. Checks: the
+  mission plate (`layout().mission`) overlaps no HUD button or the item
+  button, stays in the view, and is gone on pause and after the mission is
+  done. Mission rules and adaptive density are unit-tested
+  (`src/gameplay/missions.test.ts`, `density.test.ts`), the hiding during the
+  zone banner in `src/ui/hud-model.test.ts`.
+  `npm run playtest -- --scenario scripts/scenarios/missions.ts --viewports desktop,phone-landscape,phone-portrait --name missions`.
 - `scripts/scenarios/install-offer.ts` (ROADMAP 68, all three viewports): no
   card on the title, the card on game over after a calm run, the tap acting on
   release (`promptsShown()`), the snooze, the settings entry and the manual
