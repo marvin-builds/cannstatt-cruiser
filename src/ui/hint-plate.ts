@@ -6,7 +6,7 @@
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { FONT_LINE_HEIGHT, measureText } from '../core/font';
 import type { Rect } from '../types';
-import { POPUP_MARGIN, popupLeft } from './layout';
+import { POPUP_MARGIN, popupLeft, type UiMetrics } from './layout';
 
 /** A "↓" key cap in a hint row (desktop: the duck key). */
 export const KEY_DOWN = { key: 'down' } as const;
@@ -38,8 +38,8 @@ const BELOW_GROUND = 4;
  * the line), the rising popups and the zone banner, and kept off the view
  * edges like a popup.
  */
-export function hintSpotRect(w: number, h: number, viewWidth: number, cx = PLAYER_X): Rect {
-  return { x: popupLeft(cx, w, viewWidth), y: GROUND_Y + BELOW_GROUND, w, h };
+export function hintSpotRect(w: number, h: number, viewWidth: number, cx = PLAYER_X, m?: UiMetrics): Rect {
+  return { x: popupLeft(cx, w, viewWidth, m), y: GROUND_Y + BELOW_GROUND, w, h };
 }
 
 export function hintRowWidth(row: HintRow, scale: number): number {
@@ -69,20 +69,21 @@ export function hintPlateSize(rows: readonly HintRow[], scale: number): { w: num
   return { w: w + 2 * HINT_PAD_X, h };
 }
 
-/** The plate for `rows` at the hint spot under the skater (or centred on `cx`). */
-export function hintPlateRect(rows: readonly HintRow[], scale: number, viewWidth: number, cx = PLAYER_X): Rect {
+/** The plate for `rows` at the hint spot under the skater (or centred on `cx`), clear of `m`'s cutouts. */
+export function hintPlateRect(rows: readonly HintRow[], scale: number, viewWidth: number, cx = PLAYER_X, m?: UiMetrics): Rect {
   const { w, h } = hintPlateSize(rows, scale);
-  return hintSpotRect(w, h, viewWidth, cx);
+  return hintSpotRect(w, h, viewWidth, cx, m);
 }
 
 /**
  * The first of `variants` (longest first) whose plate fits under the riding
  * line and inside the view at `scale`; the last one if none does.
  */
-export function fitHintRows(variants: readonly (readonly HintRow[])[], scale: number, viewWidth: number): readonly HintRow[] {
+export function fitHintRows(variants: readonly (readonly HintRow[])[], scale: number, viewWidth: number, m?: UiMetrics): readonly HintRow[] {
+  const room = viewWidth - (m ? m.safeLeft + m.safeRight : 0) - 2 * POPUP_MARGIN;
   const fits = (rows: readonly HintRow[]) => {
     const { w, h } = hintPlateSize(rows, scale);
-    return h <= VIEW_H - GROUND_Y - BELOW_GROUND && w <= viewWidth - 2 * POPUP_MARGIN;
+    return h <= VIEW_H - GROUND_Y - BELOW_GROUND && w <= room;
   };
   return variants.find(fits) ?? variants[variants.length - 1]!;
 }

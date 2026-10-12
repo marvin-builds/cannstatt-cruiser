@@ -6,10 +6,11 @@
  * Boardslide!" (the big portrait font). Only on the first TRICK_HINT_GRINDS
  * grinds of a run; the hint slot (hint-slot.ts) lets it linger after a short grind.
  */
+import { PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
 import type { Rect } from '../types';
 import { type HintRow, hintPlateRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
-import { popupScale } from './layout';
+import { popupScale, type UiDisplay, uiMetrics } from './layout';
 
 /** Grinds per run that show the hint. */
 export const TRICK_HINT_GRINDS = 3;
@@ -60,12 +61,12 @@ const TOUCH_ROWS: readonly HintRow[] = [['Runterwischen = Boardslide!']];
 const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [[SWIPE_DOWN, 'wischen = Boardslide!']];
 
 /** The plate's rows, font scale (as the other hints) and rect at the hint spot for `display`. */
-export function trickHintPlate(display: { touch: boolean; portrait: boolean; viewWidth: number }): {
+export function trickHintPlate(display: UiDisplay): {
   rows: readonly HintRow[];
   scale: number;
   rect: Rect;
 } {
   const scale = popupScale(display, false);
   const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : TOUCH_ROWS;
-  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth) };
+  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }

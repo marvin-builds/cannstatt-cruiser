@@ -5,8 +5,8 @@
  */
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
-import type { Rect } from '../types';
-import { buttonPlate, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
+import type { Rect, SafeInsets } from '../types';
+import { buttonPlate, centredWidth, fitCentred, hudButtons, safeSpan, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
 import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
@@ -14,6 +14,8 @@ export interface ScreenInput {
   viewWidth: number;
   touch: boolean;
   portrait: boolean;
+  /** Display cutouts (display.safeInsets); none when absent. */
+  safeInsets?: SafeInsets;
 }
 
 /** Least gap between the trophy's plate and the logo. */
@@ -59,7 +61,7 @@ const LIST_MAX_W = 300;
 /** The close "×" button: a menu-button-sized square in the top-right corner. */
 export function closeButton(viewWidth: number, m: UiMetrics): Rect {
   const s = m.menuButtonH;
-  return { x: viewWidth - m.margin - s, y: m.margin, w: s, h: s };
+  return { x: safeSpan(viewWidth, m).right - m.margin - s, y: m.margin, w: s, h: s };
 }
 
 /**
@@ -79,7 +81,7 @@ const STATS_SWITCH_W = measureText('Anonyme Statistik: AUS', 1) + 12;
 
 /** The list's statistics switch: a menu-button-high button in the top-left corner, mirroring the close button. */
 function statsSwitch(m: UiMetrics): Rect {
-  return { x: m.margin, y: m.margin, w: STATS_SWITCH_W, h: m.menuButtonH };
+  return { x: m.safeLeft + m.margin, y: m.margin, w: STATS_SWITCH_W, h: m.menuButtonH };
 }
 
 export interface ScoreListLayout {
@@ -154,7 +156,7 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
   const privacyY = line();
   const messageY = message ? line() : null;
   const top = Math.max(title.y + title.h + 4, close.y + close.h + (portrait ? 1 : 2));
-  const w = Math.min(input.viewWidth - 8, input.portrait ? input.viewWidth : LIST_MAX_W);
+  const w = Math.min(centredWidth(input.viewWidth, m) - 8, input.portrait ? input.viewWidth : LIST_MAX_W);
   const list: Rect = { x: Math.floor((input.viewWidth - w) / 2), y: top, w, h: y - 2 - top };
   const rankRight = list.x + LIST_PAD + measureText('20.', textScale);
   const contentH = rows * rowH;

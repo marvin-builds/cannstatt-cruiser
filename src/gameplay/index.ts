@@ -37,6 +37,7 @@ import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
 import { isLive, resolveContacts } from './contacts';
+import { CrowdWatch } from './crowd-watch';
 import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
 import { GrindTrick } from './grind-trick';
@@ -110,6 +111,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const airTrick = new AirTrickScore(() => stunts.multiplier());
   const session = new ParkSession();
   const starArcs = new StarArcs();
+  const crowds = new CrowdWatch();
   /** The spawner's park plan last put into state.park. */
   let spawnerPark: ParkPlan | null = null;
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
@@ -215,6 +217,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         airTrick.reset();
         session.reset();
         starArcs.reset();
+        crowds.reset();
         spawnerPark = null;
       });
       ctx.bus.on('gameOver', () => {
@@ -290,6 +293,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       if (ctx.speedOverride === null) state.speed = speedAt(spawner.rampDistance(state.distance)) * chillSpeedFactor(state.chillTimer);
       const dx = state.speed * dt;
       scroll(ctx, dx);
+      crowds.update(ctx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
       trick.update(ctx);
       airTrick.update(ctx, dt);

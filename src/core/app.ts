@@ -7,6 +7,7 @@ import { detectInstallEnvironment, type InstallPromptEvent } from './install';
 import { FixedTimestep } from './loop';
 import type { FrameProbe } from './perf';
 import { Renderer } from './renderer';
+import { createSafeAreaProbe, insetsInView } from './safe-area';
 import { store } from './storage';
 import { createTestHook, testHookEnabled } from './testhook';
 import { CHECK_FOR_UPDATE_MESSAGE, handleServiceWorkerMessage, shouldCheckForUpdate, UPDATE_CHECK_INTERVAL_MS } from './update';
@@ -37,10 +38,12 @@ export function startApp(systems: System[]): Game {
   window.addEventListener('beforeinstallprompt', (e) => game.install.capturePrompt(e as Event & InstallPromptEvent));
   window.addEventListener('appinstalled', () => game.install.appInstalled());
 
+  const safeArea = createSafeAreaProbe();
   const updateDisplay = () => {
     renderer.resize();
     game.display.viewWidth = renderer.layout.viewWidth;
     game.display.viewHeight = renderer.layout.viewHeight;
+    game.display.safeInsets = insetsInView(safeArea.read(), renderer.layout, renderer.window.width, renderer.window.height);
     game.display.portrait = window.innerHeight > window.innerWidth;
     game.display.touch = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
     game.display.fullscreen = isFullscreen();

@@ -10,10 +10,11 @@
  * slot lets it linger, hint-slot.ts). The kicker hint shows before the
  * launch, this one after it.
  */
+import { PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
 import type { Rect } from '../types';
 import { fitHintRows, type HintRow, hintPlateRect, KEY_DOWN, SWIPE_DOWN } from './hint-plate';
-import { popupScale } from './layout';
+import { popupScale, type UiDisplay, uiMetrics } from './layout';
 
 const SEEN_KEY = 'airTrickSeen';
 /** Ticks a launch waits for the take-off (the player leaves the street on the tick after `launch`). */
@@ -86,12 +87,12 @@ const TOUCH_ROWS: readonly HintRow[] = [['In der Luft'], ['runterwischen = Kickf
 const TOUCH_PORTRAIT_ROWS: readonly HintRow[] = [[SWIPE_DOWN, 'wischen = Kickflip!']];
 
 /** The plate's rows, font scale and rect for `display`. */
-export function airTrickHintPlate(display: { touch: boolean; portrait: boolean; viewWidth: number }): {
+export function airTrickHintPlate(display: UiDisplay): {
   rows: readonly HintRow[];
   scale: number;
   rect: Rect;
 } {
   const scale = popupScale(display, false);
-  const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : fitHintRows([TOUCH_ROWS, TOUCH_PORTRAIT_ROWS], scale, display.viewWidth);
-  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth) };
+  const rows = !display.touch ? DESKTOP_ROWS : display.portrait ? TOUCH_PORTRAIT_ROWS : fitHintRows([TOUCH_ROWS, TOUCH_PORTRAIT_ROWS], scale, display.viewWidth, uiMetrics(display));
+  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }

@@ -537,6 +537,13 @@ describe('audio system: using items', () => {
     expect(cues()).toEqual(['bonk', 'cheer']);
   });
 
+  it('a fan crowd ahead (ROADMAP 76) cheers briefly, the same for both themes', () => {
+    const { game, cues } = playing();
+    game.bus.emit('crowdAhead', { theme: 'vfb' });
+    game.bus.emit('crowdAhead', { theme: 'wasen' });
+    expect(cues()).toEqual(['cheerSmall', 'cheerSmall']);
+  });
+
   it('warns with a rising whistle when the ball comes back', () => {
     const { game, cues } = playing();
     game.bus.emit('ballBack', { entityId: 9 });

@@ -12,8 +12,8 @@
  * `data.crowd` with its theme (CROWD_KEY), `seat` / `seats` in the row and
  * the row's `gap`; one of them carries the flag or the big Lebkuchenherz
  * (`banner`). crowd-art.ts draws them, contacts and stomps treat them like
- * any person. Proposed contract change (for a "Fans!" popup and crowd
- * sounds): an event when a crowd comes on screen, or an EntityKind 'crowd'.
+ * any person. crowd-watch.ts emits `crowdAhead` when a crowd comes on
+ * screen (the ui's "VfB-Fans!" / "Wasen!" popup, audio's chant).
  *
  * Rules (crowdDue, spawner.ts):
  * - only in Bad Cannstatt (CROWD_ZONE: the Wasen and the stadium are there),

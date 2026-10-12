@@ -473,7 +473,7 @@ function drawLive(r: RenderContext, view: UiView): void {
     // Text and icon form one box (1 px outline on both sides) centred on the popup, kept off the view edges.
     const w = measureText(p.text, p.scale);
     const iconW = p.icon ? (HEART_ICON.width + 2) * p.scale : 0;
-    const left = popupLeft(p.x, w + 2 + iconW, r.display.viewWidth);
+    const left = popupLeft(p.x, w + 2 + iconW, r.display.viewWidth, uiMetrics(r.display));
     outlined(r, p.text, left + 1 + (w >> 1), p.y, p.color, p.scale);
     if (p.icon) HEART_ICON.draw(g, 0, left + 1 + w + 2 * p.scale, p.y + p.scale, p.scale);
   }

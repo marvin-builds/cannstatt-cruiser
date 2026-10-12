@@ -17,6 +17,7 @@ import { EventBus } from './events';
 import { type InstallEnvironment, InstallController } from './install';
 import { type ModeCommand, nextMode } from './modes';
 import { Rng } from './rng';
+import { NO_INSETS } from './safe-area';
 import type { FrameProbe } from './perf';
 import { createInitialState, resetRun } from './state';
 import { createMemoryStore, type Store } from './storage';
@@ -98,6 +99,7 @@ export class Game {
     fullscreen: false,
     viewWidth: VIEW_W,
     viewHeight: VIEW_H,
+    safeInsets: NO_INSETS,
   };
   readonly commands: GameCommands;
   readonly ctx: GameContext;

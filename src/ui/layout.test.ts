@@ -272,6 +272,13 @@ describe('popup placement', () => {
     }
   });
 
+  it('keeps popups clear of display cutouts (ROADMAP 75)', () => {
+    const m = uiMetrics({ touch: true, portrait: false, safeInsets: { top: 0, right: 20, bottom: 0, left: 20 } });
+    expect(popupLeft(64, 120, 320, m)).toBe(20 + POPUP_MARGIN);
+    expect(popupLeft(300, 60, 320, m)).toBe(320 - 20 - POPUP_MARGIN - 60);
+    expect(popupLeft(160, 40, 320, m)).toBe(140);
+  });
+
   it('a popup wider than the view keeps the left margin', () => {
     expect(popupLeft(64, 400, 320)).toBe(POPUP_MARGIN);
   });

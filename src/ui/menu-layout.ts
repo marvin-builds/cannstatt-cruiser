@@ -15,10 +15,10 @@
  */
 import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
-import type { Rect } from '../types';
+import type { Rect, SafeInsets } from '../types';
 import { type Block, type ColumnBounds, fitColumn } from './column';
 import { feedbackIcon } from './feedback-layout';
-import { buttonPlate, centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
+import { buttonPlate, centredWidth, centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 import { statsLayout } from './stats';
 import type { WhatsNewList } from './whats-new';
@@ -28,6 +28,8 @@ export interface MenuInput {
   viewWidth: number;
   touch: boolean;
   portrait: boolean;
+  /** Display cutouts (display.safeInsets): corner buttons and rows keep clear of them; none when absent. */
+  safeInsets?: SafeInsets;
   fullscreenAvailable: boolean;
   /** Offer "Neu laden" (reloadOffered). */
   reload: boolean;
@@ -199,7 +201,7 @@ function buttonWidth(label: string, m: UiMetrics, scale = buttonLabelScale(m)): 
 export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 'gameOver'): Rect {
   const w = buttonWidth(toTitleLabel(input.touch, screen === 'gameOver'), m, 1);
   const y = screen === 'pause' ? TALLEST_PLATE.y + TALLEST_PLATE.h + CORNER_GAP : TALLEST_PLATE.y;
-  return { x: TALLEST_PLATE.x, y, w, h: m.menuButtonH };
+  return { x: m.safeLeft + TALLEST_PLATE.x, y, w, h: m.menuButtonH };
 }
 
 /**
@@ -208,7 +210,7 @@ export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 
  * corner is free); its tap area is a HUD tap area (~44 CSS px on phones).
  */
 export function settingsGear(m: UiMetrics): Rect {
-  return { x: m.margin, y: m.margin, w: m.hit, h: m.hit };
+  return { x: m.safeLeft + m.margin, y: m.margin, w: m.hit, h: m.hit };
 }
 
 /** The visible "Startbildschirm" plate: its tap area, at most CORNER_PLATE_H high and vertically centred in it. */
@@ -288,7 +290,7 @@ function headlineBeside(text: string, input: MenuInput, hud: { bottom: number; l
 }
 
 function bounds(input: MenuInput, top: number): ColumnBounds {
-  return { top, bottom: BOTTOM, centre: centreX(input.viewWidth), maxWidth: input.viewWidth - 8 };
+  return { top, bottom: BOTTOM, centre: centreX(input.viewWidth), maxWidth: centredWidth(input.viewWidth, uiMetrics(input)) - 8 };
 }
 
 /** Pause and game over: like bounds, keeping the corner button and (outside portrait) the skater clear. */
@@ -354,7 +356,7 @@ function titleColumn(input: MenuInput, m: UiMetrics): MenuLayout {
  * the panel stays left of its plate.
  */
 function titleMaxWidth(input: MenuInput, m: UiMetrics): number {
-  const max = input.viewWidth - 2 * PANEL_PAD - 4;
+  const max = centredWidth(input.viewWidth, m) - 2 * PANEL_PAD - 4;
   const trophy = input.trophy;
   if (!trophy || trophy.y + trophy.h <= TITLE_PANEL_Y) return max;
   const plate = buttonPlate(trophy, m);

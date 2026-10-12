@@ -248,6 +248,8 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('sessionRoar');
         play('fingerWhistle', 1, SESSION_WHISTLE_DELAY);
       });
+      // A fan crowd comes on screen (ROADMAP 76): the fans cheer briefly.
+      bus.on('crowdAhead', () => play('cheerSmall'));
       bus.on('highFive', () => {
         play('highFive');
         if (crowd.highFiveCheer(ctx.state.time)) play('cheerSmall', HIGH_FIVE.cheerIntensity, HIGH_FIVE.cheerDelay);

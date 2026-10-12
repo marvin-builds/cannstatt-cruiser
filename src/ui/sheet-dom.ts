@@ -7,6 +7,7 @@
  * (keys, taps, the blocked page scrolling) never see them; key releases still
  * bubble, so no key stays held for the game. DOM-only, checked by playtest.
  */
+import { safeAreaCss } from '../core/safe-area';
 import { UI } from './art';
 import { SHEET_STYLE } from './portrait-sheets';
 import { scrollThumb } from './score-layout';
@@ -16,14 +17,8 @@ const STOPPED_EVENTS = ['keydown', 'pointerdown', 'pointerup', 'touchstart', 'to
 
 const FONT = 'ui-monospace, Menlo, Consolas, monospace';
 
-/**
- * A screen edge's safe-area inset (ROADMAP 75: a punch-hole camera or rounded corner). The custom
- * property `--cc-safe-<side>` on the root element overrides it, so playtests can fake a cutout.
- */
-export const safeInset = (side: 'top' | 'right' | 'bottom' | 'left'): string => `var(--cc-safe-${side}, env(safe-area-inset-${side}, 0px))`;
-
-/** A sheet's padding: SHEET_STYLE.padPx, or the safe-area inset where that is larger. */
-const SHEET_PADDING = (['top', 'right', 'bottom', 'left'] as const).map((side) => `max(${SHEET_STYLE.padPx}px, ${safeInset(side)})`).join(' ');
+/** A sheet's padding: SHEET_STYLE.padPx, or the safe-area inset (core/safe-area.ts) where that is larger. */
+const SHEET_PADDING = (['top', 'right', 'bottom', 'left'] as const).map((side) => `max(${SHEET_STYLE.padPx}px, ${safeAreaCss(side)})`).join(' ');
 
 /** A sheet's factory: index.ts passes its handlers, tests pass a fake. */
 export type SheetFactory<Handlers, Sheet> = (handlers: Handlers) => Sheet;

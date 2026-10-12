@@ -14,7 +14,7 @@ import { PLAYER_X } from '../core/config';
 import type { Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
 import { type HintRow, hintPlateRect } from './hint-plate';
-import { popupScale } from './layout';
+import { popupScale, type UiDisplay, uiMetrics } from './layout';
 
 /** Launches off a ramp after which the hint has done its job for good. */
 export const KICKER_HINT_LAUNCHES = 5;
@@ -99,10 +99,10 @@ export class KickerHint {
 
 /** The plate's rows, font scale (as the other hints) and rect at the hint spot, centred on `anchorX` (the ramp). */
 export function kickerHintPlate(
-  display: { touch: boolean; portrait: boolean; viewWidth: number },
+  display: UiDisplay,
   anchorX = PLAYER_X,
 ): { rows: readonly HintRow[]; scale: number; rect: Rect } {
   const scale = popupScale(display, false);
   const rows = display.touch ? TOUCH_ROWS : DESKTOP_ROWS;
-  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, Math.round(anchorX)) };
+  return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, Math.round(anchorX), uiMetrics(display)) };
 }

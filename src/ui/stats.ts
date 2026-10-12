@@ -38,9 +38,13 @@ export interface StatsLayout {
   plate: Rect;
 }
 
-/** `contentW`: widest row (label/combo, score, hearts + stars) in view pixels. */
-export function statsLayout(contentW: number, chill: boolean, drunk = false): StatsLayout {
-  const x = PLATE_X + STATS_PAD;
+/**
+ * `contentW`: widest row (label/combo, score, hearts + stars) in view pixels; `left`: the left
+ * edge of the safe span (safeSpan in layout.ts), right of a display cutout.
+ */
+export function statsLayout(contentW: number, chill: boolean, drunk = false, left = 0): StatsLayout {
+  const plateX = left + PLATE_X;
+  const x = plateX + STATS_PAD;
   const label = PLATE_Y + STATS_PAD;
   const score = label + TEXT_H + 1;
   const hearts = score + SCORE_H + ROW_GAP;
@@ -65,7 +69,7 @@ export function statsLayout(contentW: number, chill: boolean, drunk = false): St
     drunk: drunkY,
     barX: x + TIMER_ICON_W + TIMER_ICON_GAP,
     bottom,
-    plate: { x: PLATE_X, y: PLATE_Y, w: w + 2 * STATS_PAD, h: bottom - PLATE_Y + STATS_PAD },
+    plate: { x: plateX, y: PLATE_Y, w: w + 2 * STATS_PAD, h: bottom - PLATE_Y + STATS_PAD },
   };
 }
 
