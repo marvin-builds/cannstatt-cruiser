@@ -131,3 +131,16 @@ describe('NorDIY park state', () => {
     expect(state.park).toBeNull();
   });
 });
+
+describe('mission state (ROADMAP 52 point 11)', () => {
+  it('starts a run without a mission and with none done, also after a run that had some', () => {
+    const state = createInitialState();
+    expect(state.mission).toBeNull();
+    expect(state.missionsDone).toBe(0);
+    state.mission = { kind: 'stomp', goal: 3, progress: 1 };
+    state.missionsDone = 2;
+    resetRun(state, 5);
+    expect(state.mission).toBeNull();
+    expect(state.missionsDone).toBe(0);
+  });
+});
