@@ -135,7 +135,7 @@ describe('board render with injection payloads', () => {
       root as unknown as HTMLElement,
       {
         stats, range: 7, loading: false, error: null, remembered: false,
-        feedback: { entries: feedback, filter: 'all', status: 'all' }, testDevice: false, testers: false,
+        feedback: { entries: feedback, filter: 'all', status: 'all' }, testDevice: false, testers: false, testerPassNote: null,
       },
       handlers,
     );

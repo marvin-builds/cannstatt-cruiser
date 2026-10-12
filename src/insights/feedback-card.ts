@@ -23,7 +23,7 @@ export interface FeedbackHandlers extends TriageActions {
   onEntries(entries: TriagedFeedbackEntry[]): void;
 }
 
-/** 'Todo #12' as a link to the issue, else the status ('Erledigt in 2026-10-12.1') as a badge. */
+/** 'Geplant #12' as a link to the issue, else the status ('Erledigt in 2026-10-12.1') as a badge. */
 function statusBadge(entry: TriagedFeedbackEntry): HTMLElement {
   const label = statusText(entry);
   if (entry.issue === null) return h('span', { class: `fb-status ${entry.status}` }, label);

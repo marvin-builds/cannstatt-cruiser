@@ -1,11 +1,11 @@
 /**
  * Reads GET /stats and GET /feedback of the highscore worker with the admin token and sends the
- * feedback triage (issue, status and reply, delete; ROADMAP 56), and trades the token for a board session
- * (ROADMAP 74). The token is passed in per call and never stored here. Every failure maps to an error code,
+ * feedback triage (issue, status and reply, delete; ROADMAP 56), trades the token for a board session
+ * (ROADMAP 74) and fetches a tester pass for a test device (ROADMAP 75). The token is passed in per call and never stored here. Every failure maps to an error code,
  * nothing throws; `fetch` is passed in so tests never reach the live worker.
  */
 import { type FetchLike, REQUEST_TIMEOUT_MS, SCORES_URL } from '../net/api';
-import { FEEDBACK_KINDS, type FeedbackEntry } from '../net/feedback-types';
+import { FEEDBACK_KINDS, type FeedbackEntry, MAX_TESTER_PASS_CHARS } from '../net/feedback-types';
 import { type CountEntry, INPUTS, type InsightsStats, ORIENTATIONS, PLATFORMS, STATS_RANGES, STATS_TESTERS_PARAM, type StatsRange } from '../net/telemetry-types';
 import type { TriageError } from './triage';
 import {
@@ -183,6 +183,28 @@ export async function createSession(fetchFn: FetchLike, request: FeedbackRequest
   const r = await authorizedRequest(fetchFn, `${request.base}/board/session`, request, 'POST');
   if (!r.ok) return r;
   return r.status === 200 && isSession(r.body) ? { ok: true, session: { token: r.body.token, expiresAt: r.body.expiresAt } } : { ok: false, error: 'server' };
+}
+
+/** A tester pass from POST /board/tester-pass: what the game sends as `testerPass`, and its expiry (ms since the epoch). */
+export interface TesterPass {
+  pass: string;
+  expiresAt: number;
+}
+
+export type TesterPassResult = { ok: true; pass: TesterPass } | { ok: false; error: StatsError };
+
+const isTesterPass = (v: unknown): v is TesterPass & { scope: 'tester' } =>
+  isRecord(v) && v.scope === 'tester' && typeof v.pass === 'string' && v.pass.length > 0 && v.pass.length <= MAX_TESTER_PASS_CHARS &&
+  typeof v.expiresAt === 'number' && Number.isFinite(v.expiresAt);
+
+/**
+ * POST /board/tester-pass with the token or board session. 401 is 'auth'; a worker without BOARD_SESSION_KEY (503),
+ * an older worker (404) or a broken answer is 'server'.
+ */
+export async function createTesterPass(fetchFn: FetchLike, request: FeedbackRequest): Promise<TesterPassResult> {
+  const r = await authorizedRequest(fetchFn, `${request.base}/board/tester-pass`, request, 'POST');
+  if (!r.ok) return r;
+  return r.status === 200 && isTesterPass(r.body) ? { ok: true, pass: { pass: r.body.pass, expiresAt: r.body.expiresAt } } : { ok: false, error: 'server' };
 }
 
 type Answer = { ok: true; status: number; body: unknown } | { ok: false; error: 'auth' | 'offline' };

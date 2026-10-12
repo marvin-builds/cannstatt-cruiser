@@ -25,15 +25,17 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/event-store.ts`, `src/location.ts` | Daily cap, once-a-day condense + 90-day prune, storing events; coarse location from `request.cf` |
 | `src/day-summary.ts` | Condensing finished days into `day_summaries` (kept for good) |
 | `src/auth.ts` | Bearer token check for `GET /stats` and the feedback routes of the board (SHA-256 + constant-time compare; the secret is trimmed) |
-| `src/board-session.ts` | Board session tokens (ROADMAP 74): `POST /board/session` signs a 7-day expiry with HMAC-SHA-256 under `BOARD_SESSION_KEY`; every board route accepts the real token or a valid session token |
+| `src/signed-token.ts` | Stateless HMAC-SHA-256 tokens under `BOARD_SESSION_KEY` with a prefix per kind (session `v1`, tester pass `tester.v1`), so one kind never passes as another |
+| `src/board-session.ts` | Board session tokens (ROADMAP 74): `POST /board/session` signs a 7-day expiry; every board route accepts the real token or a valid session token |
+| `src/tester-pass.ts` | Tester passes (ROADMAP 75): `POST /board/tester-pass` signs a 180-day expiry with scope `tester`; a valid pass with `POST /feedback` lifts the per-session limit |
 | `src/stats.ts`, `src/summary-stats.ts`, `src/tallies.ts`, `src/aggregate.ts` | The `GET /stats` aggregates (raw events up to 90 days, day summaries beyond) |
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
-| `src/feedback-parse.ts` | Strict `POST /feedback` body check (with the optional secret key) and text normalisation |
+| `src/feedback-parse.ts` | Strict `POST /feedback` body check (with the optional secret key and tester pass) and text normalisation |
 | `src/feedback-store.ts` | Per-session and daily feedback limits, storing (with the key hash; returns the new id), once-a-day 365-day prune, the `GET /feedback` list |
 | `src/feedback-status-parse.ts` | Strict `{items: [{id, key}]}` check of `POST /feedback/status` (ROADMAP 70); its query is `feedbackStatuses` in `src/feedback-triage-store.ts` |
 | `src/feedback-triage-rules.ts`, `src/feedback-triage-types.ts` | Triage contract (ROADMAP 56): statuses, issue draft and reply limits, shapes (board copy: the game's `src/insights/triage-types.ts`) |
 | `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply/done-version patch) and D1 access |
-| `src/github.ts` | Creates the GitHub issue (REST API, injected `fetch`) |
+| `src/github.ts`, `src/issue-body.ts` | Creates the GitHub issue (REST API, injected `fetch`); the issue text with the developer addition in its own section |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
 ## Develop and test
@@ -135,6 +137,19 @@ rotate both if the token may have leaked.
 A board from before step 3 simply never asks for a session; a board after it
 against a worker without the secret gets the 503 and keeps the token in memory
 only, with a short note.
+
+**Tester passes use the same key (ROADMAP 75).** When the owner marks a device
+as a test device on the board ("Dieses Gerät ist ein Testgerät"), the board
+fetches a **tester pass** (`POST /board/tester-pass`) and keeps it in that
+device's `localStorage`, where the game reads it and sends it as `testerPass`
+with `POST /feedback`. A valid pass unlocks exactly one thing: the
+per-session feedback limit (3 a day) no longer applies to that device; the
+global daily cap (200) still does. A pass opens no board route, and a board
+session token is no pass. Passes last 180 days (`TESTER_PASS_DAYS`) and are
+refreshed on every unlock of the board on a marked device. **Rotating
+`BOARD_SESSION_KEY` also invalidates every tester pass**: test devices then
+fall back to the normal limit (an invalid pass is ignored, never an error)
+until the board is unlocked on them again.
 
 Secrets are trimmed before use (`STATS_TOKEN`, `GITHUB_TOKEN`,
 `BOARD_SESSION_KEY`), so a line break pasted into `wrangler secret put` does no
@@ -412,6 +427,20 @@ would need either the database on every failed request (turning a flood into
 database writes) or the client IP, which the worker never reads. The session
 route adds nothing to guess that `GET /stats` did not already offer.
 
+### `POST /board/tester-pass`
+
+Issues a tester pass for a test device (ROADMAP 75). Needs `Authorization:
+Bearer <STATS_TOKEN>` or a board session token (a tester pass cannot get
+another); otherwise `401` before anything else. No body. Not cached.
+
+- `200 {"pass": "tester.v1.<expiresAt>.<signature>", "scope": "tester", "expiresAt": <ms since epoch>}`:
+  the pass carries only its expiry (180 days from now, `TESTER_PASS_MS`) and its
+  HMAC-SHA-256 signature under `BOARD_SESSION_KEY`; the `tester.v1` prefix is
+  part of the signed text, so it can never pass as a session token or the
+  other way round.
+- `503 {"ok": false, "error": "session-key-missing"}` without the secret.
+- Other methods answer `404`.
+
 ### `GET /stats?days=7|30|90|365|0[&testers=1]`
 
 The insights board's data. Needs `Authorization: Bearer <STATS_TOKEN>` or a
@@ -458,7 +487,7 @@ count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count
 
 A bug report or an idea from the game. `Content-Type` `text/plain` or
 `application/json`, at most 16384 bytes (`MAX_FEEDBACK_BYTES`). The body must
-have exactly these fields, `key` optional (`FeedbackBody` in `src/feedback-types.ts`, limits in
+have exactly these fields, `key` and `testerPass` optional (`FeedbackBody` in `src/feedback-types.ts`, limits in
 `src/feedback-rules.ts`):
 
 | Field | Rule |
@@ -470,6 +499,7 @@ have exactly these fields, `key` optional (`FeedbackBody` in `src/feedback-types
 | `platform`, `input`, `orientation` | as in `POST /event` |
 | `viewWidth` | integer 320..427 |
 | `log` | array of at most 20 strings of at most 200 chars without control characters; must be `[]` for an `idea` |
+| `testerPass` | optional: a tester pass from `POST /board/tester-pass`, a string of at most 512 chars (`MAX_TESTER_PASS_CHARS`, longer or not a string: 400). A valid, unexpired pass lifts the per-session limit; an invalid or expired one is ignored (normal limit, no error). Never stored |
 | `key` | optional: the report's secret key, exactly 32 lowercase hex chars (`FEEDBACK_KEY_PATTERN`, 128 random bits made by the game); only its SHA-256 is stored (`key_hash`), the key itself never. Games before ROADMAP 70 send none |
 
 Responses:
@@ -482,7 +512,8 @@ Responses:
   not one of the game origins.
 - `429 {"ok": false, "error": "rate"}`: this session already sent 3 today
   (`FEEDBACK_PER_SESSION_PER_DAY`, per UTC day), or 200 were accepted from all
-  sessions today (`FEEDBACK_DAILY_CAP` in `src/feedback-store.ts`). The game
+  sessions today (`FEEDBACK_DAILY_CAP` in `src/feedback-store.ts`); with a valid
+  tester pass only the global cap applies. The game
   shows "heute schon genug Feedback".
 
 On the first accepted feedback of a UTC day, after it is stored, the worker
@@ -534,12 +565,17 @@ without it they answer `401` before any database access or GitHub call. The id
 is the entry's `id` (a positive integer; anything else is 400). JSON bodies
 (`application/json` or `text/plain`) of at most 32 KB. Not cached.
 
-- `POST /feedback/:id/issue`, body exactly `{"title", "body"}` as the operator
+- `POST /feedback/:id/issue`, body `{"title", "body"}` and optionally `"addition"` as the operator
   edited them on the board: title 3-120 chars (one line, spaces collapsed),
   body 1-8000 chars after trimming (line breaks and tabs allowed, no other
-  control characters). Creates an issue in `marvinmai/cannstatt-cruiser`
+  control characters); `addition` ("Ergänzung (Entwickler)", ROADMAP 75) at most
+  2000 chars after trimming (`MAX_ISSUE_ADDITION`, same characters as the body;
+  empty means none). The issue text is the body, then, with an addition, a rule
+  and a section headed `**Ergänzung des Entwicklers**` (`src/issue-body.ts`), so
+  the developer's words never land inside the player's quote. Creates an issue in `marvinmai/cannstatt-cruiser`
   with the labels `feedback` plus the entry's kind (`bug` or `idea`), stores
-  its number and sets the status to `todo`.
+  its number and sets the status to `todo` ("Geplant" on the board) in the same
+  request; when the issue cannot be created the status stays as it was.
   - `201 {"ok": true, "issue": 12}`.
   - `400` bad id or body; `404` no such entry; `409 {"ok": false, "error":
     "exists", "issue": 5}` when the entry already has an issue.
@@ -630,6 +666,10 @@ A board session token holds only its expiry and a signature: no name, no
 device, no IP. The worker stores nothing about sessions; the board keeps the
 token and its expiry in the operator's `localStorage` until it expires, a
 request answers 401, or the operator presses "Abmelden".
+
+A tester pass likewise holds only its expiry, its scope and a signature. It is
+sent with the feedback of a test device but never stored and never linked to
+the report; it only decides which daily limit applies.
 
 ## Keeping it in sync with the game
 

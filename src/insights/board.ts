@@ -31,6 +31,8 @@ export interface BoardView {
   testDevice: boolean;
   /** The numbers include test devices. */
   testers: boolean;
+  /** How the last tester pass refresh went (ROADMAP 75), or null. */
+  testerPassNote: string | null;
   /** Signed in with a kept board session: the lock button reads "Abmelden" (ROADMAP 74). */
   remembered: boolean;
 }
@@ -170,7 +172,7 @@ export function renderBoard(root: HTMLElement, view: BoardView, handlers: BoardH
       'main',
       { class: 'board', 'aria-busy': String(view.loading) },
       header(view, handlers),
-      deviceSwitches({ testDevice: view.testDevice, testers: view.testers, loading: view.loading }, handlers),
+      deviceSwitches({ testDevice: view.testDevice, testers: view.testers, loading: view.loading, testerPassNote: view.testerPassNote }, handlers),
       view.error ? h('p', { class: 'banner', role: 'alert' }, view.error) : null,
       tiles,
       card(`${DAY_CHARTS.sessions!.title} pro Tag`, legend([{ label: 'Sessions', color: 'c1' }, { label: 'Runs', color: 'c2' }]), h('div', { class: 'chart-holder', 'data-day-chart': 'sessions' })),
