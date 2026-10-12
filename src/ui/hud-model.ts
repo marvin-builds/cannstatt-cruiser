@@ -39,9 +39,13 @@ export class HudModel {
   private contentW = 0;
   private chill = false;
   private drunk = false;
+  private left = 0;
 
-  /** `withChip`: the desktop item chip shows (itemControl(...) === 'keycap'). */
-  update(state: GameState, withChip = false): void {
+  /**
+   * `withChip`: the desktop item chip shows (itemControl(...) === 'keycap'); `left`: the safe
+   * span's left edge (safeSpan in layout.ts), right of a display cutout.
+   */
+  update(state: GameState, withChip = false, left = 0): void {
     this.score.update(state.score);
     this.stars.update(state.stars);
     this.combo = state.multiplier > 1;
@@ -57,11 +61,12 @@ export class HudModel {
     const contentW = Math.max(scoreW, labelW, rowW);
     const chill = state.chillTimer > 0;
     const drunk = drunkShown(state);
-    if (contentW !== this.contentW || chill !== this.chill || drunk !== this.drunk) {
+    if (contentW !== this.contentW || chill !== this.chill || drunk !== this.drunk || left !== this.left) {
       this.contentW = contentW;
       this.chill = chill;
       this.drunk = drunk;
-      this.layout = statsLayout(contentW, chill, drunk);
+      this.left = left;
+      this.layout = statsLayout(contentW, chill, drunk, left);
       Object.assign(this.chipRect, keycapChip(this.layout.plate));
     }
     this.chip = withChip ? this.chipRect : null;

@@ -10,7 +10,7 @@ import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { ChangelogEntry, Rect } from '../types';
 import { wrapText } from './wrap-text';
-import { centreX, uiMetrics } from './layout';
+import { centredWidth, centreX, uiMetrics } from './layout';
 import { buttonLabelScale, BULLET_W, headline, hudBand, LINE, MENU_TEXT, type MenuInput, type MenuLayout, noButtons } from './menu-layout';
 import { SCROLLBAR_W } from './score-layout';
 
@@ -79,7 +79,7 @@ export function whatsNewLayout(input: MenuInput, entries: readonly ChangelogEntr
   const scale = input.portrait ? 2 : 1;
   const rowH = input.portrait ? BIG_ROW_H : LINE;
   const top = Math.max(title.y + title.h, hud.bottom) + LIST_GAP;
-  const w = Math.min(input.viewWidth - 8, input.portrait ? input.viewWidth : LIST_MAX_W);
+  const w = Math.min(centredWidth(input.viewWidth, m) - 8, input.portrait ? input.viewWidth : LIST_MAX_W);
   const rect: Rect = { x: centreX(input.viewWidth) - Math.floor(w / 2), y: top, w, h: next.y - LIST_GAP - top };
   const headingX = rect.x + LIST_PAD;
   const itemX = headingX + BULLET_W * scale;

@@ -151,6 +151,20 @@ describe('PopupFeed', () => {
     expect(texts(feed, true)).toEqual(['High Five! +1.000']);
   });
 
+  it('a fan crowd ahead (ROADMAP 76): "VfB-Fans!" or "Wasen!", the same in kid mode', () => {
+    const feed = new PopupFeed();
+    feed.crowdAhead('vfb');
+    expect(texts(feed)).toEqual(['VfB-Fans!']);
+    feed.crowdAhead('wasen');
+    expect(texts(feed, true)).toEqual(['Wasen!']);
+  });
+
+  it('the VfB crowd popup is white, not the crash red of "Autsch!"', () => {
+    const feed = new PopupFeed();
+    feed.crowdAhead('vfb');
+    expect(feed.flush(false)[0]!.color).toBe(UI.white);
+  });
+
   it('every popup has a colour', () => {
     const feed = new PopupFeed();
     feed.itemUsed('drink');

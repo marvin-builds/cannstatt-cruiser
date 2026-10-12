@@ -15,15 +15,17 @@
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import { MAX_FEEDBACK_TEXT } from '../net/feedback-types';
-import type { Rect } from '../types';
+import type { Rect, SafeInsets } from '../types';
 import { FEEDBACK_TEXT } from './feedback-flow';
 import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
-import { type UiMetrics, uiMetrics } from './layout';
+import { centredWidth, safeSpan, type UiMetrics, uiMetrics } from './layout';
 
 export interface FeedbackDisplay {
   viewWidth: number;
   touch: boolean;
   portrait: boolean;
+  /** Display cutouts (display.safeInsets): the form stays clear of them; none when absent. */
+  safeInsets?: SafeInsets;
 }
 
 export interface FeedbackLayout {
@@ -92,7 +94,7 @@ export function dialogColumn(display: FeedbackDisplay): DialogColumn {
   const m = uiMetrics(display);
   const h = m.menuButtonH;
   const tall = h >= 44;
-  const w = Math.min(display.viewWidth - 2 * SIDE, FORM_MAX_W);
+  const w = Math.min(centredWidth(display.viewWidth, m) - 2 * SIDE, FORM_MAX_W);
   const x = Math.floor((display.viewWidth - w) / 2);
   return { x, w, right: x + w, top: tall ? 0 : SIDE, bottom: VIEW_H - (tall ? 0 : SIDE), h, big: h >= 24 ? 2 : 1, m };
 }
@@ -187,5 +189,5 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
  * right. titleLayout keeps the title's rows and cards clear of it.
  */
 export function feedbackIcon(viewWidth: number, m: UiMetrics): Rect {
-  return { x: viewWidth - m.margin - m.hit, y: VIEW_H - m.margin - m.hit, w: m.hit, h: m.hit };
+  return { x: safeSpan(viewWidth, m).right - m.margin - m.hit, y: VIEW_H - m.margin - m.hit, w: m.hit, h: m.hit };
 }

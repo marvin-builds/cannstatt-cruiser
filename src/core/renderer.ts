@@ -16,6 +16,8 @@ export class Renderer {
   readonly g: CanvasRenderingContext2D;
   private letterbox = DEFAULT_LETTERBOX;
   layout: Layout;
+  /** The window (visual viewport) size in CSS px that `layout` was computed for. */
+  readonly window = { width: VIEW_W, height: VIEW_H };
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.g = canvas.getContext('2d', { alpha: false })!;
@@ -30,6 +32,8 @@ export class Renderer {
     const width = vv?.width ?? window.innerWidth;
     const height = vv?.height ?? window.innerHeight;
     this.layout = computeLayout(width, height, window.devicePixelRatio || 1, VIEW_BOUNDS);
+    this.window.width = width;
+    this.window.height = height;
     const { viewWidth, viewHeight, cssWidth, cssHeight, offsetX, offsetY } = this.layout;
     if (this.canvas.width !== viewWidth || this.canvas.height !== viewHeight) {
       this.canvas.width = viewWidth; // resets the context state

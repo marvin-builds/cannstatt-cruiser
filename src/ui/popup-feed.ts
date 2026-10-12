@@ -9,8 +9,10 @@
  * shows "Stern!" with the points of the score change gameplay emits right
  * after it, and an arc bonus right after those its own "Sternenbogen!"
  * (gameplay/star-arcs.ts); the pool sums star points of quick repeats.
+ * A fan crowd coming on screen (ROADMAP 76) shows "VfB-Fans!" or "Wasen!".
  */
 import { STAR_ARC_BONUS } from '../gameplay/star-arcs';
+import type { CrowdTheme } from '../gameplay/crowd-tag';
 import type { GameState, ItemAction } from '../types';
 import { UI } from './art';
 import { plusPoints } from './layout';
@@ -46,7 +48,11 @@ type Entry =
   | { kind: 'star' }
   | { kind: 'healthGained' | 'ballBack' }
   | { kind: 'crash'; bail: BailCause | null }
-  | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number };
+  | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number }
+  | { kind: 'crowd'; theme: CrowdTheme };
+
+/** A fan crowd ahead (ROADMAP 76): who blocks the street. */
+const CROWD_TEXT: Record<CrowdTheme, string> = { vfb: 'VfB-Fans!', wasen: 'Wasen!' };
 
 /** Events that take the points of a clear of the same entity into their own popup. */
 const MERGED = { stomp: ['Stomp!', UI.orange], ballHit: ['Treffer!', UI.yellow] } as const;
@@ -111,6 +117,11 @@ export class PopupFeed {
     this.entries.push({ kind: 'highFive', points });
   }
 
+  /** A fan crowd came on screen (crowdAhead). */
+  crowdAhead(theme: CrowdTheme): void {
+    this.entries.push({ kind: 'crowd', theme });
+  }
+
   /** The popups for everything since the last flush, in event order; then starts over. */
   flush(kidMode: boolean): readonly PopupSpec[] {
     const entries = this.entries;
@@ -156,6 +167,9 @@ export class PopupFeed {
           break;
         case 'star':
           addStar(out, entries[i + 1], entries[i + 2]);
+          break;
+        case 'crowd':
+          add(CROWD_TEXT[e.theme], e.theme === 'vfb' ? UI.white : UI.orange);
           break;
       }
     });

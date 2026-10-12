@@ -294,6 +294,11 @@ export interface GameEvents {
   /** Gameplay: the skater left the park; `points` is the "Session!" bonus scaled by the cheering (0 if none). */
   sessionEnd: { level: number; points: number };
   /**
+   * Gameplay (ROADMAP 76): a fan crowd's first fan came on screen, once per crowd; `theme` 'vfb'
+   * (VfB fans) or 'wasen' (Wasen visitors). The ui shows "VfB-Fans!" / "Wasen!", audio a chant.
+   */
+  crowdAhead: { theme: 'vfb' | 'wasen' };
+  /**
    * Gameplay: an air trick (player.airTrick) was completed and the skater
    * landed or caught a ledge, scoring points. `full` (ROADMAP 41) is false
    * when the points were cut: a repeated kickflip or a street flip into empty
@@ -357,6 +362,18 @@ export interface Hotspot {
   onPress(): void;
 }
 
+/**
+ * How far each screen edge's display cutout (punch-hole camera, rounded corner; CSS
+ * env(safe-area-inset-*)) reaches into the view, in whole view pixels; 0 where the
+ * letterbox around the canvas already covers it (and on desktop).
+ */
+export interface SafeInsets {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
 export interface DisplayInfo {
   readonly portrait: boolean;
   /** The device has a touch screen (show touch hints instead of key hints). */
@@ -369,6 +386,11 @@ export interface DisplayInfo {
   readonly viewWidth: number;
   /** View height in view pixels (always VIEW_H). */
   readonly viewHeight: number;
+  /**
+   * The safe-area insets in view pixels (ROADMAP 75). The world stays full-bleed; edge UI
+   * (buttons, the stats plate) moves inward by them. Changes live like viewWidth.
+   */
+  readonly safeInsets: SafeInsets;
 }
 
 /** Things systems may ask core to do. All are safe to call in any mode. */

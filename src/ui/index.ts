@@ -380,6 +380,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     });
     bus.on('sessionEnd', (e) => view.stunt.session(e.points));
     bus.on('starCollected', () => feed.star());
+    bus.on('crowdAhead', (e) => feed.crowdAhead(e.theme));
     bus.on('itemCaught', (e) => {
       const look = catchPopup(e.item, state.kidMode);
       popup(look.text, look.color, true, CATCH_RISE);
@@ -866,7 +867,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));
       const hintRect = buttonHintRect(ctx, control === 'button');
-      if (riding(state.mode)) view.hud.update(state, control === 'keycap');
+      if (riding(state.mode)) view.hud.update(state, control === 'keycap', display.safeInsets.left);
       // Laid out only while it shows (the scene allocates).
       view.stuntRect = view.stunt.visible
         ? placeCallout(view.stunt, {

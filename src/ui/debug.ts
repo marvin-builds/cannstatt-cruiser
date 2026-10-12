@@ -7,6 +7,7 @@ import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { CarriedItem, GameContext, Rect } from '../types';
 import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
+import { itemButtonRect } from './item-button';
 import { logoRect } from './logo';
 import type { MenuButtons } from './menu-layout';
 import { currentMenu, trophyShown } from './menu-state';
@@ -71,9 +72,10 @@ export interface UiDebugHook {
   /**
    * Current tap areas (view px) for this display: HUD buttons, settings buttons, the kid notice's OK, the logo
    * (title, or the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter,
-   * the title's settings gear), null off menus.
+   * the title's settings gear), null off menus; the HUD stats plate as last laid out and the touch item button's
+   * place (ROADMAP 75: both keep clear of display cutouts).
    */
-  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; kidNoticeOk: Rect; logo: Rect; screen: MenuButtons | null };
+  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; kidNoticeOk: Rect; logo: Rect; screen: MenuButtons | null; plate: Rect; itemButton: Rect };
   /**
    * The online list's state and tap areas (view px), or null without an online list: the title's
    * trophy, the open screen's close button, the entry's field and submit button.
@@ -253,6 +255,8 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
         kidNoticeOk: kidNoticeLayout(display, kidNoticeRestart(view.settings, ctx.state)).ok,
         logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
         screen: currentMenu(ctx, view)?.buttons ?? null,
+        plate: view.hud.layout.plate,
+        itemButton: itemButtonRect(display.viewWidth, display),
       };
     },
     highscores() {

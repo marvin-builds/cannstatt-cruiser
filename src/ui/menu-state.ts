@@ -78,6 +78,7 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     viewWidth: display.viewWidth,
     touch: display.touch,
     portrait: display.portrait,
+    safeInsets: display.safeInsets,
     fullscreenAvailable: view.fullscreenAvailable,
     reload: screen !== 'whatsNew' && reloadOffered(state),
     install,
@@ -86,10 +87,11 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
     trophy: trophyShown(state, view) ? titleTrophy(display.viewWidth, view.fullscreenAvailable, uiMetrics(display)) : null,
     feedback: feedbackOffered(state, view, screen),
   };
-  const plate = input.plate ? `${input.plate.w}x${input.plate.h}` : '';
+  const plate = input.plate ? `${input.plate.x},${input.plate.w}x${input.plate.h}` : '';
+  const cutouts = `${display.safeInsets.left},${display.safeInsets.right}`;
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
   const submit = screen === 'gameOver' && !!view.scores?.offered;
-  const key = `${screen}|${input.settingsButton}|${!!input.trophy}|${input.feedback}|${input.viewWidth}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
+  const key = `${screen}|${input.settingsButton}|${!!input.trophy}|${input.feedback}|${input.viewWidth}|${cutouts}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

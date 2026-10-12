@@ -312,6 +312,27 @@ export async function holdViewWhile(t: PlaytestContext, x: number, y: number, du
   }
 }
 
+/** Insets of display cutouts in CSS px per screen edge (a punch-hole camera, rounded corners). */
+export type FakeInsets = Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
+
+/**
+ * Fakes display cutouts (ROADMAP 75; Chromium cannot fake env(safe-area-inset-*)): sets the root's
+ * `--cc-safe-<side>` override that the DOM sheets and core's safe-area probe (src/core/safe-area.ts)
+ * read before env(), then fires a resize so core measures `display.safeInsets` again. Sides left
+ * out are removed, so `{}` takes every fake cutout away.
+ */
+export async function fakeSafeInsets(t: PlaytestContext, insets: FakeInsets): Promise<void> {
+  await t.page.evaluate((px) => {
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      const v = px[side];
+      if (v === undefined) document.documentElement.style.removeProperty(`--cc-safe-${side}`);
+      else document.documentElement.style.setProperty(`--cc-safe-${side}`, `${v}px`);
+    }
+    window.dispatchEvent(new Event('resize'));
+  }, insets);
+  await t.game.step(1);
+}
+
 /**
  * On a touch device in portrait the rotate hint covers the game and keeps
  * runs paused until a tap dismisses it: tap it away so scenarios also run on

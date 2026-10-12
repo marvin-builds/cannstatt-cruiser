@@ -1,5 +1,5 @@
 import type { GameMode } from '../core/modes';
-import type { Rect } from '../types';
+import type { Rect, SafeInsets } from '../types';
 import { measureText } from '../core/font';
 import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
@@ -21,21 +21,55 @@ export interface UiMetrics {
   iconScale: number;
   /** Height of the settings menu buttons. */
   menuButtonH: number;
+  /** Left and right display cutouts (display.safeInsets, view px) that edge UI keeps clear of (safeSpan). */
+  safeLeft: number;
+  safeRight: number;
 }
 
-const DESKTOP: UiMetrics = { hit: 14, gap: 3, margin: 4, plate: 14, iconScale: 1, menuButtonH: 18 };
-const TOUCH_LANDSCAPE: UiMetrics = { hit: 24, gap: 0, margin: 3, plate: 22, iconScale: 2, menuButtonH: 24 };
-const TOUCH_PORTRAIT: UiMetrics = { hit: 44, gap: 0, margin: 0, plate: 22, iconScale: 2, menuButtonH: 44 };
+const DESKTOP: UiMetrics = { hit: 14, gap: 3, margin: 4, plate: 14, iconScale: 1, menuButtonH: 18, safeLeft: 0, safeRight: 0 };
+const TOUCH_LANDSCAPE: UiMetrics = { hit: 24, gap: 0, margin: 3, plate: 22, iconScale: 2, menuButtonH: 24, safeLeft: 0, safeRight: 0 };
+const TOUCH_PORTRAIT: UiMetrics = { hit: 44, gap: 0, margin: 0, plate: 22, iconScale: 2, menuButtonH: 44, safeLeft: 0, safeRight: 0 };
 
-export function uiMetrics(display: { touch: boolean; portrait: boolean }): UiMetrics {
-  if (!display.touch) return DESKTOP;
-  return display.portrait ? TOUCH_PORTRAIT : TOUCH_LANDSCAPE;
+/** What layouts read from the display (a DisplayInfo fits; tests may leave the cutouts out). */
+export interface UiDisplay {
+  viewWidth: number;
+  touch: boolean;
+  portrait: boolean;
+  safeInsets?: SafeInsets;
+}
+
+/** Metrics with cutouts, one object per device and inset pair, so caches can compare them by identity. */
+const withInsets = new Map<string, UiMetrics>();
+
+/** The device's metrics with the left and right safe-area insets (none passed: none). */
+export function uiMetrics(display: { touch: boolean; portrait: boolean; safeInsets?: SafeInsets }): UiMetrics {
+  const base = !display.touch ? DESKTOP : display.portrait ? TOUCH_PORTRAIT : TOUCH_LANDSCAPE;
+  const left = display.safeInsets?.left ?? 0;
+  const right = display.safeInsets?.right ?? 0;
+  if (left === 0 && right === 0) return base;
+  const key = `${base.hit}|${left}|${right}`;
+  let m = withInsets.get(key);
+  if (!m) withInsets.set(key, (m = { ...base, safeLeft: left, safeRight: right }));
+  return m;
+}
+
+/**
+ * The x span edge UI (buttons, the stats plate, corner buttons) stays inside: the view less the
+ * display cutouts at its left and right (ROADMAP 75). The world and full-width fills ignore it.
+ */
+export function safeSpan(viewWidth: number, m: UiMetrics): { left: number; right: number } {
+  return { left: m.safeLeft, right: viewWidth - m.safeRight };
 }
 
 /** View pixels per metre for the distance readout and the online list (the skater is ~30 px, ~1.8 m tall; the server's plausibility bounds use it too). */
 export const PX_PER_METRE = 10;
 /** Seconds of one on/off blink cycle of prompts. */
 const BLINK_PERIOD = 1;
+
+/** The widest content centred on the view (centreX) that stays inside the safe span: the view less twice the larger cutout. */
+export function centredWidth(viewWidth: number, m: UiMetrics): number {
+  return viewWidth - 2 * Math.max(m.safeLeft, m.safeRight);
+}
 
 /** Left x of something `w` wide, `margin` away from the right edge of the view. */
 export function rightAnchor(viewWidth: number, w: number, margin: number): number {
@@ -60,13 +94,14 @@ export function riding(mode: GameMode): boolean {
 }
 
 /**
- * Tap areas of the button row in the top-right corner, right to left: pause
+ * Tap areas of the button row in the top-right corner (inside the safe span), right to left: pause
  * (only while riding or paused), mute, fullscreen.
  */
 export function hudButtons(viewWidth: number, fullscreenAvailable: boolean, m: UiMetrics = DESKTOP, withPause = true): HudButtons {
   const first = withPause ? 1 : 0;
+  const right = safeSpan(viewWidth, m).right;
   const slot = (i: number): Rect => ({
-    x: rightAnchor(viewWidth, m.hit, m.margin + i * (m.hit + m.gap)),
+    x: rightAnchor(right, m.hit, m.margin + i * (m.hit + m.gap)),
     y: m.margin,
     w: m.hit,
     h: m.hit,
@@ -202,10 +237,11 @@ export const POPUP_MARGIN = 4;
 
 /**
  * Left x of a popup `w` wide (outline and icon included) centred on `cx`,
- * kept POPUP_MARGIN from both view edges; the left margin wins if it cannot fit.
+ * kept POPUP_MARGIN from both edges of the safe span (`m`'s cutouts, none by
+ * default); the left margin wins if it cannot fit.
  */
-export function popupLeft(cx: number, w: number, viewWidth: number): number {
-  return Math.max(POPUP_MARGIN, Math.min(cx - Math.floor(w / 2), viewWidth - POPUP_MARGIN - w));
+export function popupLeft(cx: number, w: number, viewWidth: number, m: UiMetrics = DESKTOP): number {
+  return Math.max(m.safeLeft + POPUP_MARGIN, Math.min(cx - Math.floor(w / 2), viewWidth - m.safeRight - POPUP_MARGIN - w));
 }
 
 /**

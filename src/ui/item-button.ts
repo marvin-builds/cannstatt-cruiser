@@ -8,9 +8,9 @@
  */
 import type { GameMode } from '../core/modes';
 import type { Store } from '../core/storage';
-import type { CarriedItem, Rect } from '../types';
+import type { CarriedItem, Rect, SafeInsets } from '../types';
 import { measureText } from '../core/font';
-import { rightAnchor, riding, uiMetrics } from './layout';
+import { rightAnchor, riding, safeSpan, uiMetrics } from './layout';
 import { statsLayout } from './stats';
 
 export type ItemControl = 'button' | 'keycap';
@@ -31,6 +31,9 @@ export function itemControl(
   return riding(mode) ? 'keycap' : null;
 }
 
+/** What the item button's place depends on (a DisplayInfo fits). */
+type ItemDisplay = { touch: boolean; portrait: boolean; safeInsets?: SafeInsets };
+
 /** Touch button size (view px): ~80 CSS px in landscape (2 CSS px per view px), 46 in portrait (~1). */
 const BUTTON_LANDSCAPE = 40;
 const BUTTON_PORTRAIT = 46;
@@ -45,14 +48,15 @@ const TALLEST_PLATE = statsLayout(0, true, true).plate;
  * there it would hide the stars flying in from the right, so it sits under
  * the stats plate on the left, behind the skater, where nothing is to come.
  */
-export function itemButtonRect(viewWidth: number, display: { touch: boolean; portrait: boolean }): Rect {
+export function itemButtonRect(viewWidth: number, display: ItemDisplay): Rect {
+  const m = uiMetrics(display);
+  const span = safeSpan(viewWidth, m);
   if (display.portrait) {
     const y = TALLEST_PLATE.y + TALLEST_PLATE.h + BELOW;
-    return { x: TALLEST_PLATE.x, y, w: BUTTON_PORTRAIT, h: BUTTON_PORTRAIT };
+    return { x: span.left + TALLEST_PLATE.x, y, w: BUTTON_PORTRAIT, h: BUTTON_PORTRAIT };
   }
-  const m = uiMetrics(display);
   const edge = m.margin + Math.floor((m.hit - m.plate) / 2);
-  return { x: rightAnchor(viewWidth, BUTTON_LANDSCAPE, edge), y: m.margin + m.hit + BELOW, w: BUTTON_LANDSCAPE, h: BUTTON_LANDSCAPE };
+  return { x: rightAnchor(span.right, BUTTON_LANDSCAPE, edge), y: m.margin + m.hit + BELOW, w: BUTTON_LANDSCAPE, h: BUTTON_LANDSCAPE };
 }
 
 /** Space between the first-time hint and the item button (its pointer sits in it). */
@@ -76,7 +80,7 @@ export const ITEM_HINT_LABEL = 'Tippe auf den Gegenstand';
 /** Where a hint beside the touch item button (`label` at font `scale`, on its plate) sits: the first-time hint by default. */
 export function itemHintRect(
   viewWidth: number,
-  display: { touch: boolean; portrait: boolean },
+  display: ItemDisplay,
   scale: number,
   label = ITEM_HINT_LABEL,
 ): Rect & { pointsRight: boolean } {
@@ -103,7 +107,7 @@ export function popupCeiling(base: number, hint: Rect | null): number {
  */
 export function popupAvoid(
   viewWidth: number,
-  display: { touch: boolean; portrait: boolean },
+  display: ItemDisplay,
   control: ItemControl | null,
   skater: Rect,
   out: Rect[],

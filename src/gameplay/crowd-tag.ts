@@ -3,12 +3,12 @@
  * the crowd's theme. Kept apart from crowd.ts (planning) so the item, art
  * and contact code can ask without importing the planner.
  */
-import type { Entity } from '../types';
+import type { Entity, GameEvents } from '../types';
 
 /** The entity data field that tags a fan of a crowd with its theme. */
 export const CROWD_KEY = 'crowd';
 
-export type CrowdTheme = 'vfb' | 'wasen';
+export type CrowdTheme = GameEvents['crowdAhead']['theme'];
 
 /** The crowd a person belongs to, or null for everyone else. */
 export function crowdOf(e: Pick<Entity, 'data'>): CrowdTheme | null {

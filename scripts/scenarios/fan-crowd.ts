@@ -8,7 +8,8 @@
  * with stomps when a crowd is ahead) jumps onto the first heads and lets the
  * bounces carry it, with a shot at every stomp and after the landing.
  * Checks per crowd: at least two stomps, no crash, back on the street past
- * the last fan, no beer anywhere. Then the kid mode row (four heads) and a
+ * the last fan, no beer anywhere. The overview also shows the "VfB-Fans!" /
+ * "Wasen!" popup (crowdAhead, once per crowd). Then the kid mode row (four heads) and a
  * plain jump into a crowd (a crash: one jump never clears it).
  *   npm run playtest -- --scenario scripts/scenarios/fan-crowd.ts --viewports desktop,phone-landscape --name fan-crowd
  */
@@ -53,9 +54,12 @@ async function layCrowd(t: PlaytestContext, theme: CrowdTheme, x: number): Promi
 /** An overview with the whole row in view. */
 async function overview(t: PlaytestContext, theme: CrowdTheme, kidMode: boolean, label: string): Promise<void> {
   await freshRun(t, kidMode);
+  const since = (await t.game.state()).frame;
   const fans = await layCrowd(t, theme, PLAYER_X - 40);
   await t.game.step(2);
   await t.canvasShot(label);
+  const ahead = (await t.game.eventsSince(since, 'crowdAhead')).map((e) => (e.payload as { theme: CrowdTheme }).theme);
+  t.check(`${label}: crowdAhead once with its theme ("${theme === 'vfb' ? 'VfB-Fans!' : 'Wasen!'}" popup)`, ahead.length === 1 && ahead[0] === theme, ahead);
   const [least, most] = kidMode ? CROWD_HEADS.kid : CROWD_HEADS.adult;
   t.check(`${label}: ${least}-${most} fans of one kind`, fans.length >= least && fans.length <= most && fans.every((f) => crowdOf(f) === theme), fans.map((f) => f.kind));
 }

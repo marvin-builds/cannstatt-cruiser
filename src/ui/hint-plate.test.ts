@@ -16,11 +16,18 @@ import {
   SWIPE_DOWN,
   SWIPE_DOWN_W,
 } from './hint-plate';
-import { POPUP_MARGIN } from './layout';
+import { POPUP_MARGIN, uiMetrics } from './layout';
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 describe('hint plate', () => {
+  it('keeps clear of a display cutout at the left (ROADMAP 75)', () => {
+    const m = uiMetrics({ touch: true, portrait: false, safeInsets: { top: 0, right: 0, bottom: 0, left: 20 } });
+    expect(hintSpotRect(200, 20, 422, PLAYER_X, m).x).toBe(20 + POPUP_MARGIN);
+    const rows = [['Hallo Welt, hier ist ein langer Hinweis']];
+    expect(hintPlateRect(rows, 2, 422, PLAYER_X, m).x).toBe(20 + POPUP_MARGIN);
+  });
+
   it('a row is its texts side by side, a key cap counts as one piece', () => {
     expect(hintRowWidth(['Hallo'], 1)).toBe(measureText('Hallo', 1));
     expect(hintRowWidth(['Hallo'], 2)).toBe(measureText('Hallo', 2));

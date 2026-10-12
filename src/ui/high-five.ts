@@ -17,7 +17,7 @@ export { HIGH_FIVE_REACH };
 import type { Entity, Rect } from '../types';
 import { type HintRow, hintPlateRect, KEY_E } from './hint-plate';
 import { itemHintRect } from './item-button';
-import { popupScale } from './layout';
+import { popupScale, type UiDisplay, uiMetrics } from './layout';
 
 /** The hint (and on touch the hand button) shows from when the hand is this far ahead of the skater. */
 export const HIGH_FIVE_HINT_AHEAD = 150;
@@ -104,11 +104,11 @@ export type HighFiveHintPlate =
   | { kind: 'spot'; rows: readonly HintRow[]; scale: number; rect: Rect }
   | { kind: 'button'; label: string; scale: number; rect: Rect & { pointsRight: boolean } };
 
-export function highFiveHintPlate(display: { touch: boolean; portrait: boolean; viewWidth: number }): HighFiveHintPlate {
+export function highFiveHintPlate(display: UiDisplay): HighFiveHintPlate {
   const scale = popupScale(display, false);
   if (display.touch) {
     const rect = itemHintRect(display.viewWidth, display, scale, HIGH_FIVE_TOUCH_LABEL);
     return { kind: 'button', label: HIGH_FIVE_TOUCH_LABEL, scale, rect };
   }
-  return { kind: 'spot', rows: DESKTOP_ROWS, scale, rect: hintPlateRect(DESKTOP_ROWS, scale, display.viewWidth) };
+  return { kind: 'spot', rows: DESKTOP_ROWS, scale, rect: hintPlateRect(DESKTOP_ROWS, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }
