@@ -20,6 +20,14 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-12.3',
+    date: '2026-10-12',
+    items: [
+      'Eigenes Feedback wieder löschen',
+      'Mein Feedback dreht sich wieder mit',
+    ],
+  },
+  {
     version: '2026-10-12.2',
     date: '2026-10-12',
     items: [
