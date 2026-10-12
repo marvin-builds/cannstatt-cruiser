@@ -25,6 +25,16 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-12.4',
+    date: '2026-10-12',
+    items: [
+      'Kurz aufsetzen hält die Combo',
+      'Spät im Lauf seltener Brezeln',
+      'Schönerer Dreh-Hinweis',
+      'Aufgeräumtes Feedback-Fenster',
+    ],
+  },
+  {
     version: '2026-10-12.3',
     date: '2026-10-12',
     items: [
