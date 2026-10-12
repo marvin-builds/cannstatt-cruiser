@@ -13,7 +13,7 @@ import { UI } from './art';
 import { centred, fill, menuButton, redDot, scrollBar, text } from './draw-kit';
 import { FEEDBACK_TEXT, type FeedbackFlow } from './feedback-flow';
 import { DOT_ROOM, type FeedbackLayout, feedbackLayout } from './feedback-layout';
-import { listRowRect, type PageLayout, pageLayout, pageMaxScroll, pageTextRows, rowsHeight, type TextTone } from './feedback-page-layout';
+import { listRowRect, type PageLayout, pageLayout, pageMaxScroll, pageTextRows, pageTitle, rowsHeight, type TextTone } from './feedback-page-layout';
 import { FEEDBACK_PAGE_TEXT, type ReportRow, STATUS_COLOR } from './feedback-pages';
 import { drawDismiss } from './menu-screens';
 import { SCROLLBAR_W } from './score-layout';
@@ -28,7 +28,7 @@ const LABEL_LEADING = 2;
 /** The red dot's size at scale 1. */
 const DOT = 3;
 
-const TONE_COLOR: Record<Exclude<TextTone, ReportStatus | 'space'>, string> = { label: UI.teal, text: UI.white, muted: UI.muted, log: UI.muted };
+const TONE_COLOR: Record<Exclude<TextTone, ReportStatus | 'space'>, string> = { label: UI.teal, text: UI.white, muted: UI.muted, log: UI.muted, message: UI.yellow };
 
 /** The placeholder of the textarea for the chosen kind. */
 export function feedbackPlaceholder(flow: Pick<FeedbackFlow, 'kind'>): string {
@@ -165,7 +165,7 @@ function drawRow(r: RenderContext, row: ReportRow, l: PageLayout, y: number): vo
 function drawList(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
   drawTabs(r, flow, l.newTab!, l.mineTab!, l.labelScale);
   drawDismiss(r, l.close);
-  if (l.thanks) text(r, FEEDBACK_TEXT.sent, l.thanks.x, l.thanks.y, { align: 'center', color: UI.yellow, scale: l.thanks.scale });
+  if (l.note) text(r, l.note.text, l.note.x, l.note.y, { align: 'center', color: UI.yellow, scale: l.note.scale });
   const rows = flow.rows;
   if (rows.length === 0) {
     panel(r, l.content, () => {});
@@ -183,12 +183,16 @@ function drawList(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
   if (contentH > l.content.h) scrollBar(r, l.content, contentH, offset, SCROLLBAR_W * l.scale);
 }
 
-/** "Das wird gesendet", a report's details, "Das wurde gesendet": "Zurück", the headline, the text in its panel. */
+/** "Das wird gesendet", a report's details, "Das wurde gesendet", "Wirklich löschen?": "Zurück", the headline, the text in its panel, the buttons under it. */
 function drawTextPage(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
   menuButton(r, l.back!, FEEDBACK_PAGE_TEXT.back, UI.white, l.labelScale);
   drawDismiss(r, l.close);
   if (l.view) menuButton(r, l.view, FEEDBACK_PAGE_TEXT.view, UI.white, l.labelScale);
-  if (l.title) text(r, flow.page === 'sent' ? FEEDBACK_PAGE_TEXT.sentTitle : FEEDBACK_PAGE_TEXT.previewTitle, l.title.x, l.title.y, { color: UI.yellow, scale: l.title.scale });
+  if (l.del) menuButton(r, l.del, FEEDBACK_PAGE_TEXT.delete, UI.white, l.labelScale);
+  if (l.no) menuButton(r, l.no, FEEDBACK_PAGE_TEXT.cancel, UI.white, l.labelScale);
+  if (l.yes) menuButton(r, l.yes, FEEDBACK_PAGE_TEXT.confirmYes, flow.deleteState === 'deleting' ? UI.muted : UI.red, l.labelScale);
+  const title = pageTitle(flow.page);
+  if (l.title && title) text(r, title, l.title.x, l.title.y, { color: UI.yellow, scale: l.title.scale });
   const rows = pageTextRows(flow, l);
   const offset = Math.round(flow.scroll);
   const x = l.content.x + l.pad;
@@ -207,6 +211,6 @@ function drawTextPage(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void
 export function drawFeedback(r: RenderContext, flow: FeedbackFlow): void {
   fill(r, UI.ink);
   if (flow.page === 'form') drawForm(r, flow, feedbackLayout(r.display));
-  else if (flow.page === 'list') drawList(r, flow, pageLayout(r.display, 'list', flow.thanks));
+  else if (flow.page === 'list') drawList(r, flow, pageLayout(r.display, 'list', flow.listNote));
   else drawTextPage(r, flow, pageLayout(r.display, flow.page));
 }

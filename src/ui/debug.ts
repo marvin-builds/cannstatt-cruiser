@@ -21,7 +21,7 @@ import type { UiView } from './screens';
 import type { SettingsScreen } from './settings';
 import type { ScoreScreen } from './highscore-flow';
 import { closeButton, scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
-import type { FeedbackPage, FeedbackStatus, FeedbackTab } from './feedback-flow';
+import type { DeleteState, FeedbackPage, FeedbackStatus, FeedbackTab } from './feedback-flow';
 import { type FeedbackLayout, feedbackLayout } from './feedback-layout';
 import { listRowRect, type PageLayout, pageLayout, pageMaxScroll } from './feedback-page-layout';
 import type { PageSection, ReportDetail, ReportRow } from './feedback-pages';
@@ -129,6 +129,10 @@ export interface FeedbackDebug {
   detail: ReportDetail | null;
   /** Just sent: the thanks over "Mein Feedback" (ROADMAP 75). */
   thanks: boolean;
+  /** The line over the list (the thanks, "Feedback gelöscht") and the confirm's delete status (ROADMAP 78). */
+  listNote: string | null;
+  deleteState: DeleteState;
+  deleteMessage: string | null;
   form: FeedbackLayout;
   /** The open page's layout (list and text pages; null on the form) and the list rows' tap areas. */
   pageLayout: PageLayout | null;
@@ -290,9 +294,11 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
       const flow = view.feedback;
       if (!flow) return null;
       const { open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail, thanks } = flow;
-      const layout = page === 'form' ? null : pageLayout(ctx.display, page, thanks);
+      const { listNote, deleteState, deleteMessage } = flow;
+      const layout = page === 'form' ? null : pageLayout(ctx.display, page, listNote);
       return {
         ...{ open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail, thanks },
+        ...{ listNote, deleteState, deleteMessage },
         maxScroll: layout ? pageMaxScroll(flow, layout) : 0,
         form: feedbackLayout(ctx.display),
         pageLayout: layout,

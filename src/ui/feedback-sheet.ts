@@ -1,12 +1,14 @@
 /**
  * The feedback dialog as a full-screen portrait sheet (ROADMAP 58, 70). The
  * top row holds the tabs "Neu" / "Mein Feedback" (with the red dot) and "×",
- * or on a sub-page "Zurück" with its headline (a report's details: "Ansehen").
+ * or on a sub-page "Zurück" with its headline (a report's details: "Ansehen",
+ * and "Löschen" under the panel, which asks "Wirklich löschen?" with
+ * "Abbrechen" / "Ja, löschen", ROADMAP 78).
  * "Neu": the kind ("Fehler" / "Idee"), a tall textarea, the privacy hint or
  * status line with the counter, "Fehlerprotokoll mitsenden" (bug reports
  * only, disabled while nothing was recorded) with "Ansehen", and "Senden";
  * once sent "Mein Feedback" with the thanks over it and the new report
- * framed on top (ROADMAP 75). "Das wird gesendet", "Mein Feedback" and a
+ * framed on top (ROADMAP 75), after a delete with "Feedback gelöscht". "Das wird gesendet", "Mein Feedback" and a
  * report's details scroll natively in a panel with a scroll bar, and by the
  * scroll keys (arrows, W / S, Page Up / Down, Home, End). It shows what
  * feedbackSheetModel says and reports the player's actions; the flow
@@ -18,6 +20,7 @@ import type { FeedbackKind } from '../net/feedback-types';
 import { MAX_FEEDBACK_TEXT } from '../net/feedback-types';
 import { UI } from './art';
 import { FEEDBACK_TEXT, type FeedbackTab } from './feedback-flow';
+import { confirmItems, type TextTone } from './feedback-page-layout';
 import { FEEDBACK_PAGE_TEXT, type PageSection, type ReportDetail, type ReportRow, STATUS_COLOR } from './feedback-pages';
 import { type FeedbackSheetModel, SHEET_STYLE } from './portrait-sheets';
 import { sheetScrollTo } from './whats-new';
@@ -47,6 +50,10 @@ export interface FeedbackSheetHandlers {
   onOpenReport(id: number): void;
   /** "Ansehen" on a report's details. */
   onSentLog(): void;
+  /** "Löschen" on a report's details: asks first. */
+  onDelete(): void;
+  /** "Ja, löschen". */
+  onConfirmDelete(): void;
   /** "Zurück" and Esc: the page before, else closes. */
   onBack(): void;
   /** "×". */
@@ -74,6 +81,8 @@ function choose(el: HTMLElement, chosen: boolean): void {
   el.style.borderBottom = `${chosen ? 4 : 2}px solid ${chosen ? UI.yellow : UI.buttonEdge}`;
   el.setAttribute('aria-pressed', String(chosen));
 }
+
+const TONE_COLOUR: Partial<Record<TextTone, string>> = { message: UI.yellow, text: UI.white, muted: UI.muted };
 
 const BLOCK_STYLE: Partial<CSSStyleDeclaration> = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '0 0 4px' };
 
@@ -131,6 +140,17 @@ function fillDetail(list: HTMLElement, d: ReportDetail): void {
   if (d.reply) block(d.reply, UI.white);
   block(d.text, UI.white);
   block(d.sent, UI.muted, SHEET_STYLE.smallPx);
+}
+
+/** "Wirklich löschen?": the delete's status (deleting, or why it failed), what deleting means, the report's text. */
+function fillConfirm(list: HTMLElement, d: ReportDetail, message: string | null): void {
+  for (const item of confirmItems(d, message)) {
+    if (item.tone === 'space') continue;
+    const el = styled(line(SHEET_STYLE.textPx, TONE_COLOUR[item.tone] ?? UI.white), { ...BLOCK_STYLE, margin: '10px 0 0' });
+    if (item.tone === 'message') el.setAttribute('role', 'status');
+    el.textContent = item.text;
+    list.append(el);
+  }
 }
 
 export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): FeedbackSheet {
@@ -203,14 +223,19 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     const send = sheetButton(FEEDBACK_TEXT.send, () => handlers.onSend());
     const logRow = row(log, view);
     const form = [row(bug, idea), area, row(status, counter), logRow, row(send)];
-    const thanks = styled(line(SHEET_STYLE.textPx + 2, UI.yellow), { textAlign: 'center', fontWeight: 'bold' });
-    thanks.textContent = FEEDBACK_TEXT.sent;
-    thanks.setAttribute('role', 'status');
+    const note = styled(line(SHEET_STYLE.textPx + 2, UI.yellow), { textAlign: 'center', fontWeight: 'bold' });
+    note.setAttribute('role', 'status');
     const panel = scrollPanel(FEEDBACK_TEXT.title);
     // Narrow phones: the rows and texts get the width, the scroll bar keeps its room at the right.
     panel.list.style.padding = '4px 18px 8px 8px';
-    sheet.root.append(tabs, subHeader, ...form, thanks, panel.frame);
-    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, thanks, panel };
+    const del = sheetButton(FEEDBACK_PAGE_TEXT.delete, () => handlers.onDelete());
+    styled(del, { flex: '0 0 auto' });
+    const delRow = row(del);
+    const no = sheetButton(FEEDBACK_PAGE_TEXT.cancel, () => handlers.onBack());
+    const yes = sheetButton(FEEDBACK_PAGE_TEXT.confirmYes, () => handlers.onConfirmDelete());
+    const confirmRow = row(no, yes);
+    sheet.root.append(tabs, subHeader, ...form, note, panel.frame, delRow, confirmRow);
+    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, note, panel, del, delRow, no, yes, confirmRow };
   }
 
   /** Shows `els` (display as given), or hides them. */
@@ -220,12 +245,13 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
 
   /** The scrolling panel's content for a list or text page, rebuilt when it changes. */
   function fillPanel(p: NonNullable<typeof parts>, model: FeedbackSheetModel): void {
-    const key = JSON.stringify([model.page, model.rows, model.sections, model.detail]);
+    const key = JSON.stringify([model.page, model.rows, model.sections, model.detail, model.deleteMessage]);
     if (key === pageKey) return;
     pageKey = key;
     const { list } = p.panel;
     list.replaceChildren();
     if (model.page === 'list') fillRows(list, model.rows, handlers.onOpenReport);
+    else if (model.page === 'confirm' && model.detail) fillConfirm(list, model.detail, model.deleteMessage);
     else if (model.detail) fillDetail(list, model.detail);
     else fillSections(list, model.sections);
     list.scrollTop = 0;
@@ -245,6 +271,13 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     buttonColour(p.log, model.withLog ? UI.white : model.logAvailable ? UI.muted : UI.empty);
     p.log.style.visibility = model.logShown ? 'visible' : 'hidden';
     buttonColour(p.send, model.canSend ? UI.yellow : UI.muted);
+  }
+
+  /** A keyboard player on "Löschen" lands on "Abbrechen" of the confirm, and back on "Löschen" after it (the pressed button hides). */
+  function moveFocus(p: NonNullable<typeof parts>, page: FeedbackSheetModel['page']): void {
+    const active = document.activeElement;
+    if (page === 'confirm' && active === p.del) p.no.focus({ preventScroll: true });
+    else if (page === 'detail' && (active === p.no || active === p.yes)) p.del.focus({ preventScroll: true });
   }
 
   return {
@@ -267,7 +300,12 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       toggle([p.mineDot], model.dot, 'inline-block');
       toggle(p.form.filter((el) => el !== p.area), form);
       toggle([p.area], form, 'block');
-      toggle([p.thanks], model.page === 'list' && model.thanks, 'block');
+      setText(p.note, model.note ?? '');
+      toggle([p.note], model.note !== null, 'block');
+      moveFocus(p, model.page);
+      toggle([p.delRow], model.page === 'detail');
+      toggle([p.confirmRow], model.page === 'confirm');
+      buttonColour(p.yes, model.deleting ? UI.muted : UI.red);
       panelShown = model.page !== 'form';
       toggle([p.panel.frame], panelShown, 'block');
       if (form) showForm(p, model);

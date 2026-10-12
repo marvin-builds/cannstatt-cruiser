@@ -9,7 +9,9 @@
  * URL). The answer is kept; a report the worker leaves out is 'removed' and
  * never asked about again. The red dot shows while a report's status, reply or
  * done version differs from what the player last saw in "Mein Feedback".
- * Tests use a fake fetch.
+ * The player may delete a report (ROADMAP 78): `POST /feedback/delete` with
+ * its id and key through the same gate; once the worker no longer has it the
+ * device forgets it too. Tests use a fake fetch.
  */
 import type { Store } from '../core/storage';
 import { type FetchLike, REQUEST_TIMEOUT_MS } from './api';
@@ -26,6 +28,7 @@ import {
 } from './feedback-reports';
 import {
   FEEDBACK_STATUSES,
+  type FeedbackDeleteBody,
   type FeedbackStatus,
   type FeedbackStatusEntry,
   type FeedbackStatusQuery,
@@ -68,8 +71,11 @@ export interface FeedbackInboxDeps {
   timeoutMs?: number;
 }
 
+/** deleted: gone on the worker (or never there) and forgotten here; offline: no connection, timeout or no endpoint; failed: refused. */
+export type FeedbackDeleteResult = 'deleted' | 'offline' | 'failed';
+
 /** The part the ui uses. */
-export type FeedbackInboxLike = Pick<FeedbackInbox, 'reports' | 'changed' | 'changedIds' | 'markSeen' | 'checkIfDue'>;
+export type FeedbackInboxLike = Pick<FeedbackInbox, 'reports' | 'changed' | 'changedIds' | 'markSeen' | 'checkIfDue' | 'remove'>;
 
 export class FeedbackInbox {
   private kept: KeptReport[];
@@ -135,6 +141,28 @@ export class FeedbackInbox {
     } finally {
       this.asking = false;
     }
+  }
+
+  /**
+   * Deletes a kept report on the worker (its key proves it is the player's) and then on the device:
+   * 204 or 404 (already gone) forget it; a report the worker already left out ('removed') is forgotten
+   * without a request. Anything else keeps it. Never throws.
+   */
+  async remove(id: number): Promise<FeedbackDeleteResult> {
+    const report = this.kept.find((r) => r.id === id);
+    if (!report) return 'deleted';
+    if (report.status !== 'removed') {
+      const { baseUrl } = this.deps;
+      if (baseUrl === null || !this.deps.online()) return 'offline';
+      const body: FeedbackDeleteBody = { id, key: report.key };
+      // text/plain keeps it a simple CORS request.
+      const init = { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) };
+      const response = await timedFetch(this.deps.fetch, `${baseUrl}/feedback/delete`, init, this.deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+      if (response === null) return 'offline';
+      if (response.status !== 204 && response.status !== 404) return 'failed';
+    }
+    this.save(this.kept.filter((r) => r.id !== id));
+    return 'deleted';
   }
 
   /** The last check is a minute ago or more; a damaged time or one in the future (clock turned back) does not block. */

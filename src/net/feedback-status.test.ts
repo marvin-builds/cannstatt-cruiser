@@ -219,3 +219,72 @@ describe('ROADMAP 57 leftovers', () => {
     expect(store.get('feedbackIds', 'gone')).toBeNull();
   });
 });
+
+describe('deleting an own report (ROADMAP 78)', () => {
+  /** A fake worker for POST /feedback/delete answering `status` (never the network). */
+  function deleteWorker(status: number | 'reject' | 'hang') {
+    const calls: Call[] = [];
+    const fetchFn: FetchLike = (url, init) => {
+      calls.push({ url, method: init?.method, headers: init?.headers, body: JSON.parse(init?.body ?? 'null') });
+      if (status === 'reject') return Promise.reject(new Error('offline'));
+      if (status === 'hang') return new Promise(() => {});
+      return Promise.resolve({ ok: status < 300, status, json: () => Promise.reject(new Error('no body')) });
+    };
+    return { calls, fetchFn };
+  }
+
+  it('posts id and key as text/plain JSON to /feedback/delete; 204 forgets the report on the device', async () => {
+    const net = deleteWorker(204);
+    const { inbox, make } = setup(net);
+    expect(await inbox.remove(3)).toBe('deleted');
+    expect(net.calls).toEqual([{ url: 'https://fb.test/feedback/delete', method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: { id: 3, key: keyOf(3) } }]);
+    expect(inbox.reports.map((r) => r.id)).toEqual([5]);
+    expect(make().reports.map((r) => r.id)).toEqual([5]);
+  });
+
+  it('404 (already gone on the worker) forgets it too', async () => {
+    const { inbox } = setup(deleteWorker(404));
+    expect(await inbox.remove(5)).toBe('deleted');
+    expect(inbox.reports.map((r) => r.id)).toEqual([3]);
+  });
+
+  it('other answers keep the report: failed', async () => {
+    for (const status of [400, 403, 429, 500]) {
+      const { inbox } = setup(deleteWorker(status));
+      expect(await inbox.remove(3), String(status)).toBe('failed');
+      expect(inbox.reports.map((r) => r.id)).toEqual([5, 3]);
+    }
+  });
+
+  it('offline, a network error, a timeout or no endpoint keep the report: offline, never throwing', async () => {
+    const offline = setup(deleteWorker(204), { online: false });
+    expect(await offline.inbox.remove(3)).toBe('offline');
+    const rejected = setup(deleteWorker('reject'));
+    expect(await rejected.inbox.remove(3)).toBe('offline');
+    const hanging = setup(deleteWorker('hang'));
+    expect(await hanging.inbox.remove(3)).toBe('offline');
+    const net = deleteWorker(204);
+    const none = setup(net, { baseUrl: null });
+    expect(await none.inbox.remove(3)).toBe('offline');
+    expect(net.calls).toEqual([]);
+    for (const t of [offline, rejected, hanging, none]) expect(t.inbox.reports.map((r) => r.id)).toEqual([5, 3]);
+  });
+
+  it('a report the worker already left out (removed) is forgotten on the device without a request', async () => {
+    const { inbox, store } = setup(fakeWorker([open(3)]));
+    await inbox.checkIfDue();
+    const net = deleteWorker(500);
+    const again = new FeedbackInbox({ baseUrl: 'https://fb.test', fetch: net.fetchFn, store, now: () => NOON, online: () => false });
+    expect(await again.remove(5)).toBe('deleted');
+    expect(net.calls).toEqual([]);
+    expect(again.reports.map((r) => r.id)).toEqual([3]);
+  });
+
+  it('an unknown id asks nothing and changes nothing', async () => {
+    const net = deleteWorker(204);
+    const { inbox } = setup(net);
+    expect(await inbox.remove(99)).toBe('deleted');
+    expect(net.calls).toEqual([]);
+    expect(inbox.reports.map((r) => r.id)).toEqual([5, 3]);
+  });
+});
