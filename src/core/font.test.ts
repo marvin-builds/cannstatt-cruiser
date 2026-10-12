@@ -21,6 +21,14 @@ describe('pixel font', () => {
     expect(rowOf(',')).toBeGreaterThan(FONT_BASELINE);
   });
 
+  it('draws German quotes: „ low like a comma, “ high, both unlike the straight quote', () => {
+    const inkRows = (ch: string) => glyphFor(ch)!.rows.flatMap((r, i) => (r.includes('#') ? [i] : []));
+    expect(Math.max(...inkRows('„'))).toBe(Math.max(...inkRows(',')));
+    expect(Math.min(...inkRows('“'))).toBe(Math.min(...inkRows('"')));
+    expect(glyphFor('„')!.rows).not.toEqual(glyphFor('"')!.rows);
+    expect(glyphFor('“')!.rows).not.toEqual(glyphFor('"')!.rows);
+  });
+
   it('draws e with a hole in its bowl above the bar, so it never reads as an epsilon or "="', () => {
     const rows = glyphFor('e')!.rows;
     expect(rows[3]).toMatch(/^#\.+#/); // first row below the x-height top: left side, counter, right side

@@ -94,6 +94,8 @@ const BASE: Record<string, string> = {
   ')': '#./.#/.#/.#/#.',
   "'": '#/#/./././.',
   '"': '#.#/#.#/.../.../...',
+  '„': '..../..../..../..../.#.#/#.#.',
+  '“': '.#.#/#.#./..../..../....',
   '%': '#.#/..#/.#./#../#.#',
   '*': '.../#.#/.#./#.#/...',
   '=': '.../###/.../###/...',
@@ -116,7 +118,7 @@ const FULL: Record<string, string> = {
 /** Lowercase umlauts: base letter with dots in row 0 above its outer columns. */
 const DOTTED: Record<string, string> = { ä: 'a', ö: 'o', ü: 'u' };
 
-const ALIASES: Record<string, string> = { ẞ: 'ß', '–': '-', '—': '-', '„': '"', '“': '"', '’': "'" };
+const ALIASES: Record<string, string> = { ẞ: 'ß', '–': '-', '—': '-', '’': "'" };
 
 function normalise(rows: string[]): Glyph {
   const width = Math.max(...rows.map((r) => r.length));
