@@ -10,6 +10,11 @@ export interface ChangelogEntry {
   /** `YYYY-MM-DD`, the date part of the version. */
   date: string;
   items: string[];
+  /**
+   * English lines (ROADMAP 71), one per item in the same order and under the same limits. Entries
+   * from before English have none; the ui then shows the German items.
+   */
+  en?: string[];
 }
 
 /** Item limits, so an entry fits the "Neu in dieser Version" screen. */
@@ -316,5 +321,5 @@ export function changesSince(
   return log
     .filter((entry) => compareVersions(entry.version, lastSeen) > 0)
     .slice(0, maxEntries)
-    .map((entry) => ({ ...entry, items: [...entry.items] }));
+    .map((entry) => ({ ...entry, items: [...entry.items], ...(entry.en ? { en: [...entry.en] } : {}) }));
 }
