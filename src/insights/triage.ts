@@ -12,7 +12,8 @@ import {
 
 export type StatusFilter = 'all' | FeedbackStatus;
 
-const STATUSES: Record<FeedbackStatus, string> = { open: 'Offen', todo: 'Todo', done: 'Erledigt', rejected: 'Abgelehnt' };
+/** The stored value 'todo' reads 'Geplant', as in the game's "Mein Feedback" (ROADMAP 75). */
+const STATUSES: Record<FeedbackStatus, string> = { open: 'Offen', todo: 'Geplant', done: 'Erledigt', rejected: 'Abgelehnt' };
 
 export function statusLabel(status: FeedbackStatus): string {
   return STATUSES[status];

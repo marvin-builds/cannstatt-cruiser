@@ -179,6 +179,36 @@ describe('POST /feedback/:id/issue', () => {
   });
 });
 
+describe('POST /feedback/:id/issue with the developer addition (ROADMAP 75)', () => {
+  const addition = 'Kommt mit dem Park-Level.\n> kein Zitat';
+
+  it('puts it into its own marked section after the player\'s quoted text, never inside the quote', async () => {
+    const id = seed('idea');
+    const github = fakeGitHub(201, { number: 8 });
+    const res = await call('POST', `/feedback/${id}/issue`, { body: { ...draft, addition }, github: github.fetch });
+    expect(res.status).toBe(201);
+    const sent = JSON.parse(String(github.calls[0]!.init.body)).body as string;
+    expect(sent).toBe(`${draft.body}\n\n---\n\n**Ergänzung des Entwicklers**\n\n${addition}`);
+    const quoteEnd = sent.indexOf('\n\n', sent.lastIndexOf('> Der Skater hängt'));
+    expect(sent.indexOf('**Ergänzung des Entwicklers**')).toBeGreaterThan(quoteEnd);
+    expect(row(id)).toEqual({ status: 'todo', issue: 8, reply: null });
+  });
+
+  it('without an addition the body goes out as drafted', async () => {
+    const id = seed();
+    const github = fakeGitHub();
+    await call('POST', `/feedback/${id}/issue`, { body: { ...draft, addition: '  ' }, github: github.fetch });
+    expect(JSON.parse(String(github.calls[0]!.init.body)).body).toBe(draft.body);
+  });
+
+  it('sets no status when GitHub refuses the issue', async () => {
+    const id = seed();
+    const res = await call('POST', `/feedback/${id}/issue`, { body: { ...draft, addition }, github: fakeGitHub(422, { message: 'Validation Failed' }).fetch });
+    expect(res.status).toBe(502);
+    expect(row(id)).toEqual({ status: 'open', issue: null, reply: null });
+  });
+});
+
 describe('PATCH /feedback/:id', () => {
   it('sets the status and a trimmed reply and answers with the triage fields', async () => {
     const id = seed();

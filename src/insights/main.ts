@@ -9,14 +9,16 @@ import { store } from '../core/storage';
 import type { FetchLike } from '../net/api';
 import type { InsightsStats, StatsRange } from '../net/telemetry-types';
 import { drawDayCharts, renderBoard } from './board';
-import { apiBase, createIssue, createSession, deleteFeedback, fetchFeedback, fetchStats, patchFeedback, type StatsError, type TriageResult } from './client';
+import { showTesterPassNote } from './device-switches';
+import { apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, patchFeedback, type StatsError, type TriageResult } from './client';
 import type { FeedbackFilter } from './feedback';
 import type { FeedbackHandlers } from './feedback-card';
 import type { StatusFilter } from './triage';
 import type { TriagedFeedbackEntry } from './triage-types';
 import { renderLocked } from './locked';
 import { BoardAuth, type Rejection } from './session';
-import { markOnUnlock, setTestDevice, testDeviceState } from './test-device';
+import { markOnUnlock, refreshTesterPass, switchTestDevice, testDeviceState, testerPassNote } from './test-device';
+import type { TesterPassResult } from './client';
 
 const root = document.getElementById('app')!;
 const base = apiBase(window.location);
@@ -47,6 +49,12 @@ let statusFilter: StatusFilter = 'all';
 let testDevice = testDeviceState(store) === true;
 /** 'inkl. Testgeräte': off on every page load, never stored. */
 let testers = false;
+/** The tester pass of a marked device is refreshed on the first successful load after an unlock (and after page load). */
+let refreshPassOnLoad = true;
+/** The line under the switches about the tester pass. */
+let passNote: string | null = null;
+/** Only the newest tester pass request may set the note. */
+let passRequest = 0;
 
 function showLocked(message: string | null, busy = false): void {
   stats = null;
@@ -59,14 +67,14 @@ function showBoard(loading: boolean, error: string | null = null): void {
     root,
     {
       stats, range, loading, error, feedback: { entries: feedback, filter: feedbackFilter, status: statusFilter }, testDevice, testers,
-      remembered: auth.remembered,
+      testerPassNote: passNote, remembered: auth.remembered,
     },
     {
       onRange: switchRange,
       onReload: () => void load(),
       onLock: lock,
       feedback: feedbackHandlers,
-      onTestDevice: switchTestDevice,
+      onTestDevice: toggleTestDevice,
       onTesters: switchTesters,
     },
   );
@@ -124,6 +132,10 @@ async function load(): Promise<void> {
     stats = result.stats;
     showBoard(false, signInNote);
     signInNote = null;
+    if (refreshPassOnLoad) {
+      refreshPassOnLoad = false;
+      trackPass(refreshTesterPass(store, fetchTesterPass));
+    }
   } else if (stats) {
     showBoard(false, ERRORS[result.error]);
   } else {
@@ -133,6 +145,7 @@ async function load(): Promise<void> {
 
 async function unlock(value: string, keep: boolean): Promise<void> {
   remember = keep;
+  refreshPassOnLoad = true;
   showLocked(null, true);
   const result = await auth.signIn(value, keep, (token) => createSession(fetchFn, { base, token }));
   if (!result.ok) {
@@ -148,9 +161,25 @@ function switchRange(days: StatsRange): void {
   void load();
 }
 
-function switchTestDevice(on: boolean): void {
-  setTestDevice(store, on);
+/** POST /board/tester-pass with the current bearer; a 401 only fails the pass, the next load locks the board. */
+function fetchTesterPass(): Promise<TesterPassResult> {
+  const token = auth.bearer();
+  return token ? createTesterPass(fetchFn, { base, token }) : Promise.resolve({ ok: false, error: 'auth' });
+}
+
+/** Shows how a tester pass refresh went under the switches, unless a newer one started meanwhile. */
+function trackPass(refresh: Promise<TesterPassResult | null>): void {
+  const request = ++passRequest;
+  void refresh.then((result) => {
+    if (request !== passRequest) return;
+    passNote = testerPassNote(result);
+    showTesterPassNote(root, passNote);
+  });
+}
+
+function toggleTestDevice(on: boolean): void {
   testDevice = on;
+  trackPass(switchTestDevice(store, on, fetchTesterPass));
 }
 
 function switchTesters(on: boolean): void {

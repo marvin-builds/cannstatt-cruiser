@@ -1,5 +1,5 @@
 /**
- * HTTP API: GET /top, POST /score, POST /event, POST /board/session, GET /stats, POST /feedback, GET /feedback,
+ * HTTP API: GET /top, POST /score, POST /event, POST /board/session, POST /board/tester-pass, GET /stats, POST /feedback, GET /feedback,
  * POST /feedback/status (the game asks for its own reports by id and secret key, no token), the feedback triage
  * routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
@@ -21,18 +21,23 @@ import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from './feedback-t
 import { ISSUE_LABEL, MAX_TRIAGE_BYTES } from './feedback-triage-rules';
 import { deleteFeedback, feedbackForIssue, feedbackStatuses, storeIssue, updateTriage } from './feedback-triage-store';
 import { createIssue, type GitHubFetch } from './github';
+import { issueText } from './issue-body';
 import { locationOf } from './location';
 import { rankRows } from './ranking';
 import { isRateLimited } from './rate-limit';
 import { loadStats } from './stats';
 import { deviceRow, recentSubmissions, saveBestRun, sha256Hex, topRows } from './store';
 import { isDeviceId, parseSubmission } from './submission';
+import { issueTesterPass, isValidTesterPass } from './tester-pass';
 
 export interface Env {
   DB: D1Database;
   /** Bearer token for GET /stats and the feedback routes of the board (Wrangler secret). Without it they always answer 401. */
   STATS_TOKEN?: string;
-  /** HMAC key for board session tokens (Wrangler secret, ROADMAP 74). Without it POST /board/session answers 503 and no session token is accepted. */
+  /**
+   * HMAC key for board session tokens and tester passes (Wrangler secret, ROADMAP 74, 75). Without it POST /board/session and
+   * POST /board/tester-pass answer 503 and no session token or tester pass is accepted.
+   */
   BOARD_SESSION_KEY?: string;
   /** Fine-grained GitHub token, Issues read/write on ISSUE_REPO only (Wrangler secret). Without it no issue can be made. */
   GITHUB_TOKEN?: string;
@@ -98,6 +103,13 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     if (!env.BOARD_SESSION_KEY?.trim()) return fail('session-key-missing');
     return json(await issueSession(env.BOARD_SESSION_KEY, now), 200);
   }
+  // A tester pass for a test device (ROADMAP 75): for the real token or a board session, never for a pass itself.
+  if (pathname === '/board/tester-pass') {
+    if (request.method !== 'POST') return fail('not-found');
+    if (!(await authorized())) return fail('unauthorized');
+    if (!env.BOARD_SESSION_KEY?.trim()) return fail('session-key-missing');
+    return json(await issueTesterPass(env.BOARD_SESSION_KEY, now), 200);
+  }
   if (request.method === 'GET' && pathname === '/stats') {
     if (!(await authorized())) return fail('unauthorized');
     const values = searchParams.getAll('days');
@@ -131,7 +143,9 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     // The session id only rate-limits, as a hash in the day's counter table; it is never stored with the text.
     // Of the secret key only its hash is stored, so the database alone cannot answer a status query (ROADMAP 70).
     const hashes = { session: await sha256Hex(feedback.session), key: feedback.key === undefined ? null : await sha256Hex(feedback.key) };
-    const id = await saveFeedback(env.DB, feedback, hashes, utcDay(now));
+    // A valid tester pass lifts the per-session limit; an invalid or expired one is ignored, never an error.
+    const tester = feedback.testerPass !== undefined && (await isValidTesterPass(feedback.testerPass, env.BOARD_SESSION_KEY, now));
+    const id = await saveFeedback(env.DB, feedback, hashes, utcDay(now), tester);
     if (id === null) return fail('rate');
     // Housekeeping after the feedback is stored: a failure is logged and retried on a later request.
     await pruneFeedbackOnceADay(env.DB, now).catch((error: unknown) => console.error('feedback prune failed', error));
@@ -170,7 +184,8 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     const row = await feedbackForIssue(env.DB, id);
     if (!row) return fail('not-found');
     if (row.issue !== null) return fail('exists', { issue: row.issue });
-    const created = await createIssue(github, githubToken, { ...draft, labels: [ISSUE_LABEL, row.kind] });
+    const created = await createIssue(github, githubToken, { title: draft.title, body: issueText(draft), labels: [ISSUE_LABEL, row.kind] });
+    // Status todo ("Geplant") only together with a created issue; a failed issue leaves the row as it was.
     if (!created.ok) return fail('github', { status: created.status });
     await storeIssue(env.DB, id, created.number);
     return json({ ok: true, issue: created.number }, 201);

@@ -1,6 +1,7 @@
 /**
- * Triage actions of one feedback card item (ROADMAP 56): 'Todo' opens the
- * GitHub issue editor, 'Status' the status and reply editor (with
+ * Triage actions of one feedback card item (ROADMAP 56, 75): 'Geplant' opens the
+ * GitHub issue editor, whose 'Issue anlegen' creates the issue and sets the status Geplant in one worker
+ * request (an optional 'Ergänzung (Entwickler)' goes into its own section of the issue); 'Status' the status and reply editor (with
  * 'umgesetzt in Version' for Erledigt, ROADMAP 70), 'Löschen' a confirm step. One panel at a time; a failure shows a short note in the item.
  * Player text only ever goes in as text nodes and form values.
  */
@@ -9,7 +10,7 @@ import { h } from './dom';
 import { logSummary } from './feedback';
 import { issueBody, issueTitle, parseDoneVersion, STATUS_FILTERS, toggleLog, triageErrorText } from './triage';
 import {
-  FEEDBACK_STATUSES, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE,
+  FEEDBACK_STATUSES, MAX_ISSUE_ADDITION, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE,
   type FeedbackStatus, type FeedbackTriage, type IssueDraft, type TriagedFeedbackEntry, type TriagePatch,
 } from './triage-types';
 
@@ -61,20 +62,23 @@ function issueEditor(entry: TriagedFeedbackEntry, actions: TriageActions, outcom
     box.addEventListener('change', () => (body.value = toggleLog(body.value, entry.log, box.checked)));
     withLog = h('label', { class: 'fb-check' }, box, h('span', {}, `${logSummary(entry.log.length)} anhängen`));
   }
+  const addition = h('textarea', { name: 'addition', rows: 4, maxlength: MAX_ISSUE_ADDITION, placeholder: 'z. B. Idee zur Umsetzung, betroffene Stelle' });
   const send = h('button', { type: 'submit' }, 'Issue anlegen');
   const form = h(
     'form',
-    { class: 'fb-panel', 'aria-label': 'GitHub-Issue anlegen' },
-    h('p', { class: 'fb-hint' }, 'Das Repo ist öffentlich: vorher alles Persönliche entfernen.'),
+    { class: 'fb-panel', 'aria-label': 'Geplant: GitHub-Issue anlegen' },
+    h('p', { class: 'fb-hint' }, 'Das Repo ist öffentlich: vorher alles Persönliche entfernen. „Issue anlegen“ setzt den Status auf Geplant.'),
     field('Titel', title),
     field('Text', body),
     withLog,
+    field('Ergänzung (Entwickler), optional: steht im Issue als eigener Abschnitt unter dem Spielertext', addition),
     buttonRow(send, close),
     note,
   );
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const draft = { title: title.value, body: body.value };
+    const draft: IssueDraft = { title: title.value, body: body.value };
+    if (addition.value.trim()) draft.addition = addition.value;
     void submit(form, note, () => actions.createIssue(entry.id, draft), ({ issue }) => outcome.changed(entry.id, { status: 'todo', issue, reply: entry.reply, doneVersion: null }));
   });
   return form;
@@ -143,7 +147,7 @@ const PANELS: Record<PanelKind, typeof issueEditor> = { issue: issueEditor, stat
 export function triageControls(entry: TriagedFeedbackEntry, actions: TriageActions, outcome: TriageOutcome): HTMLElement {
   const slot = h('div', { class: 'fb-slot' });
   const buttons: { kind: PanelKind; label: string }[] = [
-    ...(entry.issue === null ? [{ kind: 'issue' as const, label: 'Todo' }] : []),
+    ...(entry.issue === null ? [{ kind: 'issue' as const, label: 'Geplant' }] : []),
     { kind: 'status', label: 'Status' },
     { kind: 'delete', label: 'Löschen' },
   ];

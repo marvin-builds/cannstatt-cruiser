@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from '../src/feedback-triage-parse';
-import { MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS } from '../src/feedback-triage-rules';
+import { MAX_ISSUE_ADDITION, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS } from '../src/feedback-triage-rules';
 
 describe('parseFeedbackId', () => {
   it('accepts positive integers in plain decimal', () => {
@@ -32,6 +32,25 @@ describe('parseIssueDraft', () => {
       { title: 'Titel', body: 'b', labels: [] }, null, [], 'Titel',
     ]) expect(parseIssueDraft(JSON.stringify(value)), JSON.stringify(value)).toBeNull();
     expect(parseIssueDraft('{')).toBeNull();
+  });
+});
+
+describe('parseIssueDraft with the developer addition (ROADMAP 75)', () => {
+  const draft = { title: 'Idee: Hunde', body: '> Mehr Hunde' };
+  it('trims it and keeps line breaks and tabs', () => {
+    expect(parseIssueDraft(JSON.stringify({ ...draft, addition: '\r\n Kommt mit den Parks.\r\n\n\t- Dackel\n' }))).toEqual({
+      ...draft, addition: 'Kommt mit den Parks.\n\n\t- Dackel',
+    });
+  });
+  it('leaves an empty or blank addition out', () => {
+    expect(parseIssueDraft(JSON.stringify({ ...draft, addition: '' }))).toEqual(draft);
+    expect(parseIssueDraft(JSON.stringify({ ...draft, addition: ' \n\t ' }))).toEqual(draft);
+  });
+  it('enforces its length and rejects control characters and other types', () => {
+    expect(parseIssueDraft(JSON.stringify({ ...draft, addition: 'a'.repeat(MAX_ISSUE_ADDITION) }))).not.toBeNull();
+    for (const addition of ['a'.repeat(MAX_ISSUE_ADDITION + 1), 'Zeile\u0000', 'Ton\u0007', 3, null, ['x']]) {
+      expect(parseIssueDraft(JSON.stringify({ ...draft, addition })), JSON.stringify(addition)).toBeNull();
+    }
   });
 });
 

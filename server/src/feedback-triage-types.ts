@@ -24,10 +24,14 @@ export interface TriagedFeedbackList {
   entries: TriagedFeedbackEntry[];
 }
 
-/** Body of `POST /feedback/:id/issue`: what the operator chose to publish. */
+/**
+ * Body of `POST /feedback/:id/issue`: what the operator chose to publish. The optional developer addition
+ * (ROADMAP 75) goes into its own marked section after the body, never into the player's quote.
+ */
 export interface IssueDraft {
   title: string;
   body: string;
+  addition?: string;
 }
 
 /**

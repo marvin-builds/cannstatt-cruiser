@@ -18,6 +18,7 @@ describe('triage rules', () => {
     expect(rules.MAX_ISSUE_TITLE).toBe(server.MAX_ISSUE_TITLE);
     expect(rules.MAX_ISSUE_BODY).toBe(server.MAX_ISSUE_BODY);
     expect(rules.MAX_REPLY_CHARS).toBe(server.MAX_REPLY_CHARS);
+    expect(rules.MAX_ISSUE_ADDITION).toBe(server.MAX_ISSUE_ADDITION);
     expect(rules.DONE_VERSION_PATTERN.source).toBe(VERSION_PATTERN.source);
   });
 });
@@ -37,7 +38,7 @@ describe('statusText', () => {
   it('names the version of a done entry', () => {
     expect(statusText({ status: 'done', doneVersion: '2026-10-12.1' })).toBe('Erledigt in 2026-10-12.1');
     expect(statusText({ status: 'done', doneVersion: null })).toBe('Erledigt');
-    expect(statusText({ status: 'todo', doneVersion: null })).toBe('Todo');
+    expect(statusText({ status: 'todo', doneVersion: null })).toBe('Geplant');
   });
 });
 
@@ -49,9 +50,9 @@ describe('logNote', () => {
 });
 
 describe('statusLabel and STATUS_FILTERS', () => {
-  it('names every status in German, with Alle first in the filter', () => {
-    expect(rules.FEEDBACK_STATUSES.map(statusLabel)).toEqual(['Offen', 'Todo', 'Erledigt', 'Abgelehnt']);
-    expect(STATUS_FILTERS.map((f) => f.label)).toEqual(['Alle Status', 'Offen', 'Todo', 'Erledigt', 'Abgelehnt']);
+  it('names every status in German (todo as Geplant, like the game), with Alle first in the filter', () => {
+    expect(rules.FEEDBACK_STATUSES.map(statusLabel)).toEqual(['Offen', 'Geplant', 'Erledigt', 'Abgelehnt']);
+    expect(STATUS_FILTERS.map((f) => f.label)).toEqual(['Alle Status', 'Offen', 'Geplant', 'Erledigt', 'Abgelehnt']);
   });
 });
 

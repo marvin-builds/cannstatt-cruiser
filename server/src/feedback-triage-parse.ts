@@ -1,6 +1,6 @@
 /** Strict parsing of the triage routes' path id and bodies (`POST /feedback/:id/issue`, `PATCH /feedback/:id`). */
 import { VERSION_PATTERN } from './events';
-import { FEEDBACK_STATUSES, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE } from './feedback-triage-rules';
+import { FEEDBACK_STATUSES, MAX_ISSUE_ADDITION, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS, MIN_ISSUE_TITLE } from './feedback-triage-rules';
 import type { FeedbackStatus, IssueDraft, TriagePatch } from './feedback-triage-types';
 
 const CONTROL = /\p{Cc}/u;
@@ -26,15 +26,24 @@ function parseObject(json: string): Record<string, unknown> | null {
 
 const onlyKeys = (body: Record<string, unknown>, allowed: readonly string[]) => Object.keys(body).every((key) => allowed.includes(key));
 
-/** The draft with a one-line title and a trimmed body, or null. */
+/** Line breaks as `\n` and trimmed; null with other control characters than line breaks and tabs. */
+function multiLine(value: string): string | null {
+  const text = value.replace(/\r\n?/g, '\n').trim();
+  return CONTROL_EXCEPT_LINES.test(text) ? null : text;
+}
+
+/** The draft with a one-line title, a trimmed body and a trimmed addition (left out when empty), or null. */
 export function parseIssueDraft(json: string): IssueDraft | null {
   const body = parseObject(json);
-  if (!body || !onlyKeys(body, ['title', 'body']) || typeof body.title !== 'string' || typeof body.body !== 'string') return null;
+  if (!body || !onlyKeys(body, ['title', 'body', 'addition']) || typeof body.title !== 'string' || typeof body.body !== 'string') return null;
+  if (Object.hasOwn(body, 'addition') && typeof body.addition !== 'string') return null;
   const title = body.title.replace(/\s+/g, ' ').trim();
-  const text = body.body.replace(/\r\n?/g, '\n').trim();
-  if (CONTROL.test(title) || CONTROL_EXCEPT_LINES.test(text)) return null;
+  const text = multiLine(body.body);
+  const addition = multiLine(typeof body.addition === 'string' ? body.addition : '');
+  if (CONTROL.test(title) || text === null || addition === null) return null;
   if (title.length < MIN_ISSUE_TITLE || title.length > MAX_ISSUE_TITLE || !text || text.length > MAX_ISSUE_BODY) return null;
-  return { title, body: text };
+  if (addition.length > MAX_ISSUE_ADDITION) return null;
+  return addition ? { title, body: text, addition } : { title, body: text };
 }
 
 /** A trimmed one-line reply ('' and null clear it), or undefined when invalid. */

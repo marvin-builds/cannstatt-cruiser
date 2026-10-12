@@ -1,17 +1,18 @@
 /**
  * Strict parsing of a `POST /feedback` body: exactly the FeedbackBody fields
- * (the secret key optional), allow-listed values, the text normalised and checked for length and control
+ * (the secret key and the tester pass optional), allow-listed values, the text normalised and checked for length and control
  * characters, and a log only on a bug report.
  */
 import { INPUTS, ORIENTATIONS, PLATFORMS, SESSION_ID_PATTERN, VERSION_PATTERN } from './events';
 import {
-  FEEDBACK_KEY_PATTERN, FEEDBACK_KINDS, MAX_FEEDBACK_TEXT, MAX_LOG_LINE_CHARS, MAX_LOG_LINES, MAX_VIEW_WIDTH, MIN_FEEDBACK_TEXT, MIN_VIEW_WIDTH,
+  FEEDBACK_KEY_PATTERN, FEEDBACK_KINDS, MAX_FEEDBACK_TEXT, MAX_LOG_LINE_CHARS, MAX_LOG_LINES, MAX_TESTER_PASS_CHARS, MAX_VIEW_WIDTH, MIN_FEEDBACK_TEXT,
+  MIN_VIEW_WIDTH,
 } from './feedback-rules';
 import type { FeedbackBody, ReceivedFeedback } from './feedback-types';
 
 const FIELDS: readonly (keyof ReceivedFeedback)[] = ['session', 'kind', 'text', 'version', 'platform', 'input', 'orientation', 'viewWidth', 'log'];
-/** Sent by games since ROADMAP 70; older games leave it out. */
-const OPTIONAL_KEY: keyof FeedbackBody = 'key';
+/** The key is sent by games since ROADMAP 70, the tester pass only from test devices (ROADMAP 75). */
+const OPTIONAL: readonly (keyof FeedbackBody)[] = ['key', 'testerPass'];
 /** Control characters (C0, DEL, C1); newline is allowed in the text only. */
 const CONTROL = /\p{Cc}/u;
 const CONTROL_EXCEPT_NEWLINE = /(?!\n)\p{Cc}/u;
@@ -41,9 +42,11 @@ export function parseFeedback(json: string): ReceivedFeedback | null {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const body = parsed as Record<string, unknown>;
-  const hasKey = Object.hasOwn(body, OPTIONAL_KEY);
-  if (Object.keys(body).length !== FIELDS.length + (hasKey ? 1 : 0) || !FIELDS.every((field) => Object.hasOwn(body, field))) return null;
-  if (hasKey && !(typeof body.key === 'string' && FEEDBACK_KEY_PATTERN.test(body.key))) return null;
+  const optional = OPTIONAL.filter((field) => Object.hasOwn(body, field)).length;
+  if (Object.keys(body).length !== FIELDS.length + optional || !FIELDS.every((field) => Object.hasOwn(body, field))) return null;
+  if (Object.hasOwn(body, 'key') && !(typeof body.key === 'string' && FEEDBACK_KEY_PATTERN.test(body.key))) return null;
+  // Only its type and length are checked here; an invalid pass is ignored later, so an old pass never blocks feedback.
+  if (Object.hasOwn(body, 'testerPass') && !(typeof body.testerPass === 'string' && body.testerPass.length <= MAX_TESTER_PASS_CHARS)) return null;
   if (typeof body.text !== 'string' || CONTROL_EXCEPT_NEWLINE.test(body.text.replace(/\r\n?/g, '\n'))) return null;
   const text = normaliseFeedbackText(body.text);
   const valid =

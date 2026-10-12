@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../net/api';
 import { SCORES_URL } from '../net/api';
 import { ALL_RANGE } from '../net/telemetry-types';
-import { apiBase, createIssue, createSession, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
+import { apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
 import { sampleFeedback } from './sample-feedback';
 import { sampleStats } from './sample-stats';
 
@@ -244,5 +244,25 @@ describe('createSession', () => {
       throw new Error('offline');
     };
     expect(await createSession(failing, { base: 'http://x', token: 'abc' })).toEqual({ ok: false, error: 'offline' });
+  });
+});
+
+describe('createTesterPass', () => {
+  const answer = { pass: 'tester.v1.1776000000000.abc', scope: 'tester', expiresAt: 1_776_000_000_000 };
+  it('posts the bearer to /board/tester-pass and returns the pass with its expiry', async () => {
+    const calls: Call[] = [];
+    const result = await createTesterPass(fakeFetch(200, answer, calls), { base: 'http://x', token: 'abc' });
+    expect(calls).toEqual([{ url: 'http://x/board/tester-pass', method: 'POST', headers: { Authorization: 'Bearer abc' } }]);
+    expect(result).toEqual({ ok: true, pass: { pass: answer.pass, expiresAt: answer.expiresAt } });
+  });
+  it('maps 401 to auth and a missing key (503), an older worker (404) or a broken answer to server', async () => {
+    expect(await createTesterPass(fakeFetch(401, null), { base: 'http://x', token: 'abc' })).toEqual({ ok: false, error: 'auth' });
+    const broken = [
+      [503, { error: 'session-key-missing' }], [404, null], [200, { ...answer, scope: 'board' }], [200, { ...answer, pass: '' }],
+      [200, { ...answer, pass: 'x'.repeat(513) }], [200, { ...answer, expiresAt: 'bald' }],
+    ] as const;
+    for (const [status, body] of broken) {
+      expect(await createTesterPass(fakeFetch(status, body), { base: 'http://x', token: 'abc' }), JSON.stringify(body)).toEqual({ ok: false, error: 'server' });
+    }
   });
 });

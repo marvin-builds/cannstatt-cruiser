@@ -13,6 +13,8 @@ export const MIN_ISSUE_TITLE = 3;
 export const MAX_ISSUE_TITLE = 120;
 /** Text (500) plus meta and a full log (20 x 200) fit with room for the operator's notes. */
 export const MAX_ISSUE_BODY = 8000;
+/** The optional developer addition below the player's text (ROADMAP 75). */
+export const MAX_ISSUE_ADDITION = 2000;
 /** Short enough for a note on the game's title screen later (ROADMAP 57). */
 export const MAX_REPLY_CHARS = 140;
 /** A request body of a triage route is never larger than this. */

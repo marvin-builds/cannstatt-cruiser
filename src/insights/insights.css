@@ -236,6 +236,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .switch input:checked ~ span:last-child { color: var(--ink); }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--c1); outline-offset: 2px; }
 .switch input:disabled + .switch-track { opacity: 0.6; }
+/* The tester pass line (ROADMAP 75): its own row under the switches. */
+.switch-note { flex-basis: 100%; margin: -4px 0 0; font-size: 0.8rem; color: var(--ink-3); }
+.switch-note[hidden] { display: none; }
 
 /* New vs. returning (ROADMAP 55) */
 .visits { margin: 0 0 2px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; color: var(--ink-2); font-size: 0.9rem; }

@@ -22,11 +22,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * sessions together reached the day's limit; the new row's id, or null when it was not stored. The raw key never reaches the database. One transaction: the session counter always counts
  * the attempt, the global counter only attempts within the session limit (so one session cannot
  * use up the global cap), and the row is inserted only while both counters are within their limits.
+ * `tester` (a valid tester pass, ROADMAP 75) lifts the session limit; the global cap stays. The pass itself is never stored.
  */
 export async function saveFeedback(
-  db: D1Database, feedback: ReceivedFeedback, hashes: { session: string; key: string | null }, day: string,
+  db: D1Database, feedback: ReceivedFeedback, hashes: { session: string; key: string | null }, day: string, tester = false,
 ): Promise<number | null> {
   const sessionHash = hashes.session;
+  const sessionLimit = tester ? Number.MAX_SAFE_INTEGER : FEEDBACK_PER_SESSION_PER_DAY;
   const sessionCount = 'SELECT count FROM feedback_counts WHERE day = ?1 AND session_hash = ?2';
   const results = await db.batch([
     db
@@ -40,14 +42,14 @@ export async function saveFeedback(
         `INSERT INTO feedback_counts (day, session_hash, count) SELECT ?1, ?3, 1 WHERE (${sessionCount}) <= ?4
          ON CONFLICT (day, session_hash) DO UPDATE SET count = count + 1`,
       )
-      .bind(day, sessionHash, ALL_SESSIONS, FEEDBACK_PER_SESSION_PER_DAY),
+      .bind(day, sessionHash, ALL_SESSIONS, sessionLimit),
     db
       .prepare(
         `INSERT INTO feedback (day, kind, text, version, platform, input, orientation, view_width, log, key_hash)
          SELECT ?1, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?14
          WHERE (${sessionCount}) <= ?4 AND (SELECT count FROM feedback_counts WHERE day = ?1 AND session_hash = ?3) <= ?13`,
       )
-      .bind(day, sessionHash, ALL_SESSIONS, FEEDBACK_PER_SESSION_PER_DAY, feedback.kind, feedback.text, feedback.version,
+      .bind(day, sessionHash, ALL_SESSIONS, sessionLimit, feedback.kind, feedback.text, feedback.version,
         feedback.platform, feedback.input, feedback.orientation, feedback.viewWidth, JSON.stringify(feedback.log), FEEDBACK_DAILY_CAP, hashes.key),
   ]);
   const { meta } = results[2] as D1Result;
