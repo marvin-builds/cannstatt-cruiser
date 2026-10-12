@@ -125,8 +125,8 @@ foundation owner can extend it.
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)); fan crowds in Bad Cannstatt (see [Fan crowds](#fan-crowds-roadmap-76)) |
 | `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting; Android back (`ui/back-nav.ts`), the settle cover after a portrait form and the tester pass sent with feedback (`src/net/tester-pass.ts`) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; the speaker button (`state.muted`) sets the master gain on every gesture, visibility return and context restart, and a suspended or interrupted context is resumed then, with retries (`AudioBackend.wake()`, ROADMAP 63); manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
-| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, tester passes via `POST /board/tester-pass`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
-| `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game) |
+| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, tester passes via `POST /board/tester-pass`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), player feedback and its triage (incl. the GitHub issue state sync `server/src/issue-sync.ts`, see [Player feedback](#player-feedback-roadmap-50)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
+| `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game): tabs Statistik / Feedback (`tabs.ts`), the feedback tickets with state-driven actions (`ticket-actions.ts`) and default player messages (`messages.ts`) |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
 creates them in `public/`):
@@ -1254,9 +1254,12 @@ submission of the canvas forms (`form-surface.ts`), so turning the phone while
 typing keeps the text and the focus. They use a system monospace font on
 purpose: native fields need a system font and the pixel font is drawn from
 sprites. Landscape and desktop keep the canvas forms. In the installed app
-(ROADMAP 54) portrait stays unlocked while the feedback dialog is open (also
-over the thanks on "Mein Feedback") and locks to landscape again when it
-closes. These sheets never get the rotate screen (see below).
+(ROADMAP 54) portrait stays unlocked while the feedback dialog is open and
+locks to landscape again when it closes: `FeedbackDialog.typing()` returns
+`flow.open` (ROADMAP 77), so every page (Neu, the Mein Feedback list, details,
+the sent page, the thanks, the delete confirm) follows turns both ways; before,
+only the "Neu" form kept portrait free, so the list and details could turn to
+landscape but never back. These sheets never get the rotate screen (see below).
 
 - **Safe area (ROADMAP 75):** every DOM sheet (and the rotate screen) pads
   each side by `max(padPx, safe-area inset)` (`sheet-dom.ts`, with core's `safeAreaCss`), so
@@ -1308,7 +1311,7 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   title is open (a dialog, sheet, menu screen or run) the game keeps exactly
   one extra history entry (`pushState` with its own marker, same URL). A back
   press pops it; `backStep(uiScreen)` then goes one level back: feedback
-  details -> list -> dialog closed, settings / install steps / Bestenliste /
+  delete confirm -> details -> list -> dialog closed, settings / install steps / Bestenliste /
   name entry / "Neu in dieser Version" closed, a run pauses, the pause screen
   stays (leaving takes "Zum Startbildschirm"), game over goes to the title;
   the entry is pushed again while something is still open. When the ui
@@ -1385,9 +1388,61 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   rows. The board (`src/insights/triage.ts`, `feedback-triage-ui.ts`) shows
   per card "Geplant" (ROADMAP 75; the stored value is still `todo`): the issue
   editor, whose "Issue anlegen" creates the issue and sets Geplant in one
-  step (the log only when ticked), "Löschen" with a
-  confirm, a status choice with an optional reply, and a status filter;
-  board-side types in `src/insights/triage-types.ts`.
+  step (the log only when ticked), "Löschen" with a confirm; board-side types
+  in `src/insights/triage-types.ts`. The status "open" reads "Neu" everywhere
+  on the board.
+- **Triage routes (ROADMAP 82, 83):** `POST /feedback/:id/issue` also takes an
+  optional `reply` (trimmed, <= 140 chars; empty or null clears it, a missing
+  field keeps the stored one) and stores issue, `todo`, issue state `open` and
+  the reply in one update. `POST /feedback/:id/link` (body `IssueLink`) links
+  an existing issue: it reads the issue from GitHub first and answers 200
+  `{ok, issue, issueState, issueClosedDay}`; an unknown issue or a pull request
+  gives 422 `issue-not-found`, a GitHub failure 502 `github` (with GitHub's
+  status, never the token), a row that already has an issue 409 `exists`,
+  except when that issue's state is `missing`, which it replaces.
+  `PATCH /feedback/:id` with status `todo` on a row without an issue gives
+  409 `no-issue`; its answer carries `issueState` and `issueClosedDay` too.
+- **Issue state (ROADMAP 82, migration 0009):** `feedback.issue_state`
+  (`open`, `completed`, `notPlanned`, `missing`, or NULL: no issue / not read
+  yet) and `issue_closed_day` (UTC day of `closed_at`). `server/src/issue-sync.ts`
+  runs on an authorized `GET /feedback` when `GITHUB_TOKEN` is set, at most
+  once per `ISSUE_SYNC_INTERVAL_MS` (60 s, marker `issues-read` in
+  `event_meta`; a failed attempt counts too, and two concurrent loads may both
+  read, which only costs a duplicate read). One list read (`state=all`,
+  `per_page=100`, `sort=updated`, pull requests skipped), then single reads for
+  linked issues missing from it (at most `MAX_SINGLE_ISSUE_READS` = 10 in
+  parallel, never-read ones first). `not_planned` and `duplicate` become
+  `notPlanned`, any other close `completed`; 404, 410 or a pull request
+  `missing`. Each read times out after 3 s (`GITHUB_READ_TIMEOUT_MS`); when
+  GitHub fails the stored states are served and the answer stays 200. Every
+  entry carries `issueState` and `issueClosedDay`. The reads (`issueReading`,
+  `listIssueStates`, `readIssue`) live in `server/src/github.ts`.
+- **Board tabs and tickets (ROADMAP 79-83):** two ARIA tabs "Statistik" and
+  "Feedback" (`src/insights/tabs.ts`; arrows, Home, End). The tab is kept in
+  the URL hash (`#statistik` / `#feedback`, written with `replaceState`; the
+  hash wins on load) and in sessionStorage (`cannstatt-cruiser:boardTab`, only
+  the tab name, every access in try/catch). The Feedback tab shows the number
+  of tickets that need action (Neu, plus Geplant whose issue is `completed` or
+  `notPlanned`); it updates after every action and hides at 0. Range and owner
+  switches live in the Statistik panel; charts draw only while their panel is
+  visible. The status filter is toggle chips Neu / Geplant / Erledigt /
+  Abgelehnt (Neu and Geplant on by default). Next to a ticket's status the
+  issue link reads `#7 · offen`, `· erledigt am 12.10.`, `· verworfen am
+  12.10.` or `· nicht gefunden`, plus "bereit zum Abschließen" when closed.
+  `src/insights/ticket-actions.ts` (pure, tested) decides the buttons: Neu:
+  Umsetzen, Ablehnen, Löschen; Geplant with an issue: Abschließen, disabled
+  with a visible reason until the issue is closed (`completed` -> Erledigt
+  with `BUILD_VERSION` prefilled, `notPlanned` -> Abgelehnt), plus "Issue
+  verknüpfen" when it is `missing`; Geplant without an issue (older tickets):
+  Issue verknüpfen, Ablehnen; Erledigt: Wieder öffnen; Abgelehnt: Öffnen,
+  Löschen (both back to Geplant with an issue, else Neu); every state:
+  "Antwort ändern". Umsetzen is one form with the switch "Bestehendes Issue
+  verknüpfen" (accepts `12`, `#12` or an issue link); Ablehnen offers 2-3
+  texts as radio buttons. All default player messages are in
+  `src/insights/messages.ts` (each tested to fit 140 chars). The board has no
+  `<select>` any more (ROADMAP 81: both selects failed in desktop Firefox; the
+  cause is unproven, see TESTING.md). The client (`client.ts`) turns the new
+  worker errors into German notes.
 - **Mein Feedback (ROADMAP 70, replaces the note of 57):** the game makes a
   32-hex secret `key` per report (`crypto.getRandomValues`) and sends it in
   the `POST /feedback` body; the worker keeps only SHA-256(key) in `key_hash`
@@ -1414,6 +1469,27 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   on top, the field blurred; the player closes it with "×" / "Schließen", and
   "Neu" ends the thanks with a fresh draft. The board sets the version with "Erledigt" (`PATCH doneVersion`,
   cleared when the status leaves done) and marks cards "mit Fehlerprotokoll".
+- **Players delete a report (ROADMAP 78):** `POST /feedback/delete` (no token,
+  game Origin only, else 403 before any DB access; body exactly `{id, key}`,
+  at most `MAX_DELETE_BYTES` = 256, key checked with `FEEDBACK_KEY_PATTERN`)
+  deletes only the row whose id and SHA-256(key) match (204); an unknown id, a
+  wrong key and a row without a key get the same 404. It is routed before the
+  triage paths. A linked GitHub issue stays. In the game
+  `FeedbackInbox.remove(id)` (`src/net/feedback-status.ts`, contract
+  `FeedbackDeleteBody` in `feedback-types.ts`) posts it through the sender's
+  gate and never throws: 204 or 404 drop the report from the device, other
+  statuses give `failed`, offline / timeout / no endpoint `offline`; a report
+  the worker already left out ("Entfernt") is dropped without a request. The
+  details page has "Löschen" in a bottom row; it opens the page `confirm`
+  ("Wirklich löschen?", `BACK.confirm = 'detail'`) with the report text and
+  "Abbrechen" / "Ja, löschen" (red), the same in the portrait sheet (focus
+  moves between "Löschen" and "Abbrechen"). `feedback-flow.ts` adds
+  `askDelete()`, `confirmDelete()` (one request at a time; back and close
+  wait), `deleteState`, `deleteMessage` and `listNote`; after a delete the
+  list shows "Feedback gelöscht" (it wins over the thanks). Esc, "Zurück",
+  "Abbrechen" and Android back close the confirm first. `pageLayout`'s third
+  parameter is that note string, so the `PageLayout` field `thanks` became
+  `note` (also in the sheet model). No long press on a list row (not built).
 - `datenschutz.html` describes feedback; keep it true when this changes.
 
 ## Stomp and carried items
