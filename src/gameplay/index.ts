@@ -21,7 +21,10 @@
  * the klatsch burst where the hands meet with his arm over the skater,
  * klatsch.ts;
  * park-art.ts draws the high fiver and the park's banks and ledges; the
- * speed ramp pauses inside, spawner.rampDistance).
+ * speed ramp pauses inside, spawner.rampDistance), small missions per run
+ * (missions.ts: picked, counted from the events above and paid here) and the
+ * adaptive density (density.ts: a slightly denser street while every heart
+ * is kept, handed to the spawner).
  */
 import { START_ZONE } from '../core/config';
 import { Rng } from '../core/rng';
@@ -39,6 +42,7 @@ import { chillSpeedFactor, countDownChill } from './chill';
 import { ComboGrace } from './combo-grace';
 import { isLive, resolveContacts } from './contacts';
 import { CrowdWatch } from './crowd-watch';
+import { AdaptiveDensity } from './density';
 import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
 import { GrindTrick } from './grind-trick';
@@ -46,9 +50,11 @@ import { isPigeons } from './hazards';
 import { DroppedItems } from './drop';
 import { drawDrops, drawToss } from './item-art';
 import { ITEM_POINTS, itemOf } from './items';
+import { MissionDirector } from './missions';
 import { ParkSession } from './park';
 import { PatternLog } from './pattern-log';
 import { anchorOf, moveTo } from './motion';
+import { zoneHasPeople } from './patterns';
 import { addPoints } from './scoring';
 import { StarArcs } from './star-arcs';
 import { StuntLines } from './stunts';
@@ -102,7 +108,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
     options.onPattern?.(pattern, street);
   };
   const spawner = new Spawner((street) => route.zoneAt(street), { workPerTick: options.workPerTick ?? PLAN_WORK_PER_TICK, onSpawn });
-  const situation: SpawnSituation = { drunk: false, kidMode: false };
+  const situation: SpawnSituation = { drunk: false, kidMode: false, density: 0 };
   const sparkles: Sparkle[] = [];
   const toss = new ItemToss();
   const drops = new DroppedItems();
@@ -114,6 +120,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const starArcs = new StarArcs();
   const comboGrace = new ComboGrace();
   const crowds = new CrowdWatch();
+  const density = new AdaptiveDensity();
+  const missions = new MissionDirector();
   /** The spawner's park plan last put into state.park. */
   let spawnerPark: ParkPlan | null = null;
   /** Where the skater holds an item: in front of the belly (lower while ducking). Updated in place. */
@@ -148,6 +156,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
     spawner.scroll(dx);
     situation.drunk = mayBeDrunk(ctx);
     situation.kidMode = state.kidMode;
+    situation.density = density.factor;
     spawner.spawn(entities, state.distance + dx, ctx.display.viewWidth, ctx.speedOverride, situation);
     followPark(ctx);
   }
@@ -221,6 +230,8 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         starArcs.reset();
         comboGrace.reset();
         crowds.reset();
+        density.reset();
+        missions.reset();
         spawnerPark = null;
       });
       ctx.bus.on('gameOver', () => {
@@ -259,11 +270,15 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         const e = ctx.state.entities.find((s) => s.id === id);
         if (e) sparkles.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, age: 0 });
       };
-      ctx.bus.on('starCollected', (e) => sparkleAt(e.entityId));
+      ctx.bus.on('starCollected', (e) => {
+        sparkleAt(e.entityId);
+        missions.count(ctx, 'stars');
+      });
       ctx.bus.on('chillStart', (e) => sparkleAt(e.entityId));
       ctx.bus.on('stomp', (e) => {
         const person = ctx.state.entities.find((s) => s.id === e.entityId);
         airTrick.cleared();
+        missions.count(ctx, 'stomp');
         if (person) toss.launch(e.item, { x: person.x + person.w / 2, y: person.y + 2 }, handsOf(ctx));
       });
       // The person hit by the ball lets go of their item: it falls onto free street ahead.
@@ -275,16 +290,26 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       });
       ctx.bus.on('crash', () => {
         comboGrace.reset();
+        density.crashed();
         toss.cancel();
         stunts.crashed(ctx);
         airTrick.drop();
       });
       ctx.bus.on('obstacleCleared', () => airTrick.cleared());
-      ctx.bus.on('highFive', () => airTrick.refresh());
+      ctx.bus.on('highFive', () => {
+        airTrick.refresh();
+        missions.count(ctx, 'highFive');
+      });
+      ctx.bus.on('stuntEnd', (e) => {
+        if (e.completed) missions.count(ctx, 'stuntLine');
+      });
       ctx.bus.on('itemCaught', () => autoDrink.reset());
       const cheer = () => session.trick(ctx);
       ctx.bus.on('grindTrick', cheer);
-      ctx.bus.on('airTrick', cheer);
+      ctx.bus.on('airTrick', (e) => {
+        cheer();
+        if (e.full) missions.count(ctx, 'kickflip');
+      });
       ctx.bus.on('stuntStep', cheer);
       ctx.bus.on('itemUsed', () => autoDrink.reset());
     },
@@ -294,6 +319,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       if (state.mode !== 'playing') return;
       countDownChill(ctx, dt);
       countDownDrunk(ctx, dt);
+      density.update(state, dt);
       if (ctx.speedOverride === null) state.speed = speedAt(spawner.rampDistance(state.distance)) * chillSpeedFactor(state.chillTimer);
       const dx = state.speed * dt;
       scroll(ctx, dx);
@@ -312,6 +338,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       stunts.update(ctx);
       airTrick.settle(ctx);
       session.update(ctx);
+      missions.update(ctx, dt, zoneHasPeople(route.zoneAt(state.distance)));
       despawn(state.entities);
       updateSparkles(dx);
     },

@@ -67,6 +67,11 @@
  * of it (`slack`), and the empty street before a park gets star arcs
  * (leadStars).
  *
+ * Adaptive density (ROADMAP 52 point 12, density.ts): each pattern is
+ * planned with the SpawnSituation's density of the moment, which cuts the gap
+ * and the quiet cap a little and steps the sober tier up; the plans ahead
+ * keep the density they were planned with.
+ *
  * Scarcer healing (ROADMAP 52 point 8): the street patterns are planned with
  * the Brezel share of items.ts brezelShare at their street distance, which
  * lateHealRamp places where the run has ridden LATE_HEAL_FROM_SECONDS and
@@ -92,6 +97,7 @@ import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, jumpArcStars, leadFor, type Pattern, type Piece, planSteps } from './patterns';
 import { HIGH_FIVER_X, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
 import { asArc, linkArcs } from './star-arcs';
+import { denseGap, denseQuiet, denseTier } from './density';
 import { CROWD_FIRST_SECONDS, CROWD_ZONE, CROWD_ZONE_MARGIN, type CrowdCursor, crowdDue, crowdReach, planCrowd } from './crowd';
 import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
 import { lastThreatEnd, quietStreetStars } from './street';
@@ -181,6 +187,8 @@ export interface SpawnSituation {
   /** The player is drunk or may soon be (a Maßkrug in hand or on its way). */
   drunk: boolean;
   kidMode: boolean;
+  /** Adaptive density 0..1 (density.ts; 0 when unset): a slightly denser street while the skater keeps every heart. */
+  density?: number;
 }
 
 export interface SpawnerOptions {
@@ -431,7 +439,8 @@ export class Spawner {
     const drunk = situation.drunk || street < this.cursor.drunkUntil;
     const before = { ...this.cursor };
     const park = drunk ? null : this.parkStart(street, speedOverride);
-    const steps = park === null ? this.plan(this.rng!, street, speedOverride, drunk, situation.kidMode, before) : this.planPark(this.rng!, street, park, speedOverride, before);
+    const density = situation.density ?? 0;
+    const steps = park === null ? this.plan(this.rng!, street, speedOverride, drunk, situation.kidMode, density, before) : this.planPark(this.rng!, street, park, speedOverride, density, before);
     return { steps, drunk, before, park };
   }
 
@@ -458,7 +467,7 @@ export class Spawner {
    * before it stays empty). Inside the park the speed stays at the ramp's
    * speed at its start (or the pinned one).
    */
-  private *planPark(rng: Rng, street: number, start: number, speedOverride: number | null, before: Cursor): Generator<void, Planned> {
+  private *planPark(rng: Rng, street: number, start: number, speedOverride: number | null, density: number, before: Cursor): Generator<void, Planned> {
     const speed = speedOverride ?? speedAt(this.rampDistance(start));
     const line = yield* planParkLine(rng, [speed], Math.round(start), this.budget);
     const lead = start - street;
@@ -466,7 +475,7 @@ export class Spawner {
     const c = this.cursor;
     const pieces = [...leadStars(lead, speed), ...line.pieces.map((p) => ({ ...p, x: p.x + lead }))];
     const pattern: Pattern = { name: line.name, pieces, length: line.length + lead };
-    const { gap, slack } = this.gapAfter(street, pattern, speed, speed, speedOverride, false);
+    const { gap, slack } = this.gapAfter(street, pattern, speed, speed, speedOverride, false, density);
     const advance = pattern.length + gap;
     c.previous = pattern.pieces.map((p) => shifted(p, -advance));
     c.parkArmed = false;
@@ -507,7 +516,7 @@ export class Spawner {
   }
 
   /** Plans the pattern starting at `street` and moves the cursor on (only at the end, so a dropped plan leaves it as it was). */
-  private *plan(rng: Rng, street: number, speedOverride: number | null, drunk: boolean, kidMode: boolean, before: Cursor): Generator<void, Planned> {
+  private *plan(rng: Rng, street: number, speedOverride: number | null, drunk: boolean, kidMode: boolean, density: number, before: Cursor): Generator<void, Planned> {
     const pinned = speedOverride !== null;
     const speeds = pinned ? [speedOverride] : [speedAt(this.rampDistance(street)), speedAt(this.rampDistance(street + SPEED_SPAN + PLAN_DELAY_MAX))];
     let pattern: Pattern | null = null;
@@ -542,7 +551,7 @@ export class Spawner {
         const high = Math.max(...speeds);
         options.chillSpeeds = pinned ? speeds : [low, (low + high) / 2, high];
       }
-      const tier = chilled ? Math.min(tierAt(street), CHILLED_TIER) : tierAt(street);
+      const tier = chilled ? Math.min(tierAt(street), CHILLED_TIER) : denseTier(tierAt(street), effect ? 0 : density);
       if (crowd && this.crowdFits(street, fast, drunk)) {
         // Tried once per visit: a crawl with no fair row gives up and plans the street as usual.
         this.cursor.crowdAt = null;
@@ -556,7 +565,7 @@ export class Spawner {
       }
     }
     // After a joint too: the next pattern is ridden chilled.
-    const { gap, slack } = this.gapAfter(street, pattern, Math.min(...speeds), fast, pace, drunk || street < this.cursor.chilledUntil);
+    const { gap, slack } = this.gapAfter(street, pattern, Math.min(...speeds), fast, pace, drunk || street < this.cursor.chilledUntil, density);
     const advance = pattern.length + gap;
     this.cursor.previous = pattern.pieces.map((p) => shifted(p, -advance));
     return { pattern, advance, slack, drunk, before, park: null };
@@ -569,16 +578,17 @@ export class Spawner {
    * and the next pattern's lead fit QUIET_SECONDS. A sober pattern gets the
    * difficulty's gap, cut to that; while an effect may be on (`effect`) only
    * the least free street every pattern leaves (effectGap), which a sober one
-   * never goes below.
+   * never goes below. Adaptive `density` (density.ts) cuts the gap and the
+   * quiet cap a little.
    */
-  private gapAfter(street: number, pattern: Pattern, slow: number, fast: number, pace: number | null, effect: boolean): { gap: number; slack: number } {
-    const full = gapAt(street);
+  private gapAfter(street: number, pattern: Pattern, slow: number, fast: number, pace: number | null, effect: boolean, density: number): { gap: number; slack: number } {
+    const full = denseGap(gapAt(street), density);
     const least = effectGap(pattern, fast, full);
     this.quietFrom ??= rideStreet(this.runStart ?? street, QUIET_FROM_SECONDS, pace);
     if (street + pattern.length < this.quietFrom) return { gap: effect ? least : full, slack: Infinity };
     // The next pattern's lead: longer when it may be ridden drunk (after a Wasen visitor's Maßkrug).
     const lead = leadFor(fast, street + pattern.length < this.cursor.drunkUntil);
-    const room = Math.floor(QUIET_SECONDS * slow) - (pattern.length - lastThreatEnd(pattern.pieces)) - lead;
+    const room = Math.floor(denseQuiet(QUIET_SECONDS, density) * slow) - (pattern.length - lastThreatEnd(pattern.pieces)) - lead;
     const gap = effect ? least : Math.max(least, Math.min(full, room));
     return { gap, slack: Math.max(0, room - gap) };
   }

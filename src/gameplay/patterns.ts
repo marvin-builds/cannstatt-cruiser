@@ -103,6 +103,8 @@ interface Template {
 const PICKABLE: ObstacleKind[] = ['bin', 'barrier', 'bench', 'planter', 'curbGap'];
 /** The people of a zone: VfB fans at the Neckar, Wasen visitors in Bad Cannstatt. */
 const ZONE_PEOPLE: Record<number, ObstacleKind> = { 1: 'vfbFan', 2: 'wasenGuest' };
+/** People walk the street of `zone` (a stomp has a chance there). */
+export const zoneHasPeople = (zone: number): boolean => zone in ZONE_PEOPLE;
 /** Chance that a pattern with obstacles also gets a star arc over its best jump (keeps the wider street lively). */
 const STAR_CHANCE = 0.6;
 const MAX_STARS = 5;
@@ -344,7 +346,7 @@ const isDrunkTemplate = (t: Template) => (DRUNK_TEMPLATES as readonly string[]).
 const weightAt = (t: Template, tier: number) => (tier >= LATE_MIX_TIER ? (t.late ?? t.weight) : t.weight);
 
 /** The templates open at `tier` in `zone` (sober, no effect). */
-const openAt = (tier: number, zone: number) => TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zone in ZONE_PEOPLE));
+const openAt = (tier: number, zone: number) => TEMPLATES.filter((t) => t.tier <= tier && (!t.people || zoneHasPeople(zone)));
 
 /** The sober template mix at `tier` in `zone`: each open template's share of the picks. */
 export function mixAt(tier: number, zone: number): Record<string, number> {
