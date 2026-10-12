@@ -248,6 +248,25 @@ describe('stomps in the solver', () => {
     });
   });
 
+  // ROADMAP 76 (fan crowds): the plain bounce comes down slowly (~2.5 px per tick at 150 px/s), so its feet often pass
+  // within the 1 px SAFETY rim above the next head. The live game crashes only on the real box and stomps the tick
+  // after; the solver must not call that a crash either, or a head-to-head bounce looks like luck.
+  it('a bounce coming down onto the next head stomps it, never crashes on the safety rim above it', () => {
+    const at = (x: number) => ({ box: { x: x + 3, y: GROUND_Y - 22, w: 6, h: 22 }, anchor: x, motion: still });
+    const two: Course = { obstacles: [], overhead: [], rails: [], movers: [at(225), at(255)], goal: 264, limit: 664 };
+    // Full hold taken off at tick 52 stomps the first head near its centre; the bounce meets the second head's rim.
+    expect(new Solver(two, 150, { stomps: true }).jumpWorks(52, 20)).toBe(true);
+  });
+
+  it('maxStomps caps the heads a path may bounce on: a row of four close heads needs more than one', () => {
+    const at = (x: number) => ({ box: { x: x + 3, y: GROUND_Y - 22, w: 6, h: 22 }, anchor: x, motion: still });
+    const movers = [225, 257, 289, 321].map(at);
+    const row: Course = { obstacles: [], overhead: [], rails: [], movers, goal: 330, limit: 730 };
+    expect(new Solver(row, 150).solvable()).toBe(false);
+    expect(new Solver(row, 150, { stomps: true }).solvable()).toBe(true);
+    expect(new Solver(row, 150, { stomps: true, maxStomps: 1 }).solvable()).toBe(false);
+  });
+
   it('stomps are off by default: patterns are checked without them, so they never require one', () => {
     const s = new Solver(personCourse(), BASE_SPEED);
     expect(s.solvable()).toBe(true);

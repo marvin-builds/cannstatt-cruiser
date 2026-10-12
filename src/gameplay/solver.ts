@@ -128,6 +128,8 @@ export interface SolverOptions {
   stomps?: boolean;
   /** Work budget (see the class comment). Default: unlimited. */
   budget?: WorkBudget;
+  /** With stomps on: a path bounces on at most this many heads, a further head landing is a crash (fan crowds prove they need two). Default: no cap. */
+  maxStomps?: number;
 }
 
 interface Node {
@@ -161,6 +163,7 @@ export class Solver {
   private readonly movers: (Mover & { rest: Rect })[];
   private readonly rails: Rect[];
   private readonly stomps: boolean;
+  private readonly maxStomps: number;
   private readonly budget: WorkBudget | null;
   private readonly memo = new Map<number, boolean>();
   /** ridesThrough and takeoffs per node (they walk many cached ticks; repeated walks dominated the planning time). */
@@ -196,6 +199,7 @@ export class Solver {
     this.rails = [...course.rails, ...this.ledges.map((l) => l.top)];
     this.supports = this.rails.map((r) => ({ top: r.y, end: r.x + r.w }));
     this.stomps = options.stomps ?? false;
+    this.maxStomps = options.maxStomps ?? Infinity;
     this.budget = options.budget ?? null;
     this.hopeless = this.x(HORIZON) - HITBOX_W / 2 <= course.goal;
   }
@@ -678,7 +682,7 @@ export class Solver {
       scratchFeet.supported = body.grounded;
       const rail = this.railLandedOn(scratchFeet);
       if (rail) snapToRailInto(body, rail.y, rail.x + rail.w);
-      else if (this.stomps) {
+      else if (this.stomps && bitCount(stomped) < this.maxStomps) {
         for (let j = 0; j < this.movers.length; j++) {
           const m = this.movers[j]!;
           if (stomped & (1 << j) || !landsOnHead(scratchFeet, box, at(m.rest, m, x), x - this.x(from.tick))) continue;
@@ -695,11 +699,23 @@ export class Solver {
     }
     for (let j = 0; j < this.movers.length; j++) {
       const m = this.movers[j]!;
-      if (!(stomped & (1 << j)) && overlaps(box, at(m.box, m, x))) return false;
+      if (!(stomped & (1 << j)) && overlaps(box, at(m.box, m, x)) && !this.overHead(body, m, stomped)) return false;
     }
     out.tick = tick;
     out.stomped = stomped;
     return true;
+  }
+
+  /**
+   * With stomps on, falling feet still above a person's real head only touch
+   * the SAFETY rim on top: the live game crashes on the real box alone and
+   * stomps the head the tick after (landsOnHead), so this is no crash. The
+   * rim at the sides and below stays (fan crowds, ROADMAP 76: a plain bounce
+   * comes down slowly and would often end in that rim). Not once the path
+   * has used up maxStomps: then no stomp follows.
+   */
+  private overHead(body: Body, m: { rest: Rect }, stomped: number): boolean {
+    return this.stomps && body.vy > 0 && body.y <= m.rest.y && bitCount(stomped) < this.maxStomps;
   }
 
   /** The first rail, then ledge top, the falling feet land on this tick (or null). */
@@ -733,6 +749,13 @@ const scratchMover: Rect = { x: 0, y: 0, w: 0, h: 0 };
 /** A kept node with its own copy of the cursor's body. */
 function nodeOf(cursor: Cursor): Node {
   return { tick: cursor.tick, body: copyBody(cursor.body), stomped: cursor.stomped };
+}
+
+/** Set bits of a stomped mask (people stomped on the path). */
+function bitCount(mask: number): number {
+  let n = 0;
+  for (let m = mask; m; m &= m - 1) n++;
+  return n;
 }
 
 function isSupported(body: Body): boolean {

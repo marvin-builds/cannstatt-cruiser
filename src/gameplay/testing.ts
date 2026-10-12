@@ -12,6 +12,7 @@ import type { Entity, GameState, ObstacleKind } from '../types';
 import { chillSpeedFactor } from './chill';
 import { hitBox, isGrindable, isKicker, isObstacle, isOverhead } from './catalogue';
 import { buildCourse } from './course';
+import { crowdOf } from './crowd-tag';
 import { STAND_UP_SECONDS } from './duck-span';
 import { drunkFairness, HUMAN_HOLDS } from './fairness';
 import { type Body, groundBody, railBody } from './jumpsim';
@@ -75,9 +76,18 @@ export function paceOf(state: GameState, speedPinned = false): Pace {
   };
 }
 
-/** The solver's most forgiving next jump from the current support (trying `holds`; see Solver.bestJump for `humanWindow`), or null. */
+/** A fan crowd (crowd.ts) stands ahead: it is crossed head to head, so the plan may stomp. */
+function crowdAhead(state: GameState): boolean {
+  return state.entities.some((e) => !e.done && e.x + e.w > PLAYER_X && crowdOf(e) !== null);
+}
+
+/**
+ * The solver's most forgiving next jump from the current support (trying
+ * `holds`; see Solver.bestJump for `humanWindow`), or null. With a fan crowd
+ * ahead it plans with stomps on: onto the heads and bouncing across.
+ */
 export function planJump(state: GameState, speedPinned = false, holds: readonly number[] = HOLDS, humanWindow = 0): Jump | null {
-  return new Solver(courseAhead(state), paceOf(state, speedPinned)).bestJump(startBody(state), holds, humanWindow);
+  return new Solver(courseAhead(state), paceOf(state, speedPinned), { stomps: crowdAhead(state) }).bestJump(startBody(state), holds, humanWindow);
 }
 
 /** How far ahead (ticks) planStomp looks for a take-off. */

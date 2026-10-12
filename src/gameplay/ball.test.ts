@@ -98,6 +98,28 @@ describe('thrown football', () => {
     expect(hits).toHaveLength(1);
   });
 
+  // ROADMAP 76: a crowd is checked as a full row of heads, so the ball must not take one out of it.
+  it('bounces off a fan crowd: the fans block it, nobody falls, no hit, no points, no ricochet', () => {
+    for (const seed of [1, 2, 3, 4]) {
+      const game = withBall(seed);
+      const fan = obstacle(game, 'vfbFan', PLAYER_X + 90, still);
+      fan.data = { ...fan.data, crowd: 'vfb' };
+      const hits = record(game, 'ballHit');
+      const backs = record(game, 'ballBack');
+      const ball = throwIt(game);
+      const score = game.state.score;
+      untilLanded(game, ball);
+      expect(hits).toEqual([]);
+      expect(backs).toEqual([]);
+      expect(fan.done).toBe(false);
+      expect(fan.data?.stompedAt).toBeUndefined();
+      expect(ball.data?.phase).toBe('away');
+      // Dropped in front of the fan, not behind him in the crowd.
+      expect(ball.x + ball.w).toBeLessThanOrEqual(fan.x + 3);
+      expect(game.state.score).toBe(score);
+    }
+  });
+
   it('scores the hit like a clear: obstacleCleared for the person with the points, in the same tick as ballHit', () => {
     const game = withBall();
     const person = obstacle(game, 'vfbFan', PLAYER_X + 90, still);

@@ -3,7 +3,9 @@
  * flying forward in a flat arc. If it reaches a person (VfB fan, Wasen
  * visitor), the person tumbles like after a stomp (knockOver), gameplay
  * scores BALL_HIT_POINTS, emits obstacleCleared and ballHit for the person
- * (same tick), and the ball drops away. If it lands without a hit, the
+ * (same tick), and the ball drops away. A fan crowd (crowd.ts) blocks it:
+ * the ball drops in front of the first fan it reaches and nobody falls
+ * (the crowd is planned as a full row of heads to bounce on). If it lands without a hit, the
  * seeded gameplay rng decides (RICOCHET_CHANCE) whether it ricochets back:
  * a low, bouncing ball rolling at the skater that knocks him off the board
  * (a normal crash of kind 'ball') unless he jumps over it or is
@@ -20,6 +22,7 @@
 import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, Rect } from '../types';
 import { hitBoxInto, isPerson } from './catalogue';
+import { crowdOf } from './crowd-tag';
 import { crashInto } from './health';
 import { overlaps } from './rules';
 import { addPoints } from './scoring';
@@ -123,6 +126,12 @@ function hitPerson(ctx: GameContext, ball: Entity): boolean {
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i]!;
     if (e.done || !isPerson(e.kind) || !overlaps(ball, hitBoxInto(e as Entity & { kind: ObstacleKind }, personBox))) continue;
+    if (crowdOf(e)) {
+      // Blocked: it drops straight down in front of the fan.
+      ball.x = personBox.x - ball.w;
+      rollAway(ball, 0, Math.max(0, ball.data!.vy as number));
+      return true;
+    }
     knockOver(e, state.time);
     const points = addPoints(state, ctx.bus, BALL_HIT_POINTS);
     // Scored like a clear, in the same tick, so the ui merges both into one popup.

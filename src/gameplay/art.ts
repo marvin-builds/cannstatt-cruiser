@@ -1,6 +1,6 @@
 /**
  * Palette sprites and drawing for obstacles, rails, stars, the joint and the
- * pickup sparkle (people live in people-art.ts, stunt pieces in stunt-art.ts,
+ * pickup sparkle (people live in people-art.ts, fan crowds in crowd-art.ts, stunt pieces in stunt-art.ts,
  * the NorDIY park's pieces and high fiver in park-art.ts, the e-scooter and
  * the pigeons in hazard-art.ts). Every sprite has a dark
  * outline so it reads against the busy Stuttgart backgrounds. Sizes match
@@ -12,6 +12,7 @@ import { scratchContext, sprite, warmSprites } from './sprites';
 import type { Entity, GameState, ObstacleKind } from '../types';
 import { ITEM_SPRITES } from './item-art';
 import { ComposedCache } from './composed';
+import { drawCrowdFan } from './crowd-art';
 import { drawHazard } from './hazard-art';
 import { drawOverhead, isOverheadArt, overheadSize, warmOverheads } from './overhead-art';
 import { drawPerson, personSize } from './people-art';
@@ -280,7 +281,8 @@ export function drawEntity(g: CanvasRenderingContext2D, e: Entity, state: ArtSta
       return;
     case 'vfbFan':
     case 'wasenGuest':
-      drawPerson(g, e, state.time, kidMode, lead);
+      // A fan crowd (crowd.ts) has its own look; everyone else is a passer-by.
+      if (!drawCrowdFan(g, e, x, state.time, kidMode, lead)) drawPerson(g, e, state.time, kidMode, lead);
       return;
     case 'ball':
       // The thrown football (types.ts): the same art as the carried and tossed one.

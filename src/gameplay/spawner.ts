@@ -31,7 +31,17 @@
  * street holds its kickers and a few low obstacles under its launch ledges
  * (line-street.ts), and its length
  * covers every landing off it; the next pattern is checked across the
- * boundary with those obstacles like after any pattern.
+ * boundary with those obstacles like after any pattern. Where its upper
+ * level leaves the street below quiet for longer than QUIET_SECONDS, a few
+ * stars at riding height fill it (street.ts quietStreetStars).
+ *
+ * Fan crowds (ROADMAP 76, crowd.ts): at most once per Bad Cannstatt visit,
+ * never in the first CROWD_FIRST_SECONDS, drawn with CROWD_CHANCE at the
+ * visit's first pattern (crowdDue), the crowd is the first pattern from its
+ * drawn spot on where the player is sober and not chilled, no stunt line or
+ * park just ended, and the whole crowd fits in the zone's stretch; joints and
+ * stunt lines due there go first. A crowd that cannot be bounced fairly at
+ * those speeds (planCrowd: null) is dropped for the visit.
  *
  * The NorDIY park (ROADMAP 36, park-line.ts): once per Bad Cannstatt visit
  * (`zoneAt` gives PARK_ZONE; any other zone arms the next visit) the next
@@ -77,8 +87,9 @@ import { anchorOf, motionOf, withMotion } from './motion';
 import { jointPattern, jumpArcStars, leadFor, type Pattern, type Piece, planSteps } from './patterns';
 import { HIGH_FIVER_X, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
 import { asArc, linkArcs } from './star-arcs';
+import { CROWD_FIRST_SECONDS, CROWD_ZONE, CROWD_ZONE_MARGIN, type CrowdCursor, crowdDue, crowdReach, planCrowd } from './crowd';
 import { drawShape, planStuntLine, type StuntShape } from './stunt-line';
-import { lastThreatEnd } from './street';
+import { lastThreatEnd, quietStreetStars } from './street';
 import type { WorkBudget } from './solver';
 
 /** Street distance from the player to the first pattern (a few empty seconds). */
@@ -179,7 +190,9 @@ const SOBER: SpawnSituation = { drunk: false, kidMode: false };
 const UNLIMITED = Number.MAX_SAFE_INTEGER;
 
 /** Planning state that a pattern's plan moves on (restored when plans are thrown away). */
-interface Cursor {
+interface Cursor extends CrowdCursor {
+  /** The crowd may come from this street distance on (null: not drawn yet, set at the run's first plan). */
+  crowdFrom: number | null;
   /** The last planned pattern's pieces in the next pattern's space (x < 0). */
   previous: Piece[];
   /** Street distance from which the next joint pattern is laid. */
@@ -455,6 +468,17 @@ export class Spawner {
     return { pattern, advance, slack, drunk: false, before, park: { start, end, pieces: parkPiecesOf(line, start) } };
   }
 
+  /**
+   * The fan crowd may be laid at `street` (crowd.ts): the player is sober and
+   * not chilled there, no stunt line or park just ended, and the whole crowd
+   * fits in its Bad Cannstatt stretch.
+   */
+  private crowdFits(street: number, fast: number, drunk: boolean): boolean {
+    const c = this.cursor;
+    if (drunk || street < c.chillUntil || street < c.lineEnd) return false;
+    return this.zoneAt(street - CROWD_ZONE_MARGIN) === CROWD_ZONE && this.zoneAt(street + crowdReach(fast) + CROWD_ZONE_MARGIN) === CROWD_ZONE;
+  }
+
   private hasSoberPlans(): boolean {
     return (this.job !== null && !this.job.drunk) || this.queue.some((p) => !p.drunk);
   }
@@ -478,10 +502,12 @@ export class Spawner {
   private *plan(rng: Rng, street: number, speedOverride: number | null, drunk: boolean, kidMode: boolean, before: Cursor): Generator<void, Planned> {
     const pinned = speedOverride !== null;
     const speeds = pinned ? [speedOverride] : [speedAt(this.rampDistance(street)), speedAt(this.rampDistance(street + SPEED_SPAN + PLAN_DELAY_MAX))];
-    let pattern: Pattern;
+    let pattern: Pattern | null = null;
     const fast = Math.max(...speeds);
     const pace = pinned ? speedOverride : null;
     this.cursor.nextStunt ??= rideStreet(this.runStart ?? street, STUNT_FIRST_SECONDS, pace);
+    this.cursor.crowdFrom ??= rideStreet(this.runStart ?? street, CROWD_FIRST_SECONDS, pace);
+    const crowd = crowdDue(this.cursor, this.zoneAt(street), street, this.cursor.crowdFrom, rng);
     if (street >= this.cursor.nextJoint && !drunk) {
       pattern = jointPattern(fast);
       this.cursor.nextJoint = street + JOINT_SPACING + rng.int(0, JOINT_JITTER);
@@ -490,6 +516,8 @@ export class Spawner {
     } else if (street >= this.cursor.nextStunt && !drunk && street >= this.cursor.chillUntil) {
       const { shape, bag } = drawShape(rng, this.cursor.stuntBag, this.cursor.lastShape);
       pattern = yield* planStuntLine(rng, speeds, this.zoneAt(street), Math.round(street), this.budget, shape);
+      // Its upper level can leave the street below empty for long: riding-height stars keep the quiet cap there.
+      pattern.pieces.push(...quietStreetStars(pattern.pieces, Math.floor(QUIET_SECONDS * Math.min(...speeds))));
       this.cursor.stuntBag = bag;
       this.cursor.lastShape = shape;
       this.cursor.nextStunt = rideStreet(street, rng.range(...STUNT_LINE_INTERVAL), pace);
@@ -505,7 +533,12 @@ export class Spawner {
         options.chillSpeeds = pinned ? speeds : [low, (low + high) / 2, high];
       }
       const tier = chilled ? Math.min(tierAt(street), CHILLED_TIER) : tierAt(street);
-      pattern = yield* planSteps(rng, tier, speeds, options);
+      if (crowd && this.crowdFits(street, fast, drunk)) {
+        // Tried once per visit: a crawl with no fair row gives up and plans the street as usual.
+        this.cursor.crowdAt = null;
+        pattern = yield* planCrowd(rng, speeds, { kidMode, window: options.window, before: options.before, budget: this.budget });
+      }
+      pattern ??= yield* planSteps(rng, tier, speeds, options);
     }
     if (!kidMode) {
       for (const p of pattern.pieces) {
@@ -542,7 +575,7 @@ export class Spawner {
 }
 
 function freshCursor(nextJoint: number): Cursor {
-  return { previous: [], nextJoint, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null, parkArmed: true, parkFrom: null, lineEnd: -Infinity, pauses: [] };
+  return { crowdArmed: true, crowdAt: null, crowdFrom: null, previous: [], nextJoint, chillUntil: -Infinity, chilledUntil: -Infinity, drunkUntil: -Infinity, nextStunt: null, stuntBag: [], lastShape: null, parkArmed: true, parkFrom: null, lineEnd: -Infinity, pauses: [] };
 }
 
 /** Street distance reached `seconds` of riding after `street`: at the difficulty speed, or at `pinned`. */

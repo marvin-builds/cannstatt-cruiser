@@ -5,6 +5,7 @@ import { CHILL_JUMP_SCALE } from '../player/tuning';
 import type { Entity } from '../types';
 import { isObstacle, isPerson, isRail, obstacleRect } from './catalogue';
 import { CHILL_SPEED_SCALE } from './chill';
+import { crowdOf } from './crowd';
 import { speedAt, TOP_SPEED } from './difficulty';
 import { EARLY_TAKEOFF_WINDOW, EARLY_WINDOW_DISTANCE, HUMAN_HOLDS, humanFairAtAll, LATE_TAKEOFF_WINDOW, PERSON_ROOM_SECONDS, takeoffWindowAt } from './fairness';
 import { ZoneRoute } from '../world/zones';
@@ -202,7 +203,8 @@ describe('fair people: the street around them (spawner rides, 20 seeds x 3 min)'
         const room = PERSON_ROOM_SECONDS * s.speed;
         const sway = motionOf(s.e)!.sway;
         for (const o of solid) {
-          if (o === s) continue;
+          // A fan crowd (ROADMAP 76) is one block of people standing a bounce apart; its room is crowd-spawn.test.ts's.
+          if (o === s || (crowdOf(s.e) && crowdOf(o.e))) continue;
           const gap = o.street > s.street ? o.street - (s.street + s.e.w + sway) : s.street - sway - (o.street + o.e.w);
           expect(gap, `seed ${seed}: ${s.e.kind} at ${Math.round(s.street)} vs ${o.e.kind} at ${Math.round(o.street)}`).toBeGreaterThanOrEqual(room);
         }
@@ -210,16 +212,17 @@ describe('fair people: the street around them (spawner rides, 20 seeds x 3 min)'
     }
     // Stunt lines, the NorDIY park and the combo patterns (no people) take some of the street.
     expect(people).toBeGreaterThan(70);
-  }, 60_000);
+    // ~40 s alone; the whole suite runs files in parallel.
+  }, 120_000);
 });
 
-/** The street ridden from distance 0 at the difficulty speed: course x (= distance) after `tick` ticks. */
-function rampPace(): Pace {
-  const xs = [0];
+/** The street ridden from distance `start` at the difficulty speed: course x (= distance - start) after `tick` ticks. */
+function rampPace(start = 0): Pace {
+  const xs = [start];
   return {
     x(tick) {
       for (let t = xs.length; t <= tick; t++) xs.push(xs[t - 1]! + speedAt(xs[t - 1]!) * TICK_DT);
-      return xs[tick]!;
+      return xs[tick]! - start;
     },
     jumpScale: () => 1,
   };
@@ -232,11 +235,20 @@ describe('fair for humans: the whole street of a run (spawner rides, real speed 
       const pieces: Piece[] = ride(seed, 180, () => {})
         .filter((s) => blocking(s.e))
         .map((s) => ({ ...s.e, x: s.street - PLAYER_X, data: s.e.data && { ...s.e.data, ax: s.street - PLAYER_X } }));
-      const early = pieces.filter((p) => p.x + p.w < EARLY_WINDOW_DISTANCE);
+      const early = pieces.filter((p) => p.x + p.w < EARLY_WINDOW_DISTANCE && !crowdOf(p));
       const earlyCourse = buildCourse(early, 0, (goal) => goal + 400);
       expect(new Solver(earlyCourse, rampPace()).fair(HUMAN_HOLDS, EARLY_TAKEOFF_WINDOW), `seed ${seed} early`).toBe(true);
-      const course = buildCourse(pieces, 0, (goal) => goal + 400);
+      // A fan crowd (ROADMAP 76) is crossed head to head: the street is fair without it, and each crowd is fair with
+      // stomps from the street before it (a solver with stomps over the whole run would track every person ever stomped).
+      const street = pieces.filter((p) => !crowdOf(p));
+      const course = buildCourse(street, 0, (goal) => goal + 400);
       expect(new Solver(course, rampPace()).fair(HUMAN_HOLDS, LATE_TAKEOFF_WINDOW), `seed ${seed}`).toBe(true);
+      for (const fan of pieces.filter((p) => crowdOf(p) && p.data!.seat === 0)) {
+        const near = pieces.filter((p) => p.x + p.w > fan.x - 2 * PERSON_ROOM_SECONDS * TOP_SPEED && p.x < fan.x + 600);
+        const from = Math.min(...near.map((p) => p.x)) - 100;
+        const crowd = buildCourse(near, from, (goal) => goal + 400);
+        expect(new Solver(crowd, rampPace(from), { stomps: true }).fair(HUMAN_HOLDS, takeoffWindowAt(fan.x)), `seed ${seed}: crowd at ${Math.round(fan.x)}`).toBe(true);
+      }
     }
   }, 60_000);
 });
