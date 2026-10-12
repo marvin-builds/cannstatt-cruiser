@@ -143,6 +143,8 @@ export interface CalloutScene {
   plate: Rect;
   /** The desktop item chip next to the plate, or null. */
   chip: Rect | null;
+  /** The mission line under the plate (mission-line.ts), or null. */
+  mission: Rect | null;
   buttons: HudButtons;
   /** The touch item button and its first-time hint while they show, else null. */
   itemButton: Rect | null;
@@ -153,9 +155,9 @@ export interface CalloutScene {
 
 /** The boxes the callout must not touch (the banner is handled by waiting, see placeCallout). */
 export function calloutBlockers(scene: CalloutScene): Rect[] {
-  const { plate, chip, buttons, itemButton, itemHint } = scene;
+  const { plate, chip, mission, buttons, itemButton, itemHint } = scene;
   const blocked = [plate, buttons.pause, buttons.mute];
-  for (const r of [chip, buttons.fullscreen, itemButton, itemHint]) if (r) blocked.push(r);
+  for (const r of [chip, mission, buttons.fullscreen, itemButton, itemHint]) if (r) blocked.push(r);
   return blocked;
 }
 

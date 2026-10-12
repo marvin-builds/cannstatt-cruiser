@@ -58,8 +58,8 @@ export const de = {
     feedback: (touch: boolean): string => (touch ? 'Feedback' : 'Feedback (F)'),
     submit: (touch: boolean): string => (touch ? 'Eintragen' : 'Eintragen (E)'),
     gameOverPrompt: (touch: boolean): string => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde'),
-    /** The game-over table's labels: score, highscore, stars, stars total, distance. */
-    results: ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'Strecke'],
+    /** The game-over table's labels: score, highscore, stars, stars total, distance, missions done. */
+    results: ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'Strecke', 'Missionen'],
     metres: (n: string) => `${n} m`,
     /** "Version vom 11.10.2026 (Nr. 8)" over a changelog entry. */
     version: (day: string, build: string) => `Version vom ${day} (Nr. ${build})`,
@@ -119,6 +119,22 @@ export const de = {
     star: 'Stern!',
     starArc: 'Sternenbogen!',
     grind: 'Grind!',
+  },
+  /**
+   * Missions (ROADMAP 52 point 11): the popups and each kind's goal for the HUD line, `n` the goal
+   * (seconds for grind), with its singular and plural.
+   */
+  missions: {
+    start: 'Neue Mission!',
+    done: 'Mission geschafft!',
+    goals: {
+      stomp: (n: number) => (n === 1 ? '1 Person stompen' : `${n} Leute stompen`),
+      grind: (n: number) => `${n} s grinden`,
+      stuntLine: (n: number) => (n === 1 ? '1 Stunt-Linie fahren' : `${n} Stunt-Linien fahren`),
+      kickflip: (n: number) => (n === 1 ? '1 Kickflip landen' : `${n} Kickflips landen`),
+      stars: (n: number) => (n === 1 ? '1 Stern sammeln' : `${n} Sterne sammeln`),
+      highFive: (n: number) => (n === 1 ? '1 High Five geben' : `${n} High Fives geben`),
+    },
   },
   /** Catch popups; kid mode shows the pretzel for the beer. */
   items: { football: 'Ball geschnappt!', pretzel: 'Brezel!', beer: 'Prost!', gingerbread: 'Lebkuchenherz!' },

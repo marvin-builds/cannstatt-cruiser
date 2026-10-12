@@ -10,6 +10,8 @@
  * after it, and a whole arc (`starArc`) its own "Sternenbogen! +points"
  * (gameplay/star-arcs.ts); the pool sums star points of quick repeats.
  * A fan crowd coming on screen (ROADMAP 76) shows "VfB-Fans!" or "Wasen!".
+ * Missions (ROADMAP 52 point 11): "Neue Mission!" on missionStart and
+ * "Mission geschafft! +points" on missionDone (its scoreChanged shows nothing).
  */
 import type { CrowdTheme } from '../gameplay/crowd-tag';
 import type { GameBus, GameState, ItemAction } from '../types';
@@ -49,7 +51,9 @@ type Entry =
   | { kind: 'healthGained' | 'ballBack' }
   | { kind: 'crash'; bail: BailCause | null }
   | { kind: 'grindTrick' | 'highFive' | 'reducedKickflip'; points: number }
-  | { kind: 'crowd'; theme: CrowdTheme };
+  | { kind: 'crowd'; theme: CrowdTheme }
+  | { kind: 'missionStart' }
+  | { kind: 'missionDone'; points: number };
 
 /** Events that take the points of a clear of the same entity into their own popup: their colour (texts in i18n/ popups.stomp, popups.ballHit). */
 const MERGED_COLOR = { stomp: UI.orange, ballHit: UI.yellow } as const;
@@ -73,6 +77,8 @@ export class PopupFeed {
     bus.on('starCollected', () => this.star());
     bus.on('starArc', (e) => this.starArc(e.points));
     bus.on('crowdAhead', (e) => this.crowdAhead(e.theme));
+    bus.on('missionStart', () => this.missionStart());
+    bus.on('missionDone', (e) => this.missionDone(e.points));
   }
 
   /** Drops everything collected (a new run starts). */
@@ -140,6 +146,16 @@ export class PopupFeed {
     this.entries.push({ kind: 'crowd', theme });
   }
 
+  /** A new mission began (its goal shows in the HUD mission line). */
+  missionStart(): void {
+    this.entries.push({ kind: 'missionStart' });
+  }
+
+  /** The mission reached its goal; `points` is what gameplay paid for it. */
+  missionDone(points: number): void {
+    this.entries.push({ kind: 'missionDone', points });
+  }
+
   /** The popups for everything since the last flush, in event order; then starts over. */
   flush(kidMode: boolean): readonly PopupSpec[] {
     const entries = this.entries;
@@ -195,6 +211,12 @@ export class PopupFeed {
           break;
         case 'crowd':
           add(t.crowd[e.theme], e.theme === 'vfb' ? UI.white : UI.orange);
+          break;
+        case 'missionStart':
+          add(texts().missions.start, UI.teal);
+          break;
+        case 'missionDone':
+          out.push({ text: texts().missions.done, color: UI.green, icon: null, points: e.points });
           break;
       }
     });

@@ -78,4 +78,25 @@ describe('HUD model', () => {
       }
     }
   });
+  it('shows the mission line under the plate while a mission runs, never while paused or under the zone banner (ROADMAP 52 point 11)', () => {
+    const state = playingState();
+    const hud = new HudModel();
+    hud.update(state);
+    expect(hud.mission.plate).toBeNull();
+    state.mission = { kind: 'stars', goal: 3, progress: 1 };
+    hud.update(state);
+    expect(hud.mission.goal).toBe('3 Sterne sammeln');
+    expect(hud.mission.plate!.y).toBeGreaterThan(hud.layout.plate.y + hud.layout.plate.h);
+    state.chillTimer = 5; // a timer row makes the plate taller: the line moves down with it
+    hud.update(state);
+    expect(hud.mission.plate!.y).toBeGreaterThan(hud.layout.plate.y + hud.layout.plate.h);
+    const button = { x: 2, y: hud.layout.plate.y + hud.layout.plate.h + 4, w: 46, h: 46 };
+    hud.update(state, false, 0, button);
+    expect(hud.mission.plate!.x).toBeGreaterThan(button.x + button.w);
+    hud.update(state, false, 0, null, true);
+    expect(hud.mission.plate, 'hidden while the zone banner shows').toBeNull();
+    state.mode = 'paused';
+    hud.update(state);
+    expect(hud.mission.plate).toBeNull();
+  });
 });

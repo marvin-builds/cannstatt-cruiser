@@ -7,14 +7,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { VIEW_W } from '../../core/config';
 import { measureText } from '../../core/font';
-import type { Rect } from '../../types';
+import type { MissionKind, Rect } from '../../types';
 import { STAR } from '../art';
 import { feedbackLayout } from '../feedback-layout';
 import { pageLayout, pageTitle } from '../feedback-page-layout';
 import { guideLines, guideLineWidth, installGuideLayout } from '../install-guide';
-import { itemHintRect } from '../item-button';
+import { itemButtonRect, itemHintRect } from '../item-button';
 import { kidNoticeLayout, kidNoticeLines } from '../kid-notice';
-import { centredWidth, POPUP_MARGIN, popupScale, settingsLayout, uiMetrics } from '../layout';
+import { centredWidth, hudButtons, POPUP_MARGIN, popupScale, settingsLayout, uiMetrics } from '../layout';
+import { MissionLine } from '../mission-line';
+import { statsLayout } from '../stats';
 import { gameOverLayout, type MenuInput, pauseLayout, titleLayout } from '../menu-layout';
 import { PORTRAIT_NOTE_W } from '../note-text';
 import { scoreEntryLayout, scoreListLayout } from '../score-layout';
@@ -44,6 +46,7 @@ const DISPLAYS = [
 /** The widest centred line in a 320 px view (4 px each side). */
 const LINE_W = VIEW_W - 8;
 const inView = (r: Rect) => r.x >= 0 && r.x + r.w <= VIEW_W;
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** `s` at `scale` is at most `maxW` wide. */
 function fits(label: string, s: string, scale: number, maxW: number): void {
@@ -153,6 +156,8 @@ describe.each(LANGS)('canvas texts in %s fit a 320 px view', (lang, t) => {
       `${p.star} +125`,
       `${p.starArc} +1.250`,
       p.grind,
+      t.missions.start,
+      `${t.missions.done} +1.250`,
       t.chill.adult,
       t.chill.kid,
     ];
@@ -163,6 +168,22 @@ describe.each(LANGS)('canvas texts in %s fit a 320 px view', (lang, t) => {
     }
     for (const zone of t.zones) expect(measureText(zone, 2) + 16, zone).toBeLessThanOrEqual(LINE_W);
     fits('hud', t.hud.combo('99'), 1, 80);
+    // The mission line under every stats plate keeps clear of the HUD buttons, the item button and its hint.
+    for (const plate of [statsLayout(9 * 12, false).plate, statsLayout(9 * 12, true).plate, statsLayout(9 * 12, true, true).plate]) {
+      for (const kind of Object.keys(t.missions.goals) as MissionKind[]) {
+        for (const goal of [1, 10]) {
+          for (const d of DISPLAYS) {
+            const b = hudButtons(VIEW_W, true, uiMetrics(d));
+            const button = itemButtonRect(VIEW_W, d);
+            const line = new MissionLine();
+            line.update({ kind, goal, progress: goal }, plate, d.portrait ? button : null);
+            const others = [b.pause, b.mute, b.fullscreen!, button, ...(d.touch ? [itemHintRect(VIEW_W, d, popupScale(d, false))] : [])];
+            expect(inView(line.plate!), `${d.name} mission ${kind} ${goal}`).toBe(true);
+            for (const r of others) expect(overlaps(line.plate!, r), `${d.name} mission ${kind} ${goal} vs ${JSON.stringify(r)}`).toBe(false);
+          }
+        }
+      }
+    }
     for (const d of DISPLAYS) {
       const plates: Rect[] = [trickHintPlate(d).rect, airTrickHintPlate(d).rect, kickerHintPlate(d, VIEW_W / 2).rect, highFiveHintPlate(d).rect];
       if (d.touch) plates.push(itemHintRect(VIEW_W, d, popupScale(d, false)));

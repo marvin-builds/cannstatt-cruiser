@@ -3,7 +3,9 @@
  * allocating while nothing changes: the texts (score, stars, combo) are
  * rebuilt only when their number changes and the plate layout only when its
  * content width or rows change. screens.ts draws from it; the desktop item
- * chip's hotspot reads `chip`.
+ * chip's hotspot reads `chip`. The mission line (mission-line.ts) sits under
+ * the plate while riding: not under the pause menu (whose corner button is
+ * there) and not while the zone banner slides across the top strip.
  */
 import type { GameState, Rect } from '../types';
 import { STAR } from './art';
@@ -12,6 +14,7 @@ import { keycapChip } from './item-button';
 import { formatNumber } from './layout';
 import { texts, widestText } from './i18n';
 import { NumberText } from './hud-text';
+import { MissionLine } from './mission-line';
 import { type StatsLayout, statsLayout } from './stats';
 
 /** "Punkte" in its longest language, so the plate keeps its size across a switch. */
@@ -34,6 +37,8 @@ export class HudModel {
   /** x of the multiplier and the combo label from the content's left: right of both the score and "Punkte". */
   comboX = 0;
   layout: StatsLayout = statsLayout(0, false);
+  /** The running mission's line under the plate; its `plate` is null while hidden. */
+  readonly mission = new MissionLine();
   /** The desktop item chip next to the plate, or null while hidden. */
   chip: Rect | null = null;
   private readonly chipRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
@@ -44,9 +49,11 @@ export class HudModel {
 
   /**
    * `withChip`: the desktop item chip shows (itemControl(...) === 'keycap'); `left`: the safe
-   * span's left edge (safeSpan in layout.ts), right of a display cutout.
+   * span's left edge (safeSpan in layout.ts), right of a display cutout; `itemButton`: the portrait
+   * item button while it shows under the plate (the mission line steps beside it), else null;
+   * `banner`: the zone banner shows (the mission line waits).
    */
-  update(state: GameState, withChip = false, left = 0): void {
+  update(state: GameState, withChip = false, left = 0, itemButton: Rect | null = null, banner = false): void {
     this.score.update(state.score);
     this.stars.update(state.stars);
     this.combo = state.multiplier > 1;
@@ -71,5 +78,6 @@ export class HudModel {
       Object.assign(this.chipRect, keycapChip(this.layout.plate));
     }
     this.chip = withChip ? this.chipRect : null;
+    this.mission.update(state.mode === 'playing' && !banner ? state.mission : null, this.layout.plate, itemButton);
   }
 }

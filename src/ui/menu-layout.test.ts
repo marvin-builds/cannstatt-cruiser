@@ -15,6 +15,7 @@ import {
   PANEL_PAD,
   pauseLayout,
   reloadParts,
+  resultRows,
   settingsGear,
   SKATER_CLEAR,
   titleHelp,
@@ -280,6 +281,18 @@ describe('menu screen layouts', () => {
         // The card is offered only here (a calm moment), so it shows in every variant, portrait too.
         expect(!!l.buttons.install && !!l.buttons.dismiss, `${input.label} record=${newRecord}`).toBe(input.install);
         expect(l.install, input.label).toBe(input.install);
+      }
+    }
+  });
+
+  it('game over: the missions row (ROADMAP 52 point 11) shows on a plain desktop game over and gives way before stars and distance', () => {
+    expect(resultRows()).toHaveLength(6);
+    const plain = gameOverLayout({ viewWidth: 320, touch: false, portrait: false, fullscreenAvailable: true, reload: false, install: false, newRecord: false });
+    expect(plain.blocks.has('row5')).toBe(true);
+    for (const input of inputs()) {
+      for (const submit of [false, true]) {
+        const l = gameOverLayout({ ...input, newRecord: true, submit });
+        if (l.blocks.has('row5')) expect(l.blocks.has('row2') && l.blocks.has('row4'), input.label).toBe(true);
       }
     }
   });

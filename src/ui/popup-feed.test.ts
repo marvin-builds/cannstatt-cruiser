@@ -6,6 +6,7 @@ import { STAR_POINTS } from '../gameplay/star-arcs';
 import { EventBus } from '../core/events';
 import type { GameEvents } from '../types';
 import { bailCause, PopupFeed } from './popup-feed';
+import { setLanguage } from './i18n';
 
 const texts = (feed: PopupFeed, kidMode = false) => feed.flush(kidMode).map((p) => p.text);
 
@@ -249,5 +250,36 @@ describe('bailCause (ROADMAP 42)', () => {
       feed.cleared(1, 50);
       expect(feed.flush(false)[0]!.points).toBeUndefined();
     });
+  });
+});
+
+describe('missions (ROADMAP 52 point 11)', () => {
+  const specs = (feed: PopupFeed) => feed.flush(false).map(({ text, points }) => ({ text, points }));
+
+  it('listens to the bus: missionStart shows "Neue Mission!", missionDone "Mission geschafft!" with its points', () => {
+    const bus = new EventBus<GameEvents>();
+    const feed = new PopupFeed();
+    feed.listen(bus);
+    bus.emit('missionStart', { kind: 'stomp', goal: 3 });
+    expect(specs(feed)).toEqual([{ text: 'Neue Mission!', points: undefined }]);
+    // Gameplay adds the points (scoreChanged) right before missionDone: no popup of their own.
+    bus.emit('scoreChanged', { score: 500, delta: 500, combo: 0, multiplier: 1 });
+    bus.emit('missionDone', { kind: 'stomp', goal: 3, points: 500 });
+    expect(specs(feed)).toEqual([{ text: 'Mission geschafft!', points: 500 }]);
+  });
+
+  it('in English: "New mission!" and "Mission done!"', () => {
+    setLanguage('en');
+    try {
+      const feed = new PopupFeed();
+      feed.missionStart();
+      feed.missionDone(250);
+      expect(specs(feed)).toEqual([
+        { text: 'New mission!', points: undefined },
+        { text: 'Mission done!', points: 250 },
+      ]);
+    } finally {
+      setLanguage('de');
+    }
   });
 });

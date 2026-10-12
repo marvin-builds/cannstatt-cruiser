@@ -10,7 +10,7 @@
  * (install-guide.ts).
  * Records live in records.ts, popups in popups.ts (which events show which
  * popup in popup-feed.ts, catch popups in item-look.ts), the HUD texts and
- * plate in hud-model.ts, item use in item-button.ts, the grind trick hint in
+ * plate in hud-model.ts (the mission line under it in mission-line.ts), item use in item-button.ts, the grind trick hint in
  * trick-hint.ts, the stunt line and kickflip callout ("Linie xN!", "Kickflip!
  * +N") in stunt-callout.ts with the kickflip sparkle in sparkle.ts, the
  * kicker and air trick hints in kicker-hint.ts and air-trick-hint.ts (one
@@ -883,22 +883,26 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       if ((state.mode === 'title' || state.mode === 'paused') && view.logoHold.update(dt)) view.settings.openMenu(state.kidMode);
       const control = itemControl(display, state.mode, state.carriedItem, handShown(highFiveHand(state.entities), display.touch));
       const hintRect = buttonHintRect(ctx, control === 'button');
-      if (riding(state.mode)) view.hud.update(state, control === 'keycap', display.safeInsets.left);
+      if (riding(state.mode)) {
+        const portraitButton = control === 'button' && display.portrait ? itemButtonRect(display.viewWidth, display) : null;
+        view.hud.update(state, control === 'keycap', display.safeInsets.left, portraitButton, view.banner.visible);
+      }
       // Laid out only while it shows (the scene allocates).
       view.stuntRect = view.stunt.visible
         ? placeCallout(view.stunt, {
             viewWidth: display.viewWidth,
             plate: view.hud.layout.plate,
             chip: view.hud.chip,
+            mission: view.hud.mission.plate,
             buttons: hudButtons(display.viewWidth, view.fullscreenAvailable, uiMetrics(display), riding(state.mode)),
             itemButton: control === 'button' ? itemButtonRect(display.viewWidth, display) : null,
             itemHint: hintRect,
             banner: view.banner.visible,
           })
         : null;
-      // Popups never rise into the HUD plate as it is drawn now (so they stay clear of a skater high on a
-      // ledge), nor into the item hint or the stunt callout.
-      const { plate } = view.hud.layout;
+      // Popups never rise into the HUD plate or the mission line under it as drawn now (so they stay clear of
+      // a skater high on a ledge), nor into the item hint or the stunt callout.
+      const plate = view.hud.mission.plate ?? view.hud.layout.plate;
       view.popups.ceiling = popupCeiling(popupCeiling(plate.y + plate.h + BELOW_PLATE, hintRect), view.stuntRect);
       skater.y = Math.round(state.player.y) - SKATER_H;
       view.popups.avoid = popupAvoid(display.viewWidth, display, control, skater, avoid);

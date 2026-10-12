@@ -4,7 +4,7 @@
  * button layout (incl. the menu screens' buttons), for the playtest scenarios.
  */
 import { GROUND_Y, PLAYER_X } from '../core/config';
-import type { CarriedItem, GameContext, Rect } from '../types';
+import type { CarriedItem, GameContext, MissionKind, Rect } from '../types';
 import { UI } from './art';
 import { type HudButtons, hudButtons, popupScale, riding, type SettingsLayout, settingsLayout, type UiMetrics, uiMetrics } from './layout';
 import { itemButtonRect } from './item-button';
@@ -56,6 +56,14 @@ export interface UiDebugHook {
   /** Emits the NorDIY events like gameplay: a high five ("High Five! +points") and the park's session end ("Session! +points"). */
   highFive(points: number): void;
   sessionEnd(points: number): void;
+  /**
+   * Missions (ROADMAP 52 point 11) like gameplay: `startMission` sets state.mission (progress 0) and
+   * emits missionStart; `missionProgress` sets its progress; `finishMission` adds the points
+   * (scoreChanged), counts state.missionsDone, clears the mission and emits missionDone.
+   */
+  startMission(kind: MissionKind, goal: number): void;
+  missionProgress(progress: number): void;
+  finishMission(points: number): void;
   /** Whether the high five hint shows now. */
   highFiveHintVisible(): boolean;
   /** Whether the air trick hint wants to show now (the hint slot picks one plate if several do). */
@@ -85,6 +93,8 @@ export interface UiDebugHook {
     logo: Rect;
     screen: MenuButtons | null;
     plate: Rect;
+    /** The HUD mission line's plate while it shows, else null. */
+    mission: Rect | null;
     itemButton: Rect;
     /** The title's language switch "DE | EN" (ROADMAP 71) while the title shows, else null; the settings menu's is `menu.language`. */
     language: LanguageSwitch | null;
@@ -242,6 +252,23 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
     sessionEnd(points) {
       ctx.bus.emit('sessionEnd', { level: points > 0 ? 1 : 0, points });
     },
+    startMission(kind, goal) {
+      ctx.state.mission = { kind, goal, progress: 0 };
+      ctx.bus.emit('missionStart', { kind, goal });
+    },
+    missionProgress(progress) {
+      if (ctx.state.mission) ctx.state.mission.progress = progress;
+    },
+    finishMission(points) {
+      const { state } = ctx;
+      const mission = state.mission;
+      if (!mission) return;
+      state.score += points;
+      ctx.bus.emit('scoreChanged', { score: state.score, delta: points, combo: state.combo, multiplier: state.multiplier });
+      state.mission = null;
+      state.missionsDone++;
+      ctx.bus.emit('missionDone', { kind: mission.kind, goal: mission.goal, points });
+    },
     highFiveHintVisible() {
       return view.highFiveHint.visible;
     },
@@ -273,6 +300,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
         logo: (ctx.state.mode === 'paused' ? currentMenu(ctx, view)?.buttons.logo : null) ?? logoRect(display.viewWidth),
         screen: currentMenu(ctx, view)?.buttons ?? null,
         plate: view.hud.layout.plate,
+        mission: view.hud.mission.plate,
         itemButton: itemButtonRect(display.viewWidth, display),
         language: currentMenu(ctx, view)?.language ?? null,
       };
