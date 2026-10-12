@@ -56,7 +56,7 @@ When the user asks to continue (or resumes work on this game), always work in or
 - Pushing `main` only runs CI (`.github/workflows/ci.yml`); the game goes live only from a release tag.
   A release: add a new entry to `src/changelog.ts` (next `YYYY-MM-DD.n` version, at most 6 short kid-safe
   German items that fit 40 characters; players who saw an older version get the "Neu in dieser Version"
-  screen from it), deploy the worker first if `server/` changed (backup, migrations, `npx wrangler deploy`),
+  screen from it; its `en` lines give one English line per German item, same 40-character and kid-safe limits), deploy the worker first if `server/` changed (backup, migrations, `npx wrangler deploy`),
   then push `main` and the tag `v<version>` (`git tag v2026-10-11.3 && git push origin v2026-10-11.3`).
   `deploy.yml` refuses a tag that is not `v` + the newest changelog version.
 - New user wishes go into `docs/ROADMAP.md` (backlog and status checkpoint) first. They are briefed to the next fitting slice,

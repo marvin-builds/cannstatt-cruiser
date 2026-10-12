@@ -99,11 +99,17 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
   ui/draw-kit.ts        shared drawing primitives: shadowed text, opaque plates and ribbons, menu buttons (allocation-free)
   ui/trick-hint.ts      grind trick hint under the skater while grinding (storage key grindTrickSeen, see Grind trick)
+  ui/i18n/de.ts         the German text catalogue (default), its type is `Texts`; ui/i18n/en.ts the English one typed `Texts` (see Game language)
+  ui/i18n/index.ts      texts(), language(), setLanguage(), loadLanguage() / saveLanguage() (store key `language`), firstVisitLanguage(), perLanguage(), widestText()
+  ui/i18n/test-kit.ts   Vitest only: shapeOf() / catalogueStrings() walk a catalogue for catalogue.test.ts and fit.test.ts
+  ui/language-switch.ts languageSwitch(): the "DE | EN" plate and its two tap halves (title bottom left, settings top left)
+  ui/sheet-dom.ts       SheetParts: a DOM sheet's parts, rebuilt in the new words after a language switch
   audio/traffic.ts      TrafficNoise: Mitte rumble level from state.trafficDensity, light-traffic swells per passing vehicle (TRAFFIC.swell), ducking under gameplay sounds, rng-free horns and truck passes
   audio/passby.ts       PassBy: vehiclePassed -> pass-by cue (passCar / passVan / passBus / passTruck) and intensity, rate-limited
   player/bin.ts         bin crash: the bin the player draws around the skater
 src/net/                online highscores client (owned by the ui slice, see Online highscores)
   net/tester-pass.ts    loadTesterPass(): the board's stored tester pass, only on a marked test device (see Play statistics)
+src/privacy/            datenschutz.html: page.ts (DE | EN section switch by hash), language.ts pageLanguage(), privacy.css (see Datenschutz page)
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
 server/                 highscore API: Cloudflare Worker + D1, own package.json, tsconfig and tests
@@ -124,7 +130,7 @@ foundation owner can extend it.
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
 | `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)); fan crowds in Bad Cannstatt (see [Fan crowds](#fan-crowds-roadmap-76)) |
-| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting; Android back (`ui/back-nav.ts`), the settle cover after a portrait form and the tester pass sent with feedback (`src/net/tester-pass.ts`) |
+| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the game language (`src/ui/i18n/`, the "DE | EN" switch, see [Game language](#game-language-roadmap-71)); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting; Android back (`ui/back-nav.ts`), the settle cover after a portrait form and the tester pass sent with feedback (`src/net/tester-pass.ts`) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; the speaker button (`state.muted`) sets the master gain on every gesture, visibility return and context restart, and a suspended or interrupted context is resumed then, with retries (`AudioBackend.wake()`, ROADMAP 63); manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
 | `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, tester passes via `POST /board/tester-pass`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), player feedback and its triage (incl. the GitHub issue state sync `server/src/issue-sync.ts`, see [Player feedback](#player-feedback-roadmap-50)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
 | `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game): tabs Statistik / Feedback (`tabs.ts`), the feedback tickets with state-driven actions (`ticket-actions.ts`) and default player messages (`messages.ts`) |
@@ -179,7 +185,7 @@ creates them in `public/`):
 ### Changelog ("Neu in dieser Version", ROADMAP item 16)
 
 - `src/changelog.ts` holds `CHANGELOG: ChangelogEntry[]`, newest first, with
-  `{version, date, items}`. `version` is `YYYY-MM-DD.n` (the deploy date and
+  `{version, date, items, en?}`. `version` is `YYYY-MM-DD.n` (the deploy date and
   that day's build number, compared numerically by `compareVersions`), `date`
   its date part. `BUILD_VERSION` is the newest entry's version: the running build.
 - **The orchestrator adds an entry for every deploy** (a new `.n` on the same
@@ -187,6 +193,12 @@ creates them in `public/`):
   most `CHANGELOG_ITEM_MAX_CHARS` = 40 characters in game-font glyphs and
   `CHANGELOG_MAX_ITEMS_PER_ENTRY` = 6 per entry. Kid mode shows them too, so
   they never mention drugs or alcohol (`src/changelog.test.ts` checks all of this).
+- `en` (ROADMAP 71): the English lines, one per German item in the same order,
+  under the same limits and kid-safe check (English banned words). Every entry
+  has them; the orchestrator writes both for each release. While English is on,
+  "Neu in dieser Version" shows `en` (`whats-new.ts` `entryLines`, German items
+  for an entry without `en`), and the version heading uses the language's date
+  (`Texts.day`, `menu.version`).
 - At startup (Game constructor, before the systems' `init`) core reads the
   store key `lastSeenVersion` (`core/version.ts`):
   - nothing or junk stored (first visit): it stores `BUILD_VERSION` at once
@@ -935,6 +947,49 @@ picks one (null while riding or while the settings menu covers it):
   kid-mode look and sounds. No text, popup or art in kid mode refers to drugs.
   The effect's mechanics (timer, slowdown, lower jump) are identical.
 
+## Game language (ROADMAP 71)
+
+- German is the default; English is a full second language. Every
+  player-visible text lives in `src/ui/i18n/de.ts` (`Texts` is its type);
+  `en.ts` is typed `Texts`, so a missing key is a type error. Texts with
+  numbers or names are functions taking already formatted values. Places keep
+  their names. Only game-font glyphs; kid-safe outside the adult-only texts.
+- One active language for the whole ui (`i18n/index.ts`): `texts()` /
+  `language()` are read when a text is laid out or drawn, so
+  `setLanguage(lang)` switches every canvas text at once and sets
+  `document.documentElement.lang`. Per-frame values cache per language with
+  `perLanguage(build)`; layouts that must fit any language measure
+  `widestText(pick, scale)`. DOM sheets rebuild in the new words when they
+  show next (`ui/sheet-dom.ts` `SheetParts`; a sheet covers the screen, so
+  none shows during a switch).
+- **Choice:** store key `language` (`'de' | 'en'`, `LANGUAGE_KEY`), saved when
+  the player taps the switch. Before any choice, the first visit follows the
+  browser (`firstVisitLanguage`: `navigator.language` starting with `en` ->
+  English, else German). The browser language is read only for that and never
+  stored or sent; `createUiSystem({browserLanguage})` lets tests pass one.
+  Junk in storage counts as no choice.
+- **Switch "DE | EN"** (`ui/language-switch.ts` `languageSwitch(viewWidth, m,
+  at)`): two halves on one plate, each at least a HUD tap area, the active one
+  highlighted; drawn by `menu-screens.ts` `drawLanguageSwitch`, tapped through
+  hotspots in `index.ts`. On the title in the bottom-left corner (adult and kid
+  mode; not while the rotate screen covers it) via `MenuLayout.language`; in the
+  settings menu in the top-left corner (`SettingsLayout.language`, the test
+  device line moves under it in portrait). Not while riding.
+- **Formatting:** `formatNumber` uses `Texts.thousands` ("1.234" / "1,234");
+  dates use `Texts.day` ("11.10.2026" / "Oct 11, 2026"), e.g. in feedback
+  (`feedback-pages.ts` `dayText`) and the "Neu in dieser Version" headings.
+- **Fit:** `i18n/fit.test.ts` measures every canvas text of both catalogues
+  with the game font against the width its layout gives it in a 320 px view
+  (desktop, phone landscape, phone portrait), and checks the menu screens keep
+  in English every row they keep in German. `i18n/catalogue.test.ts` checks
+  same shape (`test-kit.ts` `shapeOf`), no empty texts, font glyphs only, no
+  untranslated German, kid-safety and place names.
+- **Changelog:** see `ChangelogEntry.en` in [Changelog](#changelog-neu-in-dieser-version-roadmap-item-16).
+  **Privacy page:** see [Datenschutz page](#play-statistics-and-insights-board-roadmap-46).
+- The insights board (`src/insights/`) stays German and is not in the catalogue.
+- Debug: `window.__ui.layout().language` is the title's switch (null when the
+  title does not show); the settings menu's is `layout().menu.language`.
+
 ### Tap sizes (ui/layout.ts `uiMetrics`)
 
 | Display | HUD tap area / plate | Menu button height | ~CSS px per view px |
@@ -1059,7 +1114,7 @@ Modules:
 | `net/service.ts` | `ScoreService`: `top` (last fetched list) and `topState` (`'idle' \| 'loading' \| 'ready' \| 'offline'`), `ownBest` / `ownRank` (this device's online entry, learned from `own` and from each accepted POST, best persisted), `refreshTop()`, `submit(run, name)` -> `SubmitOutcome` (`ok` with rank, `stored`, `best` / `queued` offline or on a server error / `failed` name, implausible, rate, bad-request), `retryPending()` (spaced by `SEND_SPACING_MS`). Clock, `online()`, timers, store and api are injected |
 | `net/browser.ts` | `createBrowserScoreService(store)`: real `fetch`, `navigator.onLine`, `BUILD_VERSION`; retries the queue on `online` and when the page becomes visible |
 | `ui/score-rules.ts` | `TOP_SIZE` 20, `qualifies(score, top)` (beats the 20th, or any score > 0 while the list is short or unknown), the client copy of the server's name rules (`nameProblem`, `cleanName`, `stripNameInput`), remembered name (store key `scoreName`) |
-| `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `SCORE_TEXT` (all German texts incl. the privacy note), `offered`, `openList()`, `openEntry()`, `setName`, `submit()`, scroll. `runStarted(fetchList)`: an adult run start fetches the list in the background so `offered` is known at game over; a kid run start only resets the flow |
+| `ui/highscore-flow.ts` | `HighscoreFlow`: DOM-free state machine (`screen` `'closed' \| 'list' \| 'entry'`), `offered`, `openList()`, `openEntry()`, `setName`, `submit()`, scroll. `runStarted(fetchList)`: an adult run start fetches the list in the background so `offered` is known at game over; a kid run start only resets the flow |
 | `ui/score-layout.ts` / `ui/score-screens.ts` | pure layouts (title trophy left of mute / fullscreen, moved below the row where it would touch the logo; list rows and scroll; entry field and buttons) and their drawing |
 | `ui/name-field.ts` | the native `<input>` over the drawn field in adult mode, so phones open their own keyboard; its key and touch events stop there and never reach the game |
 | `ui/list-scroll.ts` | drag and wheel scrolling of the list (arrow keys scroll in `index.ts`) |
@@ -1240,14 +1295,23 @@ hidden page `insights.html` shows aggregates to the owner.
   root or `index.html` with the cached game page, and caches only requests
   made by the game page; `insights.html`, `datenschutz.html` and their assets go to the network.
 - **Datenschutz page (ROADMAP 47):** `datenschutz.html` (third Vite input,
-  static, `src/privacy/privacy.css`) explains in plain German what the game
+  static, `src/privacy/privacy.css`) explains in plain German and English what the game
   stores on the device, the online list, the statistics and the rights; the
   operator is only named as "marvinmai" with GitHub issues as contact. Keep
   it true when data handling changes. In the game a small "Datenschutz"
   button sits right of the "Anonyme Statistik" switch on the Bestenliste and
   in settings (`privacyLink` rects in `ScoreListLayout`/`SettingsLayout`);
   `ui/privacy-link.ts` opens the page in a new tab on pointer release
-  (phone browsers block popups on touch start).
+  (phone browsers block popups on touch start); in English it opens
+  `datenschutz.html#en` (`privacyPage(lang)`), and the button is as wide as
+  its longest label ("Datenschutz" / "Privacy").
+- **Page languages (ROADMAP 71):** the page holds `<section id="de">` and
+  `<section id="en">` (each with `lang` and a `data-title`) under a "DE | EN"
+  nav of `#de` / `#en` links. `src/privacy/page.ts` shows only the section of
+  the hash (`language.ts` `pageLanguage`: `#en` is English, anything else
+  German) and sets `document.title`, `<html lang>` and `aria-current`, also on
+  `hashchange`. Without JavaScript both sections stay visible, one below the
+  other, and the links jump to them. Keep both sections true together.
 
 ## Portrait sheets (ROADMAP 58)
 
