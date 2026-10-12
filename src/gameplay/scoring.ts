@@ -1,7 +1,8 @@
 /**
  * Score, combo and multiplier rules. A trick (clean clear, rail landing)
  * extends the combo; the multiplier equals the combo (1..MAX_MULTIPLIER).
- * Touching the ground or crashing breaks the combo.
+ * A crash breaks the combo at once; a street landing breaks it only after
+ * the short ground touch of combo-grace.ts.
  */
 import type { GameBus, GameState } from '../types';
 import { MAX_MULTIPLIER } from './catalogue';

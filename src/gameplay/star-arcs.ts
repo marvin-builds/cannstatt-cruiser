@@ -9,8 +9,9 @@
  * first star, `arcSize` = its star count). Taking every star of an arc in
  * one flight (no street landing in between) adds STAR_ARC_BONUS times the
  * multiplier once. Gameplay emits starCollected, then the star's
- * scoreChanged, then the bonus's scoreChanged right after it (the ui's
- * popup feed reads them in that order: "Stern! +10", "Sternenbogen! +50").
+ * scoreChanged, then the bonus's scoreChanged right after it, then
+ * `starArc` with the arc's star count and the bonus added (the ui's popup
+ * feed reads them in that order: "Stern! +10", "Sternenbogen! +50").
  */
 import type { Entity, GameContext } from '../types';
 import type { Piece } from './course';
@@ -64,7 +65,8 @@ export class StarArcs {
     }
     if (++this.got < size) return;
     this.arc = null;
-    addPoints(state, bus, STAR_ARC_BONUS);
+    const points = addPoints(state, bus, STAR_ARC_BONUS);
+    bus.emit('starArc', { stars: size, points });
   }
 
   /** Wheels on the street: the flight is over, an arc in progress stays incomplete. */

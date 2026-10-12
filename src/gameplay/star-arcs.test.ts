@@ -54,6 +54,30 @@ describe('star points (ROADMAP 65)', () => {
     expect(game.state.score).toBe(3 * STAR_POINTS * 2 + STAR_ARC_BONUS * 2);
   });
 
+  it('emits starArc once per complete arc with the bonus added, right after the bonus scoreChanged', () => {
+    const game = quietGame();
+    game.state.combo = 2;
+    game.state.multiplier = 2;
+    const log: string[] = [];
+    game.bus.on('scoreChanged', (e) => log.push(`score ${e.delta}`));
+    game.bus.on('starArc', (e) => log.push(`arc ${e.stars} ${e.points}`));
+    starRow(game, 3, 3);
+    tick(game, 60);
+    expect(log).toEqual(['score 20', 'score 20', 'score 20', `score ${STAR_ARC_BONUS * 2}`, `arc 3 ${STAR_ARC_BONUS * 2}`]);
+  });
+
+  it('emits no starArc for a partly collected arc or a lone star', () => {
+    const game = quietGame();
+    const arcs = record(game, 'starArc');
+    const [, , high] = starRow(game, 3, 3);
+    high!.y = 10;
+    const lone = starRow(game, 1, 1, 2);
+    for (const s of lone) s.x += 60;
+    tick(game, 90);
+    expect(game.state.stars).toBe(3);
+    expect(arcs).toEqual([]);
+  });
+
   it('a partly collected arc gives no bonus (a star of it missed)', () => {
     const game = quietGame();
     const [, , high] = starRow(game, 3, 3);

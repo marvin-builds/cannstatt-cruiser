@@ -5,10 +5,10 @@ import type { Entity } from '../types';
 import { ZoneRoute } from '../world/zones';
 import { isOverhead, isPerson, isRail } from './catalogue';
 import { speedAt } from './difficulty';
-import { itemOf } from './items';
+import { itemOf, LATE_HEAL_FROM_SECONDS, LATE_HEAL_FULL_SECONDS } from './items';
 import { anchorOf } from './motion';
 import { BEER_AUTO_DRINK } from './auto-drink';
-import { BEER_REACH, PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
+import { BEER_REACH, lateHealProgress, lateHealRamp, PLAN_WORK_PER_TICK, Spawner, type SpawnSituation } from './spawner';
 import { TOSS_TIME } from './toss';
 import { DRUNK_DURATION } from './use';
 
@@ -194,4 +194,32 @@ describe('spawner while the player may be drunk', () => {
     }
     expect(guests).toBeGreaterThan(2);
   }, 60_000);
+});
+
+describe('late-healing ramp on the street (ROADMAP 52 point 8)', () => {
+  /** Street ridden in `seconds` from the run start at the difficulty speed, tick by tick like the game. */
+  function ridden(seconds: number): number {
+    let distance = 0;
+    for (let t = 0; t < seconds / TICK_DT; t++) distance += speedAt(distance) * TICK_DT;
+    return distance;
+  }
+
+  it('starts and ends where the run has ridden LATE_HEAL_FROM_SECONDS and LATE_HEAL_FULL_SECONDS', () => {
+    const [from, full] = lateHealRamp(0, null);
+    expect(Math.abs(from - ridden(LATE_HEAL_FROM_SECONDS))).toBeLessThan(0.01 * from);
+    expect(Math.abs(full - ridden(LATE_HEAL_FULL_SECONDS))).toBeLessThan(0.01 * full);
+  });
+
+  it('at a pinned speed the ramp lies at that pace from the run start', () => {
+    expect(lateHealRamp(500, 100)).toEqual([500 + LATE_HEAL_FROM_SECONDS * 100, 500 + LATE_HEAL_FULL_SECONDS * 100]);
+  });
+
+  it('progress is 0 before the ramp, 1 after it and linear in between', () => {
+    const ramp: [number, number] = [1000, 2000];
+    expect(lateHealProgress(0, ramp)).toBe(0);
+    expect(lateHealProgress(1000, ramp)).toBe(0);
+    expect(lateHealProgress(1500, ramp)).toBe(0.5);
+    expect(lateHealProgress(2000, ramp)).toBe(1);
+    expect(lateHealProgress(9000, ramp)).toBe(1);
+  });
 });

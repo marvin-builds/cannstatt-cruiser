@@ -5,6 +5,7 @@ import { createPlayerTestGame, tick } from '../player/testing';
 import type { Entity, EntityKind, GameEvents, ObstacleKind } from '../types';
 import { GRIND_POINTS, isOverhead, OBSTACLES, obstacleRect, railRect, starRect } from './catalogue';
 import { speedAt } from './difficulty';
+import { COMBO_GRACE_SECONDS } from './combo-grace';
 import { createGameplaySystem } from './index';
 import { STAR_POINTS } from './star-arcs';
 import { SolverBot } from './testing';
@@ -120,7 +121,7 @@ describe('scoring', () => {
     expect(game.state.score - before).toBe(10 * GRIND_POINTS * game.state.multiplier);
   });
 
-  it('chains tricks without touching the ground into a combo multiplier, reset on landing', () => {
+  it('chains tricks without touching the ground into a combo multiplier, reset after the landing grace', () => {
     const game = quietGame();
     const clears = record(game, 'obstacleCleared');
     place(game, 'handrail', railRect(PLAYER_X - 20, 24, 260));
@@ -134,6 +135,8 @@ describe('scoring', () => {
     expect(game.state.combo).toBe(2);
     expect(game.state.multiplier).toBe(2);
     for (let i = 0; i < 200 && !game.state.player.grounded; i++) tick(game, 1);
+    expect(game.state.combo).toBe(2);
+    tick(game, Math.ceil(COMBO_GRACE_SECONDS / TICK_DT) + 1);
     expect(game.state.combo).toBe(0);
     expect(game.state.multiplier).toBe(1);
   });

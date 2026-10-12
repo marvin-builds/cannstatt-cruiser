@@ -36,6 +36,7 @@ import { bail, duckLanding, landedLate } from './bail';
 import { newBall, updateBalls } from './ball';
 import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
+import { ComboGrace } from './combo-grace';
 import { isLive, resolveContacts } from './contacts';
 import { CrowdWatch } from './crowd-watch';
 import { installGameplayDebug } from './debug';
@@ -48,7 +49,7 @@ import { ITEM_POINTS, itemOf } from './items';
 import { ParkSession } from './park';
 import { PatternLog } from './pattern-log';
 import { anchorOf, moveTo } from './motion';
-import { addPoints, breakCombo } from './scoring';
+import { addPoints } from './scoring';
 import { StarArcs } from './star-arcs';
 import { StuntLines } from './stunts';
 import { PLAN_WORK_PER_TICK, Spawner, type SpawnerOptions, type SpawnSituation } from './spawner';
@@ -111,6 +112,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const airTrick = new AirTrickScore(() => stunts.multiplier());
   const session = new ParkSession();
   const starArcs = new StarArcs();
+  const comboGrace = new ComboGrace();
   const crowds = new CrowdWatch();
   /** The spawner's park plan last put into state.park. */
   let spawnerPark: ParkPlan | null = null;
@@ -217,6 +219,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         airTrick.reset();
         session.reset();
         starArcs.reset();
+        comboGrace.reset();
         crowds.reset();
         spawnerPark = null;
       });
@@ -233,7 +236,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
           airTrick.drop();
           if (!duckLanding(ctx)) bail(ctx);
         }
-        breakCombo(ctx.state);
+        comboGrace.landed();
         starArcs.landed();
         stunts.landed(ctx);
         airTrick.touchedDown();
@@ -271,6 +274,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         drops.drop(itemOf(person, ctx.state.kidMode), hand, ctx.state.speed, freeStreet);
       });
       ctx.bus.on('crash', () => {
+        comboGrace.reset();
         toss.cancel();
         stunts.crashed(ctx);
         airTrick.drop();
@@ -293,6 +297,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       if (ctx.speedOverride === null) state.speed = speedAt(spawner.rampDistance(state.distance)) * chillSpeedFactor(state.chillTimer);
       const dx = state.speed * dt;
       scroll(ctx, dx);
+      comboGrace.update(ctx, dt);
       crowds.update(ctx);
       if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
       trick.update(ctx);

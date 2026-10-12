@@ -21,6 +21,11 @@ describe('isPlausible', () => {
     expect(isPlausible({ ...realTopRun, score: realTopRun.score + everyStar })).toBe(true);
   });
 
+  it('accepts a skilled run that keeps x5 through short street touches (combo grace, ROADMAP 84)', () => {
+    // One 150-point obstacle at x5 every 8-10 m is about 75-95 points per metre, plus every star.
+    expect(isPlausible({ score: 100_000, distance: 1000, duration: 70 })).toBe(true);
+  });
+
   it('accepts a run at full speed with a 10 % margin, not beyond', () => {
     expect(isPlausible({ score: 0, distance: Math.floor(100 * 19 * 1.1), duration: 100 })).toBe(true);
     expect(isPlausible({ score: 0, distance: Math.ceil(100 * 19 * 1.1) + 20, duration: 100 })).toBe(false);
