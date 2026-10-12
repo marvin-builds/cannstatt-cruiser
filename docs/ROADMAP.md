@@ -456,3 +456,17 @@ No blockers; 60 fps (p99 16.8 ms); NorDIY, combos and stunt lines work and are d
     - Status 2026-10-12: built (6154ad0 worker routes `/feedback/:id/link`, reply on `/issue`, PATCH todo needs an issue -> 409; d9d5491 board `ticket-actions.ts`, `messages.ts`), not released. Re-linking also works for a Geplant ticket whose issue is gone from GitHub (state `missing`).
 - **Release of 77-83 needs:** a D1 backup, then migration 0009 once on the remote D1, then the worker deploy, all before the game release (server/README.md has the order); then the changelog entry and the tag.
 
+
+## Plan 2026-10-12 (night): the remaining follow-ups (USER: "continue autonomously")
+
+The USER tested v2026-10-12.3 (board tabs, chips, buttons in Firefox, delete and turning on the Pixel): all fine. The long press to delete feedback (78) is dropped by the USER. Order:
+
+84. **Wave A, polish and fairness (three parallel slices):**
+    - `gameplay`: 52 point 8 (scarcer Brezel/Lebkuchenherz after about 3 min, not in kid mode) and Phase 3 point 10 (combo grace: a ground touch of about 0.3 s keeps the combo); emit the new `starArc` event (contract added by the orchestrator). Point rate changes are checked against `server/src/plausibility.ts` by the orchestrator.
+    - `ui`: the delete confirm page without the big empty space in portrait; the 70 layout follow-ups (320 px log toggle, tab dot on the border, "Mein Feedback" tab wrap and version break in portrait, canvas quotes „ “); the 73 rotate screen polish (phone and arrow centred as a pair, symmetric frame, clearer arrow, taller button on tablets); "Sternenbogen!" from `starArc`; find why the first mute tap fails in the safe-area-landscape scenario on phone portrait.
+    - `stats`: 69 (drop orientation from the play statistics: telemetry contract, worker validation and aggregation, board split, datenschutz.html and README; keep it in feedback).
+    - Core (orchestrator): portrait stays decided by `innerWidth`/`innerHeight` on purpose (the keyboard shrinks the visual viewport, which must not count as landscape); documented in `core/app.ts`.
+85. **Wave B, English (71):** the typed text catalogue with `de`/`en`, the language button on the title, English datenschutz summary, English changelog lines from then on.
+86. **Wave C, missions (52 Phase 3 points 11 and 12):** small missions per run and adaptive density, with their texts in both languages.
+- Deferred: the EntityKinds `scooter`/`pigeons` instead of the `data.hazard` stand-ins (a wide rename across gameplay, world, audio and ui without player-visible change). Needs the USER: the pause/back product choice from 75.
+- Releases: each wave is pushed to `main` after verification; the USER decides when to tag a release (52 phases are meant to be played between releases).

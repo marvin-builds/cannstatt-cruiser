@@ -241,6 +241,12 @@ export interface GameEvents {
    */
   crash: { entityId: number; kind: EntityKind | 'bail'; health: number };
   starCollected: { entityId: number; stars: number };
+  /**
+   * Gameplay (ROADMAP 65): every star of an arc was taken in one flight. Emitted right after the
+   * arc bonus's scoreChanged; `points` is that bonus (STAR_ARC_BONUS x multiplier). The ui shows
+   * "Sternenbogen! +points" from it instead of inferring the bonus from score deltas.
+   */
+  starArc: { stars: number; points: number };
   chillStart: { entityId: number; duration: number };
   /**
    * Gameplay: the falling skater landed on a person's head. The player bounces
