@@ -1,7 +1,8 @@
 /**
  * Strict parsing of a `POST /event` body against the allow-lists in events.ts:
  * exactly the fields of its kind (no extra, none missing; optional ones may be
- * left out), allowed values only.
+ * left out), allowed values only. A session's `orientation` from builds before
+ * ROADMAP 69 is still accepted (valid values only) but dropped from the event.
  */
 import {
   DISTANCE_STEP_M, INPUTS, MAX_DISTANCE_M, MAX_END_SECONDS, MAX_RUN_SECONDS, ORIENTATIONS, PLATFORMS, RUN_SECONDS_STEP,
@@ -10,12 +11,12 @@ import {
 import type { TelemetryEvent } from './insights-types';
 
 const FIELDS: Record<TelemetryEvent['kind'], readonly string[]> = {
-  session: ['kind', 'session', 'version', 'input', 'orientation', 'platform', 'kid'],
+  session: ['kind', 'session', 'version', 'input', 'platform', 'kid'],
   run: ['kind', 'session', 'seconds', 'score', 'distance', 'kid'],
   end: ['kind', 'session', 'seconds'],
 };
-/** Fields a kind may leave out (sent only by newer builds, ROADMAP 55). */
-const OPTIONAL_FIELDS: Record<TelemetryEvent['kind'], readonly string[]> = { session: ['tester', 'returning'], run: [], end: [] };
+/** Fields a kind may leave out: sent only by newer builds (ROADMAP 55) or only by older ones (`orientation`, ROADMAP 69). */
+const OPTIONAL_FIELDS: Record<TelemetryEvent['kind'], readonly string[]> = { session: ['tester', 'returning', 'orientation'], run: [], end: [] };
 
 const oneOf = <T>(list: readonly T[], value: unknown): value is T => list.includes(value as T);
 
@@ -46,12 +47,14 @@ export function parseEvent(text: string): TelemetryEvent | null {
   if (typeof record.session !== 'string' || !SESSION_ID_PATTERN.test(record.session)) return null;
   const event = record as unknown as TelemetryEvent;
   switch (event.kind) {
-    case 'session':
+    case 'session': {
+      const { orientation, ...session } = record;
       return typeof event.version === 'string' && VERSION_PATTERN.test(event.version) && oneOf(INPUTS, event.input) &&
-        oneOf(ORIENTATIONS, event.orientation) && oneOf(PLATFORMS, event.platform) && typeof event.kid === 'boolean' &&
-        isOptionalBoolean(event.tester) && isOptionalBoolean(event.returning)
-        ? event
+        (orientation === undefined || oneOf(ORIENTATIONS, orientation)) && oneOf(PLATFORMS, event.platform) &&
+        typeof event.kid === 'boolean' && isOptionalBoolean(event.tester) && isOptionalBoolean(event.returning)
+        ? (session as unknown as TelemetryEvent)
         : null;
+    }
     case 'run':
       return isStep(event.seconds, RUN_SECONDS_STEP, MAX_RUN_SECONDS) && oneOf(SCORE_BUCKETS, event.score) &&
         isStep(event.distance, DISTANCE_STEP_M, MAX_DISTANCE_M) && typeof event.kid === 'boolean'

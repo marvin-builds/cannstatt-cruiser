@@ -5,6 +5,7 @@
 
 export const EVENT_KINDS = ['session', 'run', 'end'] as const;
 export const INPUTS = ['touch', 'keys'] as const;
+/** Feedback only: the play statistics carry no orientation since ROADMAP 69 (old builds' value is ignored). */
 export const ORIENTATIONS = ['landscape', 'portrait'] as const;
 export const PLATFORMS = ['android', 'ios', 'other'] as const;
 /** Lower bounds of the score buckets. */

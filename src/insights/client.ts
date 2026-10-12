@@ -32,7 +32,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const isEntry = (v: unknown): v is CountEntry => isRecord(v) && typeof v.key === 'string' && isCount(v.count);
 const isEntries = (v: unknown): v is CountEntry[] => Array.isArray(v) && v.every(isEntry);
-const SPLITS = ['input', 'orientation', 'platform', 'kid', 'version', 'country', 'region', 'city'] as const;
+const SPLITS = ['input', 'platform', 'kid', 'version', 'country', 'region', 'city'] as const;
 
 function isDay(v: unknown): boolean {
   return isRecord(v) && typeof v.day === 'string' && isCount(v.sessions) && isCount(v.runs) && isCount(v.entries) && isCount(v.newPlayers) && isCount(v.returningVisits);

@@ -152,6 +152,8 @@ export default async function (t: PlaytestContext) {
     t.check('player names render as text', name.text.includes('<b>Kessel</b>') && name.tags === 0, name);
     const cities = await page.evaluate(() => [...document.querySelectorAll('.ranked li .rank-label')].map((n) => n.textContent));
     t.check('cities ranked with Andere last', cities.includes('Stuttgart') && cities.includes('Esslingen am Neckar') && cities.includes('Andere'), cities);
+    const splits = await page.evaluate(() => [...document.querySelectorAll('.split h3')].map((n) => n.textContent));
+    t.check('device splits without Hoch/Quer (ROADMAP 69)', splits.join() === 'Eingabe,System,Modus', splits);
     const width = await noHorizontalScroll(page);
     t.check('no horizontal scroll on the board', width.scroll <= width.client, width);
     await screenshot('board-7');

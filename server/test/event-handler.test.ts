@@ -12,7 +12,7 @@ const SESSION = '0123456789abcdef0123456789abcdef';
 const OTHER = 'fedcba9876543210fedcba9876543210';
 const CF = { country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart', colo: 'FRA', latitude: '48.78', asn: 3320 };
 
-const session = { kind: 'session', session: SESSION, version: '2026-10-11.1', input: 'touch', orientation: 'portrait', platform: 'android', kid: false };
+const session = { kind: 'session', session: SESSION, version: '2026-10-11.1', input: 'touch', platform: 'android', kid: false };
 const run = { kind: 'run', session: SESSION, seconds: 120, score: 500, distance: 1300, kid: false };
 const end = { kind: 'end', session: SESSION, seconds: 300 };
 
@@ -54,10 +54,15 @@ describe('POST /event stores valid events', () => {
     expect(rows()).toEqual([
       {
         id: 1, session: SESSION, kind: 'session', day: '2026-10-11', hour: 14, version: '2026-10-11.1', input: 'touch',
-        orientation: 'portrait', platform: 'android', kid: 0, country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart',
+        orientation: null, platform: 'android', kid: 0, country: 'DE', region: 'Baden-Württemberg', city: 'Stuttgart',
         seconds: null, score_bucket: null, distance_bucket: null, tester: 0, is_returning: null,
       },
     ]);
+  });
+
+  it('accepts a session with orientation from an old build but does not store it (ROADMAP 69)', async () => {
+    expect((await post({ ...session, orientation: 'portrait' })).status).toBe(204);
+    expect(rows('SELECT session, orientation FROM events')).toEqual([{ session: SESSION, orientation: null }]);
   });
 
   it('stores the session flags: tester 1/0 (omitted = 0), is_returning 1/0 (omitted = unknown, null)', async () => {
