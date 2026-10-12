@@ -254,6 +254,9 @@ export function createAudioSystem(options: AudioSystemOptions = {}): System {
         play('highFive');
         if (crowd.highFiveCheer(ctx.state.time)) play('cheerSmall', HIGH_FIVE.cheerIntensity, HIGH_FIVE.cheerDelay);
       });
+      // Missions (ROADMAP 52): a soft ding as one begins, a cheerful jingle when it is done.
+      bus.on('missionStart', () => play('missionStart'));
+      bus.on('missionDone', () => play('missionDone'));
       bus.on('grindStart', startGrind);
       bus.on('grindEnd', stopGrind);
       bus.on('pause', stopGrind);

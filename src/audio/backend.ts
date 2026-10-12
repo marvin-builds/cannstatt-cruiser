@@ -57,7 +57,9 @@ export type Cue =
   | 'fingerWhistle'
   | 'highFive'
   | 'scooter'
-  | 'pigeons';
+  | 'pigeons'
+  | 'missionStart'
+  | 'missionDone';
 
 /** Sounds that play until stopped. */
 export type LoopName = 'grind';

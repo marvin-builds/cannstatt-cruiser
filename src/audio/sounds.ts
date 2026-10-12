@@ -37,6 +37,7 @@ const N = {
   E5: 659.25,
   G5: 783.99,
   A5: 880.0,
+  Db6: 1108.73,
   D6: 1174.66,
   C6: 1046.5,
   E6: 1318.51,
@@ -445,6 +446,19 @@ export const SOUNDS: Record<Cue, Voice[]> = {
   // An e-scooter comes towards the skater (heard just before it is seen): a bright 'ring ring' of its
   // bell, then the electric motor's thin whine swelling in with rising pitch as it closes in, over a
   // soft tyre hiss, and dropping as it zips past.
+  // A mission begins: one soft, short bell 'ding' (sine with a quiet triangle under it).
+  missionStart: [
+    { wave: 'sine', at: 0, dur: 0.35, freq: N.E6, gain: 0.12 },
+    { wave: 'triangle', at: 0, dur: 0.2, freq: N.E5, gain: 0.06 },
+  ],
+  // A mission done: a cheerful rising A major arpeggio (A5, C#6, E6, A6) over a soft
+  // octave below, its top note ringing out with a bell; slower and in another key
+  // than the star, trick and stunt sounds.
+  missionDone: [
+    ...notes('square', [N.A5, N.Db6, N.E6, N.A6], 0.075, 0.08, 0.22),
+    ...notes('triangle', [N.A5, N.Db6, N.E6, N.A6], 0.075, 0.08, 0.22).map((v) => ({ ...v, freq: v.freq / 2 })),
+    { wave: 'sine', at: 0.225, dur: 0.45, freq: N.A6, gain: 0.1 },
+  ],
   scooter: [
     ...[0, 0.13].flatMap((at): Voice[] => [
       { wave: 'sine', at, dur: 0.12, freq: 2350, gain: 0.12, attack: 0.002 },
