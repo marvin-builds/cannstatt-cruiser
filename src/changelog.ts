@@ -33,6 +33,12 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Schönerer Dreh-Hinweis',
       'Aufgeräumtes Feedback-Fenster',
     ],
+    en: [
+      'A short landing keeps the combo',
+      'Fewer pretzels late in a run',
+      'Nicer rotate hint',
+      'Tidier feedback window',
+    ],
   },
   {
     version: '2026-10-12.3',
@@ -40,6 +46,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     items: [
       'Eigenes Feedback wieder löschen',
       'Mein Feedback dreht sich wieder mit',
+    ],
+    en: [
+      'Delete your own feedback',
+      'My feedback turns with you again',
     ],
   },
   {
@@ -52,6 +62,13 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Knöpfe nicht mehr unter der Kamera',
       'Weicher Wechsel nach dem Feedback',
     ],
+    en: [
+      'Fan crowds: jump over their heads!',
+      'Feedback: thank-you page after sending',
+      'Back button returns to the menu',
+      'Buttons no longer under the camera',
+      'Smooth switch after feedback',
+    ],
   },
   {
     version: '2026-10-12.1',
@@ -60,6 +77,11 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Kein Installier-Hinweis mehr in der App',
       'Großer Dreh-Hinweis im Hochformat',
       'Feedback tippen ohne Dreh-Hinweis',
+    ],
+    en: [
+      'No install hint inside the app',
+      'Big rotate hint in portrait',
+      'Type feedback without rotate hint',
     ],
   },
   {
@@ -73,6 +95,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'App installieren klappt wieder',
       'Weniger Ducken am Stück',
     ],
+    en: [
+      'My feedback: see what came of it',
+      'Red dot for news on your feedback',
+      'See what gets sent before sending',
+      'New gear for the settings',
+      'Installing the app works again',
+      'Less ducking in a row',
+    ],
   },
   {
     version: '2026-10-11.10',
@@ -82,6 +112,12 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Neu: Roller und Tauben auf der Straße',
       'Hindernis-Wellen mit Verschnaufpause',
       'Antwort auf dein Feedback im Spiel',
+    ],
+    en: [
+      'Stars now give points',
+      'New: scooters and pigeons',
+      'Obstacle waves with a breather',
+      'Replies to your feedback in the game',
     ],
   },
   {
@@ -95,11 +131,22 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Großes Feedback-Fenster im Hochformat',
       'Ton bleibt zuverlässig an',
     ],
+    en: [
+      'New obstacle combos on the street',
+      'Jump off heads: tap or hold',
+      'Up only over the ramp',
+      'The gear opens the settings',
+      'Big feedback window in portrait',
+      'Sound stays on reliably',
+    ],
   },
   {
     version: '2026-10-11.8',
     date: '2026-10-11',
     items: ['Datenschutz-Seite ergänzt'],
+    en: [
+      'Privacy page extended',
+    ],
   },
   {
     version: '2026-10-11.7',
@@ -109,6 +156,11 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Neu: Boardslide auf dem Geländer',
       'Updates kommen schneller an',
     ],
+    en: [
+      'More going on in the street',
+      'New: boardslide on the rail',
+      'Updates arrive faster',
+    ],
   },
   {
     version: '2026-10-11.6',
@@ -116,6 +168,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     items: [
       'Feedback-Fenster repariert',
       'Zum Tippen aufs Hochformat drehen',
+    ],
+    en: [
+      'Feedback window fixed',
+      'Turn to portrait for typing',
     ],
   },
   {
@@ -125,6 +181,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Feedback senden: Pause oder Startbild',
       'Größere Schrift im Hochformat',
     ],
+    en: [
+      'Send feedback: pause or title',
+      'Bigger text in portrait',
+    ],
   },
   {
     version: '2026-10-11.4',
@@ -133,6 +193,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Echtes High Five im NorDIY-Park',
       'High Five mit Klatsch und Jubel',
     ],
+    en: [
+      'Real high five in the NorDIY park',
+      'High five with clap and cheer',
+    ],
   },
   {
     version: '2026-10-11.3',
@@ -140,12 +204,18 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     items: [
       'Datenschutz-Seite im Spiel verlinkt',
     ],
+    en: [
+      'Privacy page linked in the game',
+    ],
   },
   {
     version: '2026-10-11.2',
     date: '2026-10-11',
     items: [
       'Anonyme Statistik (abschaltbar)',
+    ],
+    en: [
+      'Anonymous statistics (can opt out)',
     ],
   },
   {
@@ -155,6 +225,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Bestenliste: nur dein bester Lauf',
       'Kindermodus: eigener Rekord',
     ],
+    en: [
+      'Leaderboard: only your best run',
+      'Kid mode: its own record',
+    ],
   },
   {
     version: '2026-10-10.1',
@@ -163,6 +237,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Kindermodus-Knopf im Startbildschirm',
       'Eigenen Namen in der Bestenliste',
     ],
+    en: [
+      'Kid mode button on the title',
+      'Your own name on the leaderboard',
+    ],
   },
   {
     version: '2026-10-09.6',
@@ -170,6 +248,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     items: [
       'Wacklig oder entspannt: Flip schwerer',
       'Das Brett wackelt beim Flip',
+    ],
+    en: [
+      'Wobbly or relaxed: flips are harder',
+      'The board wobbles on a flip',
     ],
   },
   {
@@ -180,6 +262,11 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Kickflip über Hindernisse lohnt sich',
       'Zu spät geflippt, dann fällst du',
     ],
+    en: [
+      'Kickflip streaks give less',
+      'Kickflips over obstacles pay off',
+      'Flip too late and you fall',
+    ],
   },
   {
     version: '2026-10-09.4',
@@ -189,6 +276,12 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Rampe: selbst springen drücken',
       'Ohne Sprung rollst du drüber',
       'Hinweis zeigt, wann du springst',
+    ],
+    en: [
+      'Online leaderboard with trophy button',
+      'Ramp: press jump yourself',
+      'No jump and you roll over it',
+      'A hint shows when to jump',
     ],
   },
   {
@@ -202,11 +295,22 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'High Five behält deinen Gegenstand',
       'Kindermodus-Anzeige im Titel',
     ],
+    en: [
+      'Kickflip: swipe down in the air',
+      'Kickflip with big popup and sound',
+      'Title screen button in the corner',
+      'Hints stay longer',
+      'High five keeps your item',
+      'Kid mode shown on the title',
+    ],
   },
   {
     version: '2026-10-09.2',
     date: '2026-10-09',
     items: ['Neue Grind-Kombis mit Sternen'],
+    en: [
+      'New grind combos with stars',
+    ],
   },
   {
     version: '2026-10-09.1',
@@ -219,6 +323,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Musik aus der Boombox im Park',
       'Kleinere Hinweise am Handy hochkant',
     ],
+    en: [
+      'New NorDIY skatepark in Cannstatt',
+      'High five with E or the button',
+      'Session bonus for park tricks',
+      'Kickflip in the air with arrow down',
+      'Music from the boombox in the park',
+      'Smaller hints on phones in portrait',
+    ],
   },
   {
     version: '2026-10-08.8',
@@ -229,11 +341,20 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Neue Sounds für Sprünge und Combos',
       'Installieren-Hinweis schon beim Start',
     ],
+    en: [
+      'Stunt lines with ramps and combos',
+      'Upper level to grind in every zone',
+      'New sounds for jumps and combos',
+      'Install hint right at the start',
+    ],
   },
   {
     version: '2026-10-08.7',
     date: '2026-10-08',
     items: ['Ton startet am Handy zuverlässiger'],
+    en: [
+      'Sound starts more reliably on phones',
+    ],
   },
   {
     version: '2026-10-08.6',
@@ -242,6 +363,11 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Fahnen hängen jetzt nach unten',
       'Jede Fahne nur noch einmal',
       'Autos klingen beim Vorbeifahren',
+    ],
+    en: [
+      'Flags now hang down',
+      'Each flag only once',
+      'Cars sound as they pass',
     ],
   },
   {
@@ -254,6 +380,13 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Kein Dauerbrummen außerhalb Mitte',
       'Aufgeräumter Titel am Handy',
     ],
+    en: [
+      'Kid mode without a maths question',
+      'Less empty street during effects',
+      'Update hint also after app switch',
+      'No constant hum outside Mitte',
+      'Tidier title on phones',
+    ],
   },
   {
     version: '2026-10-08.4',
@@ -263,6 +396,12 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Leiser Verkehr auch außerhalb Mitte',
       'Neue Fahnen an zwei Häusern',
       'Aufgeräumte Menüs am Handy',
+    ],
+    en: [
+      'Higher top speed',
+      'Quiet traffic outside Mitte too',
+      'New flags on two houses',
+      'Tidier menus on phones',
     ],
   },
   {
@@ -276,6 +415,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Mehr Verkehr, neue Quelle am Neckar',
       'Hinweis zum Grind-Trick',
     ],
+    en: [
+      '"Reload" button for a new version',
+      'Pause: logo and back to title',
+      'People you hit drop their things',
+      'Landing on people is easier',
+      'More traffic, new spring at the Neckar',
+      'Hint for the grind trick',
+    ],
   },
   {
     version: '2026-10-08.2',
@@ -288,6 +435,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Dunklere Haare',
       'Hinweis auf neue Version',
     ],
+    en: [
+      'Use caught things (E / button)',
+      'Pretzel and heart give life',
+      'Throw the ball and hit people',
+      'Grind trick with arrow down',
+      'Darker hair',
+      'Hint about a new version',
+    ],
   },
   {
     version: '2026-10-08.1',
@@ -299,6 +454,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Bank-Grind am hinteren Rand',
       'Crash in die Mülltonne',
       'Verkehr in Mitte, Quelle am Neckar',
+    ],
+    en: [
+      'Start in Bad Cannstatt',
+      'Smoother picture',
+      'Bigger gaps to jump',
+      'Bench grind at the back edge',
+      'Crash into the bin',
+      'Traffic in Mitte, spring at the Neckar',
     ],
   },
 ];
