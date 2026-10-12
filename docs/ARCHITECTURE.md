@@ -27,7 +27,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   scaling.ts            computeLayout() (scale + adaptive view width), screenToView() (pure math)
   sprite-data.ts        parseSprite(), rowsFromString() (pure)
   sprite.ts             Sprite / sprite(): palette + string art -> cached canvases, frames, flip
-  font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation, ×), measureText()
+  font-data.ts          bitmap font glyphs (A-Z a-z ÄÖÜäöüß 0-9 punctuation incl. German quotes „ “, ×), measureText()
   font.ts               drawText(g, text, x, y, {color, scale, align, shadow}); glyphs cached per colour
   rng.ts                Rng (mulberry32): next/range/int/pick/chance
   events.ts             EventBus<E>: on/onAny/emit
@@ -70,7 +70,8 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/street.ts    what counts as something to react to on the street (shared by the quiet cap and quiet-time.ts)
   gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line or the park (ROADMAP 52)
   gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
-  gameplay/star-arcs.ts star points (ROADMAP 65): STAR_POINTS 10 per star and STAR_ARC_BONUS 50 for a whole arc in one flight (both x multiplier, via addPoints, so stars never start or break a combo); asArc / linkArcs tag a pattern's stars with a run-wide arc id and size (data.arc, data.arcSize); StarArcs tracks the arc in progress (a street landing or a new run cancels it). A jump-arc pattern or combo guide line is one arc; stunt lines and the park get one arc per kicker-to-kicker stretch
+  gameplay/star-arcs.ts star points (ROADMAP 65): STAR_POINTS 10 per star and STAR_ARC_BONUS 50 for a whole arc in one flight (both x multiplier, via addPoints, so stars never start or break a combo); asArc / linkArcs tag a pattern's stars with a run-wide arc id and size (data.arc, data.arcSize); StarArcs tracks the arc in progress (a street landing or a new run cancels it), and a whole arc emits `starArc`. A jump-arc pattern or combo guide line is one arc; stunt lines and the park get one arc per kicker-to-kicker stretch
+  gameplay/combo-grace.ts  ComboGrace (ROADMAP 52 point 10): a street touch of up to COMBO_GRACE_SECONDS (0.3) after a landing keeps combo and multiplier, staying longer ends it; a crash ends it at once
   gameplay/mixes.ts     combination templates from tier 2 on (ROADMAP 52 6a): jump+duck mixes, rail sandwiches, people inside combinations, route choices, 4-5 element chains at tier 3
   gameplay/pattern-log.ts  small log of laid patterns (spawner onSpawn), for the debug hook patterns()
   gameplay/variety.ts   variety meter: templates laid, elements per pattern, distinct templates per ride
@@ -82,7 +83,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/crowd-tag.ts CROWD_KEY / crowdOf(): the `data.crowd` tag of a crowd's fans, without importing the planner
   gameplay/crowd-watch.ts CrowdWatch: emits crowdAhead once per crowd when its first fan comes on screen
   gameplay/crowd-art.ts drawCrowdFan(): chanting VfB fans with scarves and a flag, swaying Wasen visitors with Lebkuchenherzen, a shaded second row
-  ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
+  ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"), PopupFeed.listen(bus) subscribes the popup-only events; ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
   ui/item-button.ts     touch item button (landscape top right, portrait under the stats plate) / desktop "E" chip, first-catch hint (storage key itemHintSeen, itemHintRect, popupCeiling)
   ui/drunk-look.ts      drunk HUD row and woozy screen (two swaying double images, pulsing wash, vignette); ui/item-look.ts catch popups
@@ -366,7 +367,8 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
 | `obstacleCleared` | `{entityId, kind, points}` | gameplay |
 | `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu wacklig!" (drunk), "Zu entspannt!" (chilled) or "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
-| `starCollected` | `{entityId, stars}` | gameplay (followed in the same tick by the star's `scoreChanged`, and by a second one for a completed arc's bonus, see `gameplay/star-arcs.ts`) |
+| `starCollected` | `{entityId, stars}` | gameplay (followed in the same tick by the star's `scoreChanged`, and for a completed arc by the bonus's `scoreChanged` and `starArc`, see `gameplay/star-arcs.ts`) |
+| `starArc` | `{stars, points}` | gameplay (every star of an arc taken in one flight; emitted right after the arc bonus's `scoreChanged`; `stars` = the arc's star count, `points` = the bonus added, times the multiplier; the ui shows "Sternenbogen! +points") |
 | `chillStart` | `{entityId, duration}` | gameplay (joint, or bubble gum in kid mode, picked up; `state.chillTimer = duration`) |
 | `stomp` | `{entityId, kind, item}` | gameplay (the falling skater landed on a person's head; the player bounces on the next tick, or head jumps with a buffered press, ROADMAP 60) |
 | `itemCaught` | `{item}` | gameplay (the tossed item reached the hands, or a [dropped item](#dropped-items) was picked up; `state.carriedItem = item`) |
@@ -952,8 +954,7 @@ All UI plates (HUD, buttons, zone banner, pause prompt, panels) are opaque.
 At most 3 popups show at once. A repeat of a live popup merges into it
 ("Autsch! x3"); a popup with points sums them instead, so stars in quick
 succession show one "Stern! +50". A completed star arc shows an orange
-"Sternenbogen! +N" (the feed tells it from the `scoreChanged` right after a
-star's own points whose delta is `STAR_ARC_BONUS` x multiplier). Events of one tick are collected by `ui/popup-feed.ts` and
+"Sternenbogen! +N" from the `starArc` event. Events of one tick are collected by `ui/popup-feed.ts` and
 flushed once per tick, so events that belong together become one popup:
 a stomp with the points of its `obstacleCleared` "Stomp! +150" (a ball hit
 "Treffer!", merged the same way with an `obstacleCleared` of the same person;
@@ -1019,7 +1020,9 @@ enough for friends and family.
   `PX_PER_METRE` or gives more points must update `server/src/plausibility.ts`
   (and its tests) and redeploy the worker**, otherwise real runs come back as
   `422 implausible`. The server does not import from `src/`, so nothing
-  catches this automatically.
+  catches this automatically. Example: the combo grace (ROADMAP 52 point 10)
+  lets a skilled player hold x5 from obstacle to obstacle, so
+  `MAX_POINTS_PER_METRE` rose from 80 to 120.
 
 ### Client (`src/net/` + `src/ui/`, owned by the ui slice)
 
@@ -1114,7 +1117,11 @@ hidden page `insights.html` shows aggregates to the owner.
   `server/test/insights-types.test.ts`). Change all of them together.
 - **Events** (`POST /event`, JSON as `text/plain`, at most 1 KB):
   - `session` once per page load on the first title screen: version,
-    touch/keys, landscape/portrait, platform (`state.install.platform`), kid.
+    touch/keys, platform (`state.install.platform`), kid. No orientation
+    since ROADMAP 69: the worker still accepts a valid `orientation` from old
+    builds but drops it (`events.orientation` stays `NULL` for new rows; the
+    column is kept, no migration), `GET /stats` has no orientation split and
+    the board no "Lage" split. Feedback still records the orientation.
   - `run` on game over: run seconds (10 s steps), score bucket, distance in
     100 m steps, kid. Coarse on purpose, so a run cannot be matched to a named
     highscore entry.
@@ -1284,7 +1291,11 @@ canvas: the logo, a large pixel-art phone (`ROTATE_PHONE`, `ROTATE_ARROW` in
 `ui/art.ts`, integer scale, `image-rendering: pixelated`) that turns from
 upright to sideways in a loop (still under `prefers-reduced-motion`), the
 title, the reason ("Im Querformat fährt es sich besser.") and a "Trotzdem
-weiter" button; a tap anywhere or Esc dismisses it too.
+weiter" button; a tap anywhere or Esc dismisses it too. The arrow sits
+above the phone, as wide as the turning phone's square box, so both share
+one centre line; the phone has a symmetric frame (equal bezels above and
+below the screen), and the button grows with the screen height on tablets
+(`rotateButtonPx`).
 
 - **One rule** (`ui/rotate-screen.ts`, pure): `uiScreen()` names the screen
   on top (install steps, settings, feedback, Bestenliste / name entry, "Neu
@@ -1340,7 +1351,11 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   goes back a page, then closes); results sent / rate
   (429) / invalid (400/413) / offline, the text is kept unless sent. A sent
   report keeps the dialog open (ROADMAP 75), see Mein Feedback. In phone
-  landscape the log toggle gets its own 2x row above the buttons; in portrait
+  landscape the log toggle gets its own 2x row above the buttons; at a 320 px
+  view the whole label takes that row alone and "Ansehen" moves into the
+  bottom row left of "Senden" (`feedback-layout.ts` `placeLog`, before the
+  label is shortened). `tabDot()` places the red dot on "Mein Feedback" clear
+  of the label and the tab border; in portrait
   the counter sits in the title row and all notes are 2x.
 - **Portrait menus:** at 1 CSS px per view px, notes and labels in the
   feedback form, the Bestenliste (heading beside the close button, statistics
@@ -1483,7 +1498,8 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   details page has "Löschen" in a bottom row; it opens the page `confirm`
   ("Wirklich löschen?", `BACK.confirm = 'detail'`) with the report text and
   "Abbrechen" / "Ja, löschen" (red), the same in the portrait sheet (focus
-  moves between "Löschen" and "Abbrechen"). `feedback-flow.ts` adds
+  moves between "Löschen" and "Abbrechen"; there "Wirklich löschen?", the
+  text and the buttons sit as one block centred in the free space). `feedback-flow.ts` adds
   `askDelete()`, `confirmDelete()` (one request at a time; back and close
   wait), `deleteState`, `deleteMessage` and `listNote`; after a delete the
   list shows "Feedback gelöscht" (it wins over the thanks). Esc, "Zurück",
@@ -1517,7 +1533,11 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   (`addTrick` with the person's points) and gameplay emits `stomp {entityId,
   kind, item}`. The item comes from `items.ts`: fans a football; Wasen
   visitors by `data.prop` a Maßkrug (`beer`; in kid mode `gingerbread`) or a
-  Brezel (`pretzel`), so kid mode never yields beer; a fan crowd's Wasen
+  Brezel (`pretzel`), so kid mode never yields beer. In adult mode the
+  Brezel share drops from 1/2 to 1/4 between `LATE_HEAL_FROM_SECONDS` (180)
+  and `LATE_HEAL_FULL_SECONDS` (240) of riding (`brezelShare`, ROADMAP 52
+  point 8; the spawner maps the seconds to street distance with
+  `lateHealRamp`); kid mode keeps 1/2; a fan crowd's Wasen
   visitors always toss a Lebkuchenherz, in every mode. People carry their
   item visibly before the stomp.
 - **Bounce** (player): on the next tick `vy = -STOMP_BOUNCE_VELOCITY`, like a
