@@ -25,6 +25,20 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-12.5',
+    date: '2026-10-12',
+    items: [
+      'Englisch: DE | EN im Startbild',
+      'Kleine Missionen während der Fahrt',
+      'Mit allen Herzen wird es voller',
+    ],
+    en: [
+      'English: DE | EN on the title',
+      'Small missions while you ride',
+      'With all hearts it gets busier',
+    ],
+  },
+  {
     version: '2026-10-12.4',
     date: '2026-10-12',
     items: [
