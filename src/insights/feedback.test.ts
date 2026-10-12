@@ -18,6 +18,8 @@ const entry = (id: number, day: string, kind: TriagedFeedbackEntry['kind'], stat
   issue: null,
   reply: null,
   doneVersion: null,
+  issueState: null,
+  issueClosedDay: null,
 });
 
 describe('filterFeedback', () => {
@@ -29,13 +31,15 @@ describe('filterFeedback', () => {
     expect(filterFeedback(entries, 'bug').map((e) => e.id)).toEqual([2, 1]);
     expect(filterFeedback(entries, 'idea').map((e) => e.id)).toEqual([3]);
   });
-  it('keeps only one status, combined with the kind', () => {
-    const triaged = [...entries, entry(4, '2026-10-11', 'bug', 'todo'), entry(5, '2026-10-10', 'idea', 'rejected')];
-    expect(filterFeedback(triaged, 'all', 'open').map((e) => e.id)).toEqual([3, 2, 1]);
-    expect(filterFeedback(triaged, 'all', 'todo').map((e) => e.id)).toEqual([4]);
-    expect(filterFeedback(triaged, 'bug', 'rejected')).toEqual([]);
-    expect(filterFeedback(triaged, 'idea', 'rejected').map((e) => e.id)).toEqual([5]);
-    expect(filterFeedback(triaged, 'all', 'all')).toHaveLength(5);
+  it('keeps only the chosen statuses, combined with the kind', () => {
+    const triaged = [...entries, entry(4, '2026-10-11', 'bug', 'todo'), entry(5, '2026-10-10', 'idea', 'rejected'), entry(6, '2026-10-10', 'idea', 'done')];
+    expect(filterFeedback(triaged, 'all', ['open']).map((e) => e.id)).toEqual([3, 2, 1]);
+    expect(filterFeedback(triaged, 'all', ['todo']).map((e) => e.id)).toEqual([4]);
+    expect(filterFeedback(triaged, 'all', ['open', 'todo']).map((e) => e.id)).toEqual([4, 3, 2, 1]);
+    expect(filterFeedback(triaged, 'bug', ['rejected'])).toEqual([]);
+    expect(filterFeedback(triaged, 'idea', ['rejected', 'done']).map((e) => e.id)).toEqual([6, 5]);
+    expect(filterFeedback(triaged, 'all', [])).toEqual([]);
+    expect(filterFeedback(triaged, 'all')).toHaveLength(6);
   });
   it('does not change the input', () => {
     filterFeedback(entries, 'all');
@@ -72,5 +76,12 @@ describe('sampleFeedback', () => {
     expect(new Set(list.map((e) => e.kind))).toEqual(new Set(['bug', 'idea']));
     expect(list.some((e) => e.status === 'todo' && e.issue !== null)).toBe(true);
     expect(list.some((e) => e.status === 'rejected' && e.reply)).toBe(true);
+  });
+  it('covers every issue state and a ticket in each status for the board playtests', () => {
+    const list = sampleFeedback();
+    expect(new Set(list.map((e) => e.status))).toEqual(new Set(['open', 'todo', 'done', 'rejected']));
+    expect(new Set(list.filter((e) => e.issue !== null).map((e) => e.issueState))).toEqual(new Set(['open', 'completed', 'notPlanned', 'missing']));
+    expect(list.every((e) => (e.issue === null) === (e.issueState === null))).toBe(true);
+    expect(list.every((e) => (e.issueState === 'completed' || e.issueState === 'notPlanned') === (e.issueClosedDay !== null))).toBe(true);
   });
 });

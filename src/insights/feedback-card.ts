@@ -1,33 +1,35 @@
 /**
- * The full-width 'Feedback' card: player bug reports and ideas, newest first,
- * with kind and status filters and the triage actions per item (ROADMAP 56).
- * Player text only ever goes in as text nodes.
+ * The 'Feedback' card of the Feedback tab: player bug reports and ideas, newest first, with the kind filter,
+ * the status chips (ROADMAP 80), the linked issue with its GitHub state (ROADMAP 82) and the ticket actions
+ * per item (ROADMAP 83). Player text only ever goes in as text nodes.
  */
 import { h } from './dom';
 import { FEEDBACK_FILTERS, type FeedbackFilter, feedbackCount, filterFeedback, kindLabel, logSummary, metaLine } from './feedback';
 import { type TriageActions, triageControls, type TriageOutcome } from './feedback-triage-ui';
 import { formatDate } from './format';
-import { issueUrl, logNote, STATUS_FILTERS, type StatusFilter, statusText } from './triage';
-import type { TriagedFeedbackEntry } from './triage-types';
+import { issueStateText, readyToClose } from './ticket-actions';
+import { issueUrl, logNote, STATUS_CHIPS, statusText, toggleStatus } from './triage';
+import type { FeedbackStatus, TriagedFeedbackEntry } from './triage-types';
 
 export interface FeedbackView {
   /** null: GET /feedback failed (older worker, server error, offline). */
   entries: TriagedFeedbackEntry[] | null;
   filter: FeedbackFilter;
-  status: StatusFilter;
+  /** The status chips that are on. */
+  statuses: readonly FeedbackStatus[];
 }
 
 export interface FeedbackHandlers extends TriageActions {
-  onFilter(filter: FeedbackFilter, status: StatusFilter): void;
+  onFilter(filter: FeedbackFilter, statuses: readonly FeedbackStatus[]): void;
   /** The list after a triage action succeeded (changed or removed entry). */
   onEntries(entries: TriagedFeedbackEntry[]): void;
 }
 
-/** 'Geplant #12' as a link to the issue, else the status ('Erledigt in 2026-10-12.1') as a badge. */
-function statusBadge(entry: TriagedFeedbackEntry): HTMLElement {
-  const label = statusText(entry);
-  if (entry.issue === null) return h('span', { class: `fb-status ${entry.status}` }, label);
-  return h('a', { class: `fb-status ${entry.status}`, href: issueUrl(entry.issue), target: '_blank', rel: 'noopener noreferrer' }, `${label} #${entry.issue}`);
+/** The linked issue with its state ('#7 · erledigt am 12.10.') as a link, or nothing. */
+function issueLink(entry: TriagedFeedbackEntry): HTMLElement | null {
+  const text = issueStateText(entry);
+  if (entry.issue === null || text === null) return null;
+  return h('a', { class: `fb-issue ${entry.issueState ?? ''}`.trim(), href: issueUrl(entry.issue), target: '_blank', rel: 'noopener noreferrer' }, text);
 }
 
 function item(entry: TriagedFeedbackEntry, handlers: FeedbackHandlers, outcome: TriageOutcome): HTMLElement {
@@ -42,7 +44,9 @@ function item(entry: TriagedFeedbackEntry, handlers: FeedbackHandlers, outcome: 
       'div',
       { class: 'fb-head' },
       h('span', { class: `fb-kind ${entry.kind}` }, kindLabel(entry.kind)),
-      statusBadge(entry),
+      h('span', { class: `fb-status ${entry.status}` }, statusText(entry)),
+      issueLink(entry),
+      readyToClose(entry) ? h('span', { class: 'fb-ready' }, 'bereit zum Abschließen') : null,
       withLog ? h('span', { class: 'fb-has-log' }, withLog) : null,
       h('time', { datetime: entry.day }, formatDate(entry.day)),
     ),
@@ -61,7 +65,7 @@ export function feedbackCard(view: FeedbackView, handlers: FeedbackHandlers): HT
     return card;
   }
   let entries = view.entries;
-  let { filter, status } = view;
+  let { filter, statuses } = view;
   const content = h('div', { class: 'fb-body' });
 
   const outcome: TriageOutcome = {
@@ -78,7 +82,7 @@ export function feedbackCard(view: FeedbackView, handlers: FeedbackHandlers): HT
   };
 
   function render(): void {
-    const shown = filterFeedback(entries, filter, status);
+    const shown = filterFeedback(entries, filter, statuses);
     const count = h('p', { class: 'card-note fb-count', 'aria-live': 'polite' }, feedbackCount(shown.length));
     if (!shown.length) {
       content.replaceChildren(count, h('p', { class: 'empty-note' }, entries.length ? 'Kein Feedback in diesem Filter' : 'Noch kein Feedback'));
@@ -93,19 +97,19 @@ export function feedbackCard(view: FeedbackView, handlers: FeedbackHandlers): HT
       for (const b of kinds) b.setAttribute('aria-pressed', String(b === button));
       filter = value;
       render();
-      handlers.onFilter(filter, status);
+      handlers.onFilter(filter, statuses);
     });
     return button;
   });
-  const statuses = h(
-    'select',
-    { class: 'fb-status-filter', 'aria-label': 'Status filtern' },
-    ...STATUS_FILTERS.map(({ value, label }) => h('option', { value, selected: value === status }, label)),
-  );
-  statuses.addEventListener('change', () => {
-    status = STATUS_FILTERS.find((f) => f.value === statuses.value)?.value ?? 'all';
-    render();
-    handlers.onFilter(filter, status);
+  const chips = STATUS_CHIPS.map(({ value, label }) => {
+    const chip = h('button', { type: 'button', class: `chip ${value}`, 'aria-pressed': String(statuses.includes(value)) }, label);
+    chip.addEventListener('click', () => {
+      statuses = toggleStatus(statuses, value);
+      chip.setAttribute('aria-pressed', String(statuses.includes(value)));
+      render();
+      handlers.onFilter(filter, statuses);
+    });
+    return chip;
   });
   render();
   card.append(
@@ -113,7 +117,12 @@ export function feedbackCard(view: FeedbackView, handlers: FeedbackHandlers): HT
       'div',
       { class: 'fb-top' },
       h('h2', {}, 'Feedback'),
-      h('div', { class: 'fb-filters' }, h('div', { class: 'segmented', role: 'group', 'aria-label': 'Feedback filtern' }, ...kinds), statuses),
+      h(
+        'div',
+        { class: 'fb-filters' },
+        h('div', { class: 'segmented', role: 'group', 'aria-label': 'Art filtern' }, ...kinds),
+        h('div', { class: 'chips', role: 'group', 'aria-label': 'Status filtern' }, ...chips),
+      ),
     ),
     content,
   );

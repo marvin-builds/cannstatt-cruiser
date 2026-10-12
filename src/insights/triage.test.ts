@@ -3,7 +3,7 @@ import { VERSION_PATTERN } from '../../server/src/events';
 import * as server from '../../server/src/feedback-triage-rules';
 import { sampleFeedback } from './sample-feedback';
 import {
-  STATUS_FILTERS, issueBody, issueTitle, issueUrl, logNote, logSection, parseDoneVersion, statusLabel, statusText, toggleLog, triageErrorText,
+  DEFAULT_STATUSES, STATUS_CHIPS, issueBody, issueTitle, issueUrl, parseIssueNumber, logNote, logSection, parseDoneVersion, statusLabel, statusText, toggleLog, toggleStatus, triageErrorText,
 } from './triage';
 import * as rules from './triage-types';
 import type { TriagedFeedbackEntry } from './triage-types';
@@ -13,6 +13,8 @@ const [idea, bugWithLog, longBug, markupIdea] = sampleFeedback() as [TriagedFeed
 describe('triage rules', () => {
   it('match the worker', () => {
     expect(rules.FEEDBACK_STATUSES).toEqual(server.FEEDBACK_STATUSES);
+    expect(rules.ISSUE_STATES).toEqual(server.ISSUE_STATES);
+    expect(rules.ISSUE_STATES).toEqual(['open', 'completed', 'notPlanned', 'missing']);
     expect(rules.ISSUE_REPO).toBe(server.ISSUE_REPO);
     expect(rules.MIN_ISSUE_TITLE).toBe(server.MIN_ISSUE_TITLE);
     expect(rules.MAX_ISSUE_TITLE).toBe(server.MAX_ISSUE_TITLE);
@@ -39,6 +41,7 @@ describe('statusText', () => {
     expect(statusText({ status: 'done', doneVersion: '2026-10-12.1' })).toBe('Erledigt in 2026-10-12.1');
     expect(statusText({ status: 'done', doneVersion: null })).toBe('Erledigt');
     expect(statusText({ status: 'todo', doneVersion: null })).toBe('Geplant');
+    expect(statusText({ status: 'open', doneVersion: null })).toBe('Neu');
   });
 });
 
@@ -49,16 +52,41 @@ describe('logNote', () => {
   });
 });
 
-describe('statusLabel and STATUS_FILTERS', () => {
-  it('names every status in German (todo as Geplant, like the game), with Alle first in the filter', () => {
-    expect(rules.FEEDBACK_STATUSES.map(statusLabel)).toEqual(['Offen', 'Geplant', 'Erledigt', 'Abgelehnt']);
-    expect(STATUS_FILTERS.map((f) => f.label)).toEqual(['Alle Status', 'Offen', 'Geplant', 'Erledigt', 'Abgelehnt']);
+describe('statusLabel and the status chips', () => {
+  it('names every status in German (open as Neu, todo as Geplant, like the game)', () => {
+    expect(rules.FEEDBACK_STATUSES.map(statusLabel)).toEqual(['Neu', 'Geplant', 'Erledigt', 'Abgelehnt']);
+    expect(STATUS_CHIPS).toEqual([
+      { value: 'open', label: 'Neu' }, { value: 'todo', label: 'Geplant' }, { value: 'done', label: 'Erledigt' }, { value: 'rejected', label: 'Abgelehnt' },
+    ]);
+  });
+  it('shows Neu and Geplant by default', () => {
+    expect(DEFAULT_STATUSES).toEqual(['open', 'todo']);
+  });
+  it('toggles one status, keeping the chip order', () => {
+    expect(toggleStatus(['open', 'todo'], 'todo')).toEqual(['open']);
+    expect(toggleStatus(['todo'], 'open')).toEqual(['open', 'todo']);
+    expect(toggleStatus(['open', 'todo'], 'rejected')).toEqual(['open', 'todo', 'rejected']);
+    expect(toggleStatus(['done'], 'done')).toEqual([]);
   });
 });
 
 describe('issueUrl', () => {
   it('links into the public repo', () => {
     expect(issueUrl(12)).toBe('https://github.com/marvinmai/cannstatt-cruiser/issues/12');
+  });
+});
+
+describe('parseIssueNumber', () => {
+  it('reads 12, #12 and an issue link of the repo', () => {
+    expect(parseIssueNumber('12')).toBe(12);
+    expect(parseIssueNumber(' #7 ')).toBe(7);
+    expect(parseIssueNumber('https://github.com/marvinmai/cannstatt-cruiser/issues/31')).toBe(31);
+    expect(parseIssueNumber(issueUrl(5) + '#issuecomment-1')).toBe(5);
+  });
+  it('rejects anything else', () => {
+    for (const raw of ['', '0', '-3', '1.5', 'abc', '#', '12a', '99999999999999999999', 'https://github.com/someone/else/issues/3']) {
+      expect(parseIssueNumber(raw), raw).toBeNull();
+    }
   });
 });
 
@@ -132,6 +160,8 @@ describe('triageErrorText', () => {
     expect(triageErrorText({ error: 'github', status: 401 })).toBe('GitHub-Token ungültig, neu setzen');
     expect(triageErrorText({ error: 'exists', issue: 5 })).toBe('Hat schon Issue #5.');
     expect(triageErrorText({ error: 'auth' })).toBe('Token falsch');
+    expect(triageErrorText({ error: 'issue-not-found' })).toBe('Dieses Issue gibt es nicht (Nummer prüfen).');
+    expect(triageErrorText({ error: 'no-issue' })).toBe('Ohne Issue geht das nicht: erst ein Issue verknüpfen.');
     for (const error of ['offline', 'server', 'not-found', 'bad-request'] as const) expect(triageErrorText({ error })).not.toBe('');
   });
 });

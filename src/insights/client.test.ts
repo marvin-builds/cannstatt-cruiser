@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../net/api';
 import { SCORES_URL } from '../net/api';
 import { ALL_RANGE } from '../net/telemetry-types';
-import { apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, patchFeedback } from './client';
+import { apiBase, createIssue, createSession, createTesterPass, deleteFeedback, fetchFeedback, fetchStats, isFeedbackList, isInsightsStats, linkIssue, patchFeedback } from './client';
 import { sampleFeedback } from './sample-feedback';
 import { sampleStats } from './sample-stats';
 
@@ -149,13 +149,21 @@ describe('feedback triage fields', () => {
     ['a string issue', { issue: '12' }],
     ['a non-string reply', { reply: 3 }],
     ['a non-string doneVersion', { doneVersion: 20261012 }],
+    ['an unknown issue state', { issue: 3, issueState: 'closed' }],
+    ['a non-string issue closed day', { issueClosedDay: 12 }],
   ])('rejects %s', (_, triage) => {
     expect(isFeedbackList({ entries: [{ ...entry, ...triage }] })).toBe(false);
   });
-  it('reads entries of a worker without triage as open, without issue, reply or version', async () => {
-    const { status: _s, issue: _i, reply: _r, doneVersion: _v, ...old } = entry;
+  it('accepts the issue state and the day it was closed', () => {
+    expect(isFeedbackList({ entries: [{ ...entry, status: 'todo', issue: 7, issueState: 'completed', issueClosedDay: '2026-10-12' }] })).toBe(true);
+    expect(isFeedbackList({ entries: [{ ...entry, issue: null, issueState: null, issueClosedDay: null }] })).toBe(true);
+  });
+  it('reads entries of a worker without triage as open, without issue, reply, version or issue state', async () => {
+    const { status: _s, issue: _i, reply: _r, doneVersion: _v, issueState: _is, issueClosedDay: _ic, ...old } = entry;
     const result = await fetchFeedback(fakeFetch(200, { entries: [old] }), { base: 'http://x', token: 'a' });
-    expect(result).toEqual({ ok: true, entries: [{ ...old, status: 'open', issue: null, reply: null, doneVersion: null }] });
+    expect(result).toEqual({
+      ok: true, entries: [{ ...old, status: 'open', issue: null, reply: null, doneVersion: null, issueState: null, issueClosedDay: null }],
+    });
   });
 });
 
@@ -186,7 +194,47 @@ describe('createIssue', () => {
   });
 });
 
+describe('createIssue with the player message (ROADMAP 83)', () => {
+  it('sends the reply with the draft', async () => {
+    const calls: Call[] = [];
+    const draft = { title: 'Idee: Hunde', body: '> Hunde', reply: 'Geplant!' };
+    await createIssue(fakeFetch(201, { ok: true, issue: 12 }, calls), { base: 'http://x', token: 'abc', id: 14, draft });
+    expect(JSON.parse(calls[0]!.body!)).toEqual(draft);
+  });
+});
+
+describe('linkIssue', () => {
+  const link = { issue: 7, reply: 'Ist schon geplant!' };
+  it('posts the issue number and reply to /feedback/:id/link and returns the issue with its state', async () => {
+    const calls: Call[] = [];
+    const answer = { ok: true, issue: 7, issueState: 'notPlanned', issueClosedDay: '2026-10-09' };
+    const result = await linkIssue(fakeFetch(200, answer, calls), { base: 'http://x', token: 'abc', id: 14, link });
+    expect(calls).toEqual([
+      { url: 'http://x/feedback/14/link', method: 'POST', headers: { Authorization: 'Bearer abc', 'Content-Type': 'application/json' }, body: JSON.stringify(link) },
+    ]);
+    expect(result).toEqual({ ok: true, issue: 7, issueState: 'notPlanned', issueClosedDay: '2026-10-09' });
+  });
+  it('maps issue-not-found, an existing issue, GitHub failures and broken answers', async () => {
+    const request = { base: 'http://x', token: 'a', id: 1, link };
+    expect(await linkIssue(fakeFetch(422, { ok: false, error: 'issue-not-found' }), request)).toEqual({ ok: false, error: 'issue-not-found' });
+    expect(await linkIssue(fakeFetch(409, { ok: false, error: 'exists', issue: 5 }), request)).toEqual({ ok: false, error: 'exists', issue: 5 });
+    expect(await linkIssue(fakeFetch(502, { ok: false, error: 'github', status: 0 }), request)).toEqual({ ok: false, error: 'github', status: 0 });
+    expect(await linkIssue(fakeFetch(404, { ok: false, error: 'not-found' }), request)).toEqual({ ok: false, error: 'not-found' });
+    expect(await linkIssue(fakeFetch(200, { ok: true, issue: 7, issueState: 'shut', issueClosedDay: null }), request)).toEqual({ ok: false, error: 'server' });
+    expect(await linkIssue(fakeFetch(200, { ok: true }), request)).toEqual({ ok: false, error: 'server' });
+  });
+});
+
 describe('patchFeedback', () => {
+  it('returns the issue state when the worker sends it', async () => {
+    const answer = { ok: true, status: 'todo', issue: 4, reply: null, doneVersion: null, issueState: 'completed', issueClosedDay: '2026-10-05' };
+    const result = await patchFeedback(fakeFetch(200, answer), { base: 'http://x', token: 'a', id: 3, patch: { status: 'todo' } });
+    expect(result).toEqual({ ok: true, triage: { status: 'todo', issue: 4, reply: null, doneVersion: null, issueState: 'completed', issueClosedDay: '2026-10-05' } });
+  });
+  it('maps 409 no-issue (Geplant without an issue)', async () => {
+    const result = await patchFeedback(fakeFetch(409, { ok: false, error: 'no-issue' }), { base: 'http://x', token: 'a', id: 3, patch: { status: 'todo' } });
+    expect(result).toEqual({ ok: false, error: 'no-issue' });
+  });
   it('sends only the given fields and returns the triage fields', async () => {
     const calls: Call[] = [];
     const answer = { ok: true, status: 'rejected', issue: null, reply: 'Zu schwer' };

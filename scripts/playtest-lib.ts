@@ -4,7 +4,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Browser, BrowserContext, BrowserContextOptions, CDPSession, Page } from 'playwright';
+import { type Browser, type BrowserContext, type BrowserContextOptions, type CDPSession, firefox, type Page } from 'playwright';
 import { build, preview, type PreviewServer } from 'vite';
 import { PLAYER_X } from '../src/core/config';
 import { SCORES_URL } from '../src/net/api';
@@ -148,6 +148,38 @@ export function blockLiveWorkerEverywhere(browser: Browser): void {
     const page = await newPage(options);
     await blockLiveWorker(page.context());
     return page;
+  };
+}
+
+/** Browser engines a page scenario can run in; the game itself always plays in the harness's Chromium. */
+export type Engine = 'chromium' | 'firefox';
+
+/** `PLAYTEST_BROWSER=firefox` picks Playwright Firefox (install once: `npx playwright install firefox`). */
+export function scenarioEngine(): Engine {
+  return process.env.PLAYTEST_BROWSER === 'firefox' ? 'firefox' : 'chromium';
+}
+
+/**
+ * The browser a page scenario (e.g. the insights board, ROADMAP 81) opens its own contexts in: the harness's
+ * Chromium, or with `PLAYTEST_BROWSER=firefox` a Firefox that blocks the live worker like the harness does.
+ * `contextOptions` drops `isMobile`, which Firefox does not support (it keeps the size, scale and touch).
+ * Call `close` when done; it leaves the harness's browser open.
+ */
+export async function scenarioBrowser(t: PlaytestContext): Promise<{
+  engine: Engine;
+  browser: Browser;
+  contextOptions(options: BrowserContextOptions): BrowserContextOptions;
+  close(): Promise<void>;
+}> {
+  const engine = scenarioEngine();
+  if (engine === 'chromium') return { engine, browser: t.page.context().browser()!, contextOptions: (o) => o, close: async () => {} };
+  const browser = await firefox.launch();
+  blockLiveWorkerEverywhere(browser);
+  return {
+    engine,
+    browser,
+    contextOptions: ({ isMobile: _mobile, ...rest }) => rest,
+    close: () => browser.close(),
   };
 }
 

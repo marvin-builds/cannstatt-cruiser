@@ -156,10 +156,15 @@ export default async function (t: PlaytestContext) {
     t.check('no horizontal scroll on the board', width.scroll <= width.client, width);
     await screenshot('board-7');
 
+    // The feedback card lives on the Feedback tab (ROADMAP 79); all status chips on to see every entry (ROADMAP 80).
+    await page.click('#tab-feedback');
+    await page.click('.chip:has-text("Erledigt")');
+    await page.click('.chip:has-text("Abgelehnt")');
     const fb = await feedbackState(page);
     t.check('feedback asked with the bearer header', fake.requests.some((r) => r.url === `${API}/feedback` && r.auth === `Bearer ${TOKEN}`));
-    t.check('feedback newest first with day and kind badge', fb.days.join() === '11.10.2026,11.10.2026,10.10.2026,8.10.2026' && fb.kinds.join() === 'Idee,Fehler,Fehler,Idee', fb);
-    t.check('feedback meta line and count', fb.meta === 'Version 2026-10-11.4 · Android · Touch · Hoch · 390 px' && fb.count === '4 Einträge', fb);
+    t.check('feedback newest first with day and kind badge', fb.days.join() === '11.10.2026,11.10.2026,10.10.2026,8.10.2026,7.10.2026,6.10.2026,5.10.2026,4.10.2026' &&
+      fb.kinds.join() === 'Idee,Fehler,Fehler,Idee,Idee,Fehler,Idee,Fehler', fb);
+    t.check('feedback meta line and count', fb.meta === 'Version 2026-10-11.4 · Android · Touch · Hoch · 390 px' && fb.count === '8 Einträge', fb);
     t.check('feedback markup shows as text', fb.texts.some((x) => x.startsWith('<script>')) && fb.scripts === 0, fb.texts);
     t.check('feedback keeps line breaks and long words wrap', fb.texts[0]!.includes('\n') && !fb.overflow, fb);
     t.check('a bug with log offers the closed Fehlerprotokoll', fb.logs.join() === 'Fehlerprotokoll (4 Zeilen)' && !(await page.isVisible('.fb-log pre')), fb.logs);
@@ -172,12 +177,13 @@ export default async function (t: PlaytestContext) {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.click('.card.feedback button:has-text("Fehler")');
     const bugs = await feedbackState(page);
-    t.check('filter Fehler shows only bug reports', bugs.kinds.join() === 'Fehler,Fehler' && bugs.count === '2 Einträge', bugs);
+    t.check('filter Fehler shows only bug reports', bugs.kinds.join() === 'Fehler,Fehler,Fehler,Fehler' && bugs.count === '4 Einträge', bugs);
     await page.click('.card.feedback button:has-text("Ideen")');
     const ideas = await feedbackState(page);
-    t.check('filter Ideen shows only ideas', ideas.kinds.join() === 'Idee,Idee' && ideas.count === '2 Einträge', ideas);
+    t.check('filter Ideen shows only ideas', ideas.kinds.join() === 'Idee,Idee,Idee,Idee' && ideas.count === '4 Einträge', ideas);
     await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback-ideen.png`) });
     await page.click('.card.feedback button:has-text("Alle")');
+    await page.click('#tab-stats');
 
     const ranges: { label: string; days: StatsRange; heading: string; approx: boolean }[] = [
       { label: '30 T', days: 30, heading: desktop ? 'pro Tag' : 'pro Woche', approx: false },
@@ -218,6 +224,7 @@ export default async function (t: PlaytestContext) {
     await reload(page);
     const empty = await feedbackState(page);
     t.check('an empty feedback list shows Noch kein Feedback', empty.note === 'Noch kein Feedback' && empty.count === '0 Einträge', empty);
+    await page.click('#tab-feedback');
     await card.screenshot({ path: join(t.outDir, `${++shot}-insights-feedback-empty-dark.png`) });
 
     fake.feedback = 404;
@@ -227,6 +234,8 @@ export default async function (t: PlaytestContext) {
     t.check('a 404 on /feedback shows a short note and the stats still render', missing.note === 'Feedback gerade nicht abrufbar' && statsShown, missing);
     await page.emulateMedia({ colorScheme: 'light' });
     await screenshot('feedback-404');
+    await page.click('#tab-stats');
+    t.check('the stats still render under the Statistik tab', (await page.locator('.tile').count()) === 4);
     fake.feedback = 'list';
 
     await page.click('button:has-text("Sperren")');

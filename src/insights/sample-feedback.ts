@@ -1,6 +1,7 @@
 /**
  * A realistic GET /feedback answer (newest first) for unit tests and the
- * insights playtest (scripts/scenarios/insights.ts). Never imported by the board itself.
+ * insights playtests (scripts/scenarios/insights*.ts): every status and every issue state
+ * (ROADMAP 82). Never imported by the board itself.
  */
 import type { TriagedFeedbackEntry } from './triage-types';
 
@@ -13,7 +14,7 @@ const LONG_TEXT =
 export function sampleFeedback(): TriagedFeedbackEntry[] {
   const base = {
     version: '2026-10-11.4', platform: 'android', input: 'touch', orientation: 'portrait', viewWidth: 390, status: 'open', issue: null, reply: null,
-    doneVersion: null,
+    doneVersion: null, issueState: null, issueClosedDay: null,
   } as const;
   return [
     { ...base, id: 14, day: '2026-10-11', kind: 'idea', text: 'Bitte mehr Hunde im Park!\nUnd eine Brezel als Bonus.', log: [] },
@@ -28,6 +29,7 @@ export function sampleFeedback(): TriagedFeedbackEntry[] {
       viewWidth: 427,
       status: 'todo',
       issue: 12,
+      issueState: 'open',
       log: [
         '12:01:03 TypeError: Cannot read properties of undefined (reading "x")',
         '    at stepPlayer (player/physics.ts:88)',
@@ -38,5 +40,13 @@ export function sampleFeedback(): TriagedFeedbackEntry[] {
     { ...base, id: 12, day: '2026-10-10', kind: 'bug', text: LONG_TEXT, platform: 'other', input: 'keys', orientation: 'landscape', viewWidth: 427, log: [] },
     { ...base, id: 11, day: '2026-10-08', kind: 'idea', text: '<script>alert("hi")</script> ein Level im Schlossgarten', viewWidth: 320, log: [],
       status: 'rejected', reply: 'Der Schlossgarten passt nicht zur Strecke.' },
+    { ...base, id: 10, day: '2026-10-07', kind: 'idea', text: 'Ein Brezel-Stand am Wasen wäre cool.', log: [],
+      status: 'todo', issue: 9, issueState: 'completed', issueClosedDay: '2026-10-12', reply: 'Die Umsetzung deines Feedbacks wurde geplant, danke für dein Feedback!' },
+    { ...base, id: 9, day: '2026-10-06', kind: 'bug', text: 'Die Musik ist im Park zu leise.', input: 'keys', platform: 'other', orientation: 'landscape', viewWidth: 427, log: [],
+      status: 'todo', issue: 8, issueState: 'notPlanned', issueClosedDay: '2026-10-11' },
+    { ...base, id: 8, day: '2026-10-05', kind: 'idea', text: 'Nachtmodus mit Laternen', log: [], status: 'todo', issue: 5, issueState: 'missing' },
+    { ...base, id: 7, day: '2026-10-04', kind: 'bug', text: 'Der Highscore wird nicht gespeichert.', platform: 'ios', log: [],
+      status: 'done', issue: 4, issueState: 'completed', issueClosedDay: '2026-10-09', doneVersion: '2026-10-10.1',
+      reply: 'Ist drin seit Version 2026-10-10.1. Danke für dein Feedback!' },
   ];
 }

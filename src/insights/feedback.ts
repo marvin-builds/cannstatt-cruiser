@@ -17,14 +17,14 @@ const PLATFORMS: Record<Platform, string> = { android: 'Android', ios: 'iOS', ot
 const INPUTS: Record<InputKind, string> = { touch: 'Touch', keys: 'Tastatur' };
 const ORIENTATIONS: Record<Orientation, string> = { landscape: 'Quer', portrait: 'Hoch' };
 
-/** Entries of the kind and status filters, newest day first; within a day the later (higher) id first. */
+/** Entries of the kind filter and the chosen statuses (all without `statuses`), newest day first; within a day the later (higher) id first. */
 export function filterFeedback<T extends FeedbackEntry & { status: FeedbackStatus }>(
   entries: readonly T[],
   filter: FeedbackFilter,
-  status: 'all' | FeedbackStatus = 'all',
+  statuses?: readonly FeedbackStatus[],
 ): T[] {
   return entries
-    .filter((e) => (filter === 'all' || e.kind === filter) && (status === 'all' || e.status === status))
+    .filter((e) => (filter === 'all' || e.kind === filter) && (!statuses || statuses.includes(e.status)))
     .sort((a, b) => (a.day === b.day ? b.id - a.id : a.day < b.day ? 1 : -1));
 }
 

@@ -20,6 +20,8 @@
   --idea: #146b4b;
   --todo-bg: #e5eefb;
   --todo: #1d5aa6;
+  --ready-bg: #fdf0e3;
+  --ready: #9a4a0f;
   --radius: 12px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
@@ -47,6 +49,8 @@
     --idea: #8fe0bd;
     --todo-bg: #22344f;
     --todo: #a9c8f5;
+    --ready-bg: #4a3320;
+    --ready: #ffc999;
   }
 }
 
@@ -56,7 +60,7 @@ body { min-height: 100vh; overflow-x: hidden; }
 h1, h2, h3 { margin: 0; font-weight: 650; }
 h2 { font-size: 0.95rem; color: var(--ink); margin-bottom: 12px; }
 h3 { font-size: 0.85rem; color: var(--ink-2); margin-bottom: 6px; }
-button, input, select, textarea { font: inherit; }
+button, input, textarea { font: inherit; }
 
 button {
   border: 0;
@@ -69,7 +73,7 @@ button {
 }
 button:disabled { opacity: 0.6; cursor: default; }
 button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -248,7 +252,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* Feedback triage (ROADMAP 56) */
 .fb-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-select, .fb-panel input[type='text'], .fb-panel textarea {
+.fb-panel input[type='text'], .fb-panel textarea {
   padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--bg); color: var(--ink); max-width: 100%;
 }
@@ -256,8 +260,12 @@ select, .fb-panel input[type='text'], .fb-panel textarea {
 .fb-status.todo { background: var(--todo-bg); color: var(--todo); }
 .fb-status.done { background: var(--idea-bg); color: var(--idea); }
 .fb-status.rejected { background: var(--track); color: var(--ink-3); }
-a.fb-status { text-decoration: underline; text-underline-offset: 2px; }
-a.fb-status:hover { filter: brightness(0.95); }
+/* The linked issue and its GitHub state (ROADMAP 82) */
+.fb-issue { font-size: 0.78rem; font-weight: 600; color: var(--ink-2); text-underline-offset: 2px; }
+.fb-issue.completed { color: var(--idea); }
+.fb-issue.notPlanned { color: var(--ink-3); }
+.fb-issue.missing { color: var(--danger); }
+.fb-ready { font-weight: 650; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--ready-bg); color: var(--ready); }
 .fb-head time { margin-left: auto; }
 .fb-reply { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-2); overflow-wrap: anywhere; }
 .fb-reply span { font-weight: 650; }
@@ -273,12 +281,47 @@ button.danger { background: var(--danger); color: var(--card); }
 }
 .fb-field { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); min-width: 0; }
 .fb-field[hidden] { display: none; }
-.fb-field input, .fb-field textarea, .fb-field select { font-weight: 400; width: 100%; color: var(--ink); }
-.fb-field textarea { resize: vertical; min-height: 9em; font: 0.85rem/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
-.fb-check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; }
-.fb-check input { width: 18px; height: 18px; margin: 0; }
+.fb-field input, .fb-field textarea { font-weight: 400; width: 100%; color: var(--ink); }
+.fb-field textarea { resize: vertical; }
+.fb-field textarea.fb-code { min-height: 9em; font: 0.85rem/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
+.fb-check { display: inline-flex; align-items: flex-start; gap: 8px; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; }
+.fb-check input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--c1); }
+.fb-group { display: grid; gap: 10px; min-width: 0; }
+.fb-group[hidden] { display: none; }
+.fb-choices { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.fb-choices legend { padding: 0; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
+.fb-panel .switch { position: relative; min-height: 36px; }
+/* A greyed-out action with its reason next to it (ROADMAP 83) */
+.fb-waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.fb-why { font-size: 0.78rem; color: var(--ink-3); }
 .fb-hint { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
 .fb-confirm .fb-hint { color: var(--danger); font-weight: 600; }
 .fb-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .fb-error { margin: 0; color: var(--danger); font-size: 0.85rem; font-weight: 600; }
 .fb-error:empty { display: none; }
+
+/* Tabs Statistik / Feedback (ROADMAP 79) */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab {
+  background: transparent; color: var(--ink-2); border-radius: 8px 8px 0 0; padding: 10px 16px; min-height: 44px;
+  border-bottom: 3px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px;
+}
+.tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--c1); }
+.tab:hover { background: var(--track); }
+.tab-count {
+  min-width: 1.5em; padding: 1px 7px; border-radius: 999px; background: var(--ready-bg); color: var(--ready);
+  font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: center;
+}
+.tab-count[hidden] { display: none; }
+.tab-panel { display: grid; gap: 16px; min-width: 0; }
+.tab-panel[hidden] { display: none; }
+.stats-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Status filter chips (ROADMAP 80) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  background: transparent; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; min-height: 32px; font-size: 0.85rem;
+}
+.chip[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.chip[aria-pressed='true']::before { content: '✓ '; }
