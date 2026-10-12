@@ -109,7 +109,7 @@ describe('board routes accept a valid session token', () => {
   it('PATCH and DELETE /feedback/:id', async () => {
     const auth = `Bearer ${await session()}`;
     const id = seed();
-    expect((await call('PATCH', `/feedback/${id}`, { auth, body: { status: 'todo' } })).status).toBe(200);
+    expect((await call('PATCH', `/feedback/${id}`, { auth, body: { status: 'done' } })).status).toBe(200);
     expect((await call('DELETE', `/feedback/${id}`, { auth })).status).toBe(204);
   });
 

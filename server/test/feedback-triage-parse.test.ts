@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from '../src/feedback-triage-parse';
+import { parseFeedbackId, parseIssueDraft, parseIssueLink, parseTriagePatch } from '../src/feedback-triage-parse';
 import { MAX_ISSUE_ADDITION, MAX_ISSUE_BODY, MAX_ISSUE_TITLE, MAX_REPLY_CHARS } from '../src/feedback-triage-rules';
 
 describe('parseFeedbackId', () => {
@@ -83,6 +83,40 @@ describe('parseTriagePatch', () => {
   it('rejects unknown statuses, unknown fields and an empty patch', () => {
     for (const json of ['{"status":"later"}', '{"status":null}', '{"issue":1}', '{}', '[]', 'null', '{"reply":3}', 'x']) {
       expect(parseTriagePatch(json), json).toBeNull();
+    }
+  });
+});
+
+describe('parseIssueDraft with the player message (ROADMAP 83)', () => {
+  const draft = { title: 'Idee: Hunde', body: '> Mehr Hunde' };
+  it('trims the reply; empty or null becomes null; absent stays absent', () => {
+    expect(parseIssueDraft(JSON.stringify({ ...draft, reply: '  Ist geplant, danke!  ' }))).toEqual({ ...draft, reply: 'Ist geplant, danke!' });
+    expect(parseIssueDraft(JSON.stringify({ ...draft, reply: ' ' }))).toEqual({ ...draft, reply: null });
+    expect(parseIssueDraft(JSON.stringify({ ...draft, reply: null }))).toEqual({ ...draft, reply: null });
+    expect(parseIssueDraft(JSON.stringify(draft))).toEqual(draft);
+  });
+  it('caps it at MAX_REPLY_CHARS on one line', () => {
+    expect(parseIssueDraft(JSON.stringify({ ...draft, reply: 'x'.repeat(MAX_REPLY_CHARS) }))).not.toBeNull();
+    for (const reply of ['x'.repeat(MAX_REPLY_CHARS + 1), 'a\nb', 3, ['x']]) {
+      expect(parseIssueDraft(JSON.stringify({ ...draft, reply })), JSON.stringify(reply)).toBeNull();
+    }
+  });
+});
+
+describe('parseIssueLink (ROADMAP 83)', () => {
+  it('takes a positive issue number and an optional reply', () => {
+    expect(parseIssueLink('{"issue":12}')).toEqual({ issue: 12 });
+    expect(parseIssueLink('{"issue":12,"reply":" Geplant! "}')).toEqual({ issue: 12, reply: 'Geplant!' });
+    expect(parseIssueLink('{"issue":12,"reply":""}')).toEqual({ issue: 12, reply: null });
+    expect(parseIssueLink('{"issue":12,"reply":null}')).toEqual({ issue: 12, reply: null });
+  });
+  it('rejects bad numbers, bad replies and other shapes', () => {
+    for (const json of [
+      '{"issue":0}', '{"issue":-3}', '{"issue":1.5}', '{"issue":"12"}', '{"issue":null}', '{"issue":9007199254740992}', '{}',
+      JSON.stringify({ issue: 1, reply: 'x'.repeat(MAX_REPLY_CHARS + 1) }), '{"issue":1,"reply":"a\\nb"}', '{"issue":1,"title":"x"}',
+      '[]', 'null', '{',
+    ]) {
+      expect(parseIssueLink(json), json).toBeNull();
     }
   });
 });

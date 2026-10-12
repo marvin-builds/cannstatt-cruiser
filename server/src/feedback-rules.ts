@@ -23,3 +23,5 @@ export const MAX_STATUS_ITEMS = 20;
 export const FEEDBACK_KEY_PATTERN = /^[0-9a-f]{32}$/;
 /** A `POST /feedback/status` body is never larger than this (MAX_STATUS_ITEMS items of about 60 characters). */
 export const MAX_STATUS_BYTES = 2048;
+/** A `POST /feedback/delete` body (ROADMAP 78, one {id, key} of about 60 characters) is never larger than this. */
+export const MAX_DELETE_BYTES = 256;

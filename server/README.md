@@ -32,10 +32,11 @@ URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
 | `src/feedback-rules.ts`, `src/feedback-types.ts` | Feedback contract: limits and shapes (mirror of the game's `src/net/feedback-types.ts`) |
 | `src/feedback-parse.ts` | Strict `POST /feedback` body check (with the optional secret key and tester pass) and text normalisation |
 | `src/feedback-store.ts` | Per-session and daily feedback limits, storing (with the key hash; returns the new id), once-a-day 365-day prune, the `GET /feedback` list |
-| `src/feedback-status-parse.ts` | Strict `{items: [{id, key}]}` check of `POST /feedback/status` (ROADMAP 70); its query is `feedbackStatuses` in `src/feedback-triage-store.ts` |
+| `src/feedback-status-parse.ts` | Strict `{items: [{id, key}]}` check of `POST /feedback/status` (ROADMAP 70) and `{id, key}` of `POST /feedback/delete` (ROADMAP 78); their queries are `feedbackStatuses` and `deleteOwnFeedback` in `src/feedback-triage-store.ts` |
 | `src/feedback-triage-rules.ts`, `src/feedback-triage-types.ts` | Triage contract (ROADMAP 56): statuses, issue draft and reply limits, shapes (board copy: the game's `src/insights/triage-types.ts`) |
-| `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft, status/reply/done-version patch) and D1 access |
-| `src/github.ts`, `src/issue-body.ts` | Creates the GitHub issue (REST API, injected `fetch`); the issue text with the developer addition in its own section |
+| `src/feedback-triage-parse.ts`, `src/feedback-triage-store.ts` | Triage route parsing (id, issue draft with player message, issue link, status/reply/done-version patch) and D1 access |
+| `src/github.ts`, `src/issue-body.ts` | Creates the GitHub issue and reads issue states (REST API, injected `fetch`, 3 s read timeout); the issue text with the developer addition in its own section |
+| `src/issue-sync.ts` | Refreshes the stored states of linked issues on `GET /feedback`, at most once a minute (ROADMAP 82) |
 | `test/` | Vitest tests; `d1-fake.ts` runs the real schema on Node's in-memory SQLite |
 
 ## Develop and test
@@ -81,9 +82,11 @@ the game's code or in git: the insights page asks for it at runtime.
 
 ### GitHub token (secret)
 
-`POST /feedback/:id/issue` (the board's "Issue anlegen") needs the Wrangler
-secret `GITHUB_TOKEN`; without it the route answers
+`POST /feedback/:id/issue` (the board's "Umsetzen") and `POST /feedback/:id/link`
+need the Wrangler secret `GITHUB_TOKEN`; without it they answer
 `503 {"ok": false, "error": "github-token-missing"}` and nothing else changes.
+`GET /feedback` uses it to read the states of linked issues (ROADMAP 82); without
+it the board shows the last stored states.
 Use a **fine-grained** personal access token that can do nothing else:
 
 1. GitHub (signed in as `marvinmai`) -> Settings -> Developer settings ->
@@ -104,7 +107,8 @@ Create the labels `feedback`, `bug` and `idea` in the repository once (Issues ->
 Labels), so the new issues are labelled as intended. Like `STATS_TOKEN`, the
 GitHub token never goes into `wrangler.toml` (`[vars]`), a `VITE_` variable,
 the board, the game or git; the worker sends it only to `api.github.com`, and
-no answer ever contains it. Revoking it on GitHub stops issue creation at once.
+no answer ever contains it. Revoking it on GitHub stops issue creation and the
+state reads at once. The worker never comments on, closes or edits an issue.
 
 ### Board session key (secret)
 
@@ -284,6 +288,31 @@ still sends reports without a key (accepted, never get a status) and its old
 `GET /feedback/status` gets a 404, which it treats as a failed check.
 
 Locally: `npx wrangler d1 execute cannstatt-cruiser-scores --local --file=migrations/0008_feedback_keys.sql`.
+
+`0009_issue_state.sql` (GitHub issue state on the board, ROADMAP 82): adds the
+nullable columns `feedback.issue_state` (`open`, `completed`, `notPlanned`,
+`missing`, with a `CHECK`) and `feedback.issue_closed_day` (UTC day the issue
+was closed). Existing rows get `NULL` in both; rows with an issue get their
+state on the next board load. The once-a-minute throttle of the GitHub reads
+uses the existing `event_meta` table (key `issues-read`), so nothing else
+changes. Like 0008 it is **not** safe to apply twice: a second run fails at its
+first statement ("duplicate column name: issue_state") and changes nothing. The
+new worker reads and writes both columns on `GET /feedback`, `PATCH` and the
+issue routes, so the migration must come **before** the deploy:
+
+```sh
+cd server
+npx wrangler d1 export cannstatt-cruiser-scores --remote --output=backup-before-0009.sql   # 1. backup
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=migrations/0009_issue_state.sql   # 2. migrate, once
+npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql   # 3. schema (no-op now)
+npx wrangler deploy   # 4. new worker, before the board and game release
+```
+
+The old worker ignores the new columns, so the order only matters for the new
+one. Then release the game (the board's workflow and "Löschen" in "Mein Feedback"
+need the new routes).
+
+Locally: `npx wrangler d1 execute cannstatt-cruiser-scores --local --file=migrations/0009_issue_state.sql`.
 
 ## Daily summaries
 
@@ -531,8 +560,21 @@ newest 100 (`FEEDBACK_LIST_LIMIT`), newest day first and, within a day, the
 latest first; each entry has `id`, `day` (`YYYY-MM-DD`, UTC), `kind`, `text`,
 `version`, `platform`, `input`, `orientation`, `viewWidth` and `log` (array),
 and the triage fields `status` (`open`, `todo`, `done`, `rejected`), `issue`
-(GitHub issue number or `null`), `reply` (string or `null`) and `doneVersion`
-(`YYYY-MM-DD.n` or `null`). Never the key hash.
+(GitHub issue number or `null`), `reply` (string or `null`), `doneVersion`
+(`YYYY-MM-DD.n` or `null`), `issueState` and `issueClosedDay` (below; both
+`null` without an issue). Never the key hash.
+
+Issue states (ROADMAP 82): with `GITHUB_TOKEN` set, the request first refreshes
+the stored states of the linked issues, at most once per 60 s
+(`ISSUE_SYNC_INTERVAL_MS`; an attempt counts, so a failing GitHub is not asked on
+every load): one `GET /repos/marvinmai/cannstatt-cruiser/issues?state=all&per_page=100&sort=updated`
+(pull requests skipped), and for linked issues not in that answer up to 10
+(`MAX_SINGLE_ISSUE_READS`, never-read ones first) single `GET .../issues/{n}` in
+parallel. `issueState`: `open`; `completed` (closed, any reason but the next);
+`notPlanned` (closed as `not_planned` or `duplicate`); `missing` (404/410 or a
+pull request). `issueClosedDay`: UTC day of `closed_at`, `null` while open. Each
+GitHub read gives up after 3 s; a failing, slow or unusable GitHub leaves the
+stored states and the answer is still `200` (nothing of GitHub's answer is passed on).
 
 ### `POST /feedback/status`
 
@@ -558,14 +600,29 @@ counter, no housekeeping. Needs a game `Origin` like `POST /feedback`.
 - Any other method on `/feedback/status` answers `404`; the old
   `GET /feedback/status?ids=` of ROADMAP 57 is gone.
 
+### `POST /feedback/delete`
+
+The player deletes one of their own reports (ROADMAP 78, "Löschen" in "Mein
+Feedback"). No token: like `POST /feedback/status`, a game `Origin` (`403`
+otherwise, before any database access) and the report's secret key prove
+ownership. `Content-Type` `text/plain` or `application/json`, at most 256 bytes
+(`MAX_DELETE_BYTES`), body exactly `{"id": 3, "key": "<32 lowercase hex>"}`
+(`FeedbackDeleteBody`).
+
+- `204` the row whose id and key hash both match was deleted (it disappears
+  from the board; a linked GitHub issue stays).
+- `404 {"ok": false, "error": "not-found"}` when nothing matched: the same
+  answer for an unknown id, a wrong key and a report without a key.
+- `400` bad body; `403` missing or foreign `Origin`. Other methods: `404`.
+
 ### Feedback triage (ROADMAP 56)
 
-All three routes need `Authorization: Bearer <STATS_TOKEN>` (or a board session token) and check it first:
+All four routes need `Authorization: Bearer <STATS_TOKEN>` (or a board session token) and check it first:
 without it they answer `401` before any database access or GitHub call. The id
 is the entry's `id` (a positive integer; anything else is 400). JSON bodies
 (`application/json` or `text/plain`) of at most 32 KB. Not cached.
 
-- `POST /feedback/:id/issue`, body `{"title", "body"}` and optionally `"addition"` as the operator
+- `POST /feedback/:id/issue`, body `{"title", "body"}` and optionally `"addition"` and `"reply"` as the operator
   edited them on the board: title 3-120 chars (one line, spaces collapsed),
   body 1-8000 chars after trimming (line breaks and tabs allowed, no other
   control characters); `addition` ("Ergänzung (Entwickler)", ROADMAP 75) at most
@@ -574,8 +631,10 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
   and a section headed `**Ergänzung des Entwicklers**` (`src/issue-body.ts`), so
   the developer's words never land inside the player's quote. Creates an issue in `marvinmai/cannstatt-cruiser`
   with the labels `feedback` plus the entry's kind (`bug` or `idea`), stores
-  its number and sets the status to `todo` ("Geplant" on the board) in the same
-  request; when the issue cannot be created the status stays as it was.
+  its number with the issue state `open` and sets the status to `todo` ("Geplant" on the board) in the same
+  request; `reply` (the player message, ROADMAP 83, same rules as in `PATCH`; `""` or `null`
+  clears it, a missing field keeps the stored one) is stored with it. When the issue cannot be
+  created nothing changes.
   - `201 {"ok": true, "issue": 12}`.
   - `400` bad id or body; `404` no such entry; `409 {"ok": false, "error":
     "exists", "issue": 5}` when the entry already has an issue.
@@ -583,6 +642,16 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
   - `502 {"ok": false, "error": "github", "status": 403}` when GitHub refuses
     (its HTTP status) or cannot be reached / answers unusably (`status` 0).
     Nothing of GitHub's answer is passed on, and nothing is stored.
+- `POST /feedback/:id/link`, body `{"issue": 12}` and optionally `"reply"` (`IssueLink`, ROADMAP 83):
+  links an existing issue instead of creating one (duplicates). Reads the issue
+  from GitHub (`GET .../issues/12`), then stores the number, its state, `todo`
+  and the reply (as in `/issue`) in one update; clears the done version.
+  - `200 {"ok": true, "issue": 12, "issueState": "open", "issueClosedDay": null}`.
+  - `422 {"ok": false, "error": "issue-not-found"}` when GitHub has no such issue
+    in the repository (404/410) or the number is a pull request; nothing is stored.
+  - `400`, `404`, `409 exists`, `503 github-token-missing` and `502 github` as for `/issue`;
+    except that an entry whose stored issue state is `missing` may get another issue linked
+    (the board offers "Issue verknüpfen" there), which replaces the lost one.
 - `PATCH /feedback/:id`, body with `status`, `reply` and/or `doneVersion` (no other fields):
   `status` one of the four; `reply` a single line of at most 140 chars after
   trimming (`MAX_REPLY_CHARS`, shown to the player in "Mein Feedback", see `POST /feedback/status`), `""` or
@@ -590,8 +659,10 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
   with `status: "done"`. Every patch with a `status` sets the done version:
   the given one with `done` (none given: `null`), `null` for any other status
   (creating an issue, which sets `todo`, clears it too). Only the given fields
-  change; the issue number stays.
-  `200 {"ok": true, "status", "issue", "reply", "doneVersion"}`, `400`, `404`.
+  change; the issue number stays. `status: "todo"` needs a linked issue
+  (ROADMAP 83: Geplant always has one): without it `409 {"ok": false, "error": "no-issue"}`
+  and nothing changes. Otherwise the workflow is up to the board.
+  `200 {"ok": true, "status", "issue", "reply", "doneVersion", "issueState", "issueClosedDay"}`, `400`, `404`.
 - `DELETE /feedback/:id`: deletes the entry. `204`, `404`.
 
 Anything else answers `404 {"ok": false, "error": "not-found"}`.
@@ -658,6 +729,9 @@ and improved. Legal basis: legitimate interest, Art. 6(1)(f) DSGVO.
 - Triage: the operator may publish an entry as an anonymous GitHub issue
   after reviewing and editing the text on the board (the log only when it is
   needed), and store a status, a short reply and the version it was done in on the row.
+  The worker reads the state of linked issues from GitHub (open/closed, reason, closing day) and stores it on the row.
+- Deletion by the player: `POST /feedback/delete` with the report's id and secret key removes the row
+  at once (a published GitHub issue stays, it holds only the operator's edited text).
 - Access: only with the `STATS_TOKEN` secret or a board session made with it (`GET /feedback` and the triage routes).
 
 ### Board sessions

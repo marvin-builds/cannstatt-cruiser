@@ -76,3 +76,9 @@ export interface FeedbackStatusEntry {
 export interface FeedbackStatusList {
   entries: FeedbackStatusEntry[];
 }
+
+/** The `POST /feedback/delete` body (ROADMAP 78): the player withdraws one of their own reports; the key proves it. */
+export interface FeedbackDeleteBody {
+  id: number;
+  key: string;
+}

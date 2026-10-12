@@ -14,5 +14,7 @@ describe('feedback triage types', () => {
     expectTypeOf<server.TriagedFeedbackList>().toEqualTypeOf<board.TriagedFeedbackList>();
     expectTypeOf<server.IssueDraft>().toEqualTypeOf<board.IssueDraft>();
     expectTypeOf<server.TriagePatch>().toEqualTypeOf<board.TriagePatch>();
+    expectTypeOf<server.IssueState>().toEqualTypeOf<board.IssueState>();
+    expectTypeOf<server.IssueLink>().toEqualTypeOf<board.IssueLink>();
   });
 });

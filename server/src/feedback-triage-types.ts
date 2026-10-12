@@ -3,10 +3,11 @@
  * fields next to the FeedbackEntry contract; the board's copy in
  * src/insights/triage.ts is checked at type level by test/feedback-triage-types.test.ts.
  */
-import type { FEEDBACK_STATUSES } from './feedback-triage-rules';
+import type { FEEDBACK_STATUSES, ISSUE_STATES } from './feedback-triage-rules';
 import type { FeedbackEntry } from './feedback-types';
 
 export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+export type IssueState = (typeof ISSUE_STATES)[number];
 
 export interface FeedbackTriage {
   status: FeedbackStatus;
@@ -16,6 +17,10 @@ export interface FeedbackTriage {
   reply: string | null;
   /** The game version (YYYY-MM-DD.n) the report was done in; only with status done, else null (ROADMAP 70). */
   doneVersion: string | null;
+  /** State of the linked issue as last read from GitHub (ROADMAP 82); null without an issue or before the first read. */
+  issueState: IssueState | null;
+  /** Day (YYYY-MM-DD) the linked issue was closed, or null while it is open or unknown. */
+  issueClosedDay: string | null;
 }
 
 export type TriagedFeedbackEntry = FeedbackEntry & FeedbackTriage;
@@ -32,6 +37,14 @@ export interface IssueDraft {
   title: string;
   body: string;
   addition?: string;
+  /** The player message stored with the new status Geplant (ROADMAP 83); empty or null stores none. */
+  reply?: string | null;
+}
+
+/** Body of `POST /feedback/:id/link` (ROADMAP 83): link an existing issue instead of creating one, and set Geplant. */
+export interface IssueLink {
+  issue: number;
+  reply?: string | null;
 }
 
 /**

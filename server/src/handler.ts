@@ -1,7 +1,8 @@
 /**
  * HTTP API: GET /top, POST /score, POST /event, POST /board/session, POST /board/tester-pass, GET /stats, POST /feedback, GET /feedback,
- * POST /feedback/status (the game asks for its own reports by id and secret key, no token), the feedback triage
- * routes (POST /feedback/:id/issue, PATCH and DELETE /feedback/:id), OPTIONS preflight.
+ * POST /feedback/status and POST /feedback/delete (the game asks for or withdraws its own reports by id and secret key,
+ * no token), the feedback triage routes (POST /feedback/:id/issue, POST /feedback/:id/link, PATCH and DELETE /feedback/:id),
+ * OPTIONS preflight.
  * Uses the request body, the Origin and Authorization headers and, for
  * session events, Cloudflare's coarse location (request.cf); never the client IP.
  */
@@ -13,14 +14,15 @@ import { claimDailySlot, condenseAndPruneOnceADay, saveEvent } from './event-sto
 import { parseEvent } from './event-parse';
 import { MAX_EVENT_BYTES, STATS_RANGES, STATS_TESTERS_PARAM } from './events';
 import { parseFeedback } from './feedback-parse';
-import { MAX_FEEDBACK_BYTES, MAX_STATUS_BYTES } from './feedback-rules';
+import { MAX_DELETE_BYTES, MAX_FEEDBACK_BYTES, MAX_STATUS_BYTES } from './feedback-rules';
 import type { FeedbackSent, FeedbackStatusList } from './feedback-types';
 import { listFeedback, pruneFeedbackOnceADay, saveFeedback } from './feedback-store';
-import { parseStatusItems } from './feedback-status-parse';
-import { parseFeedbackId, parseIssueDraft, parseTriagePatch } from './feedback-triage-parse';
+import { parseDeleteBody, parseStatusItems } from './feedback-status-parse';
+import { parseFeedbackId, parseIssueDraft, parseIssueLink, parseTriagePatch } from './feedback-triage-parse';
 import { ISSUE_LABEL, MAX_TRIAGE_BYTES } from './feedback-triage-rules';
-import { deleteFeedback, feedbackForIssue, feedbackStatuses, storeIssue, updateTriage } from './feedback-triage-store';
-import { createIssue, type GitHubFetch } from './github';
+import { deleteFeedback, deleteOwnFeedback, feedbackForIssue, feedbackStatuses, storeIssue, updateTriage } from './feedback-triage-store';
+import { createIssue, readIssue, type GitHubFetch } from './github';
+import { syncIssueStates } from './issue-sync';
 import { issueText } from './issue-body';
 import { locationOf } from './location';
 import { rankRows } from './ranking';
@@ -39,7 +41,10 @@ export interface Env {
    * POST /board/tester-pass answer 503 and no session token or tester pass is accepted.
    */
   BOARD_SESSION_KEY?: string;
-  /** Fine-grained GitHub token, Issues read/write on ISSUE_REPO only (Wrangler secret). Without it no issue can be made. */
+  /**
+   * Fine-grained GitHub token, Issues read/write on ISSUE_REPO only (Wrangler secret). Without it no issue can be made
+   * or linked, and the board's issue states are not refreshed.
+   */
   GITHUB_TOKEN?: string;
 }
 
@@ -52,14 +57,14 @@ const OWN_TOP_CACHE = 'private, max-age=30';
 const BODY_TYPES = ['text/plain', 'application/json'];
 
 type Failure =
-  | 'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found' | 'exists' | 'github' | 'github-token-missing'
-  | 'session-key-missing';
+  | 'bad-request' | 'unauthorized' | 'forbidden' | 'name' | 'implausible' | 'rate' | 'not-found' | 'exists' | 'no-issue' | 'issue-not-found'
+  | 'github' | 'github-token-missing' | 'session-key-missing';
 const STATUS: Record<Failure, number> = {
   'bad-request': 400, unauthorized: 401, forbidden: 403, name: 422, implausible: 422, rate: 429, 'not-found': 404, exists: 409,
-  github: 502, 'github-token-missing': 503, 'session-key-missing': 503,
+  'no-issue': 409, 'issue-not-found': 422, github: 502, 'github-token-missing': 503, 'session-key-missing': 503,
 };
-/** `/feedback/<id>` and `/feedback/<id>/issue`; the id is checked by parseFeedbackId. */
-const TRIAGE_PATH = /^\/feedback\/([^/]+)(\/issue)?$/;
+/** `/feedback/<id>`, `/feedback/<id>/issue` and `/feedback/<id>/link`; the id is checked by parseFeedbackId. */
+const TRIAGE_PATH = /^\/feedback\/([^/]+)(?:\/(issue|link))?$/;
 
 const jsonResponse = (cors: Record<string, string>, body: unknown, status: number, cache = 'no-store', extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, ...extra, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': cache } });
@@ -134,6 +139,9 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
   }
   if (request.method === 'GET' && pathname === '/feedback') {
     if (!(await authorized())) return fail('unauthorized');
+    // Fresh issue states (ROADMAP 82) before the list; GitHub trouble only leaves the stored states, never fails the board.
+    const githubToken = env.GITHUB_TOKEN?.trim();
+    if (githubToken) await syncIssueStates(env.DB, github, githubToken, now).catch((error: unknown) => console.error('issue sync failed', error));
     return json({ entries: await listFeedback(env.DB) }, 200);
   }
   if (request.method === 'POST' && pathname === '/feedback') {
@@ -162,32 +170,58 @@ async function route(request: Request, env: Env, now: number, github: GitHubFetc
     const hashed = await Promise.all(items.map(async ({ id, key }) => ({ id, keyHash: await sha256Hex(key) })));
     return json({ entries: await feedbackStatuses(env.DB, hashed) } satisfies FeedbackStatusList, 200);
   }
+  // The player withdraws one of their own reports (ROADMAP 78): like /feedback/status no token, a game Origin and the
+  // report's key; before the triage routes, whose path would take "delete" for a row id. A linked issue stays.
+  if (pathname === '/feedback/delete') {
+    if (request.method !== 'POST') return fail('not-found');
+    if (!isAllowedOrigin(origin)) return fail('forbidden');
+    const target = parseDeleteBody((await readLimitedText(request, MAX_DELETE_BYTES)) ?? '');
+    if (target === null) return fail('bad-request');
+    // An unknown id and a wrong key get the same 404, so nobody learns which ids exist.
+    const deleted = await deleteOwnFeedback(env.DB, target.id, await sha256Hex(target.key));
+    return deleted ? new Response(null, { status: 204, headers: cors }) : fail('not-found');
+  }
   const triage = TRIAGE_PATH.exec(pathname);
   if (triage) {
     if (!(await authorized())) return fail('unauthorized');
     const id = parseFeedbackId(triage[1]!);
-    const action = `${request.method} ${triage[2] ? 'issue' : 'row'}`;
-    if (!['POST issue', 'PATCH row', 'DELETE row'].includes(action)) return fail('not-found');
+    const action = `${request.method} ${triage[2] ?? 'row'}`;
+    if (!['POST issue', 'POST link', 'PATCH row', 'DELETE row'].includes(action)) return fail('not-found');
     if (id === null) return fail('bad-request');
     if (action === 'DELETE row') return (await deleteFeedback(env.DB, id)) ? new Response(null, { status: 204, headers: cors }) : fail('not-found');
     const text = (await readLimitedText(request, MAX_TRIAGE_BYTES)) ?? '';
     if (action === 'PATCH row') {
       const patch = parseTriagePatch(text);
       if (patch === null) return fail('bad-request');
+      // Geplant always has an issue (ROADMAP 83): it comes only with POST .../issue or .../link, or back to a linked row.
+      if (patch.status === 'todo') {
+        const row = await feedbackForIssue(env.DB, id);
+        if (!row) return fail('not-found');
+        if (row.issue === null) return fail('no-issue');
+      }
       const updated = await updateTriage(env.DB, id, patch);
       return updated ? json({ ok: true, ...updated }, 200) : fail('not-found');
     }
-    const draft = parseIssueDraft(text);
-    if (draft === null) return fail('bad-request');
+    const body = action === 'POST issue' ? parseIssueDraft(text) : parseIssueLink(text);
+    if (body === null) return fail('bad-request');
     const githubToken = env.GITHUB_TOKEN?.trim();
     if (!githubToken) return fail('github-token-missing');
     const row = await feedbackForIssue(env.DB, id);
     if (!row) return fail('not-found');
-    if (row.issue !== null) return fail('exists', { issue: row.issue });
-    const created = await createIssue(github, githubToken, { title: draft.title, body: issueText(draft), labels: [ISSUE_LABEL, row.kind] });
-    // Status todo ("Geplant") only together with a created issue; a failed issue leaves the row as it was.
+    // Only an issue GitHub no longer has (deleted or transferred) may be replaced by linking another one.
+    const replaceable = 'issue' in body && row.issueState === 'missing';
+    if (row.issue !== null && !replaceable) return fail('exists', { issue: row.issue });
+    // Status todo ("Geplant") only together with an issue; a failed GitHub call leaves the row as it was.
+    if ('issue' in body) {
+      const found = await readIssue(github, githubToken, body.issue);
+      if (found.kind === 'missing') return fail('issue-not-found');
+      if (found.kind === 'error') return fail('github', { status: found.status });
+      await storeIssue(env.DB, id, { issue: body.issue, reading: found.reading, reply: body.reply });
+      return json({ ok: true, issue: body.issue, issueState: found.reading.state, issueClosedDay: found.reading.closedDay }, 200);
+    }
+    const created = await createIssue(github, githubToken, { title: body.title, body: issueText(body), labels: [ISSUE_LABEL, row.kind] });
     if (!created.ok) return fail('github', { status: created.status });
-    await storeIssue(env.DB, id, created.number);
+    await storeIssue(env.DB, id, { issue: created.number, reading: { state: 'open', closedDay: null }, reply: body.reply });
     return json({ ok: true, issue: created.number }, 201);
   }
   if (request.method !== 'POST' || pathname !== '/score') return fail('not-found');
