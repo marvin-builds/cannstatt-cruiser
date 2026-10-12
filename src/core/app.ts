@@ -44,6 +44,8 @@ export function startApp(systems: System[]): Game {
     game.display.viewWidth = renderer.layout.viewWidth;
     game.display.viewHeight = renderer.layout.viewHeight;
     game.display.safeInsets = insetsInView(safeArea.read(), renderer.layout, renderer.window.width, renderer.window.height);
+    // The layout follows visualViewport, but portrait does not on purpose: the keyboard shrinks the
+    // visual viewport while typing in portrait, and that must not count as a turn to landscape.
     game.display.portrait = window.innerHeight > window.innerWidth;
     game.display.touch = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
     game.display.fullscreen = isFullscreen();
