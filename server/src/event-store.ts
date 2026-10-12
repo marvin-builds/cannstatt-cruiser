@@ -66,10 +66,10 @@ export async function saveEvent(db: D1Database, event: TelemetryEvent, { day, ho
       await db
         .prepare(
           `INSERT OR IGNORE INTO events
-             (session, kind, day, hour, version, input, orientation, platform, kid, country, region, city, tester, is_returning)
-           VALUES (?, 'session', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (session, kind, day, hour, version, input, platform, kid, country, region, city, tester, is_returning)
+           VALUES (?, 'session', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .bind(event.session, day, hour, event.version, event.input, event.orientation, event.platform, Number(event.kid),
+        .bind(event.session, day, hour, event.version, event.input, event.platform, Number(event.kid),
           location.country, location.region, location.city, Number(event.tester === true),
           event.returning === undefined ? null : Number(event.returning))
         .run();

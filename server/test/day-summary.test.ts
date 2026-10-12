@@ -67,7 +67,7 @@ describe('condensing finished days into day_summaries', () => {
     expect(summaries(`metric = 'city'`).map((r) => [r.key, r.value])).toEqual([['', 1], ['Stuttgart', 2]]);
     expect(value(day, 'country', 'DE')).toBe(3);
     expect(value(day, 'region', 'Baden-Württemberg')).toBe(3);
-    expect(value(day, 'orientation', 'landscape')).toBe(3);
+    expect(summaries(`metric = 'orientation'`)).toEqual([]); // ROADMAP 69: no orientation split
     expect(value(day, 'platform', 'android')).toBe(3);
     expect(value(day, 'version', '2026-10-11.1')).toBe(3);
     expect(summaries(`metric = 'run_seconds'`).map((r) => [r.key, r.value])).toEqual([['120', 2], ['30', 1]]);

@@ -67,6 +67,13 @@ describe('fetchStats', () => {
     const { newPlayers: _, ...oldDay } = stats.perDay[0]!;
     expect(isInsightsStats({ ...stats, perDay: [oldDay] })).toBe(false);
   });
+  it('accepts stats without an orientation split (ROADMAP 69), and the extra split of an older worker', () => {
+    const stats = sampleStats(7);
+    const { input, platform, kid, version, country, region, city } = stats.split;
+    const withoutOrientation = { ...stats, split: { input, platform, kid, version, country, region, city } };
+    expect(isInsightsStats(withoutOrientation)).toBe(true);
+    expect(isInsightsStats({ ...withoutOrientation, split: { ...withoutOrientation.split, orientation: [{ key: 'landscape', count: 3 }] } })).toBe(true);
+  });
   it('rejects a range outside STATS_RANGES', () => {
     expect(isInsightsStats({ ...sampleStats(30), days: 60 })).toBe(false);
   });

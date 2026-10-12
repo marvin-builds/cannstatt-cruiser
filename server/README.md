@@ -328,7 +328,8 @@ summarised before migration 0006; those days count wholly as players:
 | `total` | `new_players`, `returning_visits` | sessions with `is_returning` 0 / 1 (0 on days before 0006) |
 | `total` | `end_seconds` | sum of the `end` seconds |
 | `total` | `end_median` | that day's median `end` seconds (only on days with an `end`; `player_value` 0 when all ends are from test devices) |
-| `input`, `orientation`, `platform`, `kid`, `version`, `country`, `region`, `city` | the value (`kid` as `true`/`false`, `''` = unknown) | sessions |
+| `input`, `platform`, `kid`, `version`, `country`, `region`, `city` | the value (`kid` as `true`/`false`, `''` = unknown) | sessions |
+| `orientation` | `landscape`/`portrait` | sessions; only on days summarised before ROADMAP 69, no longer read |
 | `run_seconds`, `run_distance`, `run_score` | the reported bucket value | runs |
 
 Condensing runs on the same trigger as the prune (the first accepted event of
@@ -414,7 +415,7 @@ of its kind (see `src/events.ts` and the game's `src/net/telemetry-types.ts`):
 
 | `kind` | Fields | Rules |
 | --- | --- | --- |
-| `session` | `session`, `version`, `input`, `orientation`, `platform`, `kid`, optional `tester`, `returning` | once per page load; `session` 32 lowercase hex chars, `version` `YYYY-MM-DD.n`, `input` `touch`/`keys`, `orientation` `landscape`/`portrait`, `platform` `android`/`ios`/`other`, `kid` boolean; `tester` (owner's test device, stored as `tester` 1/0, omitted = 0) and `returning` (game data stored before this page load, stored as `is_returning` 1/0, omitted = `NULL`, unknown) booleans when present |
+| `session` | `session`, `version`, `input`, `platform`, `kid`, optional `tester`, `returning` | once per page load; `session` 32 lowercase hex chars, `version` `YYYY-MM-DD.n`, `input` `touch`/`keys`, `platform` `android`/`ios`/`other`, `kid` boolean; `tester` (owner's test device, stored as `tester` 1/0, omitted = 0) and `returning` (game data stored before this page load, stored as `is_returning` 1/0, omitted = `NULL`, unknown) booleans when present; an `orientation` (`landscape`/`portrait`) from builds before ROADMAP 69 is accepted but not stored (the `events.orientation` column stays `NULL` for new rows) |
 | `run` | `session`, `seconds`, `score`, `distance`, `kid` | per game over; `seconds` a multiple of 10 in 0..3600, `score` one of 0/100/500/2000/5000, `distance` a multiple of 100 in 0..5000 |
 | `end` | `session`, `seconds` | when the page is hidden; whole seconds of play, 0..14400 |
 
@@ -506,7 +507,7 @@ count (approximate) and `avgSeconds` the exact total `end` seconds / `end` count
 - `runs`: `total`, `perSession` (runs / sessions, 2 decimals) and histograms,
   zero-filled, keys as strings ascending: `seconds` by lower bounds
   0/30/60/180/600, `distance` per 100 m (0..5000), `score` per score bucket.
-- `split`: sessions by `input`, `orientation`, `platform`, `kid`
+- `split`: sessions by `input`, `platform`, `kid`
   (`true`/`false`), `version`, `country`, `region`, `city`, largest first.
   Every country, region and city is listed from its first session on
   (`MIN_GROUP_SESSIONS` = 1); only unknown places are merged into `other`.
@@ -525,7 +526,8 @@ have exactly these fields, `key` and `testerPass` optional (`FeedbackBody` in `s
 | `kind` | `bug` or `idea` |
 | `text` | 3-500 chars after trimming; no control characters except newline (`\r\n` counts as newline); stored trimmed, with more than two blank lines in a row cut to two |
 | `version` | `YYYY-MM-DD.n` |
-| `platform`, `input`, `orientation` | as in `POST /event` |
+| `platform`, `input` | as in `POST /event` |
+| `orientation` | `landscape`/`portrait` |
 | `viewWidth` | integer 320..427 |
 | `log` | array of at most 20 strings of at most 200 chars without control characters; must be `[]` for an `idea` |
 | `testerPass` | optional: a tester pass from `POST /board/tester-pass`, a string of at most 512 chars (`MAX_TESTER_PASS_CHARS`, longer or not a string: 400). A valid, unexpired pass lifts the per-session limit; an invalid or expired one is ignored (normal limit, no error). Never stored |

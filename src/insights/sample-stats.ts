@@ -66,10 +66,6 @@ export function sampleStats(range: StatsRange, end = '2026-10-11', allDays = 500
         { key: 'touch', count: share(0.68) },
         { key: 'keys', count: share(0.32) },
       ],
-      orientation: [
-        { key: 'landscape', count: share(0.74) },
-        { key: 'portrait', count: share(0.26) },
-      ],
       platform: [
         { key: 'android', count: share(0.41) },
         { key: 'ios', count: share(0.29) },

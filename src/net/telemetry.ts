@@ -73,7 +73,6 @@ export function endSeconds(seconds: number): number {
 /** What the game knows about this page load when the title first shows. */
 export interface SessionInfo {
   touch: boolean;
-  portrait: boolean;
   platform: Platform;
   kid: boolean;
 }
@@ -91,7 +90,6 @@ export function sessionEvent(session: string, version: string, info: SessionInfo
     session,
     version,
     input: info.touch ? 'touch' : 'keys',
-    orientation: info.portrait ? 'portrait' : 'landscape',
     platform: info.platform,
     kid: info.kid,
     ...(flags.tester ? { tester: true } : {}),

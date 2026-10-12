@@ -16,7 +16,6 @@ export interface SessionEvent {
   session: string;
   version: string;
   input: InputKind;
-  orientation: Orientation;
   platform: Platform;
   kid: boolean;
   tester?: boolean;
@@ -73,7 +72,6 @@ export interface InsightsStats {
   };
   split: {
     input: CountEntry[];
-    orientation: CountEntry[];
     platform: CountEntry[];
     kid: CountEntry[];
     version: CountEntry[];

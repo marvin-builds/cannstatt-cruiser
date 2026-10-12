@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseEvent } from '../src/event-parse';
 
 const SESSION = '0123456789abcdef0123456789abcdef';
-const session = { kind: 'session', session: SESSION, version: '2026-10-11.1', input: 'touch', orientation: 'portrait', platform: 'ios', kid: false };
+const session = { kind: 'session', session: SESSION, version: '2026-10-11.1', input: 'touch', platform: 'ios', kid: false };
 const run = { kind: 'run', session: SESSION, seconds: 120, score: 500, distance: 1300, kid: true };
 const end = { kind: 'end', session: SESSION, seconds: 431 };
 
@@ -13,6 +13,14 @@ describe('parseEvent', () => {
     expect(parseEvent(text(session))).toEqual(session);
     expect(parseEvent(text(run))).toEqual(run);
     expect(parseEvent(text(end))).toEqual(end);
+  });
+
+  it('accepts a session with orientation from builds before ROADMAP 69 but drops the field', () => {
+    for (const orientation of ['landscape', 'portrait']) {
+      expect(parseEvent(text({ ...session, orientation })), orientation).toEqual(session);
+    }
+    expect(parseEvent(text({ ...session, orientation: 'square' }))).toBeNull();
+    expect(parseEvent(text({ ...run, orientation: 'portrait' }))).toBeNull();
   });
 
   it('accepts session events with or without the optional tester and returning flags', () => {
@@ -61,7 +69,6 @@ describe('parseEvent', () => {
 
   it('rejects values outside the allow-lists', () => {
     expect(parseEvent(text({ ...session, input: 'mouse' }))).toBeNull();
-    expect(parseEvent(text({ ...session, orientation: 'square' }))).toBeNull();
     expect(parseEvent(text({ ...session, platform: 'windows' }))).toBeNull();
     expect(parseEvent(text({ ...session, kid: 'false' }))).toBeNull();
     expect(parseEvent(text({ ...run, kid: 0 }))).toBeNull();

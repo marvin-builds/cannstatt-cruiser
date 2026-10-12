@@ -54,7 +54,7 @@ function fakeNet(options: { fetchFails?: 'reject' | 'throw'; beaconThrows?: bool
 }
 
 const SESSION = 'a'.repeat(32);
-const INFO = { touch: true, portrait: false, platform: 'android', kid: false } as const;
+const INFO = { touch: true, platform: 'android', kid: false } as const;
 
 function telemetry(net = fakeNet(), store = memoryStore(), baseUrl: string | null = 'https://stats.test', returning?: boolean) {
   const t = new Telemetry({ baseUrl, fetch: net.fetchFn, beacon: net.beacon, store, version: '2026-10-11.1', session: SESSION, returning });
@@ -103,21 +103,20 @@ describe('buckets', () => {
 });
 
 describe('event builders', () => {
-  it('session: input and orientation from the display, platform, kid, version', () => {
+  it('session: input from the display, platform, kid, version; no orientation (ROADMAP 69)', () => {
     expect(sessionEvent(SESSION, '2026-10-11.1', INFO)).toEqual({
       kind: 'session',
       session: SESSION,
       version: '2026-10-11.1',
       input: 'touch',
-      orientation: 'landscape',
       platform: 'android',
       kid: false,
     });
-    expect(sessionEvent(SESSION, 'v', { touch: false, portrait: true, platform: 'other', kid: true })).toMatchObject({
-      input: 'keys',
-      orientation: 'portrait',
-      kid: true,
-    });
+    expect(sessionEvent(SESSION, 'v', { touch: false, platform: 'other', kid: true })).toMatchObject({ input: 'keys', kid: true });
+  });
+
+  it('session: carries no orientation (ROADMAP 69)', () => {
+    expect('orientation' in sessionEvent(SESSION, 'v', INFO)).toBe(false);
   });
 
   it('session flags (ROADMAP 55): tester only when true, returning when known', () => {

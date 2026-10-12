@@ -153,7 +153,7 @@ describe('GET /stats answer', () => {
         distance: Array.from({ length: 51 }, (_, i) => ({ key: String(i * 100), count: 0 })),
         score: ['0', '100', '500', '2000', '5000'].map((key) => ({ key, count: 0 })),
       },
-      split: { input: [], orientation: [], platform: [], kid: [], version: [], country: [], region: [], city: [] },
+      split: { input: [], platform: [], kid: [], version: [], country: [], region: [], city: [] },
       topScores: [],
     });
   });
@@ -230,7 +230,6 @@ describe('GET /stats answer', () => {
     const { split } = (await stats(7)).body;
     expect(split).toEqual({
       input: [{ key: 'keys', count: 6 }, { key: 'touch', count: 5 }],
-      orientation: [{ key: 'landscape', count: 10 }, { key: 'portrait', count: 1 }],
       platform: [{ key: 'other', count: 6 }, { key: 'android', count: 4 }, { key: 'ios', count: 1 }],
       kid: [{ key: 'false', count: 7 }, { key: 'true', count: 4 }],
       version: [{ key: '2026-10-11.1', count: 7 }, { key: '2026-10-08.3', count: 4 }],
@@ -314,7 +313,6 @@ describe('GET /stats long ranges (365 and 0) from the day summaries', () => {
     expect(runs.distance.filter((entry) => entry.count > 0)).toEqual([{ key: '0', count: 1 }, { key: '100', count: 2 }]);
     expect(split).toEqual({
       input: [{ key: 'keys', count: 4 }, { key: 'touch', count: 2 }],
-      orientation: [{ key: 'landscape', count: 6 }],
       platform: [{ key: 'android', count: 6 }],
       kid: [{ key: 'false', count: 4 }, { key: 'true', count: 2 }],
       version: [{ key: '2026-10-11.1', count: 6 }],

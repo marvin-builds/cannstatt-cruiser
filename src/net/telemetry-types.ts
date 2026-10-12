@@ -8,6 +8,7 @@
 
 export const EVENT_KINDS = ['session', 'run', 'end'] as const;
 export const INPUTS = ['touch', 'keys'] as const;
+/** Feedback only (feedback-types.ts): the play statistics carry no orientation since ROADMAP 69. */
 export const ORIENTATIONS = ['landscape', 'portrait'] as const;
 /** Same values as core's InstallPlatform (`state.install.platform`). */
 export const PLATFORMS = ['android', 'ios', 'other'] as const;
@@ -57,7 +58,6 @@ export interface SessionEvent {
   session: string;
   version: string;
   input: InputKind;
-  orientation: Orientation;
   platform: Platform;
   kid: boolean;
   /** This device is marked as the owner's test device (TEST_DEVICE_KEY true); omitted = false. */
@@ -139,7 +139,6 @@ export interface InsightsStats {
    */
   split: {
     input: CountEntry[];
-    orientation: CountEntry[];
     platform: CountEntry[];
     kid: CountEntry[];
     version: CountEntry[];

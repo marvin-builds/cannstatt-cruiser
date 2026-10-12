@@ -47,7 +47,6 @@ export interface BoardView {
 
 const SPLITS: { title: string; field: keyof InsightsStats['split']; keys: SplitKey[] }[] = [
   { title: 'Eingabe', field: 'input', keys: [{ key: 'touch', label: 'Touch' }, { key: 'keys', label: 'Tastatur' }] },
-  { title: 'Lage', field: 'orientation', keys: [{ key: 'landscape', label: 'Quer' }, { key: 'portrait', label: 'Hoch' }] },
   {
     title: 'System',
     field: 'platform',

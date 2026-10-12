@@ -4,8 +4,11 @@
  * raw rows not summarised yet (long ranges).
  */
 
-/** Session columns split by attribute; the location ones get small groups merged. */
-export const SPLIT_COLUMNS = ['input', 'orientation', 'platform', 'kid', 'version', 'country', 'region', 'city'] as const;
+/**
+ * Session columns split by attribute; the location ones get small groups merged.
+ * No `orientation` (ROADMAP 69): its column and old summary rows are left unread.
+ */
+export const SPLIT_COLUMNS = ['input', 'platform', 'kid', 'version', 'country', 'region', 'city'] as const;
 export type SplitColumn = (typeof SPLIT_COLUMNS)[number];
 
 /** Run histograms and the events column each one counts. */
