@@ -32,6 +32,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   rng.ts                Rng (mulberry32): next/range/int/pick/chance
   events.ts             EventBus<E>: on/onAny/emit
   storage.ts            store.get(key, fallback) / store.set(key, value): safe namespaced localStorage; createMemoryStore() for tests
+  safe-area.ts          display cutouts: hidden probe -> display.safeInsets (view px, insetsInView), safeAreaCss(side) for DOM sheets
   fullscreen.ts         toggleFullscreen() with webkit + iOS fallback, landscape lock
   testhook.ts           window.__game (see docs/TESTING.md)
   update.ts             handleServiceWorkerMessage(): sw.js `updateReady` -> state.updateReady; CHECK_FOR_UPDATE_MESSAGE, shouldCheckForUpdate(), UPDATE_CHECK_INTERVAL_MS (see Update signal)
@@ -79,6 +80,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
   gameplay/crowd.ts     fan crowds: crowdDue (schedule), planCrowd (row of heads, bounce check, guide stars), CROWD_* constants (see Fan crowds)
   gameplay/crowd-tag.ts CROWD_KEY / crowdOf(): the `data.crowd` tag of a crowd's fans, without importing the planner
+  gameplay/crowd-watch.ts CrowdWatch: emits crowdAhead once per crowd when its first fan comes on screen
   gameplay/crowd-art.ts drawCrowdFan(): chanting VfB fans with scarves and a flag, swaying Wasen visitors with Lebkuchenherzen, a shaded second row
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
@@ -288,7 +290,7 @@ interface System {
 | `bus` | typed event bus (`GameEvents`) |
 | `rng` | seeded `Rng`, re-seeded with `state.seed` at every run start. Use it for all gameplay randomness (never `Math.random`), so test runs replay deterministically. |
 | `input` | this tick's `InputFrame`: `action`, `duck` and `use` (each `{pressed, held, released, holdTime}`), `pausePressed`, `mutePressed`. See [Input](#input-action-duck-and-use). |
-| `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. |
+| `display` | `{portrait, touch, fullscreen, viewWidth, viewHeight, safeInsets}`. `viewWidth` is the current view width (320-427) and changes live; also on `RenderContext.display`. `safeInsets` (`SafeInsets {top, right, bottom, left}`, view px) is how far a display cutout (punch-hole camera, rounded corner) reaches onto the canvas, 0 where the letterbox already covers it; `core/safe-area.ts` measures it live from a hidden probe padded with `var(--cc-safe-<side>, env(safe-area-inset-<side>))`, again on `resize`, `visualViewport` resize, `orientationchange` and `fullscreenchange`. See [View size](#view-size-adaptive-width). |
 | `speedOverride` | speed forced by the test hook (`setSpeed`), or `null`. While set, core pins `state.speed`; difficulty code must not write it. |
 | `commands` | `startRun, pause, resume, gameOver, toTitle, setMuted, setZone, toggleFullscreen, setLetterboxColor, useItem` (presses `use` for one tick), `reloadForUpdate` (reloads the page; see [Update signal](#update-signal-roadmap-item-15)), `markVersionSeen` (see [Changelog](#changelog-neu-in-dieser-version-roadmap-item-16)), `promptInstall`, `dismissInstallHint` (see [Install hint](#install-hint-roadmap-item-18)) |
 | `addHotspot({rect, onPress})` | screen region (view px) that swallows pointer presses instead of jumping. `onPress` runs inside the DOM event, so fullscreen/audio APIs work there. Later hotspots win. Pass an `InputHotspot` (see below) for holds and keys. |
@@ -383,6 +385,7 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `highFive` | `{entityId, points}` | gameplay (the use press inside a `highFiver`'s high five window; that press never uses the carried item; see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
 | `sessionCheer` | `{level}` | gameplay (a grind trick, air trick or combo step inside the park; `level` 0..1 is the session's cheering so far; world animates the crowd, audio scales the cheers) |
 | `sessionEnd` | `{level, points}` | gameplay (the skater left the park; `points` = the "Session!" bonus scaled by `level`, 0 if none; the ui shows the callout) |
+| `crowdAhead` | `{theme}` | gameplay (`crowd-watch.ts`: a [fan crowd](#fan-crowds-roadmap-76)'s first fan, seat 0, came on screen; once per crowd, reset per run; `theme` `'vfb' \| 'wasen'`; the ui shows "VfB-Fans!" (white) or "Wasen!" (orange), also in kid mode; audio plays `cheerSmall`) |
 
 Usage: `const off = ctx.bus.on('crash', (e) => ...)`. Subscribe in `init`.
 Emitting is synchronous.
@@ -592,6 +595,13 @@ Rules for every slice:
   distance so difficulty is the same on every screen.
 - Hotspots and pointer input use view pixels; core maps client coordinates
   with `screenToView` for any width.
+- **Display cutouts (ROADMAP 75):** edge UI (HUD buttons, the stats plate,
+  corner and menu buttons, popups) and its hotspots stay inside
+  `safeSpan(viewWidth, m)` (centred content inside `centredWidth`) from
+  `ui/layout.ts`; `uiMetrics(display)` carries `safeLeft` / `safeRight` from
+  `display.safeInsets`. The world and full-width fills stay edge to edge. Only
+  the left and right insets move canvas UI; the portrait settings "Zurück"
+  button and the stunt callout do not read them (portrait-only / centred).
 
 ## Modes
 
@@ -951,7 +961,7 @@ a stomp with the points of its `obstacleCleared` "Stomp! +150" (a ball hit
 eating "Lecker! +1" with a heart (or "Lecker! +…" with the bonus at full
 health), "Prost! Gluck gluck gluck" (never in kid mode), "Wurf!",
 "Achtung, der Ball!" on a ricochet, "Autsch!" on a crash and
-"Boardslide! +…". No popup rises above the HUD stats plate (`PopupPool.ceiling`;
+"Boardslide! +…", "VfB-Fans!" (white) / "Wasen!" (orange) on `crowdAhead`. No popup rises above the HUD stats plate (`PopupPool.ceiling`;
 stacks then grow downwards). Every popup has a 1 px ink outline; catch popups
 and all popups in portrait are drawn at scale 2 (`popupScale`). The ui slice
 shows "Stomp!" on `stomp`; gameplay adds the points.
@@ -1249,7 +1259,7 @@ over the thanks on "Mein Feedback") and locks to landscape again when it
 closes. These sheets never get the rotate screen (see below).
 
 - **Safe area (ROADMAP 75):** every DOM sheet (and the rotate screen) pads
-  each side by `max(padPx, safe-area inset)` (`sheet-dom.ts` `safeInset`), so
+  each side by `max(padPx, safe-area inset)` (`sheet-dom.ts`, with core's `safeAreaCss`), so
   a punch-hole camera never covers the tab row. The custom property
   `--cc-safe-<side>` on the root element overrides `env(safe-area-inset-<side>)`
   for playtests (Chromium cannot fake `env()`). A sheet's box shadow paints
@@ -1576,9 +1586,10 @@ jump is a bonus, never needed). Running into it is a normal person crash.
   ahead, so the HumanBot jumps onto the heads and bounces across.
 - **Items:** crowds block the thrown ball (see Stomp and carried items);
   Wasen fans toss a Lebkuchenherz when stomped, in every mode.
-- **Open:** a "Fans!" popup and crowd sounds need a contract change (an
-  event when a crowd comes on screen, or an `EntityKind` 'crowd').
-- Tests: `crowd.test.ts`, `crowd-spawn.test.ts`, `crowd-bot.test.ts`;
+- **Announcement:** `crowd-watch.ts` emits `crowdAhead {theme}` once per
+  crowd when its first fan comes on screen; the ui shows "VfB-Fans!" or
+  "Wasen!", audio a small cheer (see [Events](#events-gameevents)).
+- Tests: `crowd.test.ts`, `crowd-spawn.test.ts`, `crowd-bot.test.ts`, `crowd-watch.test.ts`;
   `window.__gameplay.pattern('fanCrowd')`; playtest `scripts/scenarios/fan-crowd.ts`.
 
 ## Human margins (fairness.ts)

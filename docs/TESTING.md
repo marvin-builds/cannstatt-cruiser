@@ -288,7 +288,7 @@ g.endRun();                                     // game-over screen now
 | `window.__ui.trickHintVisible()` | whether the grind trick hint ("↓ = Boardslide!") shows now |
 | `window.__ui.whatsNew()` | the "Neu in dieser Version" list while it shows, else `null`: `{sheet, offset, maxScroll, rows, headings, list}` (`sheet` true for the portrait DOM sheet, whose offsets are CSS px; else view px) |
 | `window.__ui.settings()` | hidden settings menu: `{screen: 'closed' \| 'menu', holdProgress}` (the logo hold progress 0..1) |
-| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen}`; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
+| `window.__ui.layout()` | tap areas in view px for the current display: `{metrics, hud: {pause, mute, fullscreen}, menu: {toggle, back}, logo, screen, plate, itemButton}`; `plate` is the HUD stats plate as last laid out, `itemButton` the touch item button's rect; `logo` is the title's logo, or the pause screen's while paused; `screen` holds the current menu screen's buttons `{reload, install, dismiss, toTitle, next, logo}` (each a rect or null; `screen` is null off the menu screens). The touch item button's rect is `itemButtonRect(viewWidth, display)` from `src/ui/item-button.ts` |
 | `window.__ui.highscores()` | the online list (null without one): `{screen: 'closed' \| 'list' \| 'entry', offered, name, message, topState, entries, highlight, scroll, maxScroll, trophyShown, ownBest}` plus the tap areas `trophy`, `close`, `field`, `submit` (view px). The network itself must be faked with a Playwright route (see Never POST to the live highscore list) |
 | `window.__audio.log` / `status()` / `gain()` | sounds in trigger order `{at, sound, muted}`: cue names (`glug`, `honk`, ...) plus `grind:start` / `grind:stop` and `traffic:start` / `traffic:stop` (the backend starts / stops hearing any traffic: in light traffic once per passing vehicle, as its swell rises and fades; in Mitte when the steady hum starts and stops; also stops on game over, pause or mute), and the pass-by cues `passCar` / `passVan` / `passBus` / `passTruck` (from `vehiclePassed`, which the world emits only while playing); `src/audio/debug.ts` |
 
@@ -633,7 +633,17 @@ npm run playtest -- --headed
   in Bad Cannstatt at a pinned 150 px/s, an overview shot, then crossed head
   to head by the HumanBot (plans with stomps while a crowd is ahead): at
   least two stomps, no crash, back on the street, no beer; then the kid mode
-  row (four heads) and a plain jump into a crowd (a crash).
+  row (four heads) and a plain jump into a crowd (a crash). The overview
+  also checks one `crowdAhead` with the crowd's theme ("VfB-Fans!" / "Wasen!").
+- `scripts/scenarios/safe-area-landscape.ts` (ROADMAP 75, a landscape scenario:
+  `phone-landscape,desktop`): fakes display cutouts with `fakeSafeInsets`
+  (red bands mark them on the shots): none gives `display.safeInsets` 0; 40 CSS
+  px left and right keep every button, its tap area and the stats plate on the
+  title, the running HUD (with the item button) and the pause screen inside
+  the safe span, real taps still work and the world stays full-bleed; a
+  left-only cutout moves only the left corner; removing it restores the
+  layout. On `phone-portrait` its first mute-tap check fails because the
+  rotate screen covers the title (known, not a bug).
 
 - `scripts/scenarios/ramp-only.ts` (ROADMAP 61/62, `desktop,phone-landscape`):
   a street jump passes in front of a stunt ledge and a park container without
@@ -713,6 +723,10 @@ The context provides:
   `realJumpInput(t)` picks the viewport's real one), `nextKicker(s)` / `onRamp(s, kicker)` and
   `jumpOnRamp(t, kickerId, input, fingers?)` (rides to a kicker and presses jump as the feet roll
   onto its ramp, ROADMAP 40),
+  `fakeSafeInsets(t, {left, right, top, bottom})` (fakes display cutouts in CSS px: sets
+  `--cc-safe-<side>` on the root element, which `core/safe-area.ts` reads before
+  `env(safe-area-inset-<side>)`, fires a resize and steps a tick; a side left out, so `{}`, removes
+  its override),
   `holdViewWhile(t, x, y, during)` (a real touch / mouse press held while `during` steps the frozen
   clock, e.g. a long press), `cssPerViewPixel(page)` (tap sizes in CSS px) and `Fingers`, a
   multi-finger CDP touch driver in view px (`new Fingers(t, cdp)`: `down/move/up(id, ...)`,
