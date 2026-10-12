@@ -1,8 +1,9 @@
 /**
  * The rotate screen as a full-screen DOM overlay (ROADMAP 73), like the
  * portrait sheets (sheet-dom.ts): the logo at the top, a large pixel-art phone
- * that turns from upright to sideways in a short loop (still, with the arrow
- * beside it, when the player prefers reduced motion), "Bitte Gerät drehen" in
+ * that turns from upright to sideways in a short loop (still when the player
+ * prefers reduced motion) under a turn arrow as wide as the turning phone, so
+ * both stay centred on one line, "Bitte Gerät drehen" in
  * large type, the reason, and "Trotzdem weiter". A tap anywhere on it (or Esc)
  * dismisses it too. The pixel art is drawn at an integer scale and shown with
  * `image-rendering: pixelated`, so it stays crisp. When it shows is
@@ -60,11 +61,20 @@ function scaleTo(canvas: HTMLCanvasElement, scale: number): void {
   if (canvas.style.width !== w) styled(canvas, { width: w, height: `${canvas.height * scale}px` });
 }
 
-/** Integer art scales that fit the screen: the phone takes about a third of the height, the logo most of the width. */
+/** Integer art scales that fit the screen: the arrow and the phone take about a third of the height, the logo most of the width. */
 export function rotateScales(width: number, height: number): { phone: number; logo: number } {
   const logo = logoRect(0);
-  const phone = Math.max(3, Math.min(Math.floor((height * 0.3) / ROTATE_PHONE.height), Math.floor((width * 0.5) / ROTATE_PHONE.height), 14));
+  const art = ROTATE_ARROW.height + ROTATE_PHONE.height;
+  const phone = Math.max(3, Math.min(Math.floor((height * 0.36) / art), Math.floor((width * 0.55) / ROTATE_PHONE.height), 14));
   return { phone, logo: Math.max(1, Math.min(Math.floor((width * 0.85) / logo.w), Math.floor((height * 0.16) / logo.h), 5)) };
+}
+
+/** Tallest "Trotzdem weiter" (CSS px), on a big tablet. */
+const MAX_BUTTON_PX = 88;
+
+/** The button's height for a screen `height` CSS px tall: the sheets' button on phones, taller on tablets. */
+export function rotateButtonPx(height: number): number {
+  return Math.min(MAX_BUTTON_PX, Math.max(SHEET_STYLE.buttonPx, Math.round((height - 300) * 0.085)));
 }
 
 export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet {
@@ -77,14 +87,14 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
     const { w, h } = logoRect(0);
     const logo = pixelCanvas(w, h, (g) => drawLogo(g, 0, 0));
     logo.setAttribute('aria-hidden', 'true');
-    // The phone turns inside a square box, so sideways it still fits; the arrow sits beside it.
+    // The phone turns inside a square box, so sideways it still fits; the arrow sits above it, centred on the same line.
     const phone = spriteCanvas(ROTATE_PHONE);
     const box = styled(document.createElement('div'), { display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' });
     box.append(phone);
     const arrow = spriteCanvas(ROTATE_ARROW);
-    const art = styled(document.createElement('div'), { display: 'flex', alignItems: 'flex-start', gap: '4px', flex: 'none' });
+    const art = styled(document.createElement('div'), { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 'none' });
     art.setAttribute('aria-hidden', 'true');
-    art.append(box, arrow);
+    art.append(arrow, box);
     const heading = styled(document.createElement('h2'), {
       margin: '0',
       fontSize: 'clamp(28px, 8vw, 56px)',
@@ -103,7 +113,7 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
     sheet.root.addEventListener('click', (e) => {
       if (!button.contains(e.target as Node)) handlers.onDismiss();
     });
-    return { sheet, logo, phone, box, arrow, turn: null as Animation | null };
+    return { sheet, logo, phone, box, arrow, button, turn: null as Animation | null };
   }
 
   /** Sizes the art for the screen now, and turns the phone unless reduced motion is wanted. */
@@ -113,7 +123,12 @@ export function createDomRotateSheet(handlers: RotateSheetHandlers): RotateSheet
     scaleTo(p.phone, s.phone);
     scaleTo(p.arrow, s.phone);
     const side = `${ROTATE_PHONE.height * s.phone}px`;
-    if (p.box.style.width !== side) styled(p.box, { width: side, height: side });
+    // One art px of air between the arrow's head and the phone.
+    if (p.box.style.width !== side) styled(p.box, { width: side, height: side, marginTop: `${s.phone}px` });
+    const buttonPx = rotateButtonPx(window.innerHeight);
+    if (p.button.style.minHeight !== `${buttonPx}px`) {
+      styled(p.button, { minHeight: `${buttonPx}px`, fontSize: `${Math.max(SHEET_STYLE.textPx, Math.round(buttonPx * 0.36))}px` });
+    }
     const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     if (still) {
       p.turn?.cancel();

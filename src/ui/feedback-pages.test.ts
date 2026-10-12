@@ -119,4 +119,8 @@ describe('report details', () => {
     expect(d.sent).toBe('Gesendet am 11.10.2026 mit: Idee, Version 2026-10-11.10, Android, Touch, quer, 390 px breit');
     expect(reportDetail(report(4, { log: [] })).sent).toContain('ohne Fehlerprotokoll');
   });
+
+  it('a log of one line says "1 Zeile"', () => {
+    expect(reportDetail(report(6, { log: ['error: boom'] })).sent).toMatch(/Fehlerprotokoll \(1 Zeile\)$/);
+  });
 });

@@ -3,7 +3,7 @@ import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
 import { FEEDBACK_TEXT } from './feedback-flow';
-import { DOT_ROOM, feedbackIcon, feedbackLayout } from './feedback-layout';
+import { DOT_ROOM, feedbackIcon, feedbackLayout, tabDot } from './feedback-layout';
 import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
 import { uiMetrics } from './layout';
 
@@ -57,14 +57,14 @@ describe('feedback screen layout', () => {
     }
   });
 
-  it('the tabs start the top row, the close button ends it; "Ansehen" sits right of the log toggle', () => {
+  it('the tabs start the top row, the close button ends it; "Ansehen" sits right of the log toggle or left of "Senden"', () => {
     for (const d of displays()) {
       const l = feedbackLayout(d);
       expect(l.mineTab.x, d.label).toBeGreaterThan(l.newTab.x);
       expect([l.newTab.y, l.mineTab.y, l.close.y], d.label).toEqual([l.newTab.y, l.newTab.y, l.newTab.y]);
       expect(l.close.x + l.close.w, d.label).toBeGreaterThanOrEqual(Math.min(d.viewWidth - 4, (d.viewWidth + 340) / 2) - 1);
-      expect(l.view.y, d.label).toBe(l.log.y);
-      expect(l.view.x, d.label).toBeGreaterThan(l.log.x + l.log.w - 1);
+      if (l.view.y === l.log.y) expect(l.view.x, d.label).toBeGreaterThan(l.log.x + l.log.w - 1);
+      else expect([l.view.y, l.view.x + l.view.w], d.label).toEqual([l.send.y, l.send.x - 4]);
       expect(l.field.y, d.label).toBeGreaterThan(l.newTab.y + l.newTab.h - 1);
     }
   });
@@ -79,9 +79,9 @@ describe('feedback screen layout', () => {
       fits(FEEDBACK_PAGE_TEXT.view, l.view, l.labelScale);
       fits(FEEDBACK_PAGE_TEXT.newTab, l.newTab, l.labelScale);
       expect(measureText(FEEDBACK_PAGE_TEXT.mineTab, l.labelScale) + DOT_ROOM * l.labelScale, d.label).toBeLessThanOrEqual(l.mineTab.w - 4);
-      expect(l.logLines.join(' ').replace('Protokoll', 'protokoll'), d.label).toMatch(/protokoll mitsenden$/);
+      expect(l.logLines, d.label).toEqual([FEEDBACK_TEXT.log]);
       const labelW = Math.max(...l.logLines.map((s) => measureText(s, l.logScale)));
-      expect(labelW + l.logBox + 4, d.label).toBeLessThanOrEqual(l.log.w);
+      expect(l.logText + labelW + 4, d.label).toBeLessThanOrEqual(l.log.x + l.log.w);
       expect(l.logLines.length * 7 * l.logScale + (l.logLines.length - 1) * 2, d.label).toBeLessThanOrEqual(l.log.h - 4);
       expect(l.field.h, d.label).toBeGreaterThanOrEqual(60);
     }
@@ -97,11 +97,35 @@ describe('feedback screen layout', () => {
     }
   });
 
-  it('phone landscape at 320 px wide keeps the big labels: the kinds move beside "Senden", the log label gets short', () => {
+  it('the log toggle\'s box keeps room to its label: at least 2 label pixels', () => {
+    for (const d of displays()) {
+      const l = feedbackLayout(d);
+      const boxRight = l.log.x + 6 + l.logBox;
+      expect(l.logText - boxRight, d.label).toBeGreaterThanOrEqual(2 * l.logScale);
+    }
+  });
+
+  it('the red tab dot keeps clear of the label and of the tab border', () => {
+    for (const d of displays()) {
+      const l = feedbackLayout(d);
+      const s = l.labelScale;
+      const dot = tabDot(l.mineTab, s);
+      const labelRight = l.mineTab.x + Math.floor((l.mineTab.w - DOT_ROOM * s) / 2) + Math.ceil(measureText(FEEDBACK_PAGE_TEXT.mineTab, s) / 2);
+      // The dot has a 1 px ink outline; the button border is 2 px wide.
+      expect(dot.x - 1 - labelRight, d.label).toBeGreaterThanOrEqual(s);
+      expect(l.mineTab.x + l.mineTab.w - 2 - (dot.x + dot.w + 1), d.label).toBeGreaterThanOrEqual(s);
+      expect(dot.y - 1 - (l.mineTab.y + 2), d.label).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('phone landscape at 320 px wide keeps the big labels and the whole log label: the kinds and "Ansehen" move beside "Senden"', () => {
     const l = feedbackLayout({ viewWidth: 320, touch: true, portrait: false });
     expect(l.labelScale).toBe(2);
     expect(l.bug.y).toBe(l.send.y);
-    expect(l.logLines).toEqual(['Protokoll mitsenden']);
+    expect(l.view.y).toBe(l.send.y);
+    expect(l.view.x).toBeGreaterThan(l.idea.x + l.idea.w);
+    expect(l.logLines).toEqual(['Fehlerprotokoll mitsenden']);
+    expect(l.logScale).toBe(2);
     const wide = feedbackLayout({ viewWidth: 427, touch: true, portrait: false });
     expect(wide.bug.y).toBe(wide.newTab.y);
     const desktop = feedbackLayout({ viewWidth: 320, touch: false, portrait: false });

@@ -86,6 +86,20 @@ const TONE_COLOUR: Partial<Record<TextTone, string>> = { message: UI.yellow, tex
 
 const BLOCK_STYLE: Partial<CSSStyleDeclaration> = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '0 0 4px' };
 
+/** A game version ("2026-10-12.3"): it wraps as a whole, never at its hyphens. */
+const VERSION = /(\d{4}-\d{2}-\d{2}\.\d+)/;
+
+/** Sets `text` on `el`, with every game version in it kept on one line. */
+function blockText(el: HTMLElement, text: string): void {
+  el.replaceChildren(
+    ...text.split(VERSION).map((part, i) => (i % 2 === 0 ? document.createTextNode(part) : styled(Object.assign(document.createElement('span'), { textContent: part }), { whiteSpace: 'nowrap' }))),
+  );
+}
+
+/** Label size of buttons that share a row tightly (the tabs, the confirm's): smaller on the narrowest phones, so they stay on one line. */
+const NARROW_FONT = `min(${SHEET_STYLE.textPx}px, 5vw)`;
+const NARROW_BUTTON: Partial<CSSStyleDeclaration> = { padding: '0 8px', whiteSpace: 'nowrap', fontSize: NARROW_FONT };
+
 /** "Das wird gesendet" / "Das wurde gesendet": labels over their lines, the log lines small and muted. */
 function fillSections(list: HTMLElement, sections: readonly PageSection[]): void {
   for (const s of sections) {
@@ -97,7 +111,7 @@ function fillSections(list: HTMLElement, sections: readonly PageSection[]): void
     for (const text of s.lines) {
       const el = styled(line(s.log ? SHEET_STYLE.smallPx : SHEET_STYLE.textPx, s.log || !s.label ? UI.muted : UI.white), BLOCK_STYLE);
       if (!s.label) el.style.marginTop = '12px';
-      el.textContent = text;
+      blockText(el, text);
       list.append(el);
     }
   }
@@ -132,7 +146,7 @@ function fillRows(list: HTMLElement, rows: readonly ReportRow[], open: (id: numb
 function fillDetail(list: HTMLElement, d: ReportDetail): void {
   const block = (text: string, colour: string, size: number = SHEET_STYLE.textPx) => {
     const el = styled(line(size, colour), { ...BLOCK_STYLE, margin: '10px 0 0' });
-    el.textContent = text;
+    blockText(el, text);
     list.append(el);
     return el;
   };
@@ -148,7 +162,7 @@ function fillConfirm(list: HTMLElement, d: ReportDetail, message: string | null)
     if (item.tone === 'space') continue;
     const el = styled(line(SHEET_STYLE.textPx, TONE_COLOUR[item.tone] ?? UI.white), { ...BLOCK_STYLE, margin: '10px 0 0' });
     if (item.tone === 'message') el.setAttribute('role', 'status');
-    el.textContent = item.text;
+    blockText(el, item.text);
     list.append(el);
   }
 }
@@ -182,12 +196,13 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     const mineTab = sheetButton(FEEDBACK_PAGE_TEXT.mineTab, () => handlers.onTab('mine'));
     const mineDot = dot();
     mineTab.append(mineDot);
+    for (const tab of [newTab, mineTab]) styled(tab, NARROW_BUTTON);
     styled(newTab, { flex: '0 0 auto' });
     styled(mineTab, { flex: '1 1 auto' });
     const close = sheetButton('×', () => handlers.onClose());
     close.setAttribute('aria-label', 'Schließen');
     styled(close, { flex: '0 0 auto' });
-    const tabs = row(newTab, mineTab, close);
+    const tabs = styled(row(newTab, mineTab, close), { gap: '6px' });
     const back = sheetButton(FEEDBACK_PAGE_TEXT.back, () => handlers.onBack());
     styled(back, { flex: '0 0 auto' });
     const heading = styled(title(''), { fontSize: `${SHEET_STYLE.textPx + 2}px` });
@@ -226,16 +241,21 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     const note = styled(line(SHEET_STYLE.textPx + 2, UI.yellow), { textAlign: 'center', fontWeight: 'bold' });
     note.setAttribute('role', 'status');
     const panel = scrollPanel(FEEDBACK_TEXT.title);
-    // Narrow phones: the rows and texts get the width, the scroll bar keeps its room at the right.
-    panel.list.style.padding = '4px 18px 8px 8px';
+    // Narrow phones: the rows and texts get the width, the scroll bar keeps its room at the right. The list
+    // fills the frame as a flex child, so a frame sized to its content (the confirm) still scrolls when it must shrink.
+    styled(panel.list, { padding: '4px 18px 8px 8px', height: 'auto', flex: '1 1 auto', minHeight: '0' });
+    styled(panel.frame, { flexDirection: 'column' });
     const del = sheetButton(FEEDBACK_PAGE_TEXT.delete, () => handlers.onDelete());
     styled(del, { flex: '0 0 auto' });
     const delRow = row(del);
     const no = sheetButton(FEEDBACK_PAGE_TEXT.cancel, () => handlers.onBack());
     const yes = sheetButton(FEEDBACK_PAGE_TEXT.confirmYes, () => handlers.onConfirmDelete());
+    for (const b of [no, yes]) styled(b, NARROW_BUTTON);
     const confirmRow = row(no, yes);
-    sheet.root.append(tabs, subHeader, ...form, note, panel.frame, delRow, confirmRow);
-    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, note, panel, del, delRow, no, yes, confirmRow };
+    // "Wirklich löschen?" heads its own block (question, what deleting means, the buttons) instead of the top row.
+    const question = styled(title(FEEDBACK_PAGE_TEXT.confirmTitle), { flex: '0 0 auto', textAlign: 'center' });
+    sheet.root.append(tabs, subHeader, ...form, note, question, panel.frame, delRow, confirmRow);
+    return { sheet, newTab, mineTab, mineDot, tabs, subHeader, heading, sentView, bug, idea, area, status, counter, box, log, logRow, send, form, note, question, panel, del, delRow, no, yes, confirmRow };
   }
 
   /** Shows `els` (display as given), or hides them. */
@@ -280,6 +300,19 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
     else if (page === 'detail' && (active === p.no || active === p.yes)) p.del.focus({ preventScroll: true });
   }
 
+  /**
+   * "Wirklich löschen?" holds a few lines: the question, a panel of only their height and the buttons
+   * sit as one block in the middle of the free space, instead of a tall empty panel over the buttons.
+   */
+  function placeConfirm(p: NonNullable<typeof parts>, confirm: boolean): void {
+    toggle([p.question], confirm, 'block');
+    const flex = confirm ? '0 1 auto' : '1 1 auto';
+    if (p.panel.frame.style.flex === flex) return;
+    p.panel.frame.style.flex = flex;
+    p.question.style.marginTop = confirm ? 'auto' : '0';
+    p.confirmRow.style.marginBottom = confirm ? 'auto' : '0';
+  }
+
   return {
     show(model) {
       if (!model) {
@@ -294,7 +327,7 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       toggle([p.tabs], onTab);
       toggle([p.subHeader], !onTab);
       toggle([p.sentView], model.page === 'detail', 'block');
-      setText(p.heading, model.title ?? '');
+      setText(p.heading, model.page === 'confirm' ? '' : (model.title ?? ''));
       choose(p.newTab, model.tab === 'new');
       choose(p.mineTab, model.tab === 'mine');
       toggle([p.mineDot], model.dot, 'inline-block');
@@ -305,9 +338,10 @@ export function createDomFeedbackSheet(handlers: FeedbackSheetHandlers): Feedbac
       moveFocus(p, model.page);
       toggle([p.delRow], model.page === 'detail');
       toggle([p.confirmRow], model.page === 'confirm');
+      placeConfirm(p, model.page === 'confirm');
       buttonColour(p.yes, model.deleting ? UI.muted : UI.red);
       panelShown = model.page !== 'form';
-      toggle([p.panel.frame], panelShown, 'block');
+      toggle([p.panel.frame], panelShown);
       if (form) showForm(p, model);
       if (model.page !== 'form') fillPanel(p, model);
       else pageKey = '';
