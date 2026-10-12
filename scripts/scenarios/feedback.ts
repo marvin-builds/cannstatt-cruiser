@@ -5,7 +5,9 @@
  * "Feedback" open the form; text typed into the native textarea never
  * reaches the game (letters like P, E, M, W, S and Space); a bug report
  * with "Fehlerprotokoll mitsenden" sends the log, an idea and an unticked bug
- * report send none; the thank-you, rate-limit and offline states; kid mode
+ * report send none; after "Senden" the dialog stays open on "Mein Feedback"
+ * with the thanks and the new report framed on top until the player closes
+ * it (ROADMAP 75); the rate-limit and offline states keep the form; kid mode
  * offers neither entry. On desktop F opens the form on the title and while
  * riding (pausing the run) without typing an 'f' into the field. Phone
  * landscape runs at 320 view px wide (640 x 360). The 2026-10-11.5 phone bug:
@@ -14,7 +16,11 @@
  * field, never start or resume a run; game over and restart work after it.
  * Each body carries its own secret key (ROADMAP 70).
  * In portrait the form is the full-screen sheet (ROADMAP 58), pressed through
- * its DOM controls.
+ * its DOM controls; with a faked 48 px display cutout at the top (the custom
+ * property --cc-safe-top, which sheet-dom.ts reads before
+ * env(safe-area-inset-top): Chromium cannot fake env() itself) its tab row
+ * stays below the cutout (ROADMAP 75). A marked test device sends its tester
+ * pass, and "Ansehen" says so without showing it.
  *
  *   npm run playtest -- --scenario scripts/scenarios/feedback.ts --viewports desktop,phone-landscape,phone-portrait --name feedback
  */
@@ -30,7 +36,10 @@ const FIELDS = ['input', 'key', 'kind', 'log', 'orientation', 'platform', 'sessi
 type UiWindow = Window & { __ui?: UiDebugHook };
 /** The portrait sheet (ROADMAP 58) and its controls by label; the log box has none. */
 const FEEDBACK_SHEET = '[role=dialog][aria-label="Feedback"]';
-const SHEET_LABELS = { log: null, idea: 'Idee', send: 'Senden', ok: 'OK', close: 'Schließen' } as const;
+const SHEET_LABELS = { log: null, idea: 'Idee', send: 'Senden', close: 'Schließen' } as const;
+/** The faked display cutout at the top in portrait (CSS px). */
+const CUTOUT = 48;
+const PASS = 'tester.v1.1790000000000.playtest';
 
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const mid = (r: Rect) => [Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2)] as const;
@@ -42,10 +51,18 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   await page.context().addInitScript((url) => ((window as { __feedbackUrl?: string }).__feedbackUrl = url), FAKE);
   await page.route(`${FAKE}/**`, async (route: Route) => {
     const req = route.request();
-    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
-    bodies.push({ ...JSON.parse(req.postData() ?? 'null'), __path: new URL(req.url()).pathname, __type: req.headers()['content-type'] });
+    const headers = { 'Access-Control-Allow-Origin': '*' };
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    const body = JSON.parse(req.postData() ?? 'null');
+    const path = new URL(req.url()).pathname;
+    // The status check of "Mein Feedback": every kept report is still open.
+    if (path === '/feedback/status') {
+      const entries = (body.items as { id: number }[]).map(({ id }) => ({ id, status: 'open', reply: null, doneVersion: null }));
+      return route.fulfill({ headers, json: { entries } });
+    }
+    bodies.push({ ...body, __path: path, __type: req.headers()['content-type'] });
     if (answer === 'abort') return route.abort('internetdisconnected');
-    return route.fulfill({ status: answer, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
+    return route.fulfill({ status: answer, headers, json: answer < 300 ? { ok: true, id: 100 + bodies.length } : { ok: false } });
   });
   // The online list fails (a fake route, never the live worker): the game logs the failed request, so the
   // error log has a line and "Fehlerprotokoll mitsenden" can be ticked (ROADMAP 70: disabled while empty).
@@ -89,6 +106,11 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
     await (label ? sheet.getByRole('button', { name: label, exact: true }) : sheet.locator('input[type=checkbox]')).tap();
     await t.game.step(2);
   };
+  /** Closes the dialog: "×" on the canvas page shown, or the sheet's in portrait. */
+  const closeDialog = async (state: FeedbackDebug) => {
+    if (portrait) return press(state.form, 'close');
+    await tap(state.pageLayout?.close ?? state.form.close);
+  };
   const sendAndWait = async (form: FeedbackDebug['form']) => {
     const before = bodies.length;
     await press(form, 'send');
@@ -131,6 +153,21 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   let state = await fb();
   t.check('icon opens the form', state.open && state.kind === 'bug' && !state.withLog, state);
   await t.screenshot('feedback form empty');
+  if (portrait) {
+    // A punch-hole camera at the top (ROADMAP 75): the sheets keep their content below it.
+    await page.evaluate((px) => document.documentElement.style.setProperty('--cc-safe-top', `${px}px`), CUTOUT);
+    await t.game.step(2);
+    const cut = await page.evaluate((sheet) => {
+      const tab = [...document.querySelectorAll<HTMLElement>(`${sheet} button`)].find((b) => b.textContent?.startsWith('Mein Feedback'))!;
+      const pads = [...document.querySelectorAll<HTMLElement>('[role=dialog]')].map((d) => getComputedStyle(d).paddingTop);
+      return { tabTop: tab.getBoundingClientRect().top, pads };
+    }, FEEDBACK_SHEET);
+    t.check('cutout: "Mein Feedback" sits below a 48 px cutout', cut.tabTop >= CUTOUT, cut);
+    t.check('cutout: every sheet pads its top by the inset', cut.pads.length > 0 && cut.pads.every((p) => p === `${CUTOUT}px`), cut);
+    await t.screenshot('feedback sheet with a 48 px cutout');
+    await page.evaluate(() => document.documentElement.style.removeProperty('--cc-safe-top'));
+    await t.game.step(2);
+  }
   const muted = (await t.game.state()).muted;
   await type('Ich bleibe hängen. pause escape wasd e m');
   const after = await t.game.state();
@@ -152,10 +189,15 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   const log = bug.log as string[];
   t.check('bug body with the ticked log, its last line the game state', Array.isArray(log) && log.length >= 1 && /^state: mode title, version .+, view \d+x180$/.test(log[log.length - 1] ?? ''), log);
   t.check('bug body values', bug.kind === 'bug' && /^[0-9a-f]{32}$/.test(String(bug.session)) && /^[0-9a-f]{32}$/.test(String(bug.key)) && bug.viewWidth === viewWidth && bug.input === (t.viewport.touch ? 'touch' : 'keys'), bug);
-  t.check('thank-you shows', state.status === 'sent' && state.message === 'Danke für dein Feedback!', state);
-  await t.screenshot('thank you');
-  await press(state.form, 'ok');
-  t.check('OK closes it, back on the title', !(await fb()).open && (await t.game.state()).mode === 'title');
+  t.check('sent: the dialog stays open on "Mein Feedback" with the thanks', state.open && state.tab === 'mine' && state.page === 'list' && state.thanks && state.message === 'Danke für dein Feedback!', state);
+  t.check('sent: the new report on top, framed', state.rows[0]?.id === 101 && state.rows[0]?.fresh === true && state.rows[0]?.text.startsWith('Ich bleibe hängen'), state.rows);
+  t.check('sent: the keyboard is down (no field has the focus)', await page.evaluate(() => !['TEXTAREA', 'INPUT'].includes(document.activeElement?.tagName ?? '')));
+  await t.game.step(30);
+  t.check('sent: still open a moment later, only the player closes it', (await fb()).open && (await t.game.state()).mode === 'title');
+  await t.screenshot('sent thanks on mein feedback');
+  if (!portrait) await t.canvasShot('sent thanks on mein feedback');
+  await closeDialog(state);
+  t.check('closing it brings the title back', !(await fb()).open && (await t.game.state()).mode === 'title');
 
   // Pause menu entry: an idea, the run stays paused, keys do not move the skater.
   await t.game.startRun();
@@ -178,11 +220,32 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   t.check('idea chosen, no log box', state.kind === 'idea', state);
   await t.screenshot('idee typed');
   await t.canvasShot('idee typed');
+  // A marked test device (ROADMAP 75): "Ansehen" says the tester pass goes along, the body carries it.
+  await page.evaluate((pass) => {
+    localStorage.setItem('cannstatt-cruiser:testDevice', 'true');
+    localStorage.setItem('cannstatt-cruiser:testerPass', JSON.stringify(pass));
+  }, PASS);
+  if (portrait) await page.locator(FEEDBACK_SHEET).getByRole('button', { name: 'Ansehen', exact: true }).tap();
+  else await tap(state.form.view);
+  await t.game.step(2);
+  state = await fb();
+  const tester = state.sections.find((s) => s.label === 'Testerpass');
+  t.check('test device: "Ansehen" names the tester pass without showing it', !!tester && !JSON.stringify(state.sections).includes(PASS), state.sections);
+  await t.screenshot('ansehen on a test device');
+  if (portrait) await page.locator(FEEDBACK_SHEET).getByRole('button', { name: 'Zurück', exact: true }).tap();
+  else await tap(state.pageLayout!.back!);
+  await t.game.step(2);
   await sendAndWait(state.form);
   const idea = bodies[1] ?? {};
   t.check('idea body has no log', idea.kind === 'idea' && Array.isArray(idea.log) && (idea.log as string[]).length === 0, idea);
+  t.check('test device: the body carries the tester pass', idea.testerPass === PASS, idea);
+  await page.evaluate(() => {
+    localStorage.removeItem('cannstatt-cruiser:testDevice');
+    localStorage.removeItem('cannstatt-cruiser:testerPass');
+  });
   state = await fb();
-  await press(state.form, 'ok');
+  t.check('idea sent: the two reports, the new one on top', state.page === 'list' && state.rows.map((r) => r.id).join() === '102,101' && state.rows[0]!.fresh && !state.rows[1]!.fresh, state.rows);
+  await closeDialog(state);
   t.check('back on the pause screen', (await t.game.state()).mode === 'paused' && !(await fb()).open);
 
   // Rate limit: a bug report without the box ticked (no log), the text stays.
@@ -193,8 +256,8 @@ export default async function feedback(t: PlaytestContext): Promise<void> {
   await sendAndWait(state.form);
   state = await fb();
   const unticked = bodies[2] ?? {};
-  t.check('unticked bug report sends no log', unticked.kind === 'bug' && Array.isArray(unticked.log) && (unticked.log as string[]).length === 0, unticked);
-  t.check('rate limit message, text kept', state.status === 'rate' && state.text === 'Noch ein Fehler' && state.message === 'Heute schon genug Feedback – danke!', state);
+  t.check('unticked bug report sends no log, and no tester pass off a test device', unticked.kind === 'bug' && Array.isArray(unticked.log) && (unticked.log as string[]).length === 0 && !('testerPass' in unticked), unticked);
+  t.check('rate limit message, text kept on the form', state.status === 'rate' && state.page === 'form' && state.text === 'Noch ein Fehler' && state.message === 'Heute schon genug Feedback – danke!', state);
   await t.screenshot('rate limit');
 
   // Offline: the text stays, the message says so.

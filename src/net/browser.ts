@@ -18,6 +18,7 @@ import { feedbackBaseUrl, FeedbackSender } from './feedback';
 import { FeedbackInbox } from './feedback-status';
 import { hadGameData } from './returning';
 import { ScoreService } from './service';
+import { loadTesterPass } from './tester-pass';
 import { newSessionId, Telemetry, telemetryBaseUrl } from './telemetry';
 
 declare global {
@@ -129,6 +130,7 @@ export function createBrowserFeedback(store: Store): BrowserFeedback {
     version: BUILD_VERSION,
     log: browserErrorLog(),
     onSent: (report) => inbox.add(report),
+    testerPass: () => loadTesterPass(store),
   });
   return { sender, inbox };
 }

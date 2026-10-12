@@ -100,11 +100,6 @@ function logToggle(r: RenderContext, l: FeedbackLayout, on: boolean, enabled: bo
 }
 
 function drawForm(r: RenderContext, flow: FeedbackFlow, l: FeedbackLayout): void {
-  if (flow.done) {
-    centred(r, FEEDBACK_TEXT.sent, l.doneY, { scale: 2, color: UI.yellow });
-    menuButton(r, l.ok, FEEDBACK_TEXT.ok, UI.yellow);
-    return;
-  }
   drawTabs(r, flow, l.newTab, l.mineTab, l.labelScale);
   drawDismiss(r, l.close);
   choiceButton(r, l.bug, FEEDBACK_TEXT.bug, flow.kind === 'bug', l.labelScale);
@@ -116,6 +111,16 @@ function drawForm(r: RenderContext, flow: FeedbackFlow, l: FeedbackLayout): void
   if (flow.logShown) logToggle(r, l, flow.withLog && flow.logAvailable, flow.logAvailable);
   menuButton(r, l.view, FEEDBACK_PAGE_TEXT.view, UI.white, l.labelScale);
   menuButton(r, l.send, FEEDBACK_TEXT.send, flow.canSend ? UI.yellow : UI.muted, l.labelScale);
+}
+
+/** A 1 px frame just inside `rect`. */
+function outline(r: RenderContext, rect: Rect, color: string): void {
+  const { g } = r;
+  g.fillStyle = color;
+  g.fillRect(rect.x, rect.y, rect.w, 1);
+  g.fillRect(rect.x, rect.y + rect.h - 1, rect.w, 1);
+  g.fillRect(rect.x, rect.y, 1, rect.h);
+  g.fillRect(rect.x + rect.w - 1, rect.y, 1, rect.h);
 }
 
 /** The panel behind a scrolling page, clipped while `inside` draws. */
@@ -146,6 +151,8 @@ function drawRow(r: RenderContext, row: ReportRow, l: PageLayout, y: number): vo
   const top = y + Math.floor((l.rowH - lineH - 7 * scale) / 2);
   const x = l.content.x + pad;
   const dotW = row.changed ? (DOT + 2) * scale : 0;
+  // The report just sent (ROADMAP 75): a yellow frame around its row.
+  if (row.fresh) outline(r, { x: l.content.x + 1, y: y + 1, w: l.content.w - 2 - SCROLLBAR_W * scale, h: l.rowH - 2 }, UI.yellow);
   if (row.changed) redDot(r, x, top + 2 * scale, DOT * scale);
   text(r, row.label, x + dotW, top, { color: STATUS_COLOR[row.status], scale });
   const meta = `${row.kind}  ${row.day}`;
@@ -158,6 +165,7 @@ function drawRow(r: RenderContext, row: ReportRow, l: PageLayout, y: number): vo
 function drawList(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void {
   drawTabs(r, flow, l.newTab!, l.mineTab!, l.labelScale);
   drawDismiss(r, l.close);
+  if (l.thanks) text(r, FEEDBACK_TEXT.sent, l.thanks.x, l.thanks.y, { align: 'center', color: UI.yellow, scale: l.thanks.scale });
   const rows = flow.rows;
   if (rows.length === 0) {
     panel(r, l.content, () => {});
@@ -199,6 +207,6 @@ function drawTextPage(r: RenderContext, flow: FeedbackFlow, l: PageLayout): void
 export function drawFeedback(r: RenderContext, flow: FeedbackFlow): void {
   fill(r, UI.ink);
   if (flow.page === 'form') drawForm(r, flow, feedbackLayout(r.display));
-  else if (flow.page === 'list') drawList(r, flow, pageLayout(r.display, 'list'));
+  else if (flow.page === 'list') drawList(r, flow, pageLayout(r.display, 'list', flow.thanks));
   else drawTextPage(r, flow, pageLayout(r.display, flow.page));
 }

@@ -10,7 +10,8 @@
  * explicitly injected test URL, else nothing goes out ('offline'). The session
  * id is the telemetry session of this page load (rate limit only, kept in
  * memory); no name, no device id, and the error log only on a bug report with
- * the box ticked. A stored report goes to `onSent` with its new id (kept on the
+ * the box ticked. A marked test device adds its tester pass (tester-pass.ts),
+ * which lifts the per-session limit on the worker. A stored report goes to `onSent` with its new id (kept on the
  * device for "Mein Feedback", feedback-status.ts).
  */
 import { VIEW_H } from '../core/config';
@@ -119,6 +120,8 @@ export interface FeedbackSenderDeps {
   now?: () => number;
   /** Gets every report the worker stored, with its new id (the game keeps it for "Mein Feedback", feedback-status.ts). */
   onSent?: (report: SentReport) => void;
+  /** The tester pass of a marked test device (tester-pass.ts), read for every report; none = no pass is sent. */
+  testerPass?: () => string | null;
 }
 
 /** The part the ui calls. */
@@ -145,7 +148,9 @@ export class FeedbackSender {
     const withLog = draft.kind === 'bug' && draft.withLog && this.hasLog;
     const lines = withLog ? log!.snapshot(stateLine({ mode: context.mode, version, viewWidth: context.viewWidth, viewHeight: VIEW_H })) : [];
     const key = (this.deps.newKey ?? newFeedbackKey)();
-    return feedbackBody({ ...context, session: this.deps.session, kind: draft.kind, text: draft.text, version, log: lines, key });
+    const body = feedbackBody({ ...context, session: this.deps.session, kind: draft.kind, text: draft.text, version, log: lines, key });
+    const testerPass = this.deps.testerPass?.() ?? null;
+    return testerPass === null ? body : { ...body, testerPass };
   }
 
   /** Posts exactly `body` once. */

@@ -202,6 +202,46 @@ describe('feedback sender', () => {
   });
 });
 
+describe('feedback sender on a test device (ROADMAP 75)', () => {
+  const PASS = 'tester.v1.1790000000000.abc';
+  const withPass = (net: { fetchFn: FetchLike }, pass: () => string | null) =>
+    new FeedbackSender({ baseUrl: 'https://fb.test', fetch: net.fetchFn, session: SESSION, version: 'v', log: null, testerPass: pass });
+
+  it('sends the tester pass while one is there, read at prepare time', async () => {
+    const net = fakeFetch(201, { ok: true, id: 3 });
+    let pass: string | null = null;
+    const s = withPass(net, () => pass);
+    expect('testerPass' in s.prepare(DRAFT, CONTEXT)).toBe(false);
+    pass = PASS;
+    const body = s.prepare(DRAFT, CONTEXT);
+    expect(body.testerPass).toBe(PASS);
+    expect(await s.send(body)).toBe('sent');
+    expect(net.calls[0]!.body).toMatchObject({ testerPass: PASS });
+  });
+
+  it('omits the field without a pass source or without a pass', async () => {
+    const net = fakeFetch(201, { ok: true, id: 3 });
+    await prepareAndSend(sender(net));
+    await prepareAndSend(withPass(net, () => null));
+    expect(net.calls.map((c) => 'testerPass' in (c.body as object))).toEqual([false, false]);
+  });
+
+  it('never keeps the pass with the sent report', async () => {
+    const kept: SentReport[] = [];
+    const s = new FeedbackSender({
+      baseUrl: 'https://fb.test',
+      fetch: fakeFetch(201, { ok: true, id: 8 }).fetchFn,
+      session: SESSION,
+      version: 'v',
+      log: null,
+      testerPass: () => PASS,
+      onSent: (r) => kept.push(r),
+    });
+    await prepareAndSend(s);
+    expect(JSON.stringify(kept)).not.toContain(PASS);
+  });
+});
+
 describe('feedback sender keeps the sent report', () => {
   it('passes what was sent with the new id and the UTC day on, without the session id', async () => {
     const kept: SentReport[] = [];

@@ -10,7 +10,11 @@
  *   full-screen sheet shows with the text and the keyboard focus; text >= 16
  *   CSS px, buttons >= 48 CSS px, a tall field; turned back: the canvas form
  *   with the text and the focus; turned to portrait again: Idee / Fehler, the
- *   log box, Senden (the body carries the log), the thank-you and OK.
+ *   log box, Senden (the body carries the log); the sheet stays with the
+ *   thanks on "Mein Feedback" (ROADMAP 75) until "Schließen", which shows the
+ *   full-screen settle cover right away and during the turn back to landscape
+ *   (the fake lock only records, so the test turns the viewport), and then
+ *   the full-size canvas.
  * - Game over in portrait: "Eintragen" opens the name entry as a sheet; a
  *   typed name is sent to the fake list.
  *
@@ -80,8 +84,12 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
   await page.route(`${FAKE}/**`, async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
-    bodies.push(JSON.parse(req.postData() ?? 'null'));
-    return route.fulfill({ status: 201, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
+    const headers = { 'Access-Control-Allow-Origin': '*' };
+    const body = JSON.parse(req.postData() ?? 'null');
+    // The status check of "Mein Feedback": the kept report is open.
+    if (new URL(req.url()).pathname === '/feedback/status') return route.fulfill({ headers, json: { entries: body.items.map(({ id }: { id: number }) => ({ id, status: 'open', reply: null, doneVersion: null })) } });
+    bodies.push(body);
+    return route.fulfill({ status: 201, headers, json: { ok: true, id: bodies.length } });
   });
   await page.route(`${SCORES_URL}/**`, (route) => {
     const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -163,13 +171,40 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
   await t.game.step(3);
   const body = bodies[0] ?? {};
   t.check('Senden posts one bug report with the log to the fake endpoint', bodies.length === 1 && body.kind === 'bug' && body.text === 'Ich bleibe hängen an der Bank' && Array.isArray(body.log) && (body.log as string[]).length > 0, body);
-  const thanked = await sheet.getByText('Danke für dein Feedback!').filter({ visible: true }).count() === 1;
-  t.check('the thank-you shows on the sheet', thanked, await page.evaluate(() => (window as UiWindow).__ui!.feedback()!.status));
-  await t.screenshot('portrait thank you');
-  if (!thanked) return;
-  await sheet.getByRole('button', { name: 'OK' }).tap();
+  const thanked = (await sheet.getByText('Danke für dein Feedback!').filter({ visible: true }).count()) === 1;
+  const after = await page.evaluate(() => (window as UiWindow).__ui!.feedback()!);
+  t.check('sent: the sheet stays with the thanks on Mein Feedback, the report on top (ROADMAP 75)', thanked && after.open && after.page === 'list' && after.rows[0]?.fresh === true, after);
+  t.check('sent: the keyboard went down, portrait still free', (await page.evaluate(() => document.activeElement?.tagName)) !== 'TEXTAREA' && (await page.evaluate(() => (window as UiWindow).__locks!.at(-1))) === 'any');
+  await t.screenshot('portrait sent thanks on mein feedback');
+  await t.game.step(30);
+  t.check('sent: still open until the player closes it', await sheet.isVisible());
+
+  // Closing (ROADMAP 75): the cover in the game colours hides the turn back to landscape until the size settled.
+  await sheet.getByRole('button', { name: 'Schließen' }).tap();
+  await t.game.step(2);
+  const cover = page.locator('[data-settle-cover]');
+  const covering = async () =>
+    page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-settle-cover]');
+      const box = el?.getBoundingClientRect();
+      return { shown: !!el && getComputedStyle(el).display !== 'none', full: !!box && box.x <= 0 && box.y <= 0 && box.right >= innerWidth && box.bottom >= innerHeight };
+    });
+  let c = await covering();
+  t.check('closed: the sheet is gone, landscape is locked again', !(await sheet.isVisible()) && (await page.evaluate(() => (window as UiWindow).__locks!.at(-1))) === 'landscape');
+  t.check('closed: right after, the full-screen cover in the game colours', c.shown && c.full, c);
+  await t.screenshot('portrait closed right after');
+  // The installed app turns (the fake lock only records, so the test turns the viewport) and the size settles.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await t.wait(100);
+  c = await covering();
+  t.check('closed: during the turn the cover still shows in full', c.shown && c.full, c);
+  await t.screenshot('portrait closed during the settle');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-settle-cover]')!).display === 'none', undefined, { timeout: 4000 }).catch(() => {});
   await t.game.step(3);
-  t.check('OK closes the sheet, back on the title', !(await sheet.isVisible()) && (await t.game.state()).mode === 'title');
+  const canvas = (await page.locator('#game').boundingBox())!;
+  t.check('settled: the cover is gone, the canvas fills the landscape screen', !(await cover.isVisible()) && canvas.width >= 0.9 * 844 && canvas.height >= 0.9 * 390, canvas);
+  await t.screenshot('portrait closed settled in landscape');
+  await turn(t, 390, 844);
 
   // Game over in portrait: the name entry as a sheet.
   await dismissRotateHint(t);
@@ -195,4 +230,7 @@ export default async function portraitForms(t: PlaytestContext): Promise<void> {
   t.check('the name goes to the fake list only', posts.length === 1 && posts[0]!.includes('Rollo'), posts);
   t.check('the entry sheet is gone after sending', !(await entry.isVisible()));
   await t.screenshot('after the entry');
+  // Still in portrait (the device ignores the lock): the cover gives up after its longest wait.
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-settle-cover]')!).display === 'none', undefined, { timeout: 4000 }).catch(() => {});
+  t.check('a lock the device ignores: the cover goes after its longest wait', !(await page.locator('[data-settle-cover]').isVisible()));
 }

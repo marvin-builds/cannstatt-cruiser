@@ -90,9 +90,11 @@ import { browserOpenPage, type OpenPage, PrivacyLink } from './privacy-link';
 import { browserOrientationEnv, type OrientationEnv } from '../core/orientation';
 import { TypingOrientation } from './typing-orientation';
 import { ListScroll, pageScroll, scrollDirection } from './whats-new';
-import { RotateHint, uiScreen } from './rotate-screen';
+import { RotateHint, type ScreenSource, uiScreen } from './rotate-screen';
 import { createDomRotateSheet, type RotateSheet, type RotateSheetHandlers } from './rotate-sheet';
 import { createDomWhatsNewSheet, type WhatsNewSheet, type WhatsNewSheetHandlers } from './whats-new-sheet';
+import { BackNav, backStep, browserHistoryEnv, type HistoryEnv } from './back-nav';
+import { createDomSettleCover, type SettleCover } from './settle-cover';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -139,6 +141,13 @@ export interface UiSystemOptions {
    * in a browser, none elsewhere); tests pass a fake.
    */
   orientation?: OrientationEnv | null;
+  /**
+   * The session history Android back walks (ROADMAP 75, back-nav.ts; default: the browser's in a
+   * browser, none elsewhere); tests pass a fake.
+   */
+  history?: HistoryEnv | null;
+  /** The cover shown while the view settles after a portrait form closed (default: a DOM layer in a browser, none elsewhere); tests pass a fake. */
+  settleCover?: SettleCover | null;
   /** The clock of the install card's snooze, ms (default: Date.now); tests pass a fake. */
   now?: () => number;
 }
@@ -222,22 +231,31 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const rotate = new RotateHint();
   const rotateSheetFactory = options.rotateSheet !== undefined ? options.rotateSheet : browser ? createDomRotateSheet : null;
   const rotateSheet = rotateSheetFactory?.({ onDismiss: () => rotate.dismiss() }) ?? null;
-  /** The rotate screen covers the game now: on a phone in portrait, on a screen that needs landscape, not dismissed. */
-  function rotateShown(ctx: GameContext): boolean {
+  /** What is open now (the rotate screen's and the back button's view of it). */
+  function screenSource(ctx: GameContext): ScreenSource {
     const { state } = ctx;
-    const screen = uiScreen({
+    return {
       mode: state.mode,
       whatsNew: state.whatsNew.length > 0,
       installGuide: view.install.guideOpen,
       settings: view.settings.open,
       feedback: !!feedback?.open,
       scores: flow?.open ? (flow.screen === 'entry' ? 'entry' : 'list') : null,
-    });
-    return rotate.shown(ctx.display, screen);
+    };
+  }
+  /** The rotate screen covers the game now: on a phone in portrait, on a screen that needs landscape, not dismissed. */
+  function rotateShown(ctx: GameContext): boolean {
+    return rotate.shown(ctx.display, uiScreen(screenSource(ctx)));
   }
   const typingOrientation = new TypingOrientation(
     options.orientation !== undefined ? options.orientation : browser ? browserOrientationEnv() : null,
   );
+  /** A text form took text on the last tick (closing it in portrait covers the screen until the view settled). */
+  let wasTyping = false;
+  const settleCover = options.settleCover !== undefined ? options.settleCover : browser ? createDomSettleCover() : null;
+  const historyEnv = options.history !== undefined ? options.history : browser ? browserHistoryEnv() : null;
+  /** Android back (ROADMAP 75): set in init. */
+  let backNav: BackNav | null = null;
   /** Seconds of play in the current run (not paused time), for the online entry. */
   let runSeconds = 0;
   /**
@@ -712,11 +730,43 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
 
   /**
    * Frees portrait while the feedback form or the name entry takes text, after any path that opened or
-   * closed them this tick; the portrait sheet's thank-you keeps it until its OK.
+   * closed them this tick; the portrait feedback sheet keeps it until it is closed. Closing one in
+   * portrait (ROADMAP 75) first drops the keyboard, then (with the keyboard up or a turn to landscape
+   * ahead) covers the screen until the view settled, and only then locks landscape again, so no
+   * half-sized frame shows while the app turns.
    */
   function updateOrientation(ctx: GameContext): void {
     const typing = !!dialog?.typing(ctx) || flow?.screen === 'entry';
+    if (wasTyping && !typing && ctx.display.portrait) {
+      const keyboard = !!dialog?.isFocused() || entrySurface.isFocused();
+      dialog?.blur();
+      entrySurface.blur();
+      const landscape = typingOrientation.turnsToLandscape();
+      // Nothing resizes without the keyboard up or a turn ahead: no cover then.
+      if (keyboard || landscape) settleCover?.begin(landscape);
+    }
+    wasTyping = typing;
     typingOrientation.update(typing);
+  }
+
+  /** Android back (back-nav.ts): one level back from the screen on top. */
+  function goBack(ctx: GameContext): void {
+    switch (backStep(screenSource(ctx))) {
+      case 'installGuide':
+        return view.install.closeGuide();
+      case 'settings':
+        return view.settings.close();
+      case 'feedback':
+        return dialog?.back();
+      case 'scores':
+        return flow?.close();
+      case 'whatsNew':
+        return ctx.commands.markVersionSeen();
+      case 'pause':
+        return ctx.commands.pause();
+      case 'title':
+        return leaveRun(ctx);
+    }
   }
 
   /** Per tick while a highscore screen shows: held arrow keys, keeping the scroll in range (and the own entry in view), the name input. */
@@ -791,6 +841,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       };
       bindEvents(ctx);
       addHotspots(ctx);
+      backNav = historyEnv ? new BackNav(historyEnv, () => goBack(ctx)) : null;
       ctx.onUserGesture(() => privacyLink.gesture());
       if (browser) {
         bindListScroll(
@@ -843,6 +894,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       updateWhatsNew(ctx, dt);
       dialog?.update(ctx, dt);
       rotateSheet?.show(rotateShown(ctx));
+      backNav?.update(backStep(screenSource(ctx)) !== null);
       reportSession(ctx);
       if (state.mode !== 'playing') return;
       runSeconds += dt;

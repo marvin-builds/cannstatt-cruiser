@@ -38,4 +38,9 @@ export class FormSurface {
   blur(): void {
     if (this.current) this.targets[this.current]?.blur();
   }
+
+  /** The shown surface has the keyboard focus. */
+  isFocused(): boolean {
+    return !!this.current && !!this.targets[this.current]?.isFocused();
+  }
 }

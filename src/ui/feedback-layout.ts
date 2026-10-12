@@ -51,9 +51,6 @@ export interface FeedbackLayout {
   logLines: readonly string[];
   logScale: number;
   logBox: number;
-  /** The thank-you state: its line (top y, scale 2) and the OK button under it. */
-  doneY: number;
-  ok: Rect;
 }
 
 /** The widest form: wider would not read better. */
@@ -164,10 +161,6 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
   const field: Rect = { x, y: fieldY, w, h: lineY - ROW_GAP - fieldY };
   const counter: Rect = { x: right - counterW, y: lineY, w: counterW, h: lineH };
   const line: Rect = { x, y: lineY, w: counter.x - GAP - x, h: lineH };
-
-  const okW = Math.max(80, labelW(FEEDBACK_TEXT.ok, big, m));
-  const ok: Rect = { x: Math.floor((display.viewWidth - okW) / 2), y: Math.floor(VIEW_H / 2) + GAP, w: okW, h };
-  const doneY = ok.y - GAP - 14 - 4;
   return {
     newTab,
     mineTab,
@@ -185,8 +178,6 @@ export function feedbackLayout(display: FeedbackDisplay): FeedbackLayout {
     logLines: logPlace.lines,
     logScale: logPlace.scale,
     logBox: BOX * logPlace.scale,
-    doneY,
-    ok,
   };
 }
 

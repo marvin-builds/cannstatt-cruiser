@@ -134,21 +134,75 @@ describe('feedback flow', () => {
     expect(sent[0]).toEqual({ kind: 'idea', text: 'Mehr Strecken bitte', withLog: false });
   });
 
-  it('a sent report thanks the player and starts fresh next time', async () => {
+  it('a sent report keeps the dialog open: thanks on "Mein Feedback" with the new report on top, a fresh draft', async () => {
     const { sender, sent } = fakeSender('sent');
-    const flow = new FeedbackFlow(sender, null);
+    const inbox = fakeInbox([kept(3)]);
+    // The real sender keeps a stored report in the inbox before its answer comes back.
+    const send = sender.send;
+    sender.send = (body) => (inbox.reports.unshift(kept(9)), send(body));
+    const flow = new FeedbackFlow(sender, inbox);
     flow.openForm();
     flow.toggleLog();
     flow.setText('Absturz im Tunnel');
     await flow.send(CONTEXT);
     expect(sent[0]).toEqual({ kind: 'bug', text: 'Absturz im Tunnel', withLog: true });
-    expect(flow.done).toBe(true);
+    expect(flow.open).toBe(true);
+    expect([flow.tab, flow.page]).toEqual(['mine', 'list']);
+    expect(flow.thanks).toBe(true);
     expect(flow.message).toBe(FEEDBACK_TEXT.sent);
+    expect(flow.rows.map((r) => [r.id, r.fresh])).toEqual([
+      [9, true],
+      [3, false],
+    ]);
+    expect([flow.kind, flow.text, flow.withLog]).toEqual(['bug', '', false]);
+    // The player leaves themselves; "Neu" is a fresh form without the thanks.
+    flow.showTab('new');
+    expect([flow.tab, flow.page, flow.thanks, flow.message]).toEqual(['new', 'form', false, null]);
+    flow.showTab('mine');
+    expect(flow.rows.every((r) => !r.fresh)).toBe(true);
+    flow.close();
+    expect(flow.open).toBe(false);
+  });
+
+  it('the thanks stays while the player looks at the new report and back, and ends when the dialog closes', async () => {
+    const inbox = fakeInbox([]);
+    const { sender } = fakeSender('sent');
+    const send = sender.send;
+    sender.send = (body) => (inbox.reports.unshift(kept(4)), send(body));
+    const flow = new FeedbackFlow(sender, inbox);
+    flow.openForm();
+    flow.setText('Mehr Musik');
+    await flow.send(CONTEXT);
+    flow.openReport(4);
+    flow.back();
+    expect([flow.page, flow.thanks, flow.rows[0]!.fresh]).toEqual(['list', true, true]);
     flow.close();
     flow.openForm();
-    expect(flow.done).toBe(false);
-    expect(flow.text).toBe('');
-    expect(flow.withLog).toBe(false);
+    expect([flow.tab, flow.page, flow.thanks]).toEqual(['new', 'form', false]);
+  });
+
+  it('a report sent without a kept id (older worker) still thanks the player on the list', async () => {
+    const flow = new FeedbackFlow(fakeSender('sent').sender, fakeInbox([kept(2)]));
+    flow.openForm();
+    flow.setText('Hallo du');
+    await flow.send(CONTEXT);
+    expect([flow.page, flow.thanks]).toEqual(['list', true]);
+    expect(flow.rows.map((r) => r.fresh)).toEqual([false]);
+  });
+
+  it('a report sent after the dialog was dismissed leaves it closed with a fresh draft', async () => {
+    const net = fakeSender();
+    net.sender.hold = true;
+    const flow = new FeedbackFlow(net.sender, null);
+    flow.openForm();
+    flow.setText('Unterwegs gesendet');
+    const sending = flow.send(CONTEXT);
+    flow.dismiss();
+    net.finish('sent');
+    await sending;
+    expect(flow.open).toBe(false);
+    flow.openForm();
+    expect([flow.tab, flow.page, flow.text, flow.thanks]).toEqual(['new', 'form', '', false]);
   });
 
   it('rate limit and offline keep the text and say so', async () => {
@@ -161,7 +215,7 @@ describe('feedback flow', () => {
       flow.openForm();
       flow.setText('Bitte mehr Musik');
       await flow.send(CONTEXT);
-      expect(flow.done, result).toBe(false);
+      expect([flow.open, flow.tab, flow.page, flow.thanks], result).toEqual([true, 'new', 'form', false]);
       expect(flow.text, result).toBe('Bitte mehr Musik');
       expect(flow.message, result).toBe(text);
     }
@@ -184,7 +238,7 @@ describe('feedback flow', () => {
     net.finish('sent');
     await first;
     expect(net.sent).toHaveLength(1);
-    expect(flow.done).toBe(true);
+    expect([flow.page, flow.thanks]).toEqual(['list', true]);
   });
 
   it('cancel keeps the draft for this page load', () => {

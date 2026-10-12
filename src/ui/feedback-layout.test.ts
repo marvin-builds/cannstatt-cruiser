@@ -50,7 +50,7 @@ describe('feedback screen layout', () => {
     for (const d of displays()) {
       const l = feedbackLayout(d);
       const h = uiMetrics(d).menuButtonH;
-      for (const r of [l.newTab, l.mineTab, l.close, l.bug, l.idea, l.log, l.view, l.send, l.ok]) {
+      for (const r of [l.newTab, l.mineTab, l.close, l.bug, l.idea, l.log, l.view, l.send]) {
         expect(r.h, d.label).toBeGreaterThanOrEqual(h);
         expect(r.w, d.label).toBeGreaterThanOrEqual(h);
       }
@@ -124,15 +124,6 @@ describe('feedback screen layout', () => {
       const l = feedbackLayout(d);
       expect(l.logScale, d.label).toBe(l.labelScale);
       expect(l.labelScale, d.label).toBe(2);
-    }
-  });
-
-  it('the thank-you state: its line and OK inside the view, OK centred', () => {
-    for (const d of displays()) {
-      const l = feedbackLayout(d);
-      expect(inside(l.ok, d.viewWidth), d.label).toBe(true);
-      expect(l.doneY + 14, d.label).toBeLessThanOrEqual(l.ok.y);
-      expect(Math.abs(l.ok.x + l.ok.w / 2 - d.viewWidth / 2), d.label).toBeLessThanOrEqual(1);
     }
   });
 

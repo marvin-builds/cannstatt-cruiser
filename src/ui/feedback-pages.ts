@@ -28,6 +28,8 @@ export const FEEDBACK_PAGE_TEXT = {
   unticked: 'Nicht angehakt, wird nicht gesendet',
   notSent: 'Nicht mitgesendet',
   notIncluded: 'Nicht dabei: Name, IP-Adresse, Geräte-ID, Highscores, deine Eingaben im Spiel.',
+  testerPass: 'Testerpass',
+  testerPassSent: 'Wird mitgesendet (Testgerät, ohne Tageslimit)',
 } as const;
 
 export const STATUS_LABEL: Record<ReportStatus, string> = {
@@ -60,7 +62,7 @@ export interface PageSection {
 }
 
 /** What a page section is built from: a body about to be sent, or a kept report. */
-type Message = Pick<FeedbackBody, 'kind' | 'text' | 'version' | 'platform' | 'input' | 'orientation' | 'viewWidth' | 'log'>;
+type Message = Pick<FeedbackBody, 'kind' | 'text' | 'version' | 'platform' | 'input' | 'orientation' | 'viewWidth' | 'log' | 'testerPass'>;
 
 /** "11.10.2026" for "2026-10-11". */
 export function germanDay(day: string): string {
@@ -79,7 +81,7 @@ function emptyLog(session: string | null, logAvailable: boolean): string {
 
 /**
  * The whole message: `session` is this page load's id for a preview, null for a sent report (never
- * kept); `logAvailable` says whether the error log had lines to tick.
+ * kept); `logAvailable` says whether the error log had lines to tick. A tester pass is named, never shown.
  */
 export function previewSections(m: Message, { session, logAvailable }: { session: string | null; logAvailable: boolean }): PageSection[] {
   const section = (label: string | null, lines: readonly string[], log = false): PageSection => ({ label, lines, log });
@@ -90,6 +92,8 @@ export function previewSections(m: Message, { session, logAvailable }: { session
     section(FEEDBACK_PAGE_TEXT.device, [deviceText(m)]),
     ...(session !== null ? [section(FEEDBACK_PAGE_TEXT.session, [session])] : []),
     ...(m.kind === 'bug' ? [m.log.length > 0 ? section(FEEDBACK_PAGE_TEXT.log, m.log, true) : section(FEEDBACK_PAGE_TEXT.log, [emptyLog(session, logAvailable)])] : []),
+    // A test device's pass (ROADMAP 75) goes along; the pass itself is not shown.
+    ...(m.testerPass ? [section(FEEDBACK_PAGE_TEXT.testerPass, [FEEDBACK_PAGE_TEXT.testerPassSent])] : []),
     section(null, [FEEDBACK_PAGE_TEXT.notIncluded]),
   ];
 }
@@ -104,10 +108,12 @@ export interface ReportRow {
   text: string;
   /** Marked with the red dot: it changed since the player last looked. */
   changed: boolean;
+  /** Just sent (ROADMAP 75): highlighted under the thanks. */
+  fresh: boolean;
 }
 
-/** A row per report, in the given order (newest first); `marked` are the ids that get a dot. */
-export function reportRows(reports: readonly KeptReport[], marked: readonly number[]): ReportRow[] {
+/** A row per report, in the given order (newest first); `marked` are the ids that get a dot, `fresh` the one just sent. */
+export function reportRows(reports: readonly KeptReport[], marked: readonly number[], fresh: number | null): ReportRow[] {
   return reports.map((r) => ({
     id: r.id,
     status: r.status,
@@ -116,6 +122,7 @@ export function reportRows(reports: readonly KeptReport[], marked: readonly numb
     day: germanDay(r.day),
     text: r.text.replace(/\s+/g, ' ').trim(),
     changed: marked.includes(r.id),
+    fresh: r.id === fresh,
   }));
 }
 

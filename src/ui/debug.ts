@@ -125,6 +125,8 @@ export interface FeedbackDebug {
   preview: FeedbackBody | null;
   sections: PageSection[];
   detail: ReportDetail | null;
+  /** Just sent: the thanks over "Mein Feedback" (ROADMAP 75). */
+  thanks: boolean;
   form: FeedbackLayout;
   /** The open page's layout (list and text pages; null on the form) and the list rows' tap areas. */
   pageLayout: PageLayout | null;
@@ -283,10 +285,10 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
     feedback() {
       const flow = view.feedback;
       if (!flow) return null;
-      const { open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail } = flow;
-      const layout = page === 'form' ? null : pageLayout(ctx.display, page);
+      const { open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail, thanks } = flow;
+      const layout = page === 'form' ? null : pageLayout(ctx.display, page, thanks);
       return {
-        ...{ open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail },
+        ...{ open, kind, text, withLog, status, message, logAvailable, tab, page, dot, rows, scroll, preview, sections, detail, thanks },
         maxScroll: layout ? pageMaxScroll(flow, layout) : 0,
         form: feedbackLayout(ctx.display),
         pageLayout: layout,
