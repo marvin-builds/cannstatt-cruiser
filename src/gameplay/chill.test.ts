@@ -196,7 +196,8 @@ describe('patterns verified for the chill jump', () => {
           }
         }
       }
-    }, 30_000);
+      // ~5 s alone; the whole suite runs files in parallel.
+    }, 60_000);
   }
 });
 

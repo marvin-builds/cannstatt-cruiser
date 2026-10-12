@@ -3,10 +3,10 @@
  * scenarios put a specific obstacle, person, the joint or stunt pieces on the
  * street, see the dropped items (they are no entities, so window.__game
  * misses them) and the running stunt line, plan a NorDIY park right ahead,
- * lay a named spawn pattern (the combos, a wave, the e-scooter, the pigeons;
- * in kid mode as kid mode plans them), see which patterns the spawner laid
+ * lay a named spawn pattern (the combos, a wave, the e-scooter, the pigeons,
+ * a fan crowd; in kid mode as kid mode plans them), see which patterns the spawner laid
  * and start a run further down the street.
- * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts and combos.ts.
+ * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts, combos.ts and fan-crowd.ts.
  */
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
@@ -16,7 +16,8 @@ import type { DroppedItems } from './drop';
 import type { LaidPattern } from './pattern-log';
 import { motionOf, withMotion } from './motion';
 import { parkPiecesOf, planParkLine } from './park-line';
-import { planPattern } from './patterns';
+import { CROWD_TEMPLATE, planCrowd } from './crowd';
+import { type Pattern, planPattern } from './patterns';
 import { linkArcs } from './star-arcs';
 import { planStuntLine } from './stunt-line';
 import { DEFAULT_LEDGE_HEIGHT, type StuntLines, type StuntLineView } from './stunts';
@@ -52,7 +53,7 @@ export interface GameplayDebugHook {
   stuntLine(x: number, seed?: number): number[];
   /**
    * Plans the spawn template `name` (patterns.ts, e.g. a combo from
-   * combos.ts) for the current speed and zone with its origin (the player's
+   * combos.ts, or CROWD_TEMPLATE 'fanCrowd', crowd.ts) for the current speed and zone with its origin (the player's
    * x when it starts, before its run-up) at screen x, removing whatever
    * stood there and keeping that street free of spawned patterns; returns
    * the entity ids (stars included). `seed` picks the layout.
@@ -92,6 +93,15 @@ declare global {
 }
 
 let nextId = 800_000;
+
+/** A fan crowd planned at once for `speed` (null when bouncing across is not fair there). */
+function crowdNow(seed: number, speed: number, kidMode: boolean): Pattern | null {
+  const steps = planCrowd(new Rng(seed), [speed], { kidMode });
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
 
 const mid = ([a, b]: [number, number]) => (a + b) / 2;
 
@@ -152,8 +162,8 @@ export function installGameplayDebug(
     },
     pattern(name, x = PLAYER_X, seed = 1) {
       const { state } = ctx;
-      const planned = planPattern(new Rng(seed), 3, [state.speed], { zone: state.zoneIndex, template: name, kidMode: state.kidMode });
-      if (planned.name !== name) throw new Error(`pattern ${name}: nothing fair at ${state.speed} px/s`);
+      const planned = name === CROWD_TEMPLATE ? crowdNow(seed, state.speed, state.kidMode) : planPattern(new Rng(seed), 3, [state.speed], { zone: state.zoneIndex, template: name, kidMode: state.kidMode });
+      if (planned?.name !== name) throw new Error(`pattern ${name}: nothing fair at ${state.speed} px/s`);
       const entities = state.entities;
       for (let i = entities.length - 1; i >= 0; i--) if (entities[i]!.x + entities[i]!.w > x) entities.splice(i, 1);
       const start = state.distance + (x - PLAYER_X);

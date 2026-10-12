@@ -9,6 +9,7 @@ import { tierAt } from './difficulty';
 import type { LaidPattern } from './pattern-log';
 import { StuntLines } from './stunts';
 import { quietGame, record } from './test-kit';
+import { CROWD_HEADS, CROWD_TEMPLATE, crowdOf } from './crowd';
 
 describe('gameplay debug hook (window.__gameplay)', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -107,6 +108,17 @@ describe('gameplay debug hook (window.__gameplay)', () => {
     expect(reserved).toHaveLength(1);
     expect(reserved[0]![0]).toBe(game.state.distance);
     expect(() => hook.pattern('nope')).toThrow();
+  });
+
+  it('lays a fan crowd by its pattern name (ROADMAP 76), the kid mode row in kid mode', () => {
+    vi.stubGlobal('window', {});
+    const game = quietGame(160);
+    installGameplayDebug(game.ctx, new DroppedItems(), new StuntLines());
+    const hook = window.__gameplay!;
+    const fans = (ids: number[]) => game.state.entities.filter((e) => ids.includes(e.id) && crowdOf(e));
+    expect(fans(hook.pattern(CROWD_TEMPLATE, PLAYER_X + 40, 2)).length).toBeGreaterThanOrEqual(CROWD_HEADS.adult[0]);
+    game.state.kidMode = true;
+    expect(fans(hook.pattern(CROWD_TEMPLATE, PLAYER_X + 40, 2)).length).toBe(CROWD_HEADS.kid[0]);
   });
 
   it('shows the patterns the spawner laid, read-only (ROADMAP 52 6a: which combinations a run gets)', () => {

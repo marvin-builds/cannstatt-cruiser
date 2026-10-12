@@ -91,8 +91,8 @@ const FAN_STEP = rows(`
 `);
 
 const FAN_PALETTE = { k: K, ...SKIN, o: '#8a2a2a', h: '#5a3a22', r: '#d8202c', R: '#9a1420', w: '#f4f1ea', j: '#3a4f7a', b: '#2a2a2e', q: '#2a2a2e' };
-/** Frames: 0/1 walking, 2 cheering. */
-const FAN = sprite(FAN_PALETTE, [
+/** Frames: 0/1 walking, 2 cheering (arms up; the fan crowd's chant, crowd-art.ts). */
+export const FAN = sprite(FAN_PALETTE, [
   [...FAN_HEAD, ...FAN_BODY, ...FAN_STRIDE],
   [...FAN_HEAD, ...FAN_BODY, ...FAN_STEP],
   [...FAN_CHEER, ...FAN_STEP],
@@ -229,7 +229,7 @@ const GUEST_PALETTE = {
   H: '#a0582a',
   r: '#d8202c',
 };
-type GuestItem = Exclude<CarriedItem, 'football'>;
+export type GuestItem = Exclude<CarriedItem, 'football'>;
 const GUEST_ITEMS: GuestItem[] = ['beer', 'pretzel', 'gingerbread'];
 /** Per outfit (Lederhosen, Dirndl) and item, frames: 0 upright, 1 leaning, 2 bumped (a Maßkrug spills). */
 const GUESTS = [
@@ -272,6 +272,11 @@ export function drawPerson(g: CanvasRenderingContext2D, e: Entity, time: number,
 
 function outfitOf(e: Entity): number {
   return Number(e.data?.variant ?? 0) % GUESTS.length;
+}
+
+/** A Wasen visitor's look (frames 0 upright, 1 leaning, 2 bumped) by outfit (`data.variant`) and item. */
+export function guestLook(e: Entity, item: GuestItem): Sprite {
+  return GUESTS[outfitOf(e)]![item];
 }
 
 export function personSize(kind: 'vfbFan' | 'wasenGuest'): { w: number; h: number } {

@@ -501,6 +501,15 @@ function courseAfter(pattern: Pattern, before: Piece[], lead: number): Course {
   return courseOf({ ...pattern, pieces: [...before, ...pattern.pieces] }, runupBefore(before, lead));
 }
 
+/**
+ * The course across the boundary: the previous pattern's last pieces
+ * (`before`, in this pattern's space; only obstacles and rails count)
+ * followed by `pattern`, from `lead` px of free street before them.
+ */
+export function courseAcross(pattern: Pattern, before: Piece[], lead: number): Course {
+  return courseAfter(pattern, lastPieces(before.filter((p) => isObstacle(p.kind) || isRail(p.kind))), lead);
+}
+
 /** A lone joint floating at riding height: collected by riding (or ducking) through it. */
 export function jointPattern(speed: number): Pattern {
   const lead = leadFor(speed);
