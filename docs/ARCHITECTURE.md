@@ -77,6 +77,9 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/combos.ts    combo templates (COMBO_TEMPLATES, COMBO_NAMES): grind lines of rails, benches and low obstacles (see Combo patterns)
   gameplay/line-guide.ts  lineGuide() / spreadStars(): the guide stars along a combo's human line (see Combo patterns)
   gameplay/effect-street.ts  test tooling: rideEffect() measures the empty street ridden during a drunk or chill phase (see Effect street)
+  gameplay/crowd.ts     fan crowds: crowdDue (schedule), planCrowd (row of heads, bounce check, guide stars), CROWD_* constants (see Fan crowds)
+  gameplay/crowd-tag.ts CROWD_KEY / crowdOf(): the `data.crowd` tag of a crowd's fans, without importing the planner
+  gameplay/crowd-art.ts drawCrowdFan(): chanting VfB fans with scarves and a flag, swaying Wasen visitors with Lebkuchenherzen, a shaded second row
   ui/popup-feed.ts      one tick's events -> merged popups ("Stomp! +150"); ui/popups.ts draws them (PopupPool)
   ui/hud-model.ts       HUD plate texts and layout, rebuilt only on change (allocation-free per tick)
   ui/item-button.ts     touch item button (landscape top right, portrait under the stats plate) / desktop "E" chip, first-catch hint (storage key itemHintSeen, itemHintRect, popupCeiling)
@@ -86,6 +89,8 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   ui/menu-state.ts      which menu screen shows now (menuScreen, currentMenu), game-over input delay
   ui/rotate-screen.ts   when the rotate screen shows (uiScreen, wantsLandscape per screen, RotateHint; see Rotate screen)
   ui/rotate-sheet.ts    the rotate screen's full-screen DOM overlay; ui/rotate-sheet.fake.ts its shared test double
+  ui/back-nav.ts        Android back: BackNav keeps one extra history entry while something is open, backStep() per screen (see Rotate screen); ui/back-nav.fake.ts its test double
+  ui/view-settle.ts     ViewSettle: when the view size is final after a portrait form closed (pure); ui/settle-cover.ts the DOM cover shown until then (see Portrait sheets)
   ui/menu-screens.ts    drawing of the menu screens and their notice cards
   ui/kid-notice.ts      "Kindermodus ist an" notice after turning kid mode on in the settings: texts, kidNoticeLayout, kidNoticeRestart (see Settings menu and kid mode)
   ui/column.ts          fitColumn(): a centred column of blocks that drops the least important ones until it fits
@@ -95,6 +100,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   audio/passby.ts       PassBy: vehiclePassed -> pass-by cue (passCar / passVan / passBus / passTruck) and intensity, rate-limited
   player/bin.ts         bin crash: the bin the player draws around the skater
 src/net/                online highscores client (owned by the ui slice, see Online highscores)
+  net/tester-pass.ts    loadTesterPass(): the board's stored tester pass, only on a marked test device (see Play statistics)
 scripts/playtest.ts     Playwright playtest CLI; scripts/playtest-lib.ts; scripts/scenarios/*.ts
 scripts/frametimes.ts   frame-time measurement in Chromium (see docs/TESTING.md, Frame times)
 server/                 highscore API: Cloudflare Worker + D1, own package.json, tsconfig and tests
@@ -114,10 +120,10 @@ foundation owner can extend it.
 | `src/core/`, `src/types.ts`, `src/changelog.ts`, `src/main.ts`, `index.html`, configs, `scripts/`, `docs/`, `CLAUDE.md` | foundation | `startApp`, `Game` | loop, renderer, input, modes, RNG, bus, sprites, font, storage, test hook, playtest harness |
 | `src/player/` | player | `createPlayerSystem()` | skater + longboard sprites and animations, jump physics (variable height, coyote, buffer), ducking, grind riding, crash/stumble anim, `state.player` incl. `hitbox` and `invulnerableTimer` |
 | `src/world/` | world | `createWorldSystem()` | parallax zones (3-4 layers), the distance-driven zone route (see [Zones](#zones-the-distance-driven-route)), ground, foreground traffic (`state.trafficDensity`, the `vehiclePassed` event), window flags, `state.zoneIndex`, letterbox colour; the NorDIY scenery under `state.park` (read only) |
-| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)) |
-| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting |
+| `src/gameplay/` | gameplay | `createGameplaySystem()` | obstacles, people (with their items), rails, grindable bench, stars, joint (`state.entities`), spawner + clearability (jumps, ducks, grinds, moving people, chill jump, stomp bounce) and human margins around people, difficulty (`state.speed`), the chill effect (`state.chillTimer`), collisions, stomps, the tossed and the dropped items (`state.carriedItem`), score/combo/multiplier, health, gameplay events; stunt lines (`kicker`, `ledge`, events `launch` / `stuntStep` / `stuntEnd`, see [Stunt lines](#stunt-lines)), air trick scoring (`airTrick`); the NorDIY park line (`state.park`, the `highFiver`, events `highFive` / `sessionCheer` / `sessionEnd`, see [NorDIY skatepark](#nordiy-skatepark-roadmap-36)); fan crowds in Bad Cannstatt (see [Fan crowds](#fan-crowds-roadmap-76)) |
+| `src/ui/`, `src/net/` | ui | `createUiSystem()` | title, HUD (incl. chill and drunk timers), chill tint, drunk look, item button / chip, item and trick popups, pause (with the logo), game over, "Neu in dieser Version", the reload button, the install hint, "Zum Startbildschirm", highscore + star total persistence, mute + fullscreen buttons (hotspots, touch-sized on phones), the rotate screen (see [Rotate screen](#rotate-screen-roadmap-73)), the hidden settings menu and `state.kidMode` (load at startup, persistence); the online highscore list ("Bestenliste" screen, "Eintragen" after game over, `src/net/` client with offline queue, see [Online highscores](#online-highscores-roadmap-34)); the anonymous play statistics (`src/net/telemetry.ts`) and their opt-out setting; Android back (`ui/back-nav.ts`), the settle cover after a portrait form and the tester pass sent with feedback (`src/net/tester-pass.ts`) |
 | `src/audio/`, `public/`, `.github/` | audio/pwa | `createAudioSystem()` | WebAudio SFX from events (incl. the NorDIY park sounds, cheers and boombox loop by `state.park`), unlock via `onUserGesture`, mute persistence; the speaker button (`state.muted`) sets the master gain on every gesture, visibility return and context restart, and a suspended or interrupted context is resumed then, with retries (`AudioBackend.wake()`, ROADMAP 63); manifest, pixel-art icons, service worker, the CI and GitHub Pages workflows (`ci.yml` on every push, `deploy.yml` only for a release tag `v<BUILD_VERSION>`) |
-| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
+| `server/` | server | Worker `fetch` (`server/src/index.ts`) | the highscore API (`GET /top`, `POST /score`), the play statistics (`POST /event`, token-protected `GET /stats`, board sessions via `POST /board/session`, tester passes via `POST /board/tester-pass`, see [Play statistics](#play-statistics-and-insights-board-roadmap-46)), D1 schema, validation, word filter, rate limit, CORS; its own tests (`cd server && npx vitest run`) and deploy (`npx wrangler deploy`, by the orchestrator) |
 | `src/insights/`, `insights.html` | insights | page entry `src/insights/main.ts` | the owner's hidden insights board (second Vite input, plain DOM, never linked from the game) |
 
 PWA files that `index.html` and `app.ts` already reference (the PWA slice
@@ -198,7 +204,7 @@ kept across runs:
 
 | Field | Meaning |
 |---|---|
-| `standalone` | already running installed: `matchMedia('(display-mode: standalone)')` or `navigator.standalone` (iOS) |
+| `standalone` | already running installed: `matchMedia('(display-mode: standalone)')`, `display-mode: fullscreen` on a phone or tablet (the manifest asks for fullscreen; not on a desktop tab in F11, issue #2), or `navigator.standalone` (iOS) |
 | `platform` | `'ios'` (iPhone / iPad, also iPadOS with the Mac desktop user agent plus touch points), `'android'`, or `'other'` |
 | `canPrompt` | a `beforeinstallprompt` was captured (Chromium) and not used yet: show the "Installieren" button |
 | `installed` | the browser reported `appinstalled` during this visit |
@@ -1196,6 +1202,23 @@ hidden page `insights.html` shows aggregates to the owner.
   `insertAdjacentHTML`, ...), and a render with injection payloads must yield
   them as text nodes only. Setup, rotation and release order:
   `server/README.md`.
+- **Tester pass (ROADMAP 75):** `POST /board/tester-pass` (real token or a
+  board session token, 401 otherwise; 503 without `BOARD_SESSION_KEY`)
+  returns `{pass, scope: 'tester', expiresAt}` with the pass
+  `tester.v1.<expiresAt ms>.<signature>`, valid 180 days (`TESTER_PASS_DAYS`).
+  `server/src/signed-token.ts` signs both kinds under `BOARD_SESSION_KEY`
+  with the prefix in the signed text, so a pass never opens a board route and
+  a session token is never a pass; rotating the key invalidates every pass
+  too. A valid pass sent as `testerPass` with `POST /feedback` lifts only the
+  per-session limit (3 a day); the global cap (200) stays, and an invalid or
+  expired pass is ignored (normal limit, no error). Never stored on the
+  server. The board's switch "Dieses Gerät ist ein Testgerät"
+  (`src/insights/test-device.ts`) fetches a pass when turned on and on every
+  unlock of a marked device, stores the plain string under `TESTER_PASS_KEY`
+  (`cannstatt-cruiser:testerPass`) and drops it (stored as JSON null) when
+  turned off; a note under the switches says until when it holds. The game
+  (`src/net/tester-pass.ts`) reads it at send time and sends it only while
+  the device is marked; "Ansehen" names it ("Testerpass") without showing it.
 - **Service worker:** `public/sw.js` answers only navigations to the scope
   root or `index.html` with the cached game page, and caches only requests
   made by the game page; `insights.html`, `datenschutz.html` and their assets go to the network.
@@ -1221,9 +1244,24 @@ submission of the canvas forms (`form-surface.ts`), so turning the phone while
 typing keeps the text and the focus. They use a system monospace font on
 purpose: native fields need a system font and the pixel font is drawn from
 sprites. Landscape and desktop keep the canvas forms. In the installed app
-(ROADMAP 54) portrait stays unlocked over the feedback thank-you in portrait
-and locks to landscape again on OK; in landscape it locks right after sending.
-These sheets never get the rotate screen (see below).
+(ROADMAP 54) portrait stays unlocked while the feedback dialog is open (also
+over the thanks on "Mein Feedback") and locks to landscape again when it
+closes. These sheets never get the rotate screen (see below).
+
+- **Safe area (ROADMAP 75):** every DOM sheet (and the rotate screen) pads
+  each side by `max(padPx, safe-area inset)` (`sheet-dom.ts` `safeInset`), so
+  a punch-hole camera never covers the tab row. The custom property
+  `--cc-safe-<side>` on the root element overrides `env(safe-area-inset-<side>)`
+  for playtests (Chromium cannot fake `env()`). A sheet's box shadow paints
+  the game colour beyond its box while it is still sized for the keyboard.
+- **Settle cover (ROADMAP 75):** closing a portrait form (`ui/index.ts`)
+  first blurs the field (keyboard down), then, with the keyboard up or a turn
+  to landscape ahead (`TypingOrientation.turnsToLandscape`), shows the full-
+  screen cover in the game colours (`ui/settle-cover.ts`, above every sheet
+  and the rotate screen), then locks landscape again. It hides once
+  `ui/view-settle.ts` says the size is final (no resize for 300 ms, keyboard
+  down, landscape when locking; at the latest after 2.5 s), fires one more
+  `resize` and waits two frames, so no half-sized canvas or sheet shows.
 
 ## Rotate screen (ROADMAP 73)
 
@@ -1256,6 +1294,18 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   (`index`, `feedback`, `highscores`, `whats-new-sheet`) pass the shared
   double `ui/rotate-sheet.fake.ts` as `rotateSheet`. The overlay itself is
   checked by `scripts/scenarios/rotate-screen.ts`.
+- **Android back (ROADMAP 75, `ui/back-nav.ts`):** while anything but the
+  title is open (a dialog, sheet, menu screen or run) the game keeps exactly
+  one extra history entry (`pushState` with its own marker, same URL). A back
+  press pops it; `backStep(uiScreen)` then goes one level back: feedback
+  details -> list -> dialog closed, settings / install steps / Bestenliste /
+  name entry / "Neu in dieser Version" closed, a run pauses, the pause screen
+  stays (leaving takes "Zum Startbildschirm"), game over goes to the title;
+  the entry is pushed again while something is still open. When the ui
+  closes everything by itself it removes the entry with `history.back()`,
+  whose popstate is no back press. The title is never intercepted, so back
+  may leave the app there. Works the same in a normal browser tab. Tests:
+  `back-nav.test.ts` with `back-nav.fake.ts`, playtest `back-navigation.ts`.
 
 ## Player feedback (ROADMAP 50)
 
@@ -1275,7 +1325,8 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   stop at it, Esc closes). Kind Fehler / Idee, "Fehlerprotokoll mitsenden"
   (bug only, default off), "Senden" and a "×" in the tab row (ROADMAP 70; Esc
   goes back a page, then closes); results sent / rate
-  (429) / invalid (400/413) / offline, the text is kept unless sent. In phone
+  (429) / invalid (400/413) / offline, the text is kept unless sent. A sent
+  report keeps the dialog open (ROADMAP 75), see Mein Feedback. In phone
   landscape the log toggle gets its own 2x row above the buttons; in portrait
   the counter sits in the title row and all notes are 2x.
 - **Portrait menus:** at 1 CSS px per view px, notes and labels in the
@@ -1296,7 +1347,8 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   must send `log: []`, control characters rejected) stores day, kind, text,
   version, platform, input, orientation, view width and log (migration
   0005). Rate limits: 3 per SHA-256(session) per UTC day and 200 per day in
-  all (`feedback_counts`, cleared the next day) -> 429. Housekeeping once a
+  all (`feedback_counts`, cleared the next day) -> 429; a valid tester pass
+  lifts only the first (see Tester pass). Housekeeping once a
   day after storing (marker `feedback-pruned`): feedback older than 365 days
   is deleted. `GET /feedback` (Bearer `STATS_TOKEN`, 401 before any DB
   access) returns the newest 100.
@@ -1310,14 +1362,20 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   ROADMAP 57). Routes behind `STATS_TOKEN` (401 before any DB access):
   `POST /feedback/:id/issue` creates an issue in `marvinmai/cannstatt-cruiser`
   (labels `feedback` plus `bug` or `idea`) with the title and body the
-  operator edited on the board, stores its number and sets `todo` (409 when
-  it already has one); `PATCH /feedback/:id` sets status and reply;
+  operator edited on the board, stores its number and sets `todo` in the same
+  request (409 when it already has one; a failed issue leaves the status). An
+  optional `addition` (<= 2000 chars, `MAX_ISSUE_ADDITION`, "Ergänzung
+  (Entwickler)" on the board, ROADMAP 75) goes after the body below a rule and
+  the heading `**Ergänzung des Entwicklers**` (`server/src/issue-body.ts`),
+  never inside the player's quote; `PATCH /feedback/:id` sets status and reply;
   `DELETE /feedback/:id`. GitHub is called with the Wrangler secret
   `GITHUB_TOKEN` (fine-grained, Issues read/write on that repo only; never in
   `[vars]` or the board) through an injected fetch (`server/src/github.ts`);
   its errors become a 502 without the token. The daily prune keeps `todo`
   rows. The board (`src/insights/triage.ts`, `feedback-triage-ui.ts`) shows
-  per card "Todo" (an editor; the log only when ticked), "Löschen" with a
+  per card "Geplant" (ROADMAP 75; the stored value is still `todo`): the issue
+  editor, whose "Issue anlegen" creates the issue and sets Geplant in one
+  step (the log only when ticked), "Löschen" with a
   confirm, a status choice with an optional reply, and a status filter;
   board-side types in `src/insights/triage-types.ts`.
 - **Mein Feedback (ROADMAP 70, replaces the note of 57):** the game makes a
@@ -1341,7 +1399,10 @@ weiter" button; a tap anywhere or Esc dismisses it too.
   (list newest first with coloured status, details with reply, version and
   the sent log). "Ansehen" beside the log toggle shows "Das wird gesendet":
   a snapshot taken when opened, and exactly that snapshot is what "Senden"
-  sends. The board sets the version with "Erledigt" (`PATCH doneVersion`,
+  sends. After "Senden" the dialog stays open (ROADMAP 75): it switches to
+  "Mein Feedback" with "Danke für dein Feedback!" and the new report framed
+  on top, the field blurred; the player closes it with "×" / "Schließen", and
+  "Neu" ends the thanks with a fresh draft. The board sets the version with "Erledigt" (`PATCH doneVersion`,
   cleared when the status leaves done) and marks cards "mit Fehlerprotokoll".
 - `datenschutz.html` describes feedback; keep it true when this changes.
 
@@ -1370,8 +1431,9 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
   (`addTrick` with the person's points) and gameplay emits `stomp {entityId,
   kind, item}`. The item comes from `items.ts`: fans a football; Wasen
   visitors by `data.prop` a Maßkrug (`beer`; in kid mode `gingerbread`) or a
-  Brezel (`pretzel`), so kid mode never yields beer. People carry their item
-  visibly before the stomp.
+  Brezel (`pretzel`), so kid mode never yields beer; a fan crowd's Wasen
+  visitors always toss a Lebkuchenherz, in every mode. People carry their
+  item visibly before the stomp.
 - **Bounce** (player): on the next tick `vy = -STOMP_BOUNCE_VELOCITY`, like a
   take-off with the action already released (no hold gravity); jumpsim
   mirrors it (`stompBody`, checked against the real player in
@@ -1420,7 +1482,8 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
     (`ricochetRoom(ballX, speed)`), and **never while drunk**
     (`drunkTimer > 0`). Otherwise it rolls away harmlessly. The ricochet hops
     low (one jump clears it) and crashes the skater (kind `'ball'`, -1
-    health) unless he jumps over it or is invulnerable.
+    health) unless he jumps over it or is invulnerable. A fan crowd blocks
+    the ball: it drops in front of the first fan and nobody falls.
 - **UI**: "Stomp!" on the stomp, then a big popup per item above the raised
   item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
   "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
@@ -1428,7 +1491,10 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
 - **Solver**: `new Solver(course, pace, {stomps: true})` treats a head
   landing as a valid path with the bounce (bit mask of stomped movers per
   node); the spawner verifies patterns without stomps, so no pattern ever
-  requires one. `planStomp(state)` (`testing.ts`) finds a real stomp jump for
+  requires one, except a fan crowd (see [Fan crowds](#fan-crowds-roadmap-76)).
+  `maxStomps` caps the stomps of a path (a further head landing is a crash),
+  and falling feet still above a head only touch the safety rim on top, which
+  counts as no crash while a stomp may follow (`overHead`). `planStomp(state)` (`testing.ts`) finds a real stomp jump for
   tests and playtests: the middle of the widest run of take-off ticks (one
   hold) that stomp, so a take-off a few ticks off still stomps.
 - **Stomp tooling** (`gameplay/stomp-bot.ts`, Vitest only): `stompWindow` /
@@ -1471,6 +1537,49 @@ before stars):
   are already planned drunk-safe (`BEER_REACH` after a visitor holding a
   Maßkrug, see [Drunk planning](#drunk-planning)).
 - Tests: `gameplay/drop.test.ts`; playtest `scripts/scenarios/drop.ts`.
+
+## Fan crowds (ROADMAP 76)
+
+GitHub issue #3, gameplay `crowd.ts` (planning), `crowd-tag.ts` (the tag),
+`crowd-art.ts` (art). A row of VfB fans (red and white, scarves, a flag) or
+Wasen visitors (Dirndl / Lederhosen, Lebkuchenherzen, never beer) blocks the
+street in Bad Cannstatt. It is too wide for one jump; the way across is a
+jump onto the first heads and plain stomp bounces from head to head (a head
+jump is a bonus, never needed). Running into it is a normal person crash.
+
+- **Entities:** every fan is a standing person (`vfbFan` / `wasenGuest`,
+  walk and sway 0) tagged `data.crowd` (`CROWD_KEY`) with its theme, `seat`,
+  `seats` and `gap`; one carries the flag or the big Lebkuchenherz
+  (`banner`). Contacts and stomps treat them like any person.
+- **Rules** (`crowdDue`, `spawner.ts`): only in Bad Cannstatt (`CROWD_ZONE`
+  2), never in the first `CROWD_FIRST_SECONDS` (60), at most once per visit,
+  drawn at the visit's first pattern with `CROWD_CHANCE` (0.4, about one
+  crowd per 4 min of riding) at a random spot up to `CROWD_SPREAD` (1600 px)
+  on. Laid at the first pattern from there where the player is sober and not
+  chilled, no stunt line or park just ended and the whole crowd fits in the
+  zone with `CROWD_ZONE_MARGIN`; joints and stunt lines due there go first.
+  `CROWD_LEAD_SECONDS` (0.6) of run-up after the previous pattern's free
+  street, `CROWD_ROOM_SECONDS` (1.2) of free street after the last head.
+- **Row:** `CROWD_HEADS` adult 5-6, kid mode 4 (the least that still needs
+  two bounces; three can be crossed with one stomp), heads
+  `CROWD_SPACING_SECONDS` (0.215 s of riding) apart, so a plain bounce comes
+  down on the next head. Same themes in kid mode.
+- **Always passable:** `planCrowd` checks with the stomp solver at every
+  speed of the pattern, also across the boundary to the previous pattern
+  (`patterns.ts` `courseAcross`), that bouncing across is human-fair, and
+  returns null otherwise (the spawner plans the street as usual and drops the
+  crowd for the visit). Guide stars (one arc) follow the solver's human line.
+  `crowd.test.ts` proves with `maxStomps` that one jump or one stomp never
+  crosses, for every 3 px/s from 100 to 190 px/s; `crowd-bot.test.ts` rides
+  it in the real game.
+- **Bot:** `testing.ts` `planJump` plans with stomps on while a crowd is
+  ahead, so the HumanBot jumps onto the heads and bounces across.
+- **Items:** crowds block the thrown ball (see Stomp and carried items);
+  Wasen fans toss a Lebkuchenherz when stomped, in every mode.
+- **Open:** a "Fans!" popup and crowd sounds need a contract change (an
+  event when a crowd comes on screen, or an `EntityKind` 'crowd').
+- Tests: `crowd.test.ts`, `crowd-spawn.test.ts`, `crowd-bot.test.ts`;
+  `window.__gameplay.pattern('fanCrowd')`; playtest `scripts/scenarios/fan-crowd.ts`.
 
 ## Human margins (fairness.ts)
 
@@ -1555,6 +1664,9 @@ fallback is a lone low obstacle or a star arc, never empty street. What counts
 as "something to react to" is `gameplay/street.ts` (obstacles, people, rails,
 stars, kickers, the joint, the high fiver; not the stars above a ledge deck).
 `quiet-time.test.ts` pins at most 2.5 s from 20 s on over 20 seeds x 6 min.
+Under a stunt line whose upper level leaves the street below quiet for
+longer than the cap, `street.ts` `quietStreetStars` adds evenly spread stars
+at riding height (no rng draw, no arc).
 Take-off windows are unchanged. From tier 2 on, threat-free templates (stars,
 rail, pipeUp, pipeStairs) weigh about 2-5 % of the mix. Combinations
 (`mixes.ts`, ROADMAP 52 6a) are about 30 % of patterns at tier 2 and about
