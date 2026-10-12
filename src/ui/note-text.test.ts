@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
-import { FEEDBACK_TEXT } from './feedback-flow';
-import { SCORE_TEXT } from './highscore-flow';
-import { fittingNote, KID_NOTE, PORTRAIT_NOTE_W } from './note-text';
-import { STATS_TEXT } from './settings';
+
+
+import { fittingNote, PORTRAIT_NOTE_W } from './note-text';
+import { de } from './i18n/de';
+
 
 describe('fittingNote', () => {
   it('keeps the long text at the scale where it fits', () => {
@@ -23,13 +24,13 @@ describe('fittingNote', () => {
 
   it('every note shown in portrait has a variant that fits the narrowest view at scale 2', () => {
     const notes = [
-      [SCORE_TEXT.privacy, SCORE_TEXT.privacyShort],
-      [STATS_TEXT.listNote, STATS_TEXT.listNoteShort],
-      [STATS_TEXT.offNote],
-      [STATS_TEXT.note, STATS_TEXT.noteShort],
-      KID_NOTE.off,
-      KID_NOTE.on,
-      [FEEDBACK_TEXT.hint],
+      [de.score.privacy, de.score.privacyShort],
+      [de.stats.listNote, de.stats.listNoteShort],
+      [de.stats.offNote],
+      [de.stats.note, de.stats.noteShort],
+      de.settings.kidNoteOff,
+      de.settings.kidNoteOn,
+      [de.feedback.hint],
     ];
     for (const texts of notes) expect(fittingNote(texts, 2, PORTRAIT_NOTE_W).scale, texts[0]).toBe(2);
   });

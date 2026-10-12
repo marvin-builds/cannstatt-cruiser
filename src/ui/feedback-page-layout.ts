@@ -13,9 +13,10 @@ import type { ReportStatus } from '../net/feedback-reports';
 import type { Rect } from '../types';
 import type { FeedbackPage } from './feedback-flow';
 import { closeRect, dialogColumn, type FeedbackDisplay, labelW, tabRects } from './feedback-layout';
-import { FEEDBACK_PAGE_TEXT, type PageSection, type ReportDetail } from './feedback-pages';
+import type { PageSection, ReportDetail } from './feedback-pages';
 import { wrapText } from './wrap-text';
 import { SCROLLBAR_W } from './score-layout';
+import { texts } from './i18n';
 
 export interface PageLayout {
   /** The tabs (list page), else null. */
@@ -58,14 +59,11 @@ const SPACE = 5;
 /** Font cell height at scale 1. */
 const GLYPH_H = 7;
 
-const TITLES: Partial<Record<FeedbackPage, string>> = {
-  preview: FEEDBACK_PAGE_TEXT.previewTitle,
-  sent: FEEDBACK_PAGE_TEXT.sentTitle,
-  confirm: FEEDBACK_PAGE_TEXT.confirmTitle,
-};
-
 /** A sub-page's headline in the top row (none on the details). */
-export const pageTitle = (page: FeedbackPage): string | null => TITLES[page] ?? null;
+export function pageTitle(page: FeedbackPage): string | null {
+  const t = texts().feedbackPages;
+  return page === 'preview' ? t.previewTitle : page === 'sent' ? t.sentTitle : page === 'confirm' ? t.confirmTitle : null;
+}
 
 /** `note`: the list page right after sending or deleting (ROADMAP 75, 78) puts it above its rows. */
 export function pageLayout(display: FeedbackDisplay, page: Exclude<FeedbackPage, 'form'>, note: string | null = null): PageLayout {
@@ -87,17 +85,17 @@ export function pageLayout(display: FeedbackDisplay, page: Exclude<FeedbackPage,
   const none = { del: null, yes: null, no: null };
   if (page === 'list') return { ...base, ...none, ...tabRects(c, labelScale), back: null, title: null, view: null, note: noteAt };
   const button = (label: string, x: number, y: number): Rect => ({ x, y, w: labelW(label, labelScale, c.m), h: c.h });
-  const back = button(FEEDBACK_PAGE_TEXT.back, c.x, c.top);
-  const viewW = labelW(FEEDBACK_PAGE_TEXT.view, labelScale, c.m);
+  const back = button(texts().feedbackPages.back, c.x, c.top);
+  const viewW = labelW(texts().feedbackPages.view, labelScale, c.m);
   const view: Rect | null = page === 'detail' ? { x: close.x - GAP - viewW, y: c.top, w: viewW, h: c.h } : null;
   const titleX = back.x + back.w + GAP;
   const titleText = pageTitle(page);
   const titleScale = titleText !== null && titleX + measureText(titleText, c.big) <= close.x - GAP ? c.big : 1;
   const title = titleText === null ? null : { x: titleX, y: c.top + Math.floor((c.h - 7 * titleScale) / 2), scale: titleScale };
-  const del = page === 'detail' ? button(FEEDBACK_PAGE_TEXT.delete, c.x, bottomRow!) : null;
-  const yesW = labelW(FEEDBACK_PAGE_TEXT.confirmYes, labelScale, c.m);
-  const yes = page === 'confirm' ? button(FEEDBACK_PAGE_TEXT.confirmYes, c.right - yesW, bottomRow!) : null;
-  const no = page === 'confirm' ? button(FEEDBACK_PAGE_TEXT.cancel, c.x, bottomRow!) : null;
+  const del = page === 'detail' ? button(texts().feedbackPages.delete, c.x, bottomRow!) : null;
+  const yesW = labelW(texts().feedbackPages.confirmYes, labelScale, c.m);
+  const yes = page === 'confirm' ? button(texts().feedbackPages.confirmYes, c.right - yesW, bottomRow!) : null;
+  const no = page === 'confirm' ? button(texts().feedbackPages.cancel, c.x, bottomRow!) : null;
   return { ...base, newTab: null, mineTab: null, back, title, view, del, yes, no, note: null };
 }
 
@@ -147,7 +145,7 @@ export function detailItems(d: ReportDetail): TextItem[] {
 
 /** "Wirklich löschen?": the delete's status (deleting, or why it failed), what deleting means, the report's text. */
 export function confirmItems(d: ReportDetail, message: string | null): TextItem[] {
-  return [...(message ? [{ text: message, tone: 'message' as const }, space] : []), { text: FEEDBACK_PAGE_TEXT.confirmHint, tone: 'text' }, space, { text: d.text, tone: 'muted' }];
+  return [...(message ? [{ text: message, tone: 'message' as const }, space] : []), { text: texts().feedbackPages.confirmHint, tone: 'text' }, space, { text: d.text, tone: 'muted' }];
 }
 
 /** The items wrapped into rows at most `maxW` px wide at font `scale`, each with its top. */

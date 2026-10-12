@@ -8,7 +8,8 @@ import { measureText } from '../core/font';
 import type { Rect, SafeInsets } from '../types';
 import { buttonPlate, centredWidth, fitCentred, hudButtons, safeSpan, type UiMetrics, uiMetrics } from './layout';
 import { logoRect } from './logo';
-import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
+import { texts, widestText } from './i18n';
+import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 export interface ScreenInput {
   viewWidth: number;
@@ -76,8 +77,8 @@ function headlineRect(text: string, viewWidth: number, close: Rect, y = HEADLINE
   return { x: leftEdge + Math.max(0, Math.floor((close.x - leftEdge - w) / 2)), y, w, h: HEADLINE_H };
 }
 
-/** Wide enough for "Anonyme Statistik: AUS" at scale 1. */
-const STATS_SWITCH_W = measureText('Anonyme Statistik: AUS', 1) + 12;
+/** Wide enough for "Anonyme Statistik: AUS" at scale 1 in every language. */
+const STATS_SWITCH_W = widestText((t) => t.stats.label(false)) + 12;
 
 /** The list's statistics switch: a menu-button-high button in the top-left corner, mirroring the close button. */
 function statsSwitch(m: UiMetrics): Rect {
@@ -115,8 +116,8 @@ export interface ScoreListLayout {
 }
 
 /** Portrait: the switch and the link with room for their labels at scale 2, centred as one bottom row. */
-const PORTRAIT_STATS_W = measureText('Anonyme Statistik: AUS', 2) + 12;
-const PORTRAIT_LINK_W = measureText(PRIVACY_LABEL, 2) + 12;
+const PORTRAIT_STATS_W = widestText((t) => t.stats.label(false), 2) + 12;
+const PORTRAIT_LINK_W = widestText((t) => t.privacy.label, 2) + 12;
 /** A text line at scale 2 with its spacing. */
 const BIG_LINE = 16;
 
@@ -141,13 +142,13 @@ export function scoreListLayout(input: ScreenInput, rows: number, message: boole
     const rowW = PORTRAIT_STATS_W + PRIVACY_LINK_GAP + PORTRAIT_LINK_W;
     stats = { x: Math.floor((input.viewWidth - rowW) / 2), y: VIEW_H - m.menuButtonH, w: PORTRAIT_STATS_W, h: m.menuButtonH };
     privacyLink = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PORTRAIT_LINK_W };
-    title = headlineRect('Bestenliste', input.viewWidth, close, close.y + Math.floor((close.h - HEADLINE_H) / 2));
+    title = headlineRect(texts().score.title, input.viewWidth, close, close.y + Math.floor((close.h - HEADLINE_H) / 2));
     // Clear of the row's top edge, descenders included.
     y = stats.y - 3;
   } else {
     stats = statsSwitch(m);
     privacyLink = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PRIVACY_LINK_W };
-    title = headlineRect('Bestenliste', input.viewWidth, close, HEADLINE_Y, privacyLink.x + privacyLink.w);
+    title = headlineRect(texts().score.title, input.viewWidth, close, HEADLINE_Y, privacyLink.x + privacyLink.w);
     y = VIEW_H - 2;
   }
   const line = () => (y -= portrait ? BIG_LINE : LINE);
@@ -208,7 +209,7 @@ export function scoreEntryLayout(input: ScreenInput): ScoreEntryLayout {
   const textScale = input.portrait ? 2 : 1;
   const h = m.menuButtonH;
   const close = closeButton(input.viewWidth, m);
-  const title = headlineRect('Eintragen', input.viewWidth, close, input.portrait ? close.y + Math.floor((close.h - HEADLINE_H) / 2) : HEADLINE_Y);
+  const title = headlineRect(texts().score.entryTitle, input.viewWidth, close, input.portrait ? close.y + Math.floor((close.h - HEADLINE_H) / 2) : HEADLINE_Y);
   // In portrait the points line may still be beside the close button: it is centred left of it (fitCentred).
   const scoreY = title.y + title.h + GAP;
   const promptY = scoreY + 7 * textScale + GAP + 2;

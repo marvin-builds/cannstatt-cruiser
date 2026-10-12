@@ -9,15 +9,13 @@
 import type { GameMode } from '../core/modes';
 import type { Rect } from '../types';
 import { centreX, uiMetrics } from './layout';
-import { MENU_TEXT } from './menu-layout';
-
-export const KID_NOTICE_TITLE = 'Kindermodus ist an';
-export const KID_NOTICE_OK = 'OK';
+import { texts } from './i18n';
 
 /** The notice's lines: what kid mode does, the way back (the logo on touch, K on a keyboard) and, when `restart`, that the paused run restarts. */
 export function kidNoticeLines(touch: boolean, restart = false): string[] {
-  const lines = ['Kindgerechte Bilder und Texte.', touch ? 'Ausschalten: Logo 3 Sekunden halten' : 'Ausschalten: K 3 Sekunden halten'];
-  return restart ? [...lines, MENU_TEXT.restartNote] : lines;
+  const t = texts();
+  const lines = [t.kidNotice.what, t.kidNotice.off(touch)];
+  return restart ? [...lines, t.menu.restartNote] : lines;
 }
 
 export interface KidNoticeLayout {

@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { VIEW_H } from '../core/config';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { FEEDBACK_TEXT } from './feedback-flow';
-import { FEEDBACK_PAGE_TEXT, type PageSection } from './feedback-pages';
+
+import { type PageSection } from './feedback-pages';
 import { confirmItems, detailItems, listRowRect, pageLayout, sectionItems, textRows } from './feedback-page-layout';
+import { de } from './i18n/de';
 
 const DISPLAYS = [
   { label: 'desktop 320', viewWidth: 320, touch: false, portrait: false },
@@ -30,7 +31,7 @@ describe('feedback dialog pages', () => {
   });
 
   it('after sending or deleting, the note sits between the tabs and the rows, whole and centred (ROADMAP 75, 78)', () => {
-    for (const d of DISPLAYS) for (const text of [FEEDBACK_TEXT.sent, FEEDBACK_PAGE_TEXT.deleted]) {
+    for (const d of DISPLAYS) for (const text of [de.feedback.sent, de.feedbackPages.deleted]) {
       const plain = pageLayout(d, 'list');
       const l = pageLayout(d, 'list', text);
       const thanks = l.note!;
@@ -55,7 +56,7 @@ describe('feedback dialog pages', () => {
         for (const r of parts) expect(inside(r, d.viewWidth), `${d.label} ${page}`).toBe(true);
         parts.forEach((a, i) => parts.slice(i + 1).forEach((b) => expect(overlap(a, b), `${d.label} ${page}`).toBe(false)));
         expect(!!l.view, `${d.label} ${page}`).toBe(page === 'detail');
-        const title = page === 'sent' ? FEEDBACK_PAGE_TEXT.sentTitle : FEEDBACK_PAGE_TEXT.previewTitle;
+        const title = page === 'sent' ? de.feedbackPages.sentTitle : de.feedbackPages.previewTitle;
         if (page !== 'detail') expect(l.title!.x + measureText(title, l.title!.scale), `${d.label} ${page}`).toBeLessThanOrEqual(l.close.x);
       }
     }
@@ -68,7 +69,7 @@ describe('feedback dialog pages', () => {
       for (const r of parts) expect(inside(r, d.viewWidth), d.label).toBe(true);
       parts.forEach((a, i) => parts.slice(i + 1).forEach((b) => expect(overlap(a, b), d.label).toBe(false)));
       expect(l.del!.h, d.label).toBeGreaterThanOrEqual(d.touch ? 24 : 18);
-      expect(measureText(FEEDBACK_PAGE_TEXT.delete, l.labelScale), d.label).toBeLessThanOrEqual(l.del!.w);
+      expect(measureText(de.feedbackPages.delete, l.labelScale), d.label).toBeLessThanOrEqual(l.del!.w);
       expect([l.yes, l.no], d.label).toEqual([null, null]);
       expect(pageLayout(d, 'sent').del, d.label).toBeNull();
     }
@@ -81,8 +82,8 @@ describe('feedback dialog pages', () => {
       for (const r of parts) expect(inside(r, d.viewWidth), d.label).toBe(true);
       parts.forEach((a, i) => parts.slice(i + 1).forEach((b) => expect(overlap(a, b), d.label).toBe(false)));
       expect(l.no!.x, d.label).toBeLessThan(l.yes!.x);
-      expect(measureText(FEEDBACK_PAGE_TEXT.confirmYes, l.labelScale), d.label).toBeLessThanOrEqual(l.yes!.w);
-      expect(l.title!.x + measureText(FEEDBACK_PAGE_TEXT.confirmTitle, l.title!.scale), d.label).toBeLessThanOrEqual(l.close.x);
+      expect(measureText(de.feedbackPages.confirmYes, l.labelScale), d.label).toBeLessThanOrEqual(l.yes!.w);
+      expect(l.title!.x + measureText(de.feedbackPages.confirmTitle, l.title!.scale), d.label).toBeLessThanOrEqual(l.close.x);
       expect([l.view, l.del], d.label).toEqual([null, null]);
     }
   });
@@ -102,7 +103,7 @@ describe('text pages', () => {
   const SECTIONS: PageSection[] = [
     { label: 'Text', lines: ['Wort '.repeat(40).trim()], log: false },
     { label: 'Fehlerprotokoll', lines: ['error: ' + 'x'.repeat(190), 'state: mode title'], log: true },
-    { label: null, lines: [FEEDBACK_PAGE_TEXT.notIncluded], log: false },
+    { label: null, lines: [de.feedbackPages.notIncluded], log: false },
   ];
 
   it('wraps every line to the width, labels and log lines in their own tone', () => {
@@ -133,10 +134,10 @@ describe('text pages', () => {
   it('the confirm: the delete\'s status first (when any), what deleting means, the report\'s text', () => {
     const d = { status: 'open' as const, headline: 'Offen', reply: null, text: 'Mehr Brezeln', sent: 's' };
     expect(confirmItems(d, null).map((i) => [i.tone, i.text])).toEqual([
-      ['text', FEEDBACK_PAGE_TEXT.confirmHint],
+      ['text', de.feedbackPages.confirmHint],
       ['space', ''],
       ['muted', 'Mehr Brezeln'],
     ]);
-    expect(confirmItems(d, FEEDBACK_PAGE_TEXT.deleteFailed)[0]).toEqual({ text: FEEDBACK_PAGE_TEXT.deleteFailed, tone: 'message' });
+    expect(confirmItems(d, de.feedbackPages.deleteFailed)[0]).toEqual({ text: de.feedbackPages.deleteFailed, tone: 'message' });
   });
 });

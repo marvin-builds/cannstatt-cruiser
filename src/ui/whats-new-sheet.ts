@@ -8,9 +8,9 @@
  */
 import type { ChangelogEntry } from '../types';
 import { UI } from './art';
-import { MENU_TEXT } from './menu-layout';
+import { texts } from './i18n';
 import { SHEET_STYLE, whatsNewSections } from './portrait-sheets';
-import { createSheet, line, row, scrollPanel, sheetButton, styled, title } from './sheet-dom';
+import { createSheet, line, row, scrollPanel, SheetParts, sheetButton, styled, title } from './sheet-dom';
 import { sheetScrollTo } from './whats-new';
 
 export interface WhatsNewSheet {
@@ -28,16 +28,19 @@ export interface WhatsNewSheetHandlers {
 }
 
 export function createDomWhatsNewSheet(handlers: WhatsNewSheetHandlers): WhatsNewSheet {
-  let parts: ReturnType<typeof build> | null = null;
+  const parts = new SheetParts(build);
   let shownEntries: readonly ChangelogEntry[] | null = null;
 
   function build() {
-    const sheet = createSheet(MENU_TEXT.whatsNew, () => handlers.onDone());
-    const { frame, list, placeThumb } = scrollPanel(MENU_TEXT.whatsNew);
-    const next = sheetButton(MENU_TEXT.next, () => handlers.onDone());
+    const t = texts().menu;
+    const sheet = createSheet(t.whatsNew, () => handlers.onDone());
+    const { frame, list, placeThumb } = scrollPanel(t.whatsNew);
+    const next = sheetButton(t.next, () => handlers.onDone());
     next.style.color = UI.yellow;
     sheet.root.style.overflowY = 'hidden';
-    sheet.root.append(row(title(MENU_TEXT.whatsNew)), frame, row(next));
+    sheet.root.append(row(title(t.whatsNew)), frame, row(next));
+    // A new build (another language) fills its list afresh.
+    shownEntries = null;
     return { sheet, list, placeThumb };
   }
 
@@ -46,7 +49,7 @@ export function createDomWhatsNewSheet(handlers: WhatsNewSheetHandlers): WhatsNe
     list.replaceChildren();
     for (const section of whatsNewSections(entries)) {
       const heading = styled(line(SHEET_STYLE.textPx, UI.yellow), { margin: '12px 0 4px', fontWeight: 'bold' });
-      heading.textContent = section.heading.replace('Nr. ', 'Nr.\u00a0'); // "(Nr. 8)" never breaks
+      heading.textContent = section.heading.replace(/ (\d+\))$/, '\u00a0$1'); // "(Nr. 8)" never breaks
       const items = styled(document.createElement('ul'), { margin: '0', paddingLeft: '1.2em' });
       for (const text of section.items) {
         const item = styled(document.createElement('li'), { margin: '0 0 6px' });
@@ -61,21 +64,21 @@ export function createDomWhatsNewSheet(handlers: WhatsNewSheetHandlers): WhatsNe
   return {
     show(entries) {
       if (!entries) {
-        parts?.sheet.setShown(false);
+        parts.built?.sheet.setShown(false);
         shownEntries = null;
         return;
       }
-      parts ??= build();
-      parts.sheet.setShown(true);
+      const p = parts.get();
+      p.sheet.setShown(true);
       if (entries !== shownEntries) {
         shownEntries = entries;
-        fill(parts.list, entries);
-        parts.placeThumb();
+        fill(p.list, entries);
+        p.placeThumb();
       }
     },
     scrollKey(code) {
-      if (!parts || !shownEntries) return false;
-      const { list } = parts;
+      if (!parts.built || !shownEntries) return false;
+      const { list } = parts.built;
       const lineH = parseFloat(getComputedStyle(list).lineHeight) || SHEET_STYLE.textPx;
       const to = sheetScrollTo(code, list.scrollTop, { max: list.scrollHeight - list.clientHeight, line: 2 * lineH, page: list.clientHeight });
       if (to === null) return false;
@@ -83,8 +86,8 @@ export function createDomWhatsNewSheet(handlers: WhatsNewSheetHandlers): WhatsNe
       return true;
     },
     scroll() {
-      if (!parts || !shownEntries) return null;
-      const { list } = parts;
+      if (!parts.built || !shownEntries) return null;
+      const { list } = parts.built;
       return { offset: list.scrollTop, maxScroll: list.scrollHeight - list.clientHeight };
     },
   };

@@ -5,16 +5,17 @@
  * content width or rows change. screens.ts draws from it; the desktop item
  * chip's hotspot reads `chip`.
  */
-import { measureText } from '../core/font';
 import type { GameState, Rect } from '../types';
 import { STAR } from './art';
 import { drunkShown } from './drunk-look';
 import { keycapChip } from './item-button';
 import { formatNumber } from './layout';
+import { texts, widestText } from './i18n';
 import { NumberText } from './hud-text';
 import { type StatsLayout, statsLayout } from './stats';
 
-const LABEL_W = measureText('Punkte');
+/** "Punkte" in its longest language, so the plate keeps its size across a switch. */
+const LABEL_W = widestText((t) => t.hud.points);
 /** Gap between the score and the multiplier / combo label. */
 const COMBO_GAP = 6;
 /** Hearts are 8 px apart; the star row starts this far right of the last one. */
@@ -26,7 +27,7 @@ export class HudModel {
   readonly score = new NumberText(formatNumber, 2);
   readonly stars = new NumberText(formatNumber);
   readonly multiplier = new NumberText((m) => `x${m}`, 2);
-  readonly comboLabel = new NumberText((c) => `Combo ${c}`);
+  readonly comboLabel = new NumberText((c) => texts().hud.combo(String(c)));
   /** The multiplier shows (> 1); `comboLabel` too while the combo is > 1. */
   combo = false;
   showComboLabel = false;

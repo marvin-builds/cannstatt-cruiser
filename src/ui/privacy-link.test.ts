@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { PRIVACY_PAGE, PRIVACY_PENDING_SECONDS, PrivacyLink } from './privacy-link';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n';
+import { PRIVACY_PAGE, PRIVACY_PENDING_SECONDS, PrivacyLink, privacyPage } from './privacy-link';
+
+afterEach(() => setLanguage('de'));
 
 function link(results: boolean[] = []) {
   const opened: string[] = [];
@@ -23,6 +26,16 @@ describe('privacy link', () => {
 
   it('opens the static page next to the game', () => {
     expect(PRIVACY_PAGE).toBe('datenschutz.html');
+  });
+
+  it('opens the English section of the page while English is on (ROADMAP 71)', () => {
+    expect(privacyPage('de')).toBe('datenschutz.html');
+    expect(privacyPage('en')).toBe('datenschutz.html#en');
+    const { l, opened } = link();
+    setLanguage('en');
+    l.request();
+    l.gesture();
+    expect(opened).toEqual(['datenschutz.html#en']);
   });
 
   it('gestures without a press open nothing', () => {

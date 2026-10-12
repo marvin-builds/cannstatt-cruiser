@@ -68,17 +68,6 @@ export function saveKidMode(store: Store, on: boolean): void {
   store.set(KID_MODE_KEY, on);
 }
 
-/** The statistics switch's texts (game font, fit 320 px at scale 1). */
-export const STATS_TEXT = {
-  label: (on: boolean) => `Anonyme Statistik: ${on ? 'AN' : 'AUS'}`,
-  note: 'Ohne Namen. Ort grob (Stadt), keine IP gespeichert.',
-  noteShort: 'Ohne Namen und IP, Ort nur grob.',
-  /** The Bestenliste's line under its own privacy line. */
-  listNote: 'Statistik: anonym, Ort grob (Stadt), keine IP.',
-  listNoteShort: 'Statistik: anonym, ohne IP.',
-  offNote: 'Aus: Es wird keine Statistik gesendet.',
-} as const;
-
 /** 'kidNotice': "Kindermodus ist an" after turning kid mode on in the menu, naming the way back. */
 export type SettingsScreen = 'closed' | 'menu' | 'kidNotice';
 

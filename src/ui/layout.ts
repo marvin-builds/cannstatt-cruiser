@@ -1,7 +1,9 @@
 import type { GameMode } from '../core/modes';
 import type { Rect, SafeInsets } from '../types';
 import { measureText } from '../core/font';
-import { PRIVACY_LABEL, PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
+import { texts, widestText } from './i18n';
+import { type LanguageSwitch, languageSwitch } from './language-switch';
+import { PRIVACY_LINK_GAP, PRIVACY_LINK_W } from './privacy-link';
 
 /**
  * Pointer button sizes (view pixels) for the device. Phones get bigger
@@ -152,27 +154,24 @@ export interface SettingsLayout {
   noteScale: number;
   /** Top-left of the plain "Testgerät" line (ROADMAP 55, only on a marked device): text, never a hotspot. */
   testDevice: { x: number; y: number; scale: number };
+  /** The language switch "DE | EN" in the top-left corner (ROADMAP 71). */
+  language: LanguageSwitch;
 }
 
-/** The settings line on the owner's test devices (ROADMAP 55). */
-export const TEST_DEVICE_LABEL = 'Testgerät';
-
-/** Wide enough for "Anonyme Statistik: AUS" at scale 2. */
+/** Wide enough for "Anonyme Statistik: AUS" at scale 2 in every language. */
 const TOGGLE_W = 200;
 const BACK_W = 100;
 const TITLE_H = 14;
 /** One scale-1 text line with its spacing. */
 const NOTE_LINE = 11;
 
-/** "App installieren" in the settings (ROADMAP 68). */
-export const SETTINGS_INSTALL_LABEL = 'App installieren';
 /** A settings button as wide as its label at the button's label scale (2 once touch-sized), with padding. */
 const labelButtonW = (label: string, h: number) => measureText(label, h >= 24 ? 2 : 1) + 24;
 
 /** Portrait: Zurück, the statistics switch and the link with room for their labels at scale 2; a scale-2 note line with its spacing. */
-const PORTRAIT_BACK_W = measureText('Zurück', 2) + 24;
-const PORTRAIT_STATS_W = measureText('Anonyme Statistik: AUS', 2) + 12;
-const PORTRAIT_LINK_W = measureText(PRIVACY_LABEL, 2) + 12;
+const PORTRAIT_BACK_W = widestText((t) => t.settings.back, 2) + 24;
+const PORTRAIT_STATS_W = widestText((t) => t.stats.label(false), 2) + 12;
+const PORTRAIT_LINK_W = widestText((t) => t.privacy.label, 2) + 12;
 const BIG_NOTE_LINE = 16;
 
 /**
@@ -181,7 +180,7 @@ const BIG_NOTE_LINE = 16;
  */
 export function settingsLayout(viewWidth: number, m: UiMetrics, installable = false): SettingsLayout {
   const h = m.menuButtonH;
-  if (h >= 44) return settingsPortrait(viewWidth, h, installable);
+  if (h >= 44) return settingsPortrait(viewWidth, m, installable);
   const cx = centreX(viewWidth);
   const gap = 4;
   const centred = (w: number, y: number): Rect => ({ x: cx - Math.floor(w / 2), y, w, h });
@@ -198,22 +197,24 @@ export function settingsLayout(viewWidth: number, m: UiMetrics, installable = fa
   const keysY = h > DESKTOP.menuButtonH ? null : below;
   const backY = keysY === null ? below : keysY + NOTE_LINE + gap;
   // "App installieren" and Zurück are centred as one row.
-  const installW = installable ? labelButtonW(SETTINGS_INSTALL_LABEL, h) : 0;
+  const installW = installable ? labelButtonW(texts().settings.installApp, h) : 0;
   const backRow = centred(installW + (installable ? gap : 0) + BACK_W, backY);
   const install = installable ? { ...backRow, w: installW } : null;
   const back = { ...backRow, x: backRow.x + backRow.w - BACK_W, w: BACK_W };
   // Centred under Zurück, where the view has room left.
-  const testDevice = { x: cx - Math.floor(measureText(TEST_DEVICE_LABEL, 1) / 2), y: back.y + h + gap + 2, scale: 1 };
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, install, noteScale: 1, testDevice };
+  const testDevice = { x: cx - Math.floor(measureText(texts().settings.testDevice, 1) / 2), y: back.y + h + gap + 2, scale: 1 };
+  const language = languageSwitch(viewWidth, m, 'settings');
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY, back, install, noteScale: 1, testDevice, language };
 }
 
 /** Portrait: Zurück in the title row; "App installieren" beside a Kindermodus switch as narrow as its label. */
-function settingsPortrait(viewWidth: number, h: number, installable: boolean): SettingsLayout {
+function settingsPortrait(viewWidth: number, m: UiMetrics, installable: boolean): SettingsLayout {
+  const h = m.menuButtonH;
   const cx = centreX(viewWidth);
   const back: Rect = { x: viewWidth - PORTRAIT_BACK_W, y: 0, w: PORTRAIT_BACK_W, h };
   const titleY = Math.floor((h - TITLE_H) / 2);
-  const toggleW = installable ? labelButtonW('Kindermodus: AUS', h) : TOGGLE_W;
-  const installW = installable ? labelButtonW(SETTINGS_INSTALL_LABEL, h) : 0;
+  const toggleW = installable ? labelButtonW(texts().settings.kidMode(false), h) : TOGGLE_W;
+  const installW = installable ? labelButtonW(texts().settings.installApp, h) : 0;
   const kidRowW = toggleW + (installable ? PRIVACY_LINK_GAP + installW : 0);
   const toggle: Rect = { x: cx - Math.floor(kidRowW / 2), y: h + 6, w: toggleW, h };
   const install = installable ? { ...toggle, x: toggle.x + toggleW + PRIVACY_LINK_GAP, w: installW } : null;
@@ -222,9 +223,11 @@ function settingsPortrait(viewWidth: number, h: number, installable: boolean): S
   const stats: Rect = { x: cx - Math.floor(rowW / 2), y: kidNoteY + BIG_NOTE_LINE + 4, w: PORTRAIT_STATS_W, h };
   const privacyLink: Rect = { ...stats, x: stats.x + stats.w + PRIVACY_LINK_GAP, w: PORTRAIT_LINK_W };
   const statsNoteY = stats.y + h + 2;
-  // The view is full below; the title row has room left of the centred title (Zurück is at the right).
-  const testDevice = { x: 8, y: titleY, scale: 2 };
-  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, install, noteScale: 2, testDevice };
+  // The view is full below; the title row has room left of the centred title (Zurück is at the right): the
+  // language switch, and the test device line under its plate.
+  const language = languageSwitch(viewWidth, m, 'settings');
+  const testDevice = { x: language.plate.x, y: language.plate.y + language.plate.h + 2, scale: 2 };
+  return { titleY, toggle, kidNoteY, stats, privacyLink, statsNoteY, keysY: null, back, install, noteScale: 2, testDevice, language };
 }
 
 /** Font scale of a popup: 2 for `big` ones (catches) and in portrait, where a view pixel is only ~1 CSS px. */
@@ -256,9 +259,9 @@ export function fitCentred(w: number, viewWidth: number, obstacleX: number): num
   return Math.max(Math.floor(obstacleX / 2), 2 + half);
 }
 
-/** Whole number with German thousands dots: 1234567 -> "1.234.567". */
+/** Whole number with the language's thousands separator: 1234567 -> "1.234.567" (German), "1,234,567" (English). */
 export function formatNumber(n: number): string {
-  return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, texts().thousands);
 }
 
 /** A popup's points: "+1.250". */

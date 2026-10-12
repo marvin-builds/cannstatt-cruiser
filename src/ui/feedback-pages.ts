@@ -6,47 +6,9 @@
  * sheet (feedback-sheet.ts) both show these. German, kid-safe.
  */
 import type { KeptReport, ReportStatus } from '../net/feedback-reports';
-import type { FeedbackBody, FeedbackKind } from '../net/feedback-types';
-import type { InputKind, Orientation, Platform } from '../net/telemetry-types';
+import type { FeedbackBody } from '../net/feedback-types';
 import { UI } from './art';
-
-export const FEEDBACK_PAGE_TEXT = {
-  newTab: 'Neu',
-  mineTab: 'Mein Feedback',
-  view: 'Ansehen',
-  back: 'Zurück',
-  previewTitle: 'Das wird gesendet',
-  sentTitle: 'Das wurde gesendet',
-  empty: 'Noch kein Feedback von diesem Gerät',
-  kind: 'Art',
-  text: 'Text',
-  version: 'Spielversion',
-  device: 'Gerät',
-  session: 'Sitzungsnummer (nur gegen Spam, wird nicht gespeichert)',
-  log: 'Fehlerprotokoll',
-  noErrors: 'Keine Fehler aufgezeichnet',
-  unticked: 'Nicht angehakt, wird nicht gesendet',
-  notSent: 'Nicht mitgesendet',
-  notIncluded: 'Nicht dabei: Name, IP-Adresse, Geräte-ID, Highscores, deine Eingaben im Spiel.',
-  testerPass: 'Testerpass',
-  testerPassSent: 'Wird mitgesendet (Testgerät, ohne Tageslimit)',
-  delete: 'Löschen',
-  confirmTitle: 'Wirklich löschen?',
-  confirmHint: 'Dein Feedback ist dann ganz weg.',
-  confirmYes: 'Ja, löschen',
-  cancel: 'Abbrechen',
-  deleting: 'Wird gelöscht ...',
-  deleted: 'Feedback gelöscht',
-  deleteFailed: 'Ging leider nicht. Später nochmal.',
-} as const;
-
-export const STATUS_LABEL: Record<ReportStatus, string> = {
-  open: 'Offen',
-  todo: 'Geplant',
-  done: 'Umgesetzt',
-  rejected: 'Nicht geplant',
-  removed: 'Entfernt',
-};
+import { texts } from './i18n';
 
 /** The colour of each status: open grey, planned yellow, done green, not planned white, removed muted. */
 export const STATUS_COLOR: Record<ReportStatus, string> = {
@@ -56,11 +18,6 @@ export const STATUS_COLOR: Record<ReportStatus, string> = {
   rejected: UI.white,
   removed: UI.plateEdge,
 };
-
-const KIND_LABEL: Record<FeedbackKind, string> = { bug: 'Fehler', idea: 'Idee' };
-const PLATFORM_LABEL: Record<Platform, string> = { android: 'Android', ios: 'iPhone/iPad', other: 'Computer/anderes' };
-const INPUT_LABEL: Record<InputKind, string> = { touch: 'Touch', keys: 'Tastatur' };
-const ORIENTATION_LABEL: Record<Orientation, string> = { landscape: 'quer', portrait: 'hochkant' };
 
 /** One block of a page: a label (or none) over its lines; `log` lines are the error log (shown as such, scrollable). */
 export interface PageSection {
@@ -72,19 +29,22 @@ export interface PageSection {
 /** What a page section is built from: a body about to be sent, or a kept report. */
 type Message = Pick<FeedbackBody, 'kind' | 'text' | 'version' | 'platform' | 'input' | 'orientation' | 'viewWidth' | 'log' | 'testerPass'>;
 
-/** "11.10.2026" for "2026-10-11". */
-export function germanDay(day: string): string {
+/** "11.10.2026" (German) or "Oct 11, 2026" (English) for "2026-10-11". */
+export function dayText(day: string): string {
   const [year, month, date] = day.split('-');
-  return `${date}.${month}.${year}`;
+  return texts().day(year!, month!, date!);
 }
 
-const deviceText = (m: Message) =>
-  `${PLATFORM_LABEL[m.platform]}, ${INPUT_LABEL[m.input]}, ${ORIENTATION_LABEL[m.orientation]}, ${m.viewWidth} px breit`;
+function deviceText(m: Message): string {
+  const t = texts().feedbackPages;
+  return `${t.platforms[m.platform]}, ${t.inputs[m.input]}, ${t.orientations[m.orientation]}, ${t.width(String(m.viewWidth))}`;
+}
 
 /** The log section's lines when it is empty: nothing recorded, not ticked, or (a sent report) not sent. */
 function emptyLog(session: string | null, logAvailable: boolean): string {
-  if (session === null) return FEEDBACK_PAGE_TEXT.notSent;
-  return logAvailable ? FEEDBACK_PAGE_TEXT.unticked : FEEDBACK_PAGE_TEXT.noErrors;
+  const t = texts().feedbackPages;
+  if (session === null) return t.notSent;
+  return logAvailable ? t.unticked : t.noErrors;
 }
 
 /**
@@ -93,16 +53,17 @@ function emptyLog(session: string | null, logAvailable: boolean): string {
  */
 export function previewSections(m: Message, { session, logAvailable }: { session: string | null; logAvailable: boolean }): PageSection[] {
   const section = (label: string | null, lines: readonly string[], log = false): PageSection => ({ label, lines, log });
+  const t = texts().feedbackPages;
   return [
-    section(FEEDBACK_PAGE_TEXT.kind, [KIND_LABEL[m.kind]]),
-    section(FEEDBACK_PAGE_TEXT.text, [m.text]),
-    section(FEEDBACK_PAGE_TEXT.version, [m.version]),
-    section(FEEDBACK_PAGE_TEXT.device, [deviceText(m)]),
-    ...(session !== null ? [section(FEEDBACK_PAGE_TEXT.session, [session])] : []),
-    ...(m.kind === 'bug' ? [m.log.length > 0 ? section(FEEDBACK_PAGE_TEXT.log, m.log, true) : section(FEEDBACK_PAGE_TEXT.log, [emptyLog(session, logAvailable)])] : []),
+    section(t.kind, [t.kinds[m.kind]]),
+    section(t.text, [m.text]),
+    section(t.version, [m.version]),
+    section(t.device, [deviceText(m)]),
+    ...(session !== null ? [section(t.session, [session])] : []),
+    ...(m.kind === 'bug' ? [m.log.length > 0 ? section(t.log, m.log, true) : section(t.log, [emptyLog(session, logAvailable)])] : []),
     // A test device's pass (ROADMAP 75) goes along; the pass itself is not shown.
-    ...(m.testerPass ? [section(FEEDBACK_PAGE_TEXT.testerPass, [FEEDBACK_PAGE_TEXT.testerPassSent])] : []),
-    section(null, [FEEDBACK_PAGE_TEXT.notIncluded]),
+    ...(m.testerPass ? [section(t.testerPass, [t.testerPassSent])] : []),
+    section(null, [t.notIncluded]),
   ];
 }
 
@@ -122,12 +83,13 @@ export interface ReportRow {
 
 /** A row per report, in the given order (newest first); `marked` are the ids that get a dot, `fresh` the one just sent. */
 export function reportRows(reports: readonly KeptReport[], marked: readonly number[], fresh: number | null): ReportRow[] {
+  const t = texts().feedbackPages;
   return reports.map((r) => ({
     id: r.id,
     status: r.status,
-    label: STATUS_LABEL[r.status],
-    kind: KIND_LABEL[r.kind],
-    day: germanDay(r.day),
+    label: t.status[r.status],
+    kind: t.kinds[r.kind],
+    day: dayText(r.day),
     text: r.text.replace(/\s+/g, ' ').trim(),
     changed: marked.includes(r.id),
     fresh: r.id === fresh,
@@ -146,12 +108,14 @@ export interface ReportDetail {
 }
 
 export function reportDetail(r: KeptReport): ReportDetail {
-  const log = r.kind === 'idea' ? [] : [r.log.length > 0 ? `Fehlerprotokoll (${r.log.length} ${r.log.length === 1 ? 'Zeile' : 'Zeilen'})` : 'ohne Fehlerprotokoll'];
+  const t = texts().feedbackPages;
+  const log = r.kind === 'idea' ? [] : [r.log.length > 0 ? t.logLines(r.log.length) : t.noLog];
+  const status = t.status[r.status];
   return {
     status: r.status,
-    headline: r.doneVersion && r.status === 'done' ? `${STATUS_LABEL[r.status]} in Version ${r.doneVersion}` : STATUS_LABEL[r.status],
-    reply: r.reply ? `Antwort: „${r.reply}“` : null,
+    headline: r.doneVersion && r.status === 'done' ? t.doneIn(status, r.doneVersion) : status,
+    reply: r.reply ? t.reply(r.reply) : null,
     text: r.text,
-    sent: [`Gesendet am ${germanDay(r.day)} mit: ${KIND_LABEL[r.kind]}`, `Version ${r.version}`, deviceText(r), ...log].join(', '),
+    sent: [t.sentWith(dayText(r.day), t.kinds[r.kind]), t.versionOf(r.version), deviceText(r), ...log].join(', '),
   };
 }

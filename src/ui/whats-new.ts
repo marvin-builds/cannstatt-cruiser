@@ -11,8 +11,9 @@ import { measureText } from '../core/font';
 import type { ChangelogEntry, Rect } from '../types';
 import { wrapText } from './wrap-text';
 import { centredWidth, centreX, uiMetrics } from './layout';
-import { buttonLabelScale, BULLET_W, headline, hudBand, LINE, MENU_TEXT, type MenuInput, type MenuLayout, noButtons } from './menu-layout';
+import { buttonLabelScale, BULLET_W, headline, hudBand, LINE, type MenuInput, type MenuLayout, noButtons } from './menu-layout';
 import { SCROLLBAR_W } from './score-layout';
+import { language, texts } from './i18n';
 
 /** 'item' starts an item (with its bullet), 'more' continues a wrapped one, 'heading' names a version. */
 export type WhatsNewRowKind = 'heading' | 'item' | 'more';
@@ -46,11 +47,17 @@ const LIST_MAX_W = 280;
 const BIG_ROW_H = 18;
 const NEXT_MIN_W = 80;
 
-/** "Version vom 9.10.2026 (Nr. 2)" for version `2026-10-09.2`. */
+/** "Version vom 9.10.2026 (Nr. 2)" (German) or "Version of Oct 9, 2026 (no. 2)" (English) for version `2026-10-09.2`. */
 export function versionHeading(version: string): string {
   const [year, month, rest] = version.split('-');
   const [day, build] = rest!.split('.');
-  return `Version vom ${Number(day)}.${Number(month)}.${year} (Nr. ${build})`;
+  const t = texts();
+  return t.menu.version(t.day(year!, String(Number(month)), String(Number(day))), build!);
+}
+
+/** An entry's lines in the active language: its English lines while English is on and it has them (ROADMAP 71), else the German items. */
+export function entryLines(entry: ChangelogEntry): readonly string[] {
+  return language() === 'en' && entry.en ? entry.en : entry.items;
 }
 
 /** The rows of `entries`, each line at most `maxW` view px wide at font `scale`. */
@@ -59,7 +66,7 @@ export function whatsNewRows(entries: readonly ChangelogEntry[], maxW: number, s
   const rows: WhatsNewRow[] = [];
   for (const entry of entries) {
     for (const text of wrap(versionHeading(entry.version))) rows.push({ kind: 'heading', text });
-    for (const item of entry.items) wrap(item).forEach((text, i) => rows.push({ kind: i === 0 ? 'item' : 'more', text }));
+    for (const item of entryLines(entry)) wrap(item).forEach((text, i) => rows.push({ kind: i === 0 ? 'item' : 'more', text }));
   }
   return rows;
 }
@@ -73,8 +80,8 @@ export function clampScroll(scroll: number, max: number): number {
 export function whatsNewLayout(input: MenuInput, entries: readonly ChangelogEntry[]): MenuLayout {
   const m = uiMetrics(input);
   const hud = hudBand(input, m, false);
-  const title = headline(MENU_TEXT.whatsNew, input, hud.left);
-  const nextW = Math.max(NEXT_MIN_W, m.menuButtonH, measureText(MENU_TEXT.next, buttonLabelScale(m)) + 12);
+  const title = headline(texts().menu.whatsNew, input, hud.left);
+  const nextW = Math.max(NEXT_MIN_W, m.menuButtonH, measureText(texts().menu.next, buttonLabelScale(m)) + 12);
   const next: Rect = { x: centreX(input.viewWidth) - Math.floor(nextW / 2), y: VIEW_H - 2 - m.menuButtonH, w: nextW, h: m.menuButtonH };
   const scale = input.portrait ? 2 : 1;
   const rowH = input.portrait ? BIG_ROW_H : LINE;

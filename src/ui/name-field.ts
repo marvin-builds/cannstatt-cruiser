@@ -12,6 +12,7 @@ import { VIEW_H } from '../core/config';
 import type { Rect } from '../types';
 import { UI } from './art';
 import { NAME_MAX } from './score-rules';
+import { texts } from './i18n';
 
 export interface NameField {
   /** Shows the input over view rect `rect` holding `value`, or hides (and blurs) it for null. Called every tick. */
@@ -44,12 +45,10 @@ export function createDomNameField(handlers: NameFieldHandlers, canvas: () => HT
       maxLength: NAME_MAX,
       autocomplete: 'off',
       spellcheck: false,
-      placeholder: 'Name',
       enterKeyHint: 'send',
     });
     el.setAttribute('autocapitalize', 'words');
     el.setAttribute('autocorrect', 'off');
-    el.setAttribute('aria-label', 'Dein Name für die Bestenliste');
     Object.assign(el.style, {
       position: 'fixed',
       display: 'none',
@@ -95,6 +94,10 @@ export function createDomNameField(handlers: NameFieldHandlers, canvas: () => HT
       }
       input ??= create();
       if (input.value !== value) input.value = value;
+      // In the active language (ROADMAP 71).
+      const t = texts().score;
+      if (input.placeholder !== t.namePlaceholder) input.placeholder = t.namePlaceholder;
+      if (input.getAttribute('aria-label') !== t.nameAria) input.setAttribute('aria-label', t.nameAria);
       const box = canvas()?.getBoundingClientRect();
       if (!box) return;
       const k = box.height / VIEW_H;

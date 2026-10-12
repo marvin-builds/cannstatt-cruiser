@@ -7,10 +7,10 @@
  * tests pass a fake.
  */
 import { UI } from './art';
-import { SCORE_TEXT } from './highscore-flow';
+import { texts } from './i18n';
 import { type EntrySheetModel, SHEET_STYLE } from './portrait-sheets';
 import { NAME_MAX } from './score-rules';
-import { buttonColour, createSheet, FIELD_STYLE, line, row, setText, sheetButton, styled, title } from './sheet-dom';
+import { buttonColour, createSheet, FIELD_STYLE, line, row, setText, SheetParts, sheetButton, styled, title } from './sheet-dom';
 
 export interface EntrySheet {
   /** Shows the sheet with `model`, or hides it (and drops its focus) for null. Called every tick. */
@@ -28,13 +28,12 @@ export interface EntrySheetHandlers {
   onCancel(): void;
 }
 
-const CANCEL = 'Abbrechen';
-
 export function createDomEntrySheet(handlers: EntrySheetHandlers): EntrySheet {
-  let parts: ReturnType<typeof build> | null = null;
+  const parts = new SheetParts(build);
 
   function build() {
-    const sheet = createSheet(SCORE_TEXT.entryTitle, () => handlers.onCancel());
+    const t = texts().score;
+    const sheet = createSheet(t.entryTitle, () => handlers.onCancel());
     const score = line(SHEET_STYLE.titlePx - 4);
     const label = styled(document.createElement('label'), { display: 'flex', flexDirection: 'column', gap: '6px', color: UI.muted });
     const input = styled(document.createElement('input'), {
@@ -44,7 +43,7 @@ export function createDomEntrySheet(handlers: EntrySheetHandlers): EntrySheet {
       fontWeight: 'bold',
       fontSize: `${SHEET_STYLE.titlePx - 4}px`,
     });
-    Object.assign(input, { type: 'text', maxLength: NAME_MAX, autocomplete: 'off', spellcheck: false, placeholder: 'Name', enterKeyHint: 'send' });
+    Object.assign(input, { type: 'text', maxLength: NAME_MAX, autocomplete: 'off', spellcheck: false, placeholder: t.namePlaceholder, enterKeyHint: 'send' });
     input.setAttribute('autocapitalize', 'words');
     input.setAttribute('autocorrect', 'off');
     input.addEventListener('input', () => handlers.onInput(input.value));
@@ -53,22 +52,21 @@ export function createDomEntrySheet(handlers: EntrySheetHandlers): EntrySheet {
       e.preventDefault();
       handlers.onSubmit();
     });
-    label.append(SCORE_TEXT.namePrompt, input);
+    label.append(t.namePrompt, input);
     const message = line(SHEET_STYLE.smallPx, UI.yellow);
-    const submit = sheetButton(SCORE_TEXT.submit, () => handlers.onSubmit());
-    const cancel = sheetButton(CANCEL, () => handlers.onCancel());
-    sheet.root.append(row(title(SCORE_TEXT.entryTitle)), score, label, message, row(submit), row(cancel));
+    const submit = sheetButton(t.submit, () => handlers.onSubmit());
+    const cancel = sheetButton(t.cancel, () => handlers.onCancel());
+    sheet.root.append(row(title(t.entryTitle)), score, label, message, row(submit), row(cancel));
     return { sheet, score, input, message, submit };
   }
 
   return {
     show(model) {
       if (!model) {
-        parts?.sheet.setShown(false);
+        parts.built?.sheet.setShown(false);
         return;
       }
-      parts ??= build();
-      const p = parts;
+      const p = parts.get();
       setText(p.score, model.score);
       if (p.input.value !== model.name) p.input.value = model.name;
       setText(p.message, model.message ?? '');
@@ -77,13 +75,13 @@ export function createDomEntrySheet(handlers: EntrySheetHandlers): EntrySheet {
       p.sheet.setShown(true);
     },
     focus() {
-      parts?.input.focus({ preventScroll: true });
+      parts.built?.input.focus({ preventScroll: true });
     },
     blur() {
-      parts?.input.blur();
+      parts.built?.input.blur();
     },
     isFocused() {
-      return !!parts && document.activeElement === parts.input;
+      return !!parts.built && document.activeElement === parts.built.input;
     },
   };
 }

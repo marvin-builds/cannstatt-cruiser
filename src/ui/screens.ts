@@ -50,7 +50,7 @@ import {
 import type { HintSlot } from './hint-slot';
 import { handShown, type HighFiveHint, highFiveHand, highFiveHintPlate } from './high-five';
 import { type KickerHint, kickerHintPlate } from './kicker-hint';
-import { CHIP_H, ITEM_HINT_LABEL, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
+import { CHIP_H, type ItemHint, itemButtonRect, itemControl, itemHintRect } from './item-button';
 import {
   centreX,
   type HudButtons,
@@ -58,32 +58,30 @@ import {
   popupLeft,
   popupScale,
   riding,
-  SETTINGS_INSTALL_LABEL,
   settingsLayout,
-  TEST_DEVICE_LABEL,
   type UiMetrics,
   uiMetrics,
 } from './layout';
-import { MENU_TEXT } from './menu-layout';
-import { drawGameOver, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
+import { drawGameOver, drawLanguageSwitch, drawPause, drawPrivacyLink, drawStatsSwitch, drawTitle, drawWhatsNew } from './menu-screens';
 import { currentMenu, menuScreen, trophyShown } from './menu-state';
 import type { HighscoreFlow } from './highscore-flow';
 import type { FeedbackFlow } from './feedback-flow';
 import { drawFeedback } from './feedback-screen';
 import { scoreEntryLayout, scoreListLayout, titleTrophy } from './score-layout';
-import { guideLines, guideLineWidth, ICON_GAP, INSTALL_GUIDE_TEXT, installGuideLayout, partIcon, partWidth } from './install-guide';
+import { guideLines, guideLineWidth, ICON_GAP, installGuideLayout, partIcon, partWidth } from './install-guide';
 import { installable, type InstallOffer } from './install-offer';
-import { KID_NOTICE_OK, KID_NOTICE_TITLE, kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
+import { kidNoticeLayout, kidNoticeLines, kidNoticeRestart } from './kid-notice';
 import { drawScoreEntry, drawScoreList } from './score-screens';
 import type { PopupPool } from './popups';
 import type { Records, RunResult } from './records';
-import { fittingNote, KID_NOTE } from './note-text';
-import { type LongPress, type SettingsMenu, STATS_TEXT } from './settings';
+import { fittingNote } from './note-text';
+import type { LongPress, SettingsMenu } from './settings';
 import { type Sparkle, sparkleDot, SPARKLE_RAYS } from './sparkle';
 import { TIMER_BAR_H, TIMER_BAR_W, timerBarFill } from './stats';
 import { type CalloutRect, calloutLineY, type StuntCallout } from './stunt-callout';
 import { type TrickHint, trickHintPlate } from './trick-hint';
 import type { ListScroll } from './whats-new';
+import { texts } from './i18n';
 
 export interface UiView {
   records: Records;
@@ -195,7 +193,7 @@ function drawStats(r: RenderContext, view: UiView): void {
 
   g.fillStyle = UI.panel;
   g.fillRect(l.plate.x, l.plate.y, l.plate.w, l.plate.h);
-  text(r, 'Punkte', l.x, l.label, MUTED);
+  text(r, texts().hud.points, l.x, l.label, MUTED);
   text(r, hud.score.text, l.x, l.score, SCORE);
   if (hud.combo) {
     const x = l.x + hud.comboX;
@@ -367,7 +365,7 @@ function drawItemHint(r: RenderContext, view: UiView): void {
   }
   if (!view.itemHint.visible || itemControl(display, state.mode, state.carriedItem) !== 'button') return;
   const scale = popupScale(display, false);
-  drawButtonHint(r, ITEM_HINT_LABEL, scale, itemHintRect(display.viewWidth, display, scale));
+  drawButtonHint(r, texts().hints.item, scale, itemHintRect(display.viewWidth, display, scale));
 }
 
 /** A hint plate at the hint spot: the plate, a caret up at the skater (or `tipX`) and its rows (texts, key caps, arrows). */
@@ -497,35 +495,35 @@ function drawSettings(r: RenderContext, view: UiView): void {
   }
   const l = settingsLayout(r.display.viewWidth, uiMetrics(r.display), installable(r.state.install));
   const on = r.state.kidMode;
-  centred(r, 'Einstellungen', l.titleY, { scale: 2, color: UI.yellow });
-  menuButton(r, l.toggle, `Kindermodus: ${on ? 'AN' : 'AUS'}`, on ? UI.green : UI.white);
+  const t = texts();
+  centred(r, t.settings.title, l.titleY, { scale: 2, color: UI.yellow });
+  menuButton(r, l.toggle, t.settings.kidMode(on), on ? UI.green : UI.white);
   // The notes at the layout's scale (2 in portrait), in a shorter wording where the long one does not fit.
   const note = (texts: readonly string[], y: number, color: string) => {
     const fit = fittingNote(texts, l.noteScale, r.display.viewWidth - 8);
     centred(r, fit.text, y, { color, scale: fit.scale });
   };
   // Switched during a run: closing the menu restarts it.
-  if (settings.switched && r.state.mode === 'paused') note([MENU_TEXT.restartNote], l.kidNoteY, UI.yellow);
-  else note(on ? KID_NOTE.on : KID_NOTE.off, l.kidNoteY, UI.muted);
+  if (settings.switched && r.state.mode === 'paused') note([t.menu.restartNote], l.kidNoteY, UI.yellow);
+  else note(on ? t.settings.kidNoteOn : t.settings.kidNoteOff, l.kidNoteY, UI.muted);
   drawStatsSwitch(r, l.stats, settings.statsOn);
   drawPrivacyLink(r, l.privacyLink);
-  note(settings.statsOn ? [STATS_TEXT.note, STATS_TEXT.noteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
-  if (l.keysY !== null) centred(r, SETTINGS_KEYS, l.keysY, { color: UI.muted });
-  menuButton(r, l.back, 'Zurück');
-  if (l.install) menuButton(r, l.install, SETTINGS_INSTALL_LABEL, UI.teal);
-  if (settings.testDevice) text(r, TEST_DEVICE_LABEL, l.testDevice.x, l.testDevice.y, { scale: l.testDevice.scale, color: UI.muted });
+  note(settings.statsOn ? [t.stats.note, t.stats.noteShort] : [t.stats.offNote], l.statsNoteY, UI.muted);
+  if (l.keysY !== null) centred(r, t.settings.keys, l.keysY, { color: UI.muted });
+  menuButton(r, l.back, t.settings.back);
+  if (l.install) menuButton(r, l.install, t.settings.installApp, UI.teal);
+  drawLanguageSwitch(r, l.language);
+  if (settings.testDevice) text(r, t.settings.testDevice, l.testDevice.x, l.testDevice.y, { scale: l.testDevice.scale, color: UI.muted });
 }
-
-/** Desktop key help of the settings menu. */
-export const SETTINGS_KEYS = 'Enter = Kindermodus, A = Statistik, Esc = zurück';
 
 /** "Kindermodus ist an" after turning it on in the menu: what it does, the way back, the restart (paused run), OK. */
 function drawKidNotice(r: RenderContext, restart: boolean): void {
   const l = kidNoticeLayout(r.display, restart);
   const colors = [UI.muted, UI.white, UI.yellow];
-  centred(r, KID_NOTICE_TITLE, l.title, { scale: 2, color: UI.green });
+  const t = texts().kidNotice;
+  centred(r, t.title, l.title, { scale: 2, color: UI.green });
   kidNoticeLines(r.display.touch, restart).forEach((s, i) => centred(r, s, l.lines + i * l.lineH, { scale: l.scale, color: colors[i] }));
-  menuButton(r, l.ok, KID_NOTICE_OK, UI.yellow);
+  menuButton(r, l.ok, t.ok, UI.yellow);
 }
 
 /** The manual install steps (install-guide.ts): headline, why, the platform's steps with their icons, OK. */
@@ -533,8 +531,9 @@ function drawInstallGuide(r: RenderContext): void {
   const platform = r.state.install.platform;
   const l = installGuideLayout(r.display, platform);
   fill(r, UI.ink);
-  centred(r, INSTALL_GUIDE_TEXT.title, l.title, { scale: 2, color: UI.teal });
-  centred(r, INSTALL_GUIDE_TEXT.reason, l.reason, { scale: l.scale, color: UI.muted });
+  const t = texts().install;
+  centred(r, t.title, l.title, { scale: 2, color: UI.teal });
+  centred(r, t.reason, l.reason, { scale: l.scale, color: UI.muted });
   guideLines(platform).forEach((line, i) => {
     const y = l.lines + i * l.lineH;
     let x = centreX(r.display.viewWidth) - Math.floor(guideLineWidth(line, l.scale) / 2);
@@ -545,7 +544,7 @@ function drawInstallGuide(r: RenderContext): void {
       x += partWidth(part, l.scale);
     }
   });
-  menuButton(r, l.ok, INSTALL_GUIDE_TEXT.ok, UI.yellow);
+  menuButton(r, l.ok, t.ok, UI.yellow);
 }
 
 export function drawUi(r: RenderContext, view: UiView): void {

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import { type KeptReport, reportSignature } from '../net/feedback-reports';
 import type { FeedbackBody } from '../net/feedback-types';
-import { FEEDBACK_PAGE_TEXT, previewSections, reportDetail, reportRows, STATUS_LABEL } from './feedback-pages';
+import { previewSections, reportDetail, reportRows } from './feedback-pages';
+import { de } from './i18n/de';
 
 const BODY: FeedbackBody = {
   session: '0123456789abcdef0123456789abcdef',
@@ -66,11 +67,11 @@ describe('"Das wird gesendet"', () => {
   it('on a test device says that the tester pass goes with it, without showing the pass', () => {
     const pass = 'tester.v1.1790000000000.secretsignature';
     const sections = previewSections({ ...BODY, testerPass: pass }, { session: BODY.session, logAvailable: true });
-    const tester = sections.find((s) => s.label === FEEDBACK_PAGE_TEXT.testerPass);
-    expect(tester?.lines).toEqual([FEEDBACK_PAGE_TEXT.testerPassSent]);
+    const tester = sections.find((s) => s.label === de.feedbackPages.testerPass);
+    expect(tester?.lines).toEqual([de.feedbackPages.testerPassSent]);
     expect(sections.indexOf(tester!)).toBe(sections.length - 2);
     expect(JSON.stringify(sections)).not.toContain('secretsignature');
-    expect(previewSections(BODY, { session: BODY.session, logAvailable: true }).some((s) => s.label === FEEDBACK_PAGE_TEXT.testerPass)).toBe(false);
+    expect(previewSections(BODY, { session: BODY.session, logAvailable: true }).some((s) => s.label === de.feedbackPages.testerPass)).toBe(false);
   });
 
   it('names the device in German words', () => {
@@ -82,7 +83,7 @@ describe('"Das wird gesendet"', () => {
 
 describe('"Mein Feedback" list', () => {
   it('names every status as the player reads it', () => {
-    expect(STATUS_LABEL).toEqual({ open: 'Offen', todo: 'Geplant', done: 'Umgesetzt', rejected: 'Nicht geplant', removed: 'Entfernt' });
+    expect(de.feedbackPages.status).toEqual({ open: 'Offen', todo: 'Geplant', done: 'Umgesetzt', rejected: 'Nicht geplant', removed: 'Entfernt' });
   });
 
   it('a row per report in the given order: status, kind, date, the start of the text, a dot on marked ones, the fresh one highlighted', () => {
@@ -95,8 +96,8 @@ describe('"Mein Feedback" list', () => {
   });
 
   it('says so when nothing was sent from this device', () => {
-    expect(FEEDBACK_PAGE_TEXT.empty).toBe('Noch kein Feedback von diesem Gerät');
-    expect(measureText(FEEDBACK_PAGE_TEXT.empty)).toBeLessThanOrEqual(320 - 16);
+    expect(de.feedbackPages.empty).toBe('Noch kein Feedback von diesem Gerät');
+    expect(measureText(de.feedbackPages.empty)).toBeLessThanOrEqual(320 - 16);
   });
 });
 

@@ -18,9 +18,11 @@ import { measureText } from '../core/font';
 import type { Rect, SafeInsets } from '../types';
 import { type Block, type ColumnBounds, fitColumn } from './column';
 import { feedbackIcon } from './feedback-layout';
+import { type LanguageSwitch, languageSwitch } from './language-switch';
 import { buttonPlate, centredWidth, centreX, fitCentred, hudButtons, type UiMetrics, uiMetrics } from './layout';
 import { LOGO_Y, logoRect } from './logo';
 import { statsLayout } from './stats';
+import { texts } from './i18n';
 import type { WhatsNewList } from './whats-new';
 
 /** What a menu screen depends on besides its texts. */
@@ -76,61 +78,43 @@ export interface MenuLayout {
   textScale: number;
   /** "Neu in dieser Version" only: its scrollable list (whats-new.ts). */
   list?: WhatsNewList;
+  /** The title only: the language switch "DE | EN" in the bottom-left corner (language-switch.ts). */
+  language?: LanguageSwitch;
 }
 
-/** All texts of the menu screens (German, game font). */
-export const MENU_TEXT = {
-  reload: 'Neue Version da',
-  installApp: 'App installieren',
-  whatsNew: 'Neu in dieser Version',
-  next: 'Weiter',
-  pause: 'Pause',
-  gameOver: 'Sturz! Runde vorbei',
-  newRecord: 'Neuer Rekord!',
-  restartNote: 'Lauf wird neu gestartet',
-} as const;
-
-/** Labels that show their key on desktop. */
-export const reloadLabel = (touch: boolean) => (touch ? 'Neu laden' : 'Neu laden (U)');
+/** Labels that show their key on desktop (texts in the catalogue, i18n/). */
+export const reloadLabel = (touch: boolean) => texts().menu.reloadButton(touch);
 /** "Startbildschirm": T on desktop, and Esc where Esc leads there too (game over). */
-export const toTitleLabel = (touch: boolean, escape = false) =>
-  touch ? 'Startbildschirm' : escape ? 'Startbildschirm (T/Esc)' : 'Startbildschirm (T)';
+export const toTitleLabel = (touch: boolean, escape = false) => texts().menu.toTitle(touch, escape);
 
-export const pausePrompt = (touch: boolean) => (touch ? 'Tippen zum Weiterfahren' : 'Leertaste, P oder Esc zum Weiterfahren');
-export const PAUSE_KEYS = 'E = Gegenstand benutzen, M = Ton aus';
+export const pausePrompt = (touch: boolean) => texts().menu.pausePrompt(touch);
 /** The title prompt. */
-export const startPrompt = (touch: boolean) => (touch ? 'Tippen zum Starten' : 'Leertaste zum Starten');
+export const startPrompt = (touch: boolean) => texts().title.start(touch);
 /** The title's controls in one line, when notices leave no room for the full help. */
-export const controlsLine = (touch: boolean) =>
-  touch ? 'Tippen = springen, runterwischen = ducken' : 'Leertaste = springen, S = ducken';
+export const controlsLine = (touch: boolean) => texts().title.controls(touch);
 /** The boardslide line; `short` fits the pause screen's big portrait font into 320 px. */
-export const trickKeysHint = (touch: boolean, short = false) =>
-  `${short ? 'Geländer:' : 'Auf dem Geländer'} ${touch ? 'runterwischen' : 'Pfeil runter'} = Boardslide`;
+export const trickKeysHint = (touch: boolean, short = false) => texts().menu.trick(touch, short);
 /** The pause screen's "Feedback" (F on desktop, also on the title). */
-export const feedbackLabel = (touch: boolean) => (touch ? 'Feedback' : 'Feedback (F)');
+export const feedbackLabel = (touch: boolean) => texts().menu.feedback(touch);
 /** Game over's "Eintragen" (E or Enter on desktop). */
-export const submitLabel = (touch: boolean) => (touch ? 'Eintragen' : 'Eintragen (E)');
-export const gameOverPrompt = (touch: boolean) => (touch ? 'Tippen für eine neue Runde' : 'Leertaste für eine neue Runde');
+export const submitLabel = (touch: boolean) => texts().menu.submit(touch);
+export const gameOverPrompt = (touch: boolean) => texts().menu.gameOverPrompt(touch);
 
 /** The title's desktop key line: F and G only while the feedback icon and the settings gear show. */
 export function titleKeys(icons: { feedback: boolean; settings: boolean }): string {
-  return ['P/Esc = Pause, M = Ton aus', ...(icons.feedback ? ['F = Feedback'] : []), ...(icons.settings ? ['G = Einstellungen'] : [])].join(', ');
+  const t = texts().title;
+  return [t.keys, ...(icons.feedback ? [t.feedbackKey] : []), ...(icons.settings ? [t.settingsKey] : [])].join(', ');
 }
 
 /** The title's controls help, one line each. */
 export function titleHelp(touch: boolean): string[] {
-  return [
-    touch ? 'Kurz tippen = kleiner Sprung' : 'Leertaste kurz = kleiner Sprung',
-    'Halten = hoher Sprung',
-    touch ? 'Runterwischen = ducken' : 'Pfeil runter oder S = ducken',
-    trickKeysHint(touch),
-    touch ? 'In der Luft runterwischen = Kickflip' : 'In der Luft Pfeil runter = Kickflip',
-    touch ? 'Knopf antippen = Gegenstand benutzen' : 'E = Gegenstand benutzen',
-  ];
+  return texts().title.help(touch);
 }
 
-/** Rows of the game-over results table (labels; values come from the run). */
-export const RESULT_ROWS = ['Punkte', 'Highscore', 'Sterne', 'Sterne gesamt', 'Strecke'] as const;
+/** Rows of the game-over results table (labels; values come from the run): score, highscore, stars, stars total, distance. */
+export function resultRows(): readonly string[] {
+  return texts().menu.results;
+}
 
 /**
  * Results rows that give way to buttons: the stars total first, then (after
@@ -220,11 +204,11 @@ export function toTitlePlate(tap: Rect): Rect {
 }
 
 function reloadCardSize(m: UiMetrics, touch: boolean): { w: number; h: number } {
-  return { w: measureText(MENU_TEXT.reload) + CARD_GAP + buttonWidth(reloadLabel(touch), m), h: m.menuButtonH };
+  return { w: measureText(texts().menu.reload) + CARD_GAP + buttonWidth(reloadLabel(touch), m), h: m.menuButtonH };
 }
 
 function installCardSize(m: UiMetrics): { w: number; h: number } {
-  return { w: buttonWidth(MENU_TEXT.installApp, m) + CARD_GAP + m.menuButtonH, h: m.menuButtonH };
+  return { w: buttonWidth(texts().menu.installApp, m) + CARD_GAP + m.menuButtonH, h: m.menuButtonH };
 }
 
 /** Text at the left, vertically centred, and the "Neu laden" button at the right of the reload card. */
@@ -328,6 +312,7 @@ export function titleLayout(input: MenuInput): MenuLayout {
   const layout = titleColumn(input, m);
   if (icon && clearOf(layout, icon)) layout.buttons.feedback = icon;
   if (input.settingsButton) layout.buttons.settings = settingsGear(m);
+  layout.language = languageSwitch(input.viewWidth, m, 'title');
   return layout;
 }
 
@@ -421,9 +406,9 @@ export function pauseLayout(input: MenuInput): MenuLayout {
     drop,
   });
   const blocks = (scale: number): Block[] => [
-    { id: 'pause', w: measureText(MENU_TEXT.pause, 2), h: 14, gap: 2, drop: 1 },
+    { id: 'pause', w: measureText(texts().menu.pause, 2), h: 14, gap: 2, drop: 1 },
     { id: 'prompt', w: measureText(pausePrompt(input.touch), scale) + 16, h: promptRibbonH(scale), gap: 4 },
-    ...(input.touch ? [] : [text('keys', PAUSE_KEYS, 3, scale, 2)]),
+    ...(input.touch ? [] : [text('keys', texts().menu.pauseKeys, 3, scale, 2)]),
     text('trick', trickKeysHint(input.touch, scale === 2), input.touch ? 3 : 0, scale, 2),
     ...(input.feedback ? [{ id: 'feedback', w: buttonWidth(feedbackLabel(input.touch), m), h: m.menuButtonH, gap: 4, drop: FEEDBACK_DROP }] : []),
     ...reloadBlock(input, m),
@@ -447,11 +432,11 @@ export function gameOverLayout(input: MenuInput & { newRecord: boolean; submit?:
   const m = uiMetrics(input);
   const hud = hudBand(input, m, false);
   const corner = toTitleButton(input, m, 'gameOver');
-  const title = headlineBeside(MENU_TEXT.gameOver, input, hud, corner);
+  const title = headlineBeside(texts().menu.gameOver, input, hud, corner);
   const blocks = (scale: number): Block[] => {
     const list: Block[] = [];
-    if (input.newRecord) list.push({ id: 'record', w: measureText(MENU_TEXT.newRecord, 2), h: 14, gap: 4, drop: 1 });
-    RESULT_ROWS.forEach((_, i) => {
+    if (input.newRecord) list.push({ id: 'record', w: measureText(texts().menu.newRecord, 2), h: 14, gap: 4, drop: 1 });
+    resultRows().forEach((_, i) => {
       list.push({ id: `row${i}`, w: TABLE_W, h: LINE, gap: i === 0 ? 8 : 0, drop: RESULT_ROW_DROP[i] });
     });
     if (input.submit) list.push({ id: 'submit', w: buttonWidth(submitLabel(input.touch), m), h: m.menuButtonH, gap: 6 });

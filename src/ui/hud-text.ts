@@ -4,13 +4,16 @@
  * once per alpha step, so drawing the HUD every frame creates no strings.
  */
 import { measureText } from '../core/font';
+import { type Lang, language } from './i18n';
 
-/** The text of a number shown in the HUD, formatted and measured only on change. */
+/** The text of a number shown in the HUD, formatted and measured only when the number or the language changes. */
 export class NumberText {
   text = '';
   /** Width of `text` in view pixels at the scale given to the constructor. */
   width = 0;
   private value = Number.NaN;
+  /** The language `text` was formatted in: a switch formats it again (ROADMAP 71). */
+  private lang: Lang | null = null;
 
   constructor(
     private readonly format: (n: number) => string,
@@ -18,8 +21,9 @@ export class NumberText {
   ) {}
 
   update(n: number): string {
-    if (n !== this.value) {
+    if (n !== this.value || this.lang !== language()) {
       this.value = n;
+      this.lang = language();
       this.text = this.format(n);
       this.width = measureText(this.text, this.scale);
     }

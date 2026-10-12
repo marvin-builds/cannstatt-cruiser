@@ -9,6 +9,7 @@
  */
 import { safeAreaCss } from '../core/safe-area';
 import { UI } from './art';
+import { type Lang, language } from './i18n';
 import { SHEET_STYLE } from './portrait-sheets';
 import { scrollThumb } from './score-layout';
 
@@ -19,6 +20,36 @@ const FONT = 'ui-monospace, Menlo, Consolas, monospace';
 
 /** A sheet's padding: SHEET_STYLE.padPx, or the safe-area inset (core/safe-area.ts) where that is larger. */
 const SHEET_PADDING = (['top', 'right', 'bottom', 'left'] as const).map((side) => `max(${SHEET_STYLE.padPx}px, ${safeAreaCss(side)})`).join(' ');
+
+/**
+ * A sheet's DOM parts in the active language (ROADMAP 71): built on first use, and after a
+ * language switch the old DOM goes and the next `get` builds it again in the new words. A sheet
+ * covers the screen, so none shows while the language switches (title, settings menu).
+ */
+export class SheetParts<P extends { sheet: SheetDom }> {
+  private parts: P | null = null;
+  private lang: Lang | null = null;
+
+  constructor(private readonly build: () => P) {}
+
+  /** The parts in the active language, built now if needed. */
+  get(): P {
+    if (this.parts && this.lang !== language()) {
+      this.parts.sheet.root.remove();
+      this.parts = null;
+    }
+    if (!this.parts) {
+      this.parts = this.build();
+      this.lang = language();
+    }
+    return this.parts;
+  }
+
+  /** The parts as built last, or null before the first `get`. */
+  get built(): P | null {
+    return this.parts;
+  }
+}
 
 /** A sheet's factory: index.ts passes its handlers, tests pass a fake. */
 export type SheetFactory<Handlers, Sheet> = (handlers: Handlers) => Sheet;

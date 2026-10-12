@@ -25,6 +25,8 @@ import type { DeleteState, FeedbackPage, FeedbackStatus, FeedbackTab } from './f
 import { type FeedbackLayout, feedbackLayout } from './feedback-layout';
 import { listRowRect, type PageLayout, pageLayout, pageMaxScroll } from './feedback-page-layout';
 import type { PageSection, ReportDetail, ReportRow } from './feedback-pages';
+import { texts } from './i18n';
+import type { LanguageSwitch } from './language-switch';
 
 export interface UiDebugHook {
   /** Overwrites combo, multiplier and stars like gameplay would. */
@@ -75,7 +77,18 @@ export interface UiDebugHook {
    * the title's settings gear), null off menus; the HUD stats plate as last laid out and the touch item button's
    * place (ROADMAP 75: both keep clear of display cutouts).
    */
-  layout(): { metrics: UiMetrics; hud: HudButtons; menu: SettingsLayout; kidNoticeOk: Rect; logo: Rect; screen: MenuButtons | null; plate: Rect; itemButton: Rect };
+  layout(): {
+    metrics: UiMetrics;
+    hud: HudButtons;
+    menu: SettingsLayout;
+    kidNoticeOk: Rect;
+    logo: Rect;
+    screen: MenuButtons | null;
+    plate: Rect;
+    itemButton: Rect;
+    /** The title's language switch "DE | EN" (ROADMAP 71) while the title shows, else null; the settings menu's is `menu.language`. */
+    language: LanguageSwitch | null;
+  };
   /**
    * The online list's state and tap areas (view px), or null without an online list: the title's
    * trophy, the open screen's close button, the entry's field and submit button.
@@ -182,8 +195,8 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
       const y = ctx.state.player.y - 44;
       const scale = popupScale(ctx.display, false);
       view.popups.spawn('+50', PLAYER_X, y, UI.white, scale);
-      view.popups.spawn('Grind!', PLAYER_X, y, UI.teal, scale);
-      view.popups.spawn('Stern!', PLAYER_X, y, UI.yellow, scale);
+      view.popups.spawn(texts().popups.grind, PLAYER_X, y, UI.teal, scale);
+      view.popups.spawn(texts().popups.star, PLAYER_X, y, UI.yellow, scale);
     },
     itemPopups(...kinds) {
       for (const kind of kinds) {
@@ -261,6 +274,7 @@ export function installUiDebug(ctx: GameContext, view: UiView, feed: PopupFeed, 
         screen: currentMenu(ctx, view)?.buttons ?? null,
         plate: view.hud.layout.plate,
         itemButton: itemButtonRect(display.viewWidth, display),
+        language: currentMenu(ctx, view)?.language ?? null,
       };
     },
     highscores() {

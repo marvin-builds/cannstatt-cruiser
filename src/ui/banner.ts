@@ -1,3 +1,5 @@
+import { texts } from './i18n';
+
 /** Seconds the zone name stays on screen, including the slide in and out. */
 export const BANNER_TIME = 2.4;
 const SLIDE_TIME = 0.25;
@@ -5,11 +7,11 @@ const SLIDE_TIME = 0.25;
 export const BANNER_Y = 56;
 export const BANNER_H = 22;
 
-const ZONE_NAMES = ['Stuttgart-Mitte', 'Am Neckar', 'Bad Cannstatt'] as const;
-
+/** The zone's name in the active language (places keep their names; texts in i18n/ zones). */
 export function zoneName(index: number): string {
-  const n = ZONE_NAMES.length;
-  return ZONE_NAMES[((index % n) + n) % n]!;
+  const names = texts().zones;
+  const n = names.length;
+  return names[((index % n) + n) % n]!;
 }
 
 /** The brief zone-name ribbon shown on zoneChanged. */

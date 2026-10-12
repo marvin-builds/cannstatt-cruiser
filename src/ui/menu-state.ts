@@ -9,6 +9,7 @@ import { uiMetrics } from './layout';
 import { reloadOffered } from './notices';
 import { titleTrophy } from './score-layout';
 import { whatsNewLayout } from './whats-new';
+import { language } from './i18n';
 import type { RunResult } from './records';
 
 /** The parts of the ui view the menu screens depend on. */
@@ -91,7 +92,7 @@ export function currentMenu(r: Source, view: MenuView): MenuLayout | null {
   const cutouts = `${display.safeInsets.left},${display.safeInsets.right}`;
   const newRecord = screen === 'gameOver' && !!view.lastRun?.newRecord;
   const submit = screen === 'gameOver' && !!view.scores?.offered;
-  const key = `${screen}|${input.settingsButton}|${!!input.trophy}|${input.feedback}|${input.viewWidth}|${cutouts}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
+  const key = `${language()}|${screen}|${input.settingsButton}|${!!input.trophy}|${input.feedback}|${input.viewWidth}|${cutouts}|${input.touch}|${input.portrait}|${input.fullscreenAvailable}|${input.reload}|${install}|${newRecord}|${submit}|${plate}|${
     screen === 'whatsNew' ? state.whatsNew.map((e) => e.version).join() : ''
   }`;
   if (cache?.key === key) return cache.layout;

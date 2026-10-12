@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { KeptReport } from '../net/feedback-reports';
 import type { FeedbackBody } from '../net/feedback-types';
-import { FEEDBACK_TEXT, FeedbackFlow } from './feedback-flow';
+import { FeedbackFlow } from './feedback-flow';
 import { entrySheetModel, feedbackSheetModel, SHEET_STYLE } from './portrait-sheets';
+import { de } from './i18n/de';
 
 const BODY: FeedbackBody = {
   session: 's'.repeat(32),
@@ -53,10 +54,10 @@ describe('the portrait feedback sheet (ROADMAP 58)', () => {
     const f = flow();
     f.openForm();
     await f.send(CONTEXT);
-    expect(feedbackSheetModel(f).line).toEqual({ text: FEEDBACK_TEXT.short, message: true });
+    expect(feedbackSheetModel(f).line).toEqual({ text: de.feedback.short('3'), message: true });
     f.setText('Ein langer Fehlerbericht');
     await f.send(CONTEXT);
-    expect(feedbackSheetModel(f)).toMatchObject({ tab: 'mine', page: 'list', note: FEEDBACK_TEXT.sent, line: { text: FEEDBACK_TEXT.sent, message: true } });
+    expect(feedbackSheetModel(f)).toMatchObject({ tab: 'mine', page: 'list', note: de.feedback.sent, line: { text: de.feedback.sent, message: true } });
     f.showTab('new');
     expect(feedbackSheetModel(f).note).toBeNull();
   });

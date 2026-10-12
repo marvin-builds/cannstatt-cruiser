@@ -7,15 +7,12 @@ import { measureText } from '../core/font';
 import type { RenderContext } from '../types';
 import { UI } from './art';
 import { fill, menuButton, scrollBar, text } from './draw-kit';
-import { type HighscoreFlow, SCORE_TEXT } from './highscore-flow';
+import type { HighscoreFlow } from './highscore-flow';
 import { fitCentred, formatNumber } from './layout';
 import { drawDismiss, drawPrivacyLink, drawStatsSwitch } from './menu-screens';
 import { fittingNote } from './note-text';
 import { SCROLLBAR_W, type ScoreEntryLayout, type ScoreListLayout } from './score-layout';
-import { STATS_TEXT } from './settings';
-
-export const LIST_KEYS = 'Pfeiltasten = blättern, A = Statistik, Esc/B = schließen';
-export const ENTRY_KEYS = 'Enter = eintragen, Esc = zurück';
+import { texts } from './i18n';
 
 /** The bigger scale where `s` fits `maxW`, else 1. */
 function fitScale(s: string, maxW: number, preferred: number): number {
@@ -30,15 +27,15 @@ function centredLine(r: RenderContext, s: string, y: number, color: string, scal
 
 /** The list's state line in place of the rows (loading, offline, empty), or null when the rows show. */
 function placeholder(flow: HighscoreFlow): string | null {
-  if (flow.topState === 'offline') return SCORE_TEXT.offline;
+  if (flow.topState === 'offline') return texts().score.offline;
   if (flow.entries.length > 0) return null;
-  return flow.topState === 'ready' ? SCORE_TEXT.empty : SCORE_TEXT.loading;
+  return flow.topState === 'ready' ? texts().score.empty : texts().score.loading;
 }
 
 export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout, statsOn: boolean): void {
   const { g } = r;
   fill(r, UI.ink);
-  text(r, SCORE_TEXT.title, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
+  text(r, texts().score.title, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
   drawDismiss(r, l.close);
   drawStatsSwitch(r, l.stats, statsOn);
   drawPrivacyLink(r, l.privacyLink);
@@ -57,9 +54,9 @@ export function drawScoreList(r: RenderContext, flow: HighscoreFlow, l: ScoreLis
     centredLine(r, fit.text, y, color, fit.scale);
   };
   if (l.messageY !== null && flow.message) note([flow.message], l.messageY, UI.yellow);
-  note([SCORE_TEXT.privacy, SCORE_TEXT.privacyShort], l.privacyY, UI.muted);
-  note(statsOn ? [STATS_TEXT.listNote, STATS_TEXT.listNoteShort] : [STATS_TEXT.offNote], l.statsNoteY, UI.muted);
-  if (l.keysY !== null) centredLine(r, LIST_KEYS, l.keysY, UI.muted, 1);
+  note([texts().score.privacy, texts().score.privacyShort], l.privacyY, UI.muted);
+  note(statsOn ? [texts().stats.listNote, texts().stats.listNoteShort] : [texts().stats.offNote], l.statsNoteY, UI.muted);
+  if (l.keysY !== null) centredLine(r, texts().score.listKeys, l.keysY, UI.muted, 1);
 }
 
 function drawRows(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout): void {
@@ -91,17 +88,17 @@ function drawRows(r: RenderContext, flow: HighscoreFlow, l: ScoreListLayout): vo
 
 /** The submit button's label: "Als <Name> eintragen" once the name is valid. */
 export function submitButtonLabel(flow: Pick<HighscoreFlow, 'sending' | 'canSubmit' | 'name'>): string {
-  if (flow.sending) return SCORE_TEXT.sending;
-  return flow.canSubmit ? `Als ${flow.name.trim()} eintragen` : SCORE_TEXT.submit;
+  if (flow.sending) return texts().score.sending;
+  return flow.canSubmit ? texts().score.submitAs(flow.name.trim()) : texts().score.submit;
 }
 
 export function drawScoreEntry(r: RenderContext, flow: HighscoreFlow, l: ScoreEntryLayout): void {
   const { g, display } = r;
   fill(r, UI.ink);
-  text(r, SCORE_TEXT.entryTitle, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
+  text(r, texts().score.entryTitle, l.title.x, l.title.y, { scale: 2, color: UI.yellow });
   drawDismiss(r, l.close);
-  centredLine(r, `${formatNumber(flow.score)} Punkte`, l.scoreY, UI.white, l.textScale, l.close.x);
-  text(r, SCORE_TEXT.namePrompt, l.field.x, l.promptY, { color: UI.muted });
+  centredLine(r, texts().score.points(formatNumber(flow.score)), l.scoreY, UI.white, l.textScale, l.close.x);
+  text(r, texts().score.namePrompt, l.field.x, l.promptY, { color: UI.muted });
   // The field (the native input lies on it; the text shows in canvas captures).
   const { field } = l;
   g.fillStyle = UI.buttonEdge;
@@ -114,5 +111,5 @@ export function drawScoreEntry(r: RenderContext, flow: HighscoreFlow, l: ScoreEn
   const scale = fitScale(label, l.submit.w - 12, l.submit.h >= 24 ? 2 : 1);
   menuButton(r, l.submit, label, flow.canSubmit ? UI.yellow : UI.muted, scale);
   if (flow.message) centredLine(r, flow.message, l.messageY, UI.yellow, fitScale(flow.message, display.viewWidth - 8, l.textScale));
-  if (l.keysY !== null) centredLine(r, ENTRY_KEYS, l.keysY, UI.muted, 1);
+  if (l.keysY !== null) centredLine(r, texts().score.entryKeys, l.keysY, UI.muted, 1);
 }

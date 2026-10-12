@@ -18,6 +18,7 @@ import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Rect } from '../types';
 import { UI } from './art';
 import { centreX, type HudButtons, plusPoints, POPUP_MARGIN } from './layout';
+import { texts } from './i18n';
 
 /** Seconds a "Linie xN!" stays (the next step replaces it). */
 export const COMBO_TIME = 1;
@@ -78,14 +79,14 @@ export class StuntCallout {
 
   step(multiplier: number): void {
     this.lineActive = true;
-    const text = `Linie x${multiplier}!`;
+    const text = texts().callout.line(String(multiplier));
     if (this.fresh && this.kind === 'kickflip') this.add(text, UI.orange, COMBO_TIME);
     else this.show([text], UI.orange, COMBO_TIME, 'step');
   }
 
   /** An air trick (kickflip) was landed (airTrick): the big callout with its points. */
   kickflip(points: number): void {
-    const text = `Kickflip! ${plusPoints(points)}`;
+    const text = `${texts().callout.kickflip} ${plusPoints(points)}`;
     if (this.fresh && this.kind === 'step') this.add(text, UI.pink, KICKFLIP_TIME);
     else this.show([text], UI.pink, KICKFLIP_TIME, 'kickflip');
   }
@@ -96,12 +97,13 @@ export class StuntCallout {
       this.hide();
       return;
     }
-    this.show(points > 0 ? ['Stunt-Linie!', plusPoints(points)] : ['Stunt-Linie!'], UI.yellow, LINE_DONE_TIME, 'done');
+    const title = texts().callout.stuntLine;
+    this.show(points > 0 ? [title, plusPoints(points)] : [title], UI.yellow, LINE_DONE_TIME, 'done');
   }
 
   /** The NorDIY park session ended (sessionEnd): "Session!" and its bonus; nothing without points. */
   session(points: number): void {
-    if (points > 0) this.show(['Session!', plusPoints(points)], UI.yellow, LINE_DONE_TIME, 'done');
+    if (points > 0) this.show([texts().callout.session, plusPoints(points)], UI.yellow, LINE_DONE_TIME, 'done');
   }
 
   /** Advances its time while `shown`; while it cannot be shown (zone banner) it waits. */

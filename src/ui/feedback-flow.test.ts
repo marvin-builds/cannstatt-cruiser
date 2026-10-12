@@ -3,8 +3,9 @@ import type { FeedbackContext, FeedbackDraft, FeedbackResult } from '../net/feed
 import { type KeptReport, reportSignature } from '../net/feedback-reports';
 import type { FeedbackDeleteResult, FeedbackInboxLike } from '../net/feedback-status';
 import { type FeedbackBody, MAX_FEEDBACK_TEXT } from '../net/feedback-types';
-import { FEEDBACK_TEXT, FeedbackFlow } from './feedback-flow';
-import { FEEDBACK_PAGE_TEXT } from './feedback-pages';
+import { FeedbackFlow } from './feedback-flow';
+import { de } from './i18n/de';
+
 
 const CONTEXT: FeedbackContext = { platform: 'other', touch: false, portrait: false, viewWidth: 320, mode: 'title' };
 
@@ -121,7 +122,7 @@ describe('feedback flow', () => {
     expect(flow.canSend).toBe(false);
     await flow.send(CONTEXT);
     expect(sent).toHaveLength(0);
-    expect(flow.message).toBe(FEEDBACK_TEXT.short);
+    expect(flow.message).toBe(de.feedback.short('3'));
     flow.setText('abc');
     expect(flow.canSend).toBe(true);
     expect(flow.message).toBeNull();
@@ -163,7 +164,7 @@ describe('feedback flow', () => {
     expect(flow.open).toBe(true);
     expect([flow.tab, flow.page]).toEqual(['mine', 'list']);
     expect(flow.thanks).toBe(true);
-    expect(flow.message).toBe(FEEDBACK_TEXT.sent);
+    expect(flow.message).toBe(de.feedback.sent);
     expect(flow.rows.map((r) => [r.id, r.fresh])).toEqual([
       [9, true],
       [3, false],
@@ -221,9 +222,9 @@ describe('feedback flow', () => {
 
   it('rate limit and offline keep the text and say so', async () => {
     for (const [result, text] of [
-      ['rate', FEEDBACK_TEXT.rate],
-      ['offline', FEEDBACK_TEXT.offline],
-      ['invalid', FEEDBACK_TEXT.invalid],
+      ['rate', de.feedback.rate],
+      ['offline', de.feedback.offline],
+      ['invalid', de.feedback.invalid],
     ] as const) {
       const flow = new FeedbackFlow(fakeSender(result).sender, null);
       flow.openForm();
@@ -243,7 +244,7 @@ describe('feedback flow', () => {
     flow.setText('Doppelt?');
     const first = flow.send(CONTEXT);
     expect(flow.sending).toBe(true);
-    expect(flow.message).toBe(FEEDBACK_TEXT.sending);
+    expect(flow.message).toBe(de.feedback.sending);
     void flow.send(CONTEXT);
     flow.close();
     expect(flow.open).toBe(true);
@@ -434,7 +435,7 @@ describe('deleting an own report (ROADMAP 78)', () => {
     flow.askDelete();
     await flow.confirmDelete();
     expect(inbox.removed).toEqual([3]);
-    expect([flow.tab, flow.page, flow.listNote]).toEqual(['mine', 'list', FEEDBACK_PAGE_TEXT.deleted]);
+    expect([flow.tab, flow.page, flow.listNote]).toEqual(['mine', 'list', de.feedbackPages.deleted]);
     expect(flow.rows.map((r) => r.id)).toEqual([5]);
     flow.openReport(5);
     flow.back();
@@ -447,10 +448,10 @@ describe('deleting an own report (ROADMAP 78)', () => {
     flow.askDelete();
     inbox.answer = 'offline';
     await flow.confirmDelete();
-    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', FEEDBACK_TEXT.offline]);
+    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', de.feedback.offline]);
     inbox.answer = 'failed';
     await flow.confirmDelete();
-    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', FEEDBACK_PAGE_TEXT.deleteFailed]);
+    expect([flow.page, flow.deleteMessage]).toEqual(['confirm', de.feedbackPages.deleteFailed]);
     expect(flow.rows.map((r) => r.id)).toEqual([3]);
     flow.back();
     flow.askDelete();
@@ -464,14 +465,14 @@ describe('deleting an own report (ROADMAP 78)', () => {
     flow.askDelete();
     const deleting = flow.confirmDelete();
     void flow.confirmDelete();
-    expect(flow.deleteMessage).toBe(FEEDBACK_PAGE_TEXT.deleting);
+    expect(flow.deleteMessage).toBe(de.feedbackPages.deleting);
     expect(flow.back()).toBe(true);
     flow.close();
     expect([flow.open, flow.page]).toEqual([true, 'confirm']);
     inbox.finishRemove('deleted');
     await deleting;
     expect(inbox.removed).toEqual([3]);
-    expect([flow.page, flow.listNote]).toEqual(['list', FEEDBACK_PAGE_TEXT.deleted]);
+    expect([flow.page, flow.listNote]).toEqual(['list', de.feedbackPages.deleted]);
   });
 
   it('the note after deleting wins over the thanks of a just sent report', async () => {
@@ -483,10 +484,10 @@ describe('deleting an own report (ROADMAP 78)', () => {
     flow.openForm();
     flow.setText('Mehr Musik');
     await flow.send(CONTEXT);
-    expect(flow.listNote).toBe(FEEDBACK_TEXT.sent);
+    expect(flow.listNote).toBe(de.feedback.sent);
     flow.openReport(4);
     flow.askDelete();
     await flow.confirmDelete();
-    expect(flow.listNote).toBe(FEEDBACK_PAGE_TEXT.deleted);
+    expect(flow.listNote).toBe(de.feedbackPages.deleted);
   });
 });

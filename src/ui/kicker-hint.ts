@@ -15,6 +15,7 @@ import type { Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
 import { type HintRow, hintPlateRect } from './hint-plate';
 import { popupScale, type UiDisplay, uiMetrics } from './layout';
+import { perLanguage } from './i18n';
 
 /** Launches off a ramp after which the hint has done its job for good. */
 export const KICKER_HINT_LAUNCHES = 5;
@@ -24,8 +25,8 @@ export const KICKER_HINT_LEAD = 1.2;
 export const KICKER_HINT_AFTER = 0.2;
 const LAUNCHES_KEY = 'rampLaunches';
 
-const DESKTOP_ROWS: readonly HintRow[] = [['Auf der Rampe springen!', '(Leertaste)']];
-const TOUCH_ROWS: readonly HintRow[] = [['Auf der Rampe tippen!']];
+const desktopRows = perLanguage((t): readonly HintRow[] => [t.hints.kickerKeys]);
+const touchRows = perLanguage((t): readonly HintRow[] => [[t.hints.kickerTouch]]);
 
 /**
  * Whether the feet are close enough to the kicker for the hint: its front at
@@ -103,6 +104,6 @@ export function kickerHintPlate(
   anchorX = PLAYER_X,
 ): { rows: readonly HintRow[]; scale: number; rect: Rect } {
   const scale = popupScale(display, false);
-  const rows = display.touch ? TOUCH_ROWS : DESKTOP_ROWS;
+  const rows = display.touch ? touchRows() : desktopRows();
   return { rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, Math.round(anchorX), uiMetrics(display)) };
 }

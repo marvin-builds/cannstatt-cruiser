@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { measureText } from '../core/font';
 import type { Rect } from '../types';
-import { kidNoticeLayout, kidNoticeLines, KID_NOTICE_TITLE } from './kid-notice';
+import { kidNoticeLayout, kidNoticeLines } from './kid-notice';
 import { uiMetrics } from './layout';
+import { de } from './i18n/de';
 
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
@@ -34,7 +35,7 @@ describe('kid mode notice', () => {
         const m = uiMetrics(d);
         const l = kidNoticeLayout({ viewWidth, ...d }, restart);
         expect(l.scale).toBe(d.portrait ? 2 : 1);
-        expect(measureText(KID_NOTICE_TITLE, 2)).toBeLessThanOrEqual(viewWidth - 8);
+        expect(measureText(de.kidNotice.title, 2)).toBeLessThanOrEqual(viewWidth - 8);
         for (const s of kidNoticeLines(d.touch, restart)) expect(measureText(s, l.scale)).toBeLessThanOrEqual(viewWidth - 8);
         const textBottom = l.lines + kidNoticeLines(d.touch, restart).length * l.lineH;
         expect(l.title + 14).toBeLessThanOrEqual(l.lines);

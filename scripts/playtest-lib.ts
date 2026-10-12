@@ -24,22 +24,22 @@ export const VIEWPORTS: Record<string, ViewportSpec> = {
   desktop: {
     name: 'desktop',
     touch: false,
-    options: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+    options: { locale: 'de-DE', viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
   },
   laptop: {
     name: 'laptop',
     touch: false,
-    options: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+    options: { locale: 'de-DE', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   },
   'phone-landscape': {
     name: 'phone-landscape',
     touch: true,
-    options: { viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+    options: { locale: 'de-DE', viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   },
   'phone-portrait': {
     name: 'phone-portrait',
     touch: true,
-    options: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+    options: { locale: 'de-DE', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   },
 };
 

@@ -3,19 +3,11 @@ import { GROUND_Y, PLAYER_X, VIEW_H } from '../core/config';
 import { createStore, type Store } from '../core/storage';
 import type { Entity, Rect } from '../types';
 import { KEY_E } from './hint-plate';
-import {
-  HIGH_FIVE_HINT_AHEAD,
-  HIGH_FIVE_REACH,
-  HIGH_FIVE_TOUCH_LABEL,
-  HighFiveHint,
-  HIGH_FIVE_HINT_SHOWS,
-  handShown,
-  highFiveHand,
-  highFiveHintPlate,
-} from './high-five';
+import { HIGH_FIVE_HINT_AHEAD, HIGH_FIVE_REACH, HighFiveHint, HIGH_FIVE_HINT_SHOWS, handShown, highFiveHand, highFiveHintPlate } from './high-five';
 import { HIGH_FIVE_APPROACH } from '../gameplay/high-five';
 import { itemButtonRect, itemHintPlace } from './item-button';
 import { POPUP_MARGIN } from './layout';
+import { de } from './i18n/de';
 
 function memoryStore(): Store {
   const raw = new Map<string, string>();
@@ -142,8 +134,8 @@ describe('high five hint', () => {
         const p = highFiveHintPlate(display);
         expect(p.kind).toBe('button');
         if (p.kind !== 'button') continue;
-        expect(p.label).toBe(HIGH_FIVE_TOUCH_LABEL);
-        expect(HIGH_FIVE_TOUCH_LABEL).toBe('Knopf: High Five!');
+        expect(p.label).toBe(de.hints.highFiveButton);
+        expect(de.hints.highFiveButton).toBe('Knopf: High Five!');
         const button = itemButtonRect(viewWidth, display);
         expect(overlaps(p.rect, button)).toBe(false);
         expect(p.rect).toMatchObject(itemHintPlace(button, p.rect.w, p.rect.h, viewWidth));

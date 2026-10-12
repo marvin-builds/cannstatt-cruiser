@@ -18,13 +18,13 @@ import type { Entity, Rect } from '../types';
 import { type HintRow, hintPlateRect, KEY_E } from './hint-plate';
 import { itemHintRect } from './item-button';
 import { popupScale, type UiDisplay, uiMetrics } from './layout';
+import { perLanguage, texts } from './i18n';
 
 /** The hint (and on touch the hand button) shows from when the hand is this far ahead of the skater. */
 export const HIGH_FIVE_HINT_AHEAD = 150;
 /** Appearances of the hint before it stops without a high five. */
 export const HIGH_FIVE_HINT_SHOWS = 3;
-export const HIGH_FIVE_TOUCH_LABEL = 'Knopf: High Five!';
-const DESKTOP_ROWS: readonly HintRow[] = [[KEY_E, '= High Five!']];
+
 const SEEN_KEY = 'highFiveSeen';
 const SHOWS_KEY = 'highFiveHintShows';
 
@@ -99,6 +99,9 @@ export class HighFiveHint {
   }
 }
 
+/** The keyboard hint's rows in the active language. */
+const desktopRows = perLanguage((t): readonly HintRow[] => [[KEY_E, t.hints.highFiveKey]]);
+
 /** Where the hint shows: on a plate at the hint spot (keyboard) or beside the item button (touch). */
 export type HighFiveHintPlate =
   | { kind: 'spot'; rows: readonly HintRow[]; scale: number; rect: Rect }
@@ -107,8 +110,10 @@ export type HighFiveHintPlate =
 export function highFiveHintPlate(display: UiDisplay): HighFiveHintPlate {
   const scale = popupScale(display, false);
   if (display.touch) {
-    const rect = itemHintRect(display.viewWidth, display, scale, HIGH_FIVE_TOUCH_LABEL);
-    return { kind: 'button', label: HIGH_FIVE_TOUCH_LABEL, scale, rect };
+    const label = texts().hints.highFiveButton;
+    const rect = itemHintRect(display.viewWidth, display, scale, label);
+    return { kind: 'button', label, scale, rect };
   }
-  return { kind: 'spot', rows: DESKTOP_ROWS, scale, rect: hintPlateRect(DESKTOP_ROWS, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
+  const rows = desktopRows();
+  return { kind: 'spot', rows, scale, rect: hintPlateRect(rows, scale, display.viewWidth, PLAYER_X, uiMetrics(display)) };
 }

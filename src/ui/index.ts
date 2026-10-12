@@ -51,7 +51,7 @@ import type { GameContext, Rect, System } from '../types';
 import { AirTrickHint } from './air-trick-hint';
 import { UI } from './art';
 import { Banner, zoneName } from './banner';
-import { chillLook } from './chill-look';
+import { chillLook, chillPopup } from './chill-look';
 import { createDomEntrySheet, type EntrySheet, type EntrySheetHandlers } from './entry-sheet';
 import { FeedbackDialog } from './feedback-dialog';
 import { createDomFeedbackField, type FeedbackField } from './feedback-field';
@@ -95,6 +95,7 @@ import { createDomRotateSheet, type RotateSheet, type RotateSheetHandlers } from
 import { createDomWhatsNewSheet, type WhatsNewSheet, type WhatsNewSheetHandlers } from './whats-new-sheet';
 import { BackNav, backStep, browserHistoryEnv, type HistoryEnv } from './back-nav';
 import { createDomSettleCover, type SettleCover } from './settle-cover';
+import { type Lang, loadLanguage, saveLanguage, setLanguage, texts } from './i18n';
 
 export interface UiSystemOptions {
   /** Where highscore and star total persist (default: localStorage). */
@@ -150,6 +151,11 @@ export interface UiSystemOptions {
   settleCover?: SettleCover | null;
   /** The clock of the install card's snooze, ms (default: Date.now); tests pass a fake. */
   now?: () => number;
+  /**
+   * The browser language that picks the first visit's language (ROADMAP 71; default: navigator.language in
+   * a browser, none elsewhere). Read only for that, never stored or sent; tests pass one.
+   */
+  browserLanguage?: string | null;
 }
 
 /** The ui system; `highscores` is the online list's flow (null without an online list), `feedback` the feedback dialog's (null without a sender). */
@@ -186,6 +192,7 @@ const browserFullscreen = () => typeof document !== 'undefined' && fullscreenSup
 export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
   const store = options.store ?? defaultStore;
   const browser = typeof window !== 'undefined';
+  const browserLanguage = options.browserLanguage !== undefined ? options.browserLanguage : browser ? navigator.language : null;
   const scores = options.scores !== undefined ? options.scores : browser ? createBrowserScoreService(store) : null;
   const flow = scores ? new HighscoreFlow({ service: scores, store }) : null;
   const telemetry = options.telemetry !== undefined ? options.telemetry : browser ? createBrowserTelemetry(store) : null;
@@ -347,7 +354,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     bus.on('drunkStart', (e) => (view.drunkDuration = e.duration));
     // During a stunt line the callout already cheers each piece: no "Grind!" on its ledges.
     bus.on('grindStart', () => {
-      if (!view.stunt.lineActive) popup('Grind!', UI.teal);
+      if (!view.stunt.lineActive) popup(texts().popups.grind, UI.teal);
     });
     // Only a full kickflip gets the big callout and sparkle; a reduced one (ROADMAP 41) a plain popup.
     bus.on('airTrick', (e) => {
@@ -381,8 +388,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     });
     bus.on('chillStart', (e) => {
       view.chillDuration = e.duration;
-      const look = chillLook(state.kidMode);
-      popup(look.popup, look.popupColor);
+      popup(chillPopup(state.kidMode), chillLook(state.kidMode).popupColor);
     });
     bus.on('zoneChanged', (e) => {
       if (state.mode === 'playing') view.banner.show(zoneName(e.index));
@@ -434,6 +440,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
       },
     });
     addMenuHotspots(ctx);
+    addLanguageHotspots(ctx);
     addSettingsHotspots(ctx);
     addScoreHotspots(ctx);
     dialog?.init(ctx);
@@ -548,6 +555,19 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot(button((b) => b.feedback, () => dialog?.open(ctx), ['KeyF']));
   }
 
+  /** The player picked a language (ROADMAP 71): every text switches at once, and the choice is kept on the device. */
+  function chooseLanguage(lang: Lang): void {
+    setLanguage(lang);
+    saveLanguage(store, lang);
+  }
+
+  /** The title's language switch "DE | EN" (adult and kid mode; language-switch.ts). */
+  function addLanguageHotspots(ctx: GameContext): void {
+    const shown = () => (!rotateShown(ctx) && menuScreen(ctx.state, view) === 'title' ? (currentMenu(ctx, view)?.language ?? null) : null);
+    ctx.addHotspot({ rect: () => shown()?.de ?? null, onPress: () => chooseLanguage('de') });
+    ctx.addHotspot({ rect: () => shown()?.en ?? null, onPress: () => chooseLanguage('en') });
+  }
+
   /**
    * "App installieren": the kept browser prompt, else the manual steps. Pressed in a hotspot's
    * release (onRelease): a touch grants the user gesture the prompt needs only when it ends.
@@ -631,6 +651,8 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
     ctx.addHotspot({ rect: () => (onMenu() ? menu().stats : null), onPress: () => settings.toggleStats() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().privacyLink : null), onPress: () => privacyLink.request() });
     ctx.addHotspot({ rect: () => (onMenu() ? menu().back : null), onPress: () => settings.close() });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().language.de : null), onPress: () => chooseLanguage('de') });
+    ctx.addHotspot({ rect: () => (onMenu() ? menu().language.en : null), onPress: () => chooseLanguage('en') });
     ctx.addHotspot(onRelease({ rect: () => (onMenu() ? menu().install : null), onPress: () => {} }, () => pressInstall(ctx)));
     ctx.addHotspot({ rect: () => (settings.screen === 'kidNotice' ? kidNoticeLayout(display, kidNoticeRestart(settings, state)).ok : null), onPress: () => settings.close() });
   }
@@ -824,6 +846,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
 
     init(ctx) {
       uiCtx = ctx;
+      setLanguage(loadLanguage(store, browserLanguage ?? undefined));
       view.install.load(ctx.state.install);
       view.fullscreenAvailable = (options.fullscreenAvailable ?? browserFullscreen)();
       ctx.state.kidMode = loadKidMode(store);

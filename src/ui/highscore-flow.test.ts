@@ -1,13 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createMemoryStore } from '../core/storage';
 import type { ScoreEntry, ScoreSubmission } from '../net/api';
 import type { SubmitOutcome } from '../net/service';
-import { HighscoreFlow, keptText, SCORE_TEXT, type ScoreServiceLike } from './highscore-flow';
+import { HighscoreFlow, type ScoreServiceLike } from './highscore-flow';
+import { setLanguage } from './i18n';
+import { de } from './i18n/de';
+import { en } from './i18n/en';
 import { submitButtonLabel } from './score-screens';
 import { loadName, saveName } from './score-rules';
 
 const entry = (rank: number, name: string, score: number): ScoreEntry => ({ rank, name, score, distance: 100, date: '2026-10-09T10:00:00.000Z' });
 const RUN = { score: 1500, distance: 4000, seconds: 50 };
+
+afterEach(() => setLanguage('de'));
 
 function setup() {
   const sent: { name: string; score: number }[] = [];
@@ -112,7 +117,7 @@ describe('HighscoreFlow: Eintragen offer', () => {
     flow.setName('Max');
     outcomes.push({ kind: 'queued', reason: 'offline' });
     await flow.submit();
-    expect(flow.message).toBe(SCORE_TEXT.queued);
+    expect(flow.message).toBe(de.score.queued);
     expect(flow.screen).toBe('list');
     expect(flow.offered).toBe(false);
   });
@@ -148,7 +153,7 @@ describe('HighscoreFlow: name entry', () => {
     flow.setName('M');
     await flow.submit();
     expect(sent).toHaveLength(0);
-    expect(flow.message).toBe(SCORE_TEXT.short);
+    expect(flow.message).toBe(de.score.short);
   });
 
   it('success: remembers the name, shows the list with the own entry from the server rank', async () => {
@@ -177,7 +182,7 @@ describe('HighscoreFlow: name entry', () => {
     flow.setName('Max');
     outcomes.push({ kind: 'ok', stored: true, rank: null, best: 1500, entries: [] });
     await flow.submit();
-    expect(flow.message).toBe(SCORE_TEXT.outside);
+    expect(flow.message).toBe(de.score.outside);
   });
 
   it('a run the server did not store (a better own entry exists) shows the kept best', async () => {
@@ -189,17 +194,30 @@ describe('HighscoreFlow: name entry', () => {
     await flow.submit();
     expect(flow.screen).toBe('list');
     expect(flow.message).toBe('Dein Eintrag bleibt: 28.507 Punkte');
-    expect(flow.message).toBe(keptText(28507));
+    expect(flow.message).toBe(de.score.kept('28.507'));
     expect(flow.highlight).toBe(2);
     expect(service.ownBest).toBe(28507);
     expect(flow.offered).toBe(false);
   });
 
+  it('says its message and the submit label in the language active now (ROADMAP 71)', async () => {
+    const { flow, outcomes } = setup();
+    flow.runEnded(RUN);
+    flow.openEntry();
+    flow.setName('Max');
+    outcomes.push({ kind: 'failed', error: 'rate' });
+    await flow.submit();
+    expect(flow.message).toBe(de.score.rate);
+    setLanguage('en');
+    expect(flow.message).toBe(en.score.rate);
+    expect(submitButtonLabel(flow)).toBe('Add as Max');
+  });
+
   it.each([
-    ['name', SCORE_TEXT.badName],
-    ['rate', SCORE_TEXT.rate],
-    ['implausible', SCORE_TEXT.failed],
-    ['bad-request', SCORE_TEXT.failed],
+    ['name', de.score.badName],
+    ['rate', de.score.rate],
+    ['implausible', de.score.failed],
+    ['bad-request', de.score.failed],
   ] as const)('server answer %s stays on the entry with a message', async (error, message) => {
     const { flow, outcomes } = setup();
     flow.runEnded(RUN);
@@ -221,7 +239,7 @@ describe('HighscoreFlow: name entry', () => {
     outcomes.push({ kind: 'queued', reason: 'server' });
     await flow.submit();
     expect(flow.screen).toBe('list');
-    expect(flow.message).toBe(SCORE_TEXT.queuedLater);
+    expect(flow.message).toBe(de.score.queuedLater);
   });
 
   it('cancel closes without sending', () => {
@@ -240,7 +258,7 @@ describe('HighscoreFlow: submit label', () => {
     const { flow } = setup();
     flow.runEnded(RUN);
     flow.openEntry();
-    expect(submitButtonLabel(flow)).toBe(SCORE_TEXT.submit);
+    expect(submitButtonLabel(flow)).toBe(de.score.submit);
     flow.setName('Mia');
     expect(submitButtonLabel(flow)).toBe('Als Mia eintragen');
   });
@@ -265,7 +283,7 @@ describe('HighscoreFlow: the list', () => {
     const { flow, service } = setup();
     service.pending = { name: 'Max', score: 1, distance: 1, duration: 1, version: 'v', device: 'device-1234' };
     flow.openList();
-    expect(flow.message).toBe(SCORE_TEXT.queued);
+    expect(flow.message).toBe(de.score.queued);
   });
 
   it('scrolls and remembers the request to show the own entry', () => {
