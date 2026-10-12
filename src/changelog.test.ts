@@ -54,6 +54,14 @@ describe('changesSince', () => {
     expect(changesSince('2026-10-07.1', LOG, 1)).toEqual([entry('2026-10-09.1', 'c1', 'c2')]);
   });
 
+  it('copies the English lines too, without sharing them (ROADMAP 71)', () => {
+    const log: ChangelogEntry[] = [{ ...entry('2026-10-09.1', 'c1'), en: ['e1'] }];
+    const shown = changesSince('2026-10-08.1', log);
+    expect(shown[0]!.en).toEqual(['e1']);
+    shown[0]!.en!.push('x');
+    expect(log[0]!.en).toEqual(['e1']);
+  });
+
   it('never changes the log it reads, nor shares its item lists', () => {
     const shown = changesSince('2026-10-07.1', LOG, 1);
     shown[0]!.items.push('x');
@@ -95,8 +103,20 @@ describe('CHANGELOG', () => {
     }
   });
 
+  it('gives English lines (ROADMAP 71) one per German item, under the same limits', () => {
+    for (const e of CHANGELOG.filter((x) => x.en)) {
+      expect(e.en!.length, e.version).toBe(e.items.length);
+      for (const line of e.en!) {
+        expect(line.length, line).toBeLessThanOrEqual(CHANGELOG_ITEM_MAX_CHARS);
+        for (const ch of line) expect(glyphFor(ch), `${ch} in "${line}"`).not.toBe(glyphFor('\u0001'));
+      }
+    }
+  });
+
   it('is kid-safe: kid mode shows it too', () => {
     const banned = /joint|kiff|gras|bier|maß|alkohol|betrunken|rausch|bong|drog/i;
     for (const item of CHANGELOG.flatMap((e) => e.items)) expect(item).not.toMatch(banned);
+    const bannedEn = /joint|weed|beer|alcohol|drunk|booze|drug/i;
+    for (const line of CHANGELOG.flatMap((e) => e.en ?? [])) expect(line).not.toMatch(bannedEn);
   });
 });
