@@ -4,167 +4,357 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="description" content="Datenschutz beim Pixel-Skate-Runner Cannstatt Cruiser" />
+    <meta
+      name="description"
+      content="Datenschutz beim Pixel-Skate-Runner Cannstatt Cruiser. Privacy policy of the pixel skate runner Cannstatt Cruiser."
+    />
     <link rel="icon" type="image/png" href="./icons/icon-192.png" />
     <link rel="stylesheet" href="./src/privacy/privacy.css" />
+    <script type="module" src="./src/privacy/page.ts"></script>
     <title>Datenschutz · Cannstatt Cruiser</title>
   </head>
   <body>
     <main>
-      <a class="back" href="./">← Zurück zum Spiel</a>
-      <h1>Datenschutz</h1>
-      <p class="lead">
-        Cannstatt Cruiser ist ein kostenloses Hobby-Spiel ohne Werbung, ohne Konto und ohne Tracking. Hier steht kurz, welche Daten
-        anfallen, wofür und wie lange.
-      </p>
+      <!-- Without JavaScript both sections show, German first, and these links jump to them. -->
+      <nav class="lang-switch" aria-label="Sprache / Language">
+        <a href="#de" lang="de" hreflang="de" title="Deutsch">DE</a>
+        <span aria-hidden="true">|</span>
+        <a href="#en" lang="en" hreflang="en" title="English">EN</a>
+      </nav>
 
-      <h2>Wer ist verantwortlich?</h2>
-      <p>
-        Das Spiel betreibt eine Privatperson unter dem Namen <strong>marvinmai</strong>. Fragen und Wünsche zum Datenschutz am
-        besten über ein
-        <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a>
-        oder über „Feedback“ im Spiel. GitHub-Issues sind öffentlich: Schreib dort bitte nichts Persönliches hinein.
-      </p>
-
-      <h2>Hosting</h2>
-      <ul>
-        <li>
-          Die Spielseite liegt bei <strong>GitHub Pages</strong>. Um die Seite auszuliefern, verarbeitet GitHub technisch deine
-          IP-Adresse (siehe
-          <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener"
-            >Datenschutzerklärung von GitHub</a
-          >).
-        </li>
-        <li>
-          Der Server für Bestenliste, Statistik und Feedback läuft bei <strong>Cloudflare Workers</strong>. Cloudflare verarbeitet
-          dabei technisch deine IP-Adresse (siehe
-          <a href="https://www.cloudflare.com/de-de/privacypolicy/" rel="noopener">Datenschutzerklärung von Cloudflare</a>). Der
-          Spiel-Server selbst liest und speichert die IP-Adresse nie.
-        </li>
-      </ul>
-
-      <h2>Auf deinem Gerät</h2>
-      <p>
-        Das Spiel speichert im Browser (localStorage) nur, was es zum Spielen braucht: deine Einstellungen (Kindermodus, Ton,
-        Statistik an/aus), deine eigenen Rekorde und gesammelten Sterne, den zuletzt eingetragenen Namen, eine zufällige
-        Geräte-ID für die Online-Bestenliste und welche Hinweise du schon gesehen hast. Für das Spielen ohne Internet legt es
-        außerdem die Spieldateien im Browser-Cache ab.
-      </p>
-      <p>
-        Nichts davon verlässt dein Gerät, außer wie unten beschrieben. Du kannst alles löschen, indem du die Website-Daten im
-        Browser löschst.
-      </p>
-      <p class="legal">Rechtsgrundlage: § 25 Abs. 2 Nr. 2 TDDDG (für das Spiel technisch nötig).</p>
-
-      <h2>Online-Bestenliste</h2>
-      <p>Nur wenn du nach einem Lauf auf „Eintragen“ tippst, sendet das Spiel:</p>
-      <ul>
-        <li>den Namen, den du eingibst, Punkte, Strecke und Dauer des Laufs,</li>
-        <li>die Spielversion und das Datum,</li>
-        <li>deine Geräte-ID; gespeichert wird davon nur ein Hash (eine nicht umkehrbare Prüfsumme).</li>
-      </ul>
-      <p>
-        Pro Gerät bleibt nur der beste Lauf stehen, die Liste behält die besten 500. Damit niemand die Liste flutet, merkt sich der
-        Server einen Tag lang, wann ein Gerät etwas eingetragen hat. Beim Öffnen der Bestenliste schickt das Spiel die Geräte-ID
-        mit, damit dein eigener Platz markiert werden kann; dabei wird nichts gespeichert.
-      </p>
-      <p>Tipp: Nimm einen Spitznamen, nicht deinen echten Namen.</p>
-      <p class="legal">
-        Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, eine gemeinsame Bestenliste fair und ohne
-        Spam anzubieten; ob du dich einträgst, entscheidest du selbst.
-      </p>
-
-      <h2>Anonyme Spielstatistik</h2>
-      <p>Damit das Spiel besser wird, sendet es anonyme Zahlen dazu, wie gespielt wird:</p>
-      <ul>
-        <li>
-          pro Besuch: Spielversion, Touch oder Tastatur, Plattform (Android, iOS, andere) und ob der Kindermodus an ist
-          (ob du quer oder hoch spielst, gehört nicht dazu),
-        </li>
-        <li>
-          pro Besuch außerdem, ob das Spiel auf dem Gerät schon gespeicherte Spieldaten hatte (neuer oder wiederkehrender
-          Spieler, ohne ID); die eigenen Geräte des Betreibers sind als Testgeräte markiert und werden getrennt gezählt,
-        </li>
-        <li>pro Lauf: Länge, Punkte und Strecke nur grob in Stufen (z. B. „100–199 m“),</li>
-        <li>die Spielzeit des Besuchs.</li>
-      </ul>
-      <p>
-        Dazu kommt ein grober Ort (Land, Region, Stadt), den Cloudflare aus der Verbindung ableitet. Die IP-Adresse wird dabei nie
-        gespeichert. Zeitpunkte werden nur als Tag und Stunde gespeichert. Jeder Besuch bekommt eine zufällige Sitzungs-ID, die nur
-        im Arbeitsspeicher liegt und beim Schließen verschwindet; sie hat nichts mit der Geräte-ID oder der Bestenliste zu tun.
-        Kein Name, keine Geräte-ID.
-      </p>
-      <p>
-        Die einzelnen Einträge werden nach 90 Tagen gelöscht. Danach bleiben nur Tagessummen (Anzahlen, ohne Sitzungs-ID und ohne
-        Uhrzeit) dauerhaft erhalten.
-      </p>
-      <div class="box">
-        <p>
-          <strong>Abschalten:</strong> jederzeit mit „Anonyme Statistik“ in der Bestenliste oder in den Einstellungen (Logo 3
-          Sekunden gedrückt halten). Sendet dein Browser das Signal „Global Privacy Control“, wird keine Statistik gesendet.
+      <section id="de" lang="de" data-title="Datenschutz · Cannstatt Cruiser">
+        <a class="back" href="./">← Zurück zum Spiel</a>
+        <h1>Datenschutz</h1>
+        <p class="lead">
+          Cannstatt Cruiser ist ein kostenloses Hobby-Spiel ohne Werbung, ohne Konto und ohne Tracking. Hier steht kurz, welche
+          Daten anfallen, wofür und wie lange.
         </p>
-      </div>
-      <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, das Spiel zu verbessern.</p>
 
-      <h2>Feedback</h2>
-      <p>
-        Nur wenn du im Pausenmenü oder auf dem Startbildschirm Feedback schreibst und auf „Senden“ tippst, sendet das Spiel: die
-        Art (Fehler oder Idee), deinen Text, Spielversion, Plattform (Android, iOS, andere), Touch oder Tastatur, Quer- oder
-        Hochformat und die Bildbreite des Spiels. Im Kindermodus gibt es kein Feedback.
-      </p>
-      <p>
-        Nur wenn du bei einem Fehler das Häkchen „Fehlerprotokoll mitsenden“ setzt, kommt ein kurzes Fehlerprotokoll dazu: die
-        letzten Fehlermeldungen des Spiels, fehlgeschlagene Anfragen an den Spiel-Server (nur welche Funktion und der Fehlercode,
-        ohne Inhalt) und wo du gerade warst (Startbildschirm oder Pause, Spielversion, Bildgröße). Namen stehen nicht darin.
-      </p>
-      <p>
-        Gespeichert wird das mit dem Tag, ohne Uhrzeit. Kein Name, keine Geräte-ID, keine IP-Adresse. Damit niemand das Feedback
-        flutet, schickt das Spiel die zufällige Sitzungs-ID des Besuchs mit (siehe Spielstatistik). Der Server merkt sich davon
-        nur einen Hash, um höchstens drei Meldungen pro Besuch und Tag anzunehmen, nie zusammen mit deinem Text, und löscht ihn
-        nach dem Tag. Feedback wird nach einem Jahr gelöscht, außer es steht noch als Aufgabe an. Der Schalter „Anonyme Statistik“ betrifft das Feedback nicht: Es
-        wird nur gesendet, wenn du selbst auf „Senden“ tippst.
-      </p>
-      <p>
-        Der Betreiber liest jedes Feedback selbst. Was umgesetzt werden soll, kann er danach als öffentliches
-        <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a> anlegen: anonym, nur mit
-        deinem Text (vorher geprüft und wenn nötig gekürzt), Spielversion, Plattform, Eingabe und Bildformat. Das Fehlerprotokoll
-        kommt nur dazu, wenn es zum Beheben nötig ist. Er kann außerdem den Stand festhalten (offen, geplant, erledigt, abgelehnt),
-        die Spielversion, in der es umgesetzt wurde, und eine kurze Antwort dazuschreiben.
-      </p>
-      <p>
-        Damit du erfährst, was aus deinem Feedback geworden ist, bekommt jede Meldung einen zufälligen geheimen Schlüssel, den
-        das Spiel auf deinem Gerät erzeugt und mit der Meldung sendet. Der Server speichert davon nur einen Hash (SHA-256), nie
-        den Schlüssel selbst. Der Schlüssel gehört nur zu dieser einen Meldung, nicht zu dir oder deinem Gerät.
-      </p>
-      <p>
-        Unter „Mein Feedback“ zeigt das Spiel deine gesendeten Meldungen (höchstens 20). Dafür behält es auf deinem Gerät, was
-        du gesendet hast: Text, die mitgesendeten Angaben und das Fehlerprotokoll, dazu die Nummer, den Schlüssel und den
-        letzten Stand jeder Meldung. Das bleibt auf dem Gerät. Um den Stand zu erfahren, sendet das Spiel nur die Nummern
-        und Schlüssel dieser Meldungen, keine Geräte-ID und nichts anderes. Der Server antwortet nur für Meldungen, deren
-        Schlüssel passt, und nur mit dem Stand, der kurzen Antwort des Betreibers und der Spielversion, in der sie umgesetzt
-        wurde; nie mit dem Text. Zu der Frage speichert er nichts. So kann niemand den Stand fremder Meldungen abfragen.
-        Das klappt nur auf dem Gerät, von dem du gesendet hast. Im Kindermodus fragt das Spiel nicht.
-      </p>
-      <p>Bitte schreib keine persönlichen Daten (Name, Adresse, Telefonnummer) in den Text.</p>
-      <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, Fehler zu beheben und das Spiel zu verbessern.</p>
+        <h2>Wer ist verantwortlich?</h2>
+        <p>
+          Das Spiel betreibt eine Privatperson unter dem Namen <strong>marvinmai</strong>. Fragen und Wünsche zum Datenschutz am
+          besten über ein
+          <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a>
+          oder über „Feedback“ im Spiel. GitHub-Issues sind öffentlich: Schreib dort bitte nichts Persönliches hinein.
+        </p>
 
-      <h2>Deine Rechte</h2>
-      <p>
-        Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Widerspruch (Art. 15 bis 21
-        DSGVO). Du kannst dich auch bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel beim
-        <a href="https://www.baden-wuerttemberg.datenschutz.de/" rel="noopener"
-          >Landesbeauftragten für den Datenschutz und die Informationsfreiheit Baden-Württemberg</a
-        >.
-      </p>
-      <p>
-        Statistik und Feedback enthalten keine Kennung (der Schlüssel-Hash einer Meldung gehört nur zu dieser Meldung). Einzelne
-        Einträge lassen sich deshalb nicht finden oder einer Person zuordnen. Für einen Eintrag in der Bestenliste nenne bitte Name, Punkte und Datum.
-      </p>
+        <h2>Hosting</h2>
+        <ul>
+          <li>
+            Die Spielseite liegt bei <strong>GitHub Pages</strong>. Um die Seite auszuliefern, verarbeitet GitHub technisch deine
+            IP-Adresse (siehe
+            <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener"
+              >Datenschutzerklärung von GitHub</a
+            >).
+          </li>
+          <li>
+            Der Server für Bestenliste, Statistik und Feedback läuft bei <strong>Cloudflare Workers</strong>. Cloudflare
+            verarbeitet dabei technisch deine IP-Adresse (siehe
+            <a href="https://www.cloudflare.com/de-de/privacypolicy/" rel="noopener">Datenschutzerklärung von Cloudflare</a>). Der
+            Spiel-Server selbst liest und speichert die IP-Adresse nie.
+          </li>
+        </ul>
 
-      <footer>
-        <p>Stand: Oktober 2026</p>
-        <p><a href="./">Zurück zum Spiel</a></p>
-      </footer>
+        <h2>Auf deinem Gerät</h2>
+        <p>
+          Das Spiel speichert im Browser (localStorage) nur, was es zum Spielen braucht: deine Einstellungen (Sprache,
+          Kindermodus, Ton, Statistik an/aus), deine eigenen Rekorde und gesammelten Sterne, den zuletzt eingetragenen Namen, eine
+          zufällige Geräte-ID für die Online-Bestenliste und welche Hinweise du schon gesehen hast. Für das Spielen ohne Internet
+          legt es außerdem die Spieldateien im Browser-Cache ab.
+        </p>
+        <p>
+          Beim ersten Besuch liest das Spiel die Spracheinstellung deines Browsers, nur um Deutsch oder Englisch auszuwählen.
+          Gespeichert wird nur die gewählte Sprache, und nur auf deinem Gerät; gesendet wird sie nie. Du kannst sie im Spiel
+          jederzeit umstellen.
+        </p>
+        <p>
+          Nichts davon verlässt dein Gerät, außer wie unten beschrieben. Du kannst alles löschen, indem du die Website-Daten im
+          Browser löschst.
+        </p>
+        <p class="legal">Rechtsgrundlage: § 25 Abs. 2 Nr. 2 TDDDG (für das Spiel technisch nötig).</p>
+
+        <h2>Online-Bestenliste</h2>
+        <p>Nur wenn du nach einem Lauf auf „Eintragen“ tippst, sendet das Spiel:</p>
+        <ul>
+          <li>den Namen, den du eingibst, Punkte, Strecke und Dauer des Laufs,</li>
+          <li>die Spielversion und das Datum,</li>
+          <li>deine Geräte-ID; gespeichert wird davon nur ein Hash (eine nicht umkehrbare Prüfsumme).</li>
+        </ul>
+        <p>
+          Pro Gerät bleibt nur der beste Lauf stehen, die Liste behält die besten 500. Damit niemand die Liste flutet, merkt sich
+          der Server einen Tag lang, wann ein Gerät etwas eingetragen hat. Beim Öffnen der Bestenliste schickt das Spiel die
+          Geräte-ID mit, damit dein eigener Platz markiert werden kann; dabei wird nichts gespeichert.
+        </p>
+        <p>Tipp: Nimm einen Spitznamen, nicht deinen echten Namen.</p>
+        <p class="legal">
+          Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, eine gemeinsame Bestenliste fair und ohne
+          Spam anzubieten; ob du dich einträgst, entscheidest du selbst.
+        </p>
+
+        <h2>Anonyme Spielstatistik</h2>
+        <p>Damit das Spiel besser wird, sendet es anonyme Zahlen dazu, wie gespielt wird:</p>
+        <ul>
+          <li>
+            pro Besuch: Spielversion, Touch oder Tastatur, Plattform (Android, iOS, andere) und ob der Kindermodus an ist (ob du
+            quer oder hoch spielst, gehört nicht dazu),
+          </li>
+          <li>
+            pro Besuch außerdem, ob das Spiel auf dem Gerät schon gespeicherte Spieldaten hatte (neuer oder wiederkehrender
+            Spieler, ohne ID); die eigenen Geräte des Betreibers sind als Testgeräte markiert und werden getrennt gezählt,
+          </li>
+          <li>pro Lauf: Länge, Punkte und Strecke nur grob in Stufen (z. B. „100–199 m“),</li>
+          <li>die Spielzeit des Besuchs.</li>
+        </ul>
+        <p>
+          Dazu kommt ein grober Ort (Land, Region, Stadt), den Cloudflare aus der Verbindung ableitet. Die IP-Adresse wird dabei
+          nie gespeichert. Zeitpunkte werden nur als Tag und Stunde gespeichert. Jeder Besuch bekommt eine zufällige Sitzungs-ID,
+          die nur im Arbeitsspeicher liegt und beim Schließen verschwindet; sie hat nichts mit der Geräte-ID oder der Bestenliste
+          zu tun. Kein Name, keine Geräte-ID.
+        </p>
+        <p>
+          Die einzelnen Einträge werden nach 90 Tagen gelöscht. Danach bleiben nur Tagessummen (Anzahlen, ohne Sitzungs-ID und
+          ohne Uhrzeit) dauerhaft erhalten.
+        </p>
+        <div class="box">
+          <p>
+            <strong>Abschalten:</strong> jederzeit mit „Anonyme Statistik“ in der Bestenliste oder in den Einstellungen (Logo 3
+            Sekunden gedrückt halten). Sendet dein Browser das Signal „Global Privacy Control“, wird keine Statistik gesendet.
+          </p>
+        </div>
+        <p class="legal">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, das Spiel zu verbessern.</p>
+
+        <h2>Feedback</h2>
+        <p>
+          Nur wenn du im Pausenmenü oder auf dem Startbildschirm Feedback schreibst und auf „Senden“ tippst, sendet das Spiel: die
+          Art (Fehler oder Idee), deinen Text, Spielversion, Plattform (Android, iOS, andere), Touch oder Tastatur, Quer- oder
+          Hochformat und die Bildbreite des Spiels. Im Kindermodus gibt es kein Feedback.
+        </p>
+        <p>
+          Nur wenn du bei einem Fehler das Häkchen „Fehlerprotokoll mitsenden“ setzt, kommt ein kurzes Fehlerprotokoll dazu: die
+          letzten Fehlermeldungen des Spiels, fehlgeschlagene Anfragen an den Spiel-Server (nur welche Funktion und der
+          Fehlercode, ohne Inhalt) und wo du gerade warst (Startbildschirm oder Pause, Spielversion, Bildgröße). Namen stehen
+          nicht darin.
+        </p>
+        <p>
+          Gespeichert wird das mit dem Tag, ohne Uhrzeit. Kein Name, keine Geräte-ID, keine IP-Adresse. Damit niemand das
+          Feedback flutet, schickt das Spiel die zufällige Sitzungs-ID des Besuchs mit (siehe Spielstatistik). Der Server merkt
+          sich davon nur einen Hash, um höchstens drei Meldungen pro Besuch und Tag anzunehmen, nie zusammen mit deinem Text, und
+          löscht ihn nach dem Tag. Feedback wird nach einem Jahr gelöscht, außer es steht noch als Aufgabe an. Der Schalter
+          „Anonyme Statistik“ betrifft das Feedback nicht: Es wird nur gesendet, wenn du selbst auf „Senden“ tippst.
+        </p>
+        <p>
+          Der Betreiber liest jedes Feedback selbst. Was umgesetzt werden soll, kann er danach als öffentliches
+          <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub-Issue</a> anlegen: anonym, nur
+          mit deinem Text (vorher geprüft und wenn nötig gekürzt), Spielversion, Plattform, Eingabe und Bildformat. Das
+          Fehlerprotokoll kommt nur dazu, wenn es zum Beheben nötig ist. Er kann außerdem den Stand festhalten (offen, geplant,
+          erledigt, abgelehnt), die Spielversion, in der es umgesetzt wurde, und eine kurze Antwort dazuschreiben.
+        </p>
+        <p>
+          Damit du erfährst, was aus deinem Feedback geworden ist, bekommt jede Meldung einen zufälligen geheimen Schlüssel, den
+          das Spiel auf deinem Gerät erzeugt und mit der Meldung sendet. Der Server speichert davon nur einen Hash (SHA-256), nie
+          den Schlüssel selbst. Der Schlüssel gehört nur zu dieser einen Meldung, nicht zu dir oder deinem Gerät.
+        </p>
+        <p>
+          Unter „Mein Feedback“ zeigt das Spiel deine gesendeten Meldungen (höchstens 20). Dafür behält es auf deinem Gerät, was
+          du gesendet hast: Text, die mitgesendeten Angaben und das Fehlerprotokoll, dazu die Nummer, den Schlüssel und den
+          letzten Stand jeder Meldung. Das bleibt auf dem Gerät. Um den Stand zu erfahren, sendet das Spiel nur die Nummern und
+          Schlüssel dieser Meldungen, keine Geräte-ID und nichts anderes. Der Server antwortet nur für Meldungen, deren Schlüssel
+          passt, und nur mit dem Stand, der kurzen Antwort des Betreibers und der Spielversion, in der sie umgesetzt wurde; nie
+          mit dem Text. Zu der Frage speichert er nichts. So kann niemand den Stand fremder Meldungen abfragen. Das klappt nur auf
+          dem Gerät, von dem du gesendet hast. Im Kindermodus fragt das Spiel nicht.
+        </p>
+        <p>Bitte schreib keine persönlichen Daten (Name, Adresse, Telefonnummer) in den Text.</p>
+        <p class="legal">
+          Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse ist, Fehler zu beheben und das Spiel zu
+          verbessern.
+        </p>
+
+        <h2>Deine Rechte</h2>
+        <p>
+          Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Widerspruch (Art. 15 bis 21
+          DSGVO). Du kannst dich auch bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel beim
+          <a href="https://www.baden-wuerttemberg.datenschutz.de/" rel="noopener"
+            >Landesbeauftragten für den Datenschutz und die Informationsfreiheit Baden-Württemberg</a
+          >.
+        </p>
+        <p>
+          Statistik und Feedback enthalten keine Kennung (der Schlüssel-Hash einer Meldung gehört nur zu dieser Meldung).
+          Einzelne Einträge lassen sich deshalb nicht finden oder einer Person zuordnen. Für einen Eintrag in der Bestenliste
+          nenne bitte Name, Punkte und Datum.
+        </p>
+
+        <footer>
+          <p>Stand: Oktober 2026</p>
+          <p><a href="./">Zurück zum Spiel</a></p>
+        </footer>
+      </section>
+
+      <section id="en" lang="en" data-title="Privacy · Cannstatt Cruiser">
+        <a class="back" href="./">← Back to the game</a>
+        <h1>Privacy</h1>
+        <p class="lead">
+          Cannstatt Cruiser is a free hobby game with no ads, no account and no tracking. This page briefly explains which data
+          is processed, what for and for how long. This is a translation of the German version, with the same content.
+        </p>
+
+        <h2>Who is responsible?</h2>
+        <p>
+          The game is run by a private person under the name <strong>marvinmai</strong>. Questions and requests about privacy are
+          best sent as a
+          <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub issue</a>
+          or through the feedback in the game. GitHub issues are public: please do not write anything personal there.
+        </p>
+
+        <h2>Hosting</h2>
+        <ul>
+          <li>
+            The game's website is hosted on <strong>GitHub Pages</strong>. To deliver the page, GitHub technically processes your
+            IP address (see
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener"
+              >GitHub's privacy statement</a
+            >).
+          </li>
+          <li>
+            The server for the high score list, statistics and feedback runs on <strong>Cloudflare Workers</strong>. Cloudflare
+            technically processes your IP address for this (see
+            <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare's privacy policy</a>). The game server
+            itself never reads or stores the IP address.
+          </li>
+        </ul>
+
+        <h2>On your device</h2>
+        <p>
+          The game stores in your browser (localStorage) only what it needs for playing: your settings (language, kid mode,
+          sound, statistics on/off), your own records and collected stars, the name you last entered, a random device ID for the
+          online high score list, and which hints you have already seen. To play without internet, it also keeps the game files
+          in the browser cache.
+        </p>
+        <p>
+          On your first visit, the game reads your browser's language setting only to choose German or English. Only the chosen
+          language is stored, and only on your device; it is never sent. You can change it in the game at any time.
+        </p>
+        <p>
+          None of this leaves your device, except as described below. You can delete all of it by clearing the site data in your
+          browser.
+        </p>
+        <p class="legal">
+          Legal basis: § 25(2) no. 2 TDDDG (German Telecommunications Digital Services Data Protection Act; technically necessary
+          for the game).
+        </p>
+
+        <h2>Online high score list</h2>
+        <p>Only when you choose to enter a run into the list after playing, the game sends:</p>
+        <ul>
+          <li>the name you type in, the score, distance and duration of the run,</li>
+          <li>the game version and the date,</li>
+          <li>your device ID; of this, only a hash (a checksum that cannot be reversed) is stored.</li>
+        </ul>
+        <p>
+          Only the best run per device stays on the list, and the list keeps the best 500. So that nobody can flood the list, the
+          server remembers for one day when a device entered something. When you open the high score list, the game sends the
+          device ID along so that your own place can be marked; nothing is stored for this.
+        </p>
+        <p>Tip: use a nickname, not your real name.</p>
+        <p class="legal">
+          Legal basis: Art. 6(1)(f) GDPR. The legitimate interest is to offer a shared high score list that is fair and free of
+          spam; whether you enter yourself is up to you.
+        </p>
+
+        <h2>Anonymous play statistics</h2>
+        <p>To make the game better, it sends anonymous numbers about how it is played:</p>
+        <ul>
+          <li>
+            per visit: game version, touch or keyboard, platform (Android, iOS, other) and whether kid mode is on (whether you
+            play in landscape or portrait is not included),
+          </li>
+          <li>
+            also per visit, whether the game already had saved game data on the device (new or returning player, without an ID);
+            the operator's own devices are marked as test devices and counted separately,
+          </li>
+          <li>per run: length, score and distance, only roughly in ranges (for example “100–199 m”),</li>
+          <li>the playing time of the visit.</li>
+        </ul>
+        <p>
+          In addition, a rough location (country, region, city) that Cloudflare derives from the connection. The IP address is
+          never stored. Times are stored only as day and hour. Each visit gets a random session ID that exists only in memory and
+          is gone when you close the game; it has nothing to do with the device ID or the high score list. No name, no device ID.
+        </p>
+        <p>
+          The individual entries are deleted after 90 days. After that, only daily totals (counts, without session ID and without
+          time of day) are kept permanently.
+        </p>
+        <div class="box">
+          <p>
+            <strong>Switching it off:</strong> at any time with the anonymous statistics switch in the high score list or in the
+            settings (hold the logo for 3 seconds). If your browser sends the “Global Privacy Control” signal, no statistics are
+            sent.
+          </p>
+        </div>
+        <p class="legal">Legal basis: Art. 6(1)(f) GDPR. The legitimate interest is to improve the game.</p>
+
+        <h2>Feedback</h2>
+        <p>
+          Only when you write feedback in the pause menu or on the title screen and tap send, the game sends: the kind (bug or
+          idea), your text, game version, platform (Android, iOS, other), touch or keyboard, landscape or portrait and the width of
+          the game's picture. There is no feedback in kid mode.
+        </p>
+        <p>
+          Only when you tick the box to send the error log along with a bug report, a short error log is added: the game's last
+          error messages, failed requests to the game server (only which function and the error code, without content) and where
+          you were (title screen or pause, game version, picture size). It contains no names.
+        </p>
+        <p>
+          This is stored with the day, without the time. No name, no device ID, no IP address. So that nobody can flood the
+          feedback, the game sends the visit's random session ID along (see play statistics). The server keeps only a hash of it,
+          to accept at most three reports per visit and day, never together with your text, and deletes it after that day.
+          Feedback is deleted after one year, unless it is still an open task. The anonymous statistics switch does not affect
+          feedback: it is only sent when you tap send yourself.
+        </p>
+        <p>
+          The operator reads every piece of feedback personally. What is going to be done may then be created as a public
+          <a href="https://github.com/marvinmai/cannstatt-cruiser/issues" rel="noopener">GitHub issue</a>: anonymously, only with
+          your text (checked first and shortened if needed), game version, platform, input and picture format. The error log is
+          only added if it is needed for the fix. The operator can also record the status (open, planned, done, declined), the game
+          version in which it was done, and add a short reply.
+        </p>
+        <p>
+          So that you can find out what became of your feedback, each report gets a random secret key that the game creates on
+          your device and sends with the report. The server stores only a hash of it (SHA-256), never the key itself. The key
+          belongs only to that one report, not to you or your device.
+        </p>
+        <p>
+          In the list of your own feedback, the game shows the reports you sent (at most 20). For this, it keeps on your device
+          what you sent: the text, the details sent along and the error log, plus the number, the key and the last status of each
+          report. This stays on the device. To find out the status, the game sends only the numbers and keys of these reports, no
+          device ID and nothing else. The server answers only for reports whose key matches, and only with the status, the
+          operator's short reply and the game version in which it was done; never with the text. It stores nothing about the
+          request. This way nobody can look up the status of other people's reports. It only works on the device you sent from.
+          In kid mode the game does not ask.
+        </p>
+        <p>Please do not write any personal data (name, address, phone number) in the text.</p>
+        <p class="legal">
+          Legal basis: Art. 6(1)(f) GDPR. The legitimate interest is to fix bugs and improve the game.
+        </p>
+
+        <h2>Your rights</h2>
+        <p>
+          You have the right of access, rectification, erasure, restriction of processing and objection (Art. 15 to 21 GDPR). You
+          can also complain to a data protection supervisory authority, for example the
+          <a href="https://www.baden-wuerttemberg.datenschutz.de/" rel="noopener"
+            >State Commissioner for Data Protection and Freedom of Information Baden-Württemberg</a
+          >.
+        </p>
+        <p>
+          Statistics and feedback contain no identifier (the key hash of a report belongs only to that report). Individual entries
+          therefore cannot be found or linked to a person. For an entry in the high score list, please give the name, score and
+          date.
+        </p>
+
+        <footer>
+          <p>Last updated: October 2026</p>
+          <p><a href="./">Back to the game</a></p>
+        </footer>
+      </section>
     </main>
   </body>
 </html>
