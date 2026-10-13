@@ -1,5 +1,5 @@
 /**
- * The street under a stunt line or the NorDIY park (ROADMAP 52): a low
+ * The street under a stunt line (ROADMAP 52; not the NorDIY park): a low
  * obstacle under each ledge a kicker launches onto, so skipping the line is
  * no free ride (the line pays the points, the street still has something to
  * jump). Safe for the line by construction:

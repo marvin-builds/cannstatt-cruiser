@@ -487,3 +487,4 @@ The USER tested v2026-10-12.3 (board tabs, chips, buttons in Firefox, delete and
 - On main, not released: wave B (85, English as a second language) and wave C (86, missions and adaptive density).
 - Next: the final multi-persona playtest (desktop keyboard, phone touch landscape and portrait, casual first-timer) plus one fix round, then the USER decides on a release.
 - Deferred: the EntityKinds `scooter` / `pigeons` instead of the `data.hazard` stand-ins; the pause/back product choice from 75 (needs the USER).
+- Update 2026-10-13 (USER): no more low street obstacles in front of the NorDIY containers (too hard to spot there; the park line no longer calls `planLineStreet`, stunt lines keep theirs); on main, not released.

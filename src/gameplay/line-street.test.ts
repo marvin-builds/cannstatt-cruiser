@@ -6,27 +6,25 @@ import { buildCourse } from './course';
 import { EARLY_TAKEOFF_WINDOW, HUMAN_HOLDS, humanFair, soberFairness, solversFor } from './fairness';
 import { copyBody, groundBody, hitboxOf, launchBody, stepBodyInto } from './jumpsim';
 import { LINE_STREET_KINDS } from './line-street';
-import { planParkLine } from './park-line';
 import { type Pattern, type Piece, runoutFor } from './patterns';
 import { kickerWindow, landsOnHighLedge, overlaps } from './rules';
 import { planStuntLine, STUNT_SHAPES, stuntWorstLanding } from './stunt-line';
 import { kickerLaunchSpeed, stepOf } from './stunt-sim';
 
-// ROADMAP 52 (Phase 1, item 2): stunt lines and the NorDIY park put low
-// obstacles on the street under their launch ledges, so skipping the line is
-// no free ride. The street path clears each of them with the normal take-off
-// window after rolling past its kicker; riding the line never touches one.
+// ROADMAP 52 (Phase 1, item 2): stunt lines put low obstacles on the street
+// under their launch ledges, so skipping the line is no free ride (the NorDIY
+// park has none: park-line.test.ts). The street path clears each of them with
+// the normal take-off window after rolling past its kicker; riding the line
+// never touches one.
 
 /** Speed ranges a line is planned for: early ramp, mid, top speed, and pinned speeds. */
 const RANGES = [[90, 99], [140, 152], [181, 190], [190], [120], [90]];
-const PARK_SPEEDS = [90, 120, 160, 190];
 const SEEDS = Array.from({ length: 24 }, (_, i) => i + 1);
 
 interface Line {
   label: string;
   pattern: Pattern;
   speeds: number[];
-  park: boolean;
 }
 
 function run(steps: Generator<void, Pattern>): Pattern {
@@ -38,11 +36,8 @@ const LINES: Line[] = [
     RANGES.map((range) => {
       const speeds = [range[0]!, (range[0]! + range.at(-1)!) / 2, range.at(-1)!];
       const shape = STUNT_SHAPES[seed % STUNT_SHAPES.length]!;
-      return { label: `line seed ${seed} ${range.join('-')}`, pattern: run(planStuntLine(new Rng(seed), range, seed % 3, seed, undefined, shape)), speeds, park: false };
+      return { label: `line seed ${seed} ${range.join('-')}`, pattern: run(planStuntLine(new Rng(seed), range, seed % 3, seed, undefined, shape)), speeds };
     }),
-  ),
-  ...SEEDS.flatMap((seed) =>
-    PARK_SPEEDS.map((speed) => ({ label: `park seed ${seed} ${speed}`, pattern: run(planParkLine(new Rng(seed), [speed], -seed)), speeds: [speed], park: true })),
   ),
 ];
 
@@ -80,20 +75,15 @@ function launchTouches(kicker: Piece, ledge: Piece, o: Piece, speed: number, hol
   return false;
 }
 
-describe('obstacles on the street under stunt lines and the park', { timeout: 120_000 }, () => {
-  it('puts low obstacles (never people or rails) under most lines and every park', () => {
-    let lines = 0;
+describe('obstacles on the street under stunt lines', { timeout: 120_000 }, () => {
+  it('puts low obstacles (never people or rails) under most lines', () => {
     let withStreet = 0;
-    for (const { pattern, park } of LINES) {
+    for (const { pattern } of LINES) {
       expect(pattern.pieces.some((x) => isRail(x.kind))).toBe(false);
       for (const o of streetOf(pattern)) expect(LINE_STREET_KINDS).toContain(o.kind);
-      if (park) expect(streetOf(pattern).length, 'park').toBeGreaterThanOrEqual(1);
-      else {
-        lines++;
-        if (streetOf(pattern).length > 0) withStreet++;
-      }
+      if (streetOf(pattern).length > 0) withStreet++;
     }
-    expect(withStreet / lines).toBeGreaterThanOrEqual(0.85);
+    expect(withStreet / LINES.length).toBeGreaterThanOrEqual(0.85);
   });
 
   it('each lies under a launch ledge, behind its landing, with no gap jump before it (a skater who missed one rides the street)', () => {
@@ -148,14 +138,6 @@ describe('obstacles on the street under stunt lines and the park', { timeout: 12
       // Only a bench on the street below is a support (grindable from the street like any bench).
       expect(course.rails).toEqual([]);
       expect(course.ledges!.length).toBe(streetOf(pattern).filter((o) => o.kind === 'bench').length);
-    }
-  });
-
-  it('keeps the high five free: no obstacle between the park entrance and its first bank', () => {
-    for (const { pattern, park } of LINES) {
-      if (!park) continue;
-      const bank = stuntPieces(pattern)[0]!;
-      for (const o of streetOf(pattern)) expect(o.x).toBeGreaterThan(bank.x + bank.w);
     }
   });
 });

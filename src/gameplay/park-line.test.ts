@@ -7,7 +7,6 @@ import type { Pattern, Piece } from './patterns';
 import { HUMAN_HOLDS } from './fairness';
 import { kickerWindow, KICKER_LIP } from './rules';
 import { CONTAINER_LENGTH, CRANE_LENGTH, CRANE_SCALE, HIGH_FIVER_X, PARK_MAX_LENGTH, PARK_MIN_SPEED, parkMaxLength, parkPiecesOf, planParkLine } from './park-line';
-import { LINE_STREET_KINDS } from './line-street';
 import { gapHolds, STUNT_APEX_MAX, STUNT_TAKEOFF_WINDOW, stuntWorstLanding } from './stunt-line';
 import { fly, jumpWindow, launchWindow, onLedge, stepOf, windowTicks } from './stunt-sim';
 import { runoutFor } from './patterns';
@@ -43,7 +42,7 @@ const launchesOf = (kicker: Piece, ledge: Rect, speed: number, phase: number, ho
   launchWindow(kicker, Number(kicker.data!.velocity), ledge, stepOf(speed), hold, phase);
 
 describe('NorDIY park line', { timeout: 60_000 }, () => {
-  it('is a park pattern of 3-6 stunt pieces: banks (kickers), two containers, then the crane as the last ledge, on the street only low obstacles', () => {
+  it('is a park pattern of 3-6 stunt pieces: banks (kickers), two containers, then the crane as the last ledge, nothing on the street in front of it (USER: too hard to spot)', () => {
     each((p, seed) => {
       expect(p.name).toBe('park');
       const pieces = stunts(p);
@@ -57,7 +56,7 @@ describe('NorDIY park line', { timeout: 60_000 }, () => {
         expect(piece.data).toMatchObject({ line: -seed, step: i + 1, steps: pieces.length });
         if (i > 0) expect(piece.x).toBeGreaterThan(pieces[i - 1]!.x + pieces[i - 1]!.w);
       });
-      expect(p.pieces.every((x) => !isRail(x.kind) && (!isObstacle(x.kind) || LINE_STREET_KINDS.includes(x.kind)))).toBe(true);
+      expect(p.pieces.some((x) => isRail(x.kind) || isObstacle(x.kind))).toBe(false);
     });
   });
 

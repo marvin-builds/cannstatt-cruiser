@@ -68,7 +68,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   player/air-trick.ts   canStartAirTrick(), airTrickTicks(), airTicksLeft(): the kickflip start rule and length (see Air trick, src/player/CONTRACT.md)
   gameplay/spawner.ts   pattern planning ahead on a per-tick work budget (see Planning budget), drunk planning, effect street (EFFECT_FREE_SECONDS, CHILLED_TIER), JOINT_SPACING
   gameplay/street.ts    what counts as something to react to on the street (shared by the quiet cap and quiet-time.ts)
-  gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line or the park (ROADMAP 52)
+  gameplay/line-street.ts  one low obstacle on the street under each launch ledge of a stunt line (ROADMAP 52; none in the park)
   gameplay/quiet-time.ts  quiet-time meter: longest and mean stretch without anything to react to, per minute
   gameplay/star-arcs.ts star points (ROADMAP 65): STAR_POINTS 10 per star and STAR_ARC_BONUS 50 for a whole arc in one flight (both x multiplier, via addPoints, so stars never start or break a combo); asArc / linkArcs tag a pattern's stars with a run-wide arc id and size (data.arc, data.arcSize); StarArcs tracks the arc in progress (a street landing or a new run cancels it), and a whole arc emits `starArc`. A jump-arc pattern or combo guide line is one arc; stunt lines and the park get one arc per kicker-to-kicker stretch
   gameplay/combo-grace.ts  ComboGrace (ROADMAP 52 point 10): a street touch of up to COMBO_GRACE_SECONDS (0.3) after a landing keeps combo and multiplier, staying longer ends it; a crash ends it at once
