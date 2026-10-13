@@ -1,7 +1,7 @@
 /**
  * The notice after turning kid mode on in the settings (ROADMAP 43, 64): kid
  * mode is on, and how to turn it off again (only the hidden settings menu can,
- * kid mode has no gear). Switched on during a paused run, it also says the run
+ * kid mode has no settings button). Switched on during a paused run, it also says the run
  * restarts (on OK).
  * Texts and layout; the screen state is SettingsMenu's 'kidNotice', hotspots
  * in index.ts, drawing in screens.ts.

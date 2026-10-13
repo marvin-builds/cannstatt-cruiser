@@ -119,7 +119,7 @@ export function buttonPlate(hit: Rect, m: UiMetrics): Rect {
 
 /**
  * An icon `size` px square (before iconScale) on its button plate, both centred in the tap area. The
- * plate grows by 1 px where the icon's parity differs from it (the 9x9 gear on the 14 px desktop
+ * plate grows by 1 px where the icon's parity differs from it (the 9x9 settings icon on the 14 px desktop
  * plate), so the icon sits exactly in the middle at every scale.
  */
 export function iconOnPlate(hit: Rect, m: UiMetrics, size: number): { plate: Rect; icon: { x: number; y: number } } {

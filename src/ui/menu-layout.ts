@@ -8,7 +8,7 @@
  * overlaps the HUD button row, and pause and game over keep the skater
  * visible outside portrait. "Startbildschirm" ends the run, so it is a small
  * corner button at the left under the stats plate, away from where a thumb
- * taps to ride on or start a new run. The title's settings gear (adult mode
+ * taps to ride on or start a new run. The title's settings button (adult mode
  * only, ROADMAP 64) is an icon button in the same top-left corner, left of
  * the logo. Feedback (ROADMAP 50, adult mode): a speech-bubble icon in the
  * title's bottom-right corner and a "Feedback" button in the pause column.
@@ -39,7 +39,7 @@ export interface MenuInput {
   install: boolean;
   /** The HUD stats plate as drawn now (pause), which the logo keeps clear of. */
   plate?: Rect | null;
-  /** Offer the settings gear (title in adult mode only). */
+  /** Offer the settings button (title in adult mode only). */
   settingsButton?: boolean;
   /** The title's trophy where it shows (titleTrophy), which the panel keeps clear of; null or absent without it. */
   trophy?: Rect | null;
@@ -60,7 +60,7 @@ export interface MenuButtons {
   logo: Rect | null;
   /** "Eintragen" on game over (the run makes the online list, see highscore-flow.ts). */
   submit: Rect | null;
-  /** The title's settings gear (adult mode): opens the settings menu. */
+  /** The title's settings button (adult mode): opens the settings menu. */
   settings: Rect | null;
   /** Opens the feedback screen: the title's speech-bubble icon or the pause screen's "Feedback" button. */
   feedback: Rect | null;
@@ -100,7 +100,7 @@ export const feedbackLabel = (touch: boolean) => texts().menu.feedback(touch);
 export const submitLabel = (touch: boolean) => texts().menu.submit(touch);
 export const gameOverPrompt = (touch: boolean) => texts().menu.gameOverPrompt(touch);
 
-/** The title's desktop key line: F and G only while the feedback icon and the settings gear show. */
+/** The title's desktop key line: F and G only while the feedback icon and the settings button show. */
 export function titleKeys(icons: { feedback: boolean; settings: boolean }): string {
   const t = texts().title;
   return [t.keys, ...(icons.feedback ? [t.feedbackKey] : []), ...(icons.settings ? [t.settingsKey] : [])].join(', ');
@@ -190,7 +190,7 @@ export function toTitleButton(input: MenuInput, m: UiMetrics, screen: 'pause' | 
 }
 
 /**
- * The title's settings gear: a HUD-style icon button in the top-left corner,
+ * The title's settings button: a HUD-style icon button in the top-left corner,
  * mirroring the HUD button row at the right (the logo is centred, so the
  * corner is free); its tap area is a HUD tap area (~44 CSS px on phones).
  */
@@ -299,7 +299,7 @@ function fitBody(input: MenuInput, blocks: (scale: number) => Block[], column: C
 
 /**
  * The title under the logo: tagline, start prompt, controls help, the reload
- * card, records; the settings gear in the top-left corner, the trophy (placed
+ * card, records; the settings button in the top-left corner, the trophy (placed
  * by score-layout.ts) and the feedback icon bottom right. No install card:
  * any tap there starts a run (it shows on game over, ROADMAP 68). The icons
  * never cost a row: where a card would reach the feedback icon it gives way

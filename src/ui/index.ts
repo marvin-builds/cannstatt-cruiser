@@ -1,7 +1,7 @@
 /**
  * UI slice: title, HUD, pause, game over, the rotate screen (rotate-screen.ts, rotate-sheet.ts), the pointer buttons
  * (pause, mute, fullscreen, the item button), the settings menu (kid mode,
- * opened by the title's gear in adult mode or by a 3 s long press on the title
+ * opened by the title's settings button in adult mode or by a 3 s long press on the title
  * or pause logo or holding K), the kid notice after turning kid mode on there
  * (kid-notice.ts) and the menu notices: "Neu in dieser Version", the reload button, the
  * install card and "Zum Startbildschirm" (rules in notices.ts and install-offer.ts, layout in
@@ -528,7 +528,7 @@ export function createUiSystem(options: UiSystemOptions = {}): UiSystem {
 
   /**
    * The buttons of the menu screens: reload (U), "Zum Startbildschirm" (T), install, "×", "Weiter",
-   * "Eintragen" (E / Enter), the settings gear (G, title in adult mode).
+   * "Eintragen" (E / Enter), the settings button (G, title in adult mode).
    */
   function addMenuHotspots(ctx: GameContext): void {
     const { state, commands } = ctx;

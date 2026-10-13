@@ -2,7 +2,7 @@
  * The settings menu ("Einstellungen") with the kid mode (state.kidMode) and
  * the anonymous statistics switch (ROADMAP 46, also on the "Bestenliste"),
  * plus the notice that shows when kid mode is turned on (ROADMAP 43, 64).
- * Adult mode opens it with the title's gear; kid mode only by the hidden long
+ * Adult mode opens it with the title's settings button; kid mode only by the hidden long
  * press (3 s on the logo or K, the only guard there). DOM-free logic: the long
  * press, the toggles and persistence, and whether the
  * plain "Testgerät" line shows (ROADMAP 55; the game never sets the marker). Hotspots and
