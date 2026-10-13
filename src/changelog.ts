@@ -25,6 +25,12 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-13.1',
+    date: '2026-10-13',
+    items: ['NorDIY: freie Straße vor den Containern'],
+    en: ['NorDIY: clear street by the containers'],
+  },
+  {
     version: '2026-10-12.6',
     date: '2026-10-12',
     items: [
