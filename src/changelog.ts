@@ -25,6 +25,12 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-13.2',
+    date: '2026-10-13',
+    items: ['Neues Symbol für die Einstellungen'],
+    en: ['New icon for the settings'],
+  },
+  {
     version: '2026-10-13.1',
     date: '2026-10-13',
     items: ['NorDIY: freie Straße vor den Containern'],
