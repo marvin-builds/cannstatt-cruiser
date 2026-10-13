@@ -478,6 +478,18 @@ The USER tested v2026-10-12.3 (board tabs, chips, buttons in Firefox, delete and
 86. **Wave C, missions (52 Phase 3 points 11 and 12):** small missions per run and adaptive density, with their texts in both languages.
     - Status 2026-10-12: built (a7541de, 28352dd, 52dc79f, 425cc84), not released; details under 52 points 11 and 12. Ui: the mission line under the stats plate (beside the portrait item button, hidden in pause and during the zone banner), "Neue Mission!" / "Mission geschafft! +N", "Missionen: N" on game over; audio: a ding and a jingle; playtest `scripts/scenarios/missions.ts`.
     - Open, to confirm with the USER: the density tier step can bring tier-3 templates from about 70 s at full hearts (keep, or step up only from tier 2 / later); a high five mission dropped because its park passed has no popup (keep quiet, or show a short "Mission verpasst").
+87. **Three sliders instead of the gear (USER 2026-10-13, candidate G of the offline review `playtest-output/icon-review/settings-icons.html`):** the 9x9 gear of 67 still reads like a sun. Replace `ICON_GEAR` (src/ui/art.ts) with three horizontal slider tracks (grey `m`, e.g. the review's `#b9c0d8` or the closest `UI` grey) and white 2x3 knobs at different heights; the `ICON` palette gets that grey. Keep the 9x9 size and the odd-plate rule of 67, the button, its hotspot and the long press unchanged; rename the export if "gear" no longer fits (e.g. `ICON_SETTINGS`). Check at 1x and 2x on desktop, phone landscape and portrait next to the trophy, fullscreen and speaker icons. Owner: `src/ui`.
+    ```
+    .ww......
+    mwwmmmmmm
+    .ww......
+    .....ww..
+    mmmmmwwmm
+    .....ww..
+    ...ww....
+    mmmwwmmmm
+    ...ww....
+    ```
 - Deferred: the EntityKinds `scooter`/`pigeons` instead of the `data.hazard` stand-ins (a wide rename across gameplay, world, audio and ui without player-visible change). Needs the USER: the pause/back product choice from 75.
 - Releases: each wave is pushed to `main` after verification; the USER decides when to tag a release (52 phases are meant to be played between releases).
 
