@@ -490,6 +490,7 @@ The USER tested v2026-10-12.3 (board tabs, chips, buttons in Firefox, delete and
     mmmwwmmmm
     ...ww....
     ```
+    - Status 2026-10-13: built (`ICON_SETTINGS` with `SETTINGS_PALETTE` white + `UI.muted`, pinned in `src/ui/art.test.ts`), not released. Follow-up for a later slice: the code name `settingsGear` (ui/menu-layout.ts) and the playtest scenario `scripts/scenarios/title-gear.ts` still say "gear".
 - Deferred: the EntityKinds `scooter`/`pigeons` instead of the `data.hazard` stand-ins (a wide rename across gameplay, world, audio and ui without player-visible change). Needs the USER: the pause/back product choice from 75.
 - Releases: each wave is pushed to `main` after verification; the USER decides when to tag a release (52 phases are meant to be played between releases).
 
