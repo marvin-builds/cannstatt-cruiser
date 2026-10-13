@@ -16,8 +16,9 @@
  *   container lengths (ROADMAP 62), with stars along it;
  * - the high fiver stands on the street at HIGH_FIVER_X, before the first
  *   bank (PARK_ENTRY), under no ledge;
- * - low obstacles on the street under the containers a bank launches onto
- *   (line-street.ts), never before the first bank.
+ * - nothing on the street in front of the containers and the crane: unlike
+ *   a stunt line (line-street.ts), obstacles there were too hard to spot
+ *   against the park's scenery (USER).
  *
  * Pattern x 0 is the park's start (ParkPlan.start), so a piece at pattern x
  * `x` lies at run distance `start + x`, which is on screen at
@@ -29,7 +30,6 @@ import type { ParkPiece } from '../types';
 import { highFiverRect, LEDGE } from './catalogue';
 import type { Pattern, Piece } from './patterns';
 import type { WorkBudget } from './solver';
-import { planLineStreet } from './line-street';
 import { clampLength, FINAL_GRIND_SECONDS, GAP_LANDING_SECONDS, GAP_RUNUP_SECONDS, LineBuilder } from './stunt-line';
 
 /** The park's zone (Bad Cannstatt): the ledge art falls back to its look should the park lines ever draw one. */
@@ -109,7 +109,6 @@ export function* planParkLine(rng: Rng, speeds: number[], line: number, budget?:
     mark(b.launchLedge(mark(b.dropKicker(second, craneHeight), 'bank'), craneHeight, FINAL_GRIND_SECONDS, craneLength), 'crane');
   }
   yield* b.spend(budget);
-  yield* planLineStreet(b, budget);
   return b.finish('park', [{ kind: 'highFiver', ...highFiverRect(HIGH_FIVER_X) }]);
 }
 
