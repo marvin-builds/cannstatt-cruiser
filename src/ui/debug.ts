@@ -82,7 +82,7 @@ export interface UiDebugHook {
   /**
    * Current tap areas (view px) for this display: HUD buttons, settings buttons, the kid notice's OK, the logo
    * (title, or the pause screen's) and the menu screen's buttons (reload, install, ×, Zum Startbildschirm, Weiter,
-   * the title's settings gear), null off menus; the HUD stats plate as last laid out and the touch item button's
+   * the title's settings button), null off menus; the HUD stats plate as last laid out and the touch item button's
    * place (ROADMAP 75: both keep clear of display cutouts).
    */
   layout(): {

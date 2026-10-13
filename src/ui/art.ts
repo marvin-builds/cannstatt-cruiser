@@ -182,22 +182,27 @@ export const ICON_FEEDBACK = new PixelIcon({ w: UI.white, k: UI.ink }, [`
   .w......
 `]);
 
+/** Knob and track colours of the settings icon. */
+export const SETTINGS_PALETTE = { w: UI.white, m: UI.muted };
+
 /**
- * The title's settings button: the USER's 9x9 gear (ROADMAP 67), eight teeth
- * (one on each side, a 2x1 pair on each diagonal) and a small hole. Odd-sized,
- * so iconButton gives it an odd plate where the HUD plate is even (desktop).
+ * The title's settings button: the USER's "three sliders" (ROADMAP 87), white
+ * knobs on grey tracks; it replaced a gear that read like a sun. Odd-sized
+ * (9x9, ROADMAP 67), so iconButton gives it an odd plate where the HUD plate is even (desktop).
  */
-export const ICON_GEAR = new PixelIcon(ICON, [`
-  ....w....
-  .ww.w.ww.
-  .wwwwwww.
-  ..wwwww..
-  wwww.wwww
-  ..wwwww..
-  .wwwwwww.
-  .ww.w.ww.
-  ....w....
-`]);
+export const SETTINGS_ART = `
+  .ww......
+  mwwmmmmmm
+  .ww......
+  .....ww..
+  mmmmmwwmm
+  .....ww..
+  ...ww....
+  mmmwwmmmm
+  ...ww....
+`;
+
+export const ICON_SETTINGS = new PixelIcon(SETTINGS_PALETTE, [SETTINGS_ART]);
 
 /** Frame 0 sound on, frame 1 muted. */
 export const ICON_SOUND = new PixelIcon(ICON, [

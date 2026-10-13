@@ -7,7 +7,7 @@
 import { GAMEOVER_INPUT_DELAY } from '../core/config';
 import { measureText, type TextOptions } from '../core/font';
 import type { Rect, RenderContext } from '../types';
-import { DISMISS_ICON, ICON_FEEDBACK, ICON_GEAR, STAR, UI } from './art';
+import { DISMISS_ICON, ICON_FEEDBACK, ICON_SETTINGS, STAR, UI } from './art';
 import { centred, fill, iconButton, menuButton, redDot, ribbon, scrollBar, text } from './draw-kit';
 import { blinkOn, centreX, formatNumber, iconOnPlate, metres, uiMetrics } from './layout';
 import { drawLogo, logoRect } from './logo';
@@ -111,7 +111,7 @@ export function drawDismiss(r: RenderContext, rect: Rect): void {
   DISMISS_ICON.draw(r.g, 0, rect.x + Math.floor((rect.w - size) / 2), rect.y + Math.floor((rect.h - size) / 2), scale);
 }
 
-/** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: the settings gear, feedback). */
+/** The cards and buttons a screen's layout placed (game over: only once input is accepted; title: the settings button, feedback). */
 function drawNotices(r: RenderContext, l: MenuLayout, feedbackDot: boolean): void {
   const reload = l.blocks.get('reload');
   if (reload) drawReloadCard(r, reload);
@@ -123,7 +123,7 @@ function drawNotices(r: RenderContext, l: MenuLayout, feedbackDot: boolean): voi
     menuButton(r, toTitlePlate(l.buttons.toTitle), label, UI.white, 1);
   }
   if (l.buttons.submit) menuButton(r, l.buttons.submit, submitLabel(display.touch), UI.yellow);
-  if (l.buttons.settings) iconButton(r, uiMetrics(display), l.buttons.settings, ICON_GEAR);
+  if (l.buttons.settings) iconButton(r, uiMetrics(display), l.buttons.settings, ICON_SETTINGS);
   // Feedback: the title's speech-bubble icon, the pause screen's button.
   const feedback = l.buttons.feedback;
   if (feedback && state.mode === 'title') iconButton(r, uiMetrics(display), feedback, ICON_FEEDBACK);
