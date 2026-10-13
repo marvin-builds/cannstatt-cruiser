@@ -851,7 +851,7 @@ picks one (null while riding or while the settings menu covers it):
 | Screen | When | Buttons (key) |
 |---|---|---|
 | "Neu in dieser Version" | mode `title` and `state.whatsNew` non-empty, before the normal title | "Weiter"; modal: a tap anywhere or any key but M closes it too (`commands.markVersionSeen()`) |
-| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)), speech-bubble "Feedback" icon bottom right (F, adult mode only, see [Player feedback](#player-feedback-roadmap-50)); the gear top left (G, adult mode only) and the logo's long press open the settings |
+| title | mode `title` | reload, install hint, trophy "Bestenliste" (B, adult mode only, see [Online highscores](#online-highscores-roadmap-34)), speech-bubble "Feedback" icon bottom right (F, adult mode only, see [Player feedback](#player-feedback-roadmap-50)); the settings button top left (three sliders, G, adult mode only) and the logo's long press open the settings |
 | pause | mode `paused` | the logo (long press = settings, a short tap resumes), "Zum Startbildschirm" (T), "Feedback" (F, adult mode only), reload |
 | game over | mode `gameover`; buttons only after `GAMEOVER_INPUT_DELAY` (0.75 s) | "Eintragen" (E / Enter, only when the run makes the online top 20), "Zum Startbildschirm" (T), reload, install hint |
 
@@ -907,11 +907,11 @@ picks one (null while riding or while the settings menu covers it):
   missing or junk storage means adult mode. Every change is saved at once,
   so an explicit choice (off or on) is kept across reloads. Other slices
   only read it.
-- **Settings** ("Einstellungen") open from the gear button on the title
+- **Settings** ("Einstellungen") open from the settings button on the title
   (ROADMAP 64, adult mode only): `MenuButtons.settings` (`settingsGear`, the
-  top-left corner, an icon button like the trophy, `ICON_GEAR` in `ui/art.ts`;
+  top-left corner, an icon button like the trophy, `ICON_SETTINGS` in `ui/art.ts`, three sliders since ROADMAP 87;
   `MenuInput.settingsButton` set by `currentMenu` for the title while
-  `!state.kidMode`), tap, click or key G. In kid mode there is no gear and G
+  `!state.kidMode`), tap, click or key G. In kid mode there is no settings button and G
   does nothing. The hidden way stays: on the title and the pause screen,
   holding the logo (`logoRect` on the title, `MenuButtons.logo` on the pause
   screen; touch or mouse) or K for `LONG_PRESS_TIME` = 3 s; a thin progress
