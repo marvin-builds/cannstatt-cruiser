@@ -25,6 +25,12 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-15.1',
+    date: '2026-10-15',
+    items: ['Neue Adresse: marvin-builds.github.io'],
+    en: ['New address: marvin-builds.github.io'],
+  },
+  {
     version: '2026-10-13.2',
     date: '2026-10-13',
     items: ['Neues Symbol für die Einstellungen'],
