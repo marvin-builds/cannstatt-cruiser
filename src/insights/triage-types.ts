@@ -11,7 +11,7 @@ export const FEEDBACK_STATUSES = ['open', 'todo', 'done', 'rejected'] as const;
  * (GitHub's `not_planned` or `duplicate`), or gone (404, transferred or deleted).
  */
 export const ISSUE_STATES = ['open', 'completed', 'notPlanned', 'missing'] as const;
-export const ISSUE_REPO = 'marvinmai/cannstatt-cruiser';
+export const ISSUE_REPO = 'marvin-builds/cannstatt-cruiser';
 export const MIN_ISSUE_TITLE = 3;
 export const MAX_ISSUE_TITLE = 120;
 export const MAX_ISSUE_BODY = 8000;

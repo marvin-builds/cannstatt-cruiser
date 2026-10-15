@@ -109,7 +109,7 @@ npm run typecheck
 
 ## Never POST to the live highscore list
 
-The worker at `https://cannstatt-cruiser-scores.marvinmai.workers.dev` is
+The worker at `https://cannstatt-cruiser-scores.marvin-builds.workers.dev` is
 public: every accepted `POST /score` lands on the list everyone sees.
 
 - **Unit tests** (`src/net/`, `src/ui/`) pass a fake `fetch` (and a memory
@@ -121,7 +121,7 @@ public: every accepted `POST /score` lands on the list everyone sees.
   have fetched), for example:
 
 ```ts
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const entries: unknown[] = [];
 await t.page.route(`${API}/**`, async (route) => {
   const req = route.request();

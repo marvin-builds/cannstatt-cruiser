@@ -72,7 +72,7 @@ describe('statusLabel and the status chips', () => {
 
 describe('issueUrl', () => {
   it('links into the public repo', () => {
-    expect(issueUrl(12)).toBe('https://github.com/marvinmai/cannstatt-cruiser/issues/12');
+    expect(issueUrl(12)).toBe('https://github.com/marvin-builds/cannstatt-cruiser/issues/12');
   });
 });
 
@@ -80,7 +80,7 @@ describe('parseIssueNumber', () => {
   it('reads 12, #12 and an issue link of the repo', () => {
     expect(parseIssueNumber('12')).toBe(12);
     expect(parseIssueNumber(' #7 ')).toBe(7);
-    expect(parseIssueNumber('https://github.com/marvinmai/cannstatt-cruiser/issues/31')).toBe(31);
+    expect(parseIssueNumber('https://github.com/marvin-builds/cannstatt-cruiser/issues/31')).toBe(31);
     expect(parseIssueNumber(issueUrl(5) + '#issuecomment-1')).toBe(5);
   });
   it('rejects anything else', () => {

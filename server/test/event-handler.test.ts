@@ -4,8 +4,8 @@ import { MAX_EVENT_BYTES } from '../src/events';
 import { handleRequest } from '../src/handler';
 import { FakeD1 } from './d1-fake';
 
-const BASE = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
-const ORIGIN = 'https://marvinmai.github.io';
+const BASE = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
+const ORIGIN = 'https://marvin-builds.github.io';
 const NOW = Date.parse('2026-10-11T14:37:21Z');
 const DAY_MS = 24 * 3600_000;
 const SESSION = '0123456789abcdef0123456789abcdef';
@@ -139,7 +139,7 @@ describe('POST /event stores valid events', () => {
 
 describe('POST /event rejects', () => {
   it('a missing or foreign Origin with 403 and writes nothing', async () => {
-    for (const origin of [null, 'https://evil.example', 'https://marvinmai.github.io.evil.example']) {
+    for (const origin of [null, 'https://evil.example', 'https://marvin-builds.github.io.evil.example']) {
       const res = await post(session, { origin });
       expect(res.status, String(origin)).toBe(403);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();

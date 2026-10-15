@@ -5,8 +5,8 @@ import type { GitHubFetch } from '../src/github';
 import { handleRequest } from '../src/handler';
 import { FakeD1 } from './d1-fake';
 
-const BASE = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
-const ORIGIN = 'https://marvinmai.github.io';
+const BASE = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
+const ORIGIN = 'https://marvin-builds.github.io';
 const NOW = Date.parse('2026-10-12T14:37:21Z');
 const KEY = '00112233445566778899aabbccddeeff';
 const OTHER_KEY = 'fedcba9876543210fedcba9876543210';

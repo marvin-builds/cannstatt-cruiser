@@ -11,7 +11,7 @@ export const FEEDBACK_STATUSES = ['open', 'todo', 'done', 'rejected'] as const;
  */
 export const ISSUE_STATES = ['open', 'completed', 'notPlanned', 'missing'] as const;
 /** The public repository that gets the issues (the fine-grained token may write only there). */
-export const ISSUE_REPO = 'marvinmai/cannstatt-cruiser';
+export const ISSUE_REPO = 'marvin-builds/cannstatt-cruiser';
 /** Every feedback issue carries this label plus its kind (`bug` or `idea`). */
 export const ISSUE_LABEL = 'feedback';
 export const MIN_ISSUE_TITLE = 3;

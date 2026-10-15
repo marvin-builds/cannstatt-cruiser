@@ -5,7 +5,7 @@
  * use a fake and never reach the public list.
  */
 
-export const SCORES_URL = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+export const SCORES_URL = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 /** A request that takes longer counts as offline. */
 export const REQUEST_TIMEOUT_MS = 6000;
 

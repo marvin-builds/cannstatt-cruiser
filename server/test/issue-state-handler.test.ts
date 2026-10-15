@@ -6,8 +6,8 @@ import { handleRequest, type Env } from '../src/handler';
 import { ISSUE_SYNC_INTERVAL_MS, MAX_SINGLE_ISSUE_READS } from '../src/issue-sync';
 import { FakeD1 } from './d1-fake';
 
-const BASE = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
-const ORIGIN = 'https://marvinmai.github.io';
+const BASE = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
+const ORIGIN = 'https://marvin-builds.github.io';
 const NOW = Date.parse('2026-10-12T14:37:21Z');
 const TOKEN = 'dGVzdC10b2tlbi1mb3ItdGhlLWluc2lnaHRzLWJvYXJkLTAx';
 const GITHUB_TOKEN = 'github_pat_11SECRETSECRETSECRET_abcdefghijklmnopqrstuvwxyz';

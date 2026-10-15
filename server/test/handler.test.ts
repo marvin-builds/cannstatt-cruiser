@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { handleRequest } from '../src/handler';
 import { FakeD1 } from './d1-fake';
 
-const BASE = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
-const ORIGIN = 'https://marvinmai.github.io';
+const BASE = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
+const ORIGIN = 'https://marvin-builds.github.io';
 const NOW = Date.parse('2026-10-09T12:00:00Z');
 
 const run = { name: 'Flinker Fuchs 42', score: 28507, distance: 4069, duration: 300, version: '2026-10-08.3', device: 'device-0001' };

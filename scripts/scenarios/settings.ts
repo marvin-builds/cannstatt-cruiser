@@ -22,7 +22,7 @@ import { cssPerViewPixel, dismissRotateHint, holdViewWhile, type PlaytestContext
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 
 const settings = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.settings());
 const layout = (t: PlaytestContext) => t.page.evaluate(() => (window as UiWindow).__ui!.layout());

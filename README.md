@@ -4,7 +4,7 @@ A pixel-art endless skate runner through Stuttgart and Bad Cannstatt. Ride along
 past the Wasen and into the city centre, jump over bins, grind benches and ledges, and land a
 kickflip in front of the Riesenrad. The game is available in German and English.
 
-### [▶ Play now: marvinmai.github.io/cannstatt-cruiser](https://marvinmai.github.io/cannstatt-cruiser/)
+### [▶ Play now: marvin-builds.github.io/cannstatt-cruiser](https://marvin-builds.github.io/cannstatt-cruiser/)
 
 It runs in the browser on desktop and phones, and you can install it as an app on your phone
 (fullscreen, works offline).
@@ -73,8 +73,8 @@ On phones, landscape is the play orientation.
 
 The game stores your records on your device. The online list keeps only nickname, score,
 distance, run time and date. Anonymous play statistics (no IP address) can be switched off in
-the game ("Anonyme Statistik"). Details: [Datenschutz](https://marvinmai.github.io/cannstatt-cruiser/datenschutz.html)
-([in English](https://marvinmai.github.io/cannstatt-cruiser/datenschutz.html#en)).
+the game ("Anonyme Statistik"). Details: [Datenschutz](https://marvin-builds.github.io/cannstatt-cruiser/datenschutz.html)
+([in English](https://marvin-builds.github.io/cannstatt-cruiser/datenschutz.html#en)).
 
 ## Development
 

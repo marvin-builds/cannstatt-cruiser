@@ -135,7 +135,7 @@ export default async function datenschutz(t: PlaytestContext): Promise<void> {
     controlled: Boolean(navigator.serviceWorker?.controller),
     scroll: document.documentElement.scrollWidth,
     client: document.documentElement.clientWidth,
-    issues: Boolean(document.querySelector('a[href="https://github.com/marvinmai/cannstatt-cruiser/issues"]')),
+    issues: Boolean(document.querySelector('a[href="https://github.com/marvin-builds/cannstatt-cruiser/issues"]')),
     back: document.querySelector('a.back')?.getAttribute('href'),
     styled: getComputedStyle(document.body).backgroundColor !== 'rgba(0, 0, 0, 0)',
   }));

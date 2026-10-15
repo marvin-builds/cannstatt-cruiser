@@ -19,7 +19,7 @@ import { sampleStats } from '../../src/insights/sample-stats';
 import { ALL_RANGE, STATS_RANGES, type StatsRange } from '../../src/net/telemetry-types';
 import { join, type PlaytestContext } from '../playtest-lib';
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const TOKEN = 'geheim-123';
 
 /** Fake GET /stats and /feedback: 401 for a wrong token, the fixtures for the right one, or a network error. */
