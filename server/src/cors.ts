@@ -4,7 +4,7 @@
  * Authorization, PATCH and DELETE are allowed for the insights board (stats and
  * feedback triage); no credentials.
  */
-const ALLOWED_ORIGIN = /^(https:\/\/marvinmai\.github\.io|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/;
+const ALLOWED_ORIGIN = /^(https:\/\/marvin-builds\.github\.io|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/;
 
 export function isAllowedOrigin(origin: string | null): boolean {
   return origin !== null && ALLOWED_ORIGIN.test(origin);

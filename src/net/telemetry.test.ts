@@ -180,7 +180,7 @@ describe('gate (telemetryBaseUrl)', () => {
   it('blocks other hosts, the dev server and Global Privacy Control', () => {
     expect(telemetryBaseUrl({ ...prod, hostname: 'localhost' })).toBeNull();
     expect(telemetryBaseUrl({ ...prod, hostname: '127.0.0.1' })).toBeNull();
-    expect(telemetryBaseUrl({ ...prod, hostname: 'evil.marvinmai.github.io' })).toBeNull();
+    expect(telemetryBaseUrl({ ...prod, hostname: 'evil.marvin-builds.github.io' })).toBeNull();
     expect(telemetryBaseUrl({ ...prod, dev: true })).toBeNull();
     expect(telemetryBaseUrl({ ...prod, gpc: true })).toBeNull();
   });

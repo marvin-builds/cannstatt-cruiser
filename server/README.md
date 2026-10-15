@@ -4,7 +4,7 @@ Online highscore list, anonymous play statistics and player feedback for the gam
 Cloudflare Worker with a D1 database (free plan). Self-contained: its own `package.json`, `tsconfig.json` and tests;
 the game's root build and tests ignore this folder.
 
-URL after deploy: **https://cannstatt-cruiser-scores.marvinmai.workers.dev**
+URL after deploy: **https://cannstatt-cruiser-scores.marvin-builds.workers.dev**
 
 ## Layout
 
@@ -59,7 +59,7 @@ npx wrangler d1 create cannstatt-cruiser-scores
 # copy the printed database_id into wrangler.toml (replace REPLACE_WITH_D1_DATABASE_ID)
 npx wrangler d1 execute cannstatt-cruiser-scores --remote --file=schema.sql
 npx wrangler deploy
-curl https://cannstatt-cruiser-scores.marvinmai.workers.dev/top   # -> {"entries":[]}
+curl https://cannstatt-cruiser-scores.marvin-builds.workers.dev/top   # -> {"entries":[]}
 ```
 
 Later deploys need only `npx wrangler deploy`. `schema.sql` uses
@@ -89,11 +89,11 @@ need the Wrangler secret `GITHUB_TOKEN`; without it they answer
 it the board shows the last stored states.
 Use a **fine-grained** personal access token that can do nothing else:
 
-1. GitHub (signed in as `marvinmai`) -> Settings -> Developer settings ->
+1. GitHub (signed in as `marvin-builds`) -> Settings -> Developer settings ->
    Personal access tokens -> Fine-grained tokens -> "Generate new token".
 2. Name it e.g. `cannstatt-cruiser-feedback`, pick an expiration (renew it then
-   with the same steps), resource owner `marvinmai`.
-3. Repository access: **Only select repositories** -> `marvinmai/cannstatt-cruiser`.
+   with the same steps), resource owner `marvin-builds`.
+3. Repository access: **Only select repositories** -> `marvin-builds/cannstatt-cruiser`.
 4. Repository permissions: **Issues: Read and write** (Metadata: read-only is
    added automatically). Nothing else.
 5. Generate, copy the token into your password manager, and set it:
@@ -353,7 +353,7 @@ the event is still stored and answered with 204.
 ## API
 
 All responses are JSON (except the empty 204 answers). CORS allows
-`https://marvinmai.github.io` and `http://localhost:*` / `http://127.0.0.1:*`
+`https://marvin-builds.github.io` and `http://localhost:*` / `http://127.0.0.1:*`
 with the methods `GET, POST, PATCH, DELETE, OPTIONS` and the headers `Content-Type,
 Authorization` (no credentials); `OPTIONS` answers the preflight with 204.
 
@@ -569,7 +569,7 @@ and the triage fields `status` (`open`, `todo`, `done`, `rejected`), `issue`
 Issue states (ROADMAP 82): with `GITHUB_TOKEN` set, the request first refreshes
 the stored states of the linked issues, at most once per 60 s
 (`ISSUE_SYNC_INTERVAL_MS`; an attempt counts, so a failing GitHub is not asked on
-every load): one `GET /repos/marvinmai/cannstatt-cruiser/issues?state=all&per_page=100&sort=updated`
+every load): one `GET /repos/marvin-builds/cannstatt-cruiser/issues?state=all&per_page=100&sort=updated`
 (pull requests skipped), and for linked issues not in that answer up to 10
 (`MAX_SINGLE_ISSUE_READS`, never-read ones first) single `GET .../issues/{n}` in
 parallel. `issueState`: `open`; `completed` (closed, any reason but the next);
@@ -631,7 +631,7 @@ is the entry's `id` (a positive integer; anything else is 400). JSON bodies
   2000 chars after trimming (`MAX_ISSUE_ADDITION`, same characters as the body;
   empty means none). The issue text is the body, then, with an addition, a rule
   and a section headed `**Ergänzung des Entwicklers**` (`src/issue-body.ts`), so
-  the developer's words never land inside the player's quote. Creates an issue in `marvinmai/cannstatt-cruiser`
+  the developer's words never land inside the player's quote. Creates an issue in `marvin-builds/cannstatt-cruiser`
   with the labels `feedback` plus the entry's kind (`bug` or `idea`), stores
   its number with the issue state `open` and sets the status to `todo` ("Geplant" on the board) in the same
   request; `reply` (the player message, ROADMAP 83, same rules as in `PATCH`; `""` or `null`

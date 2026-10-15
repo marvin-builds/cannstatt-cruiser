@@ -11,7 +11,7 @@ import { sampleFeedback } from '../../src/insights/sample-feedback';
 import { sampleStats } from '../../src/insights/sample-stats';
 import { join, type PlaytestContext } from '../playtest-lib';
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const TOKEN = 'geheim-123';
 const PASS_KEY = 'cannstatt-cruiser:testerPass';
 const MARKER_KEY = 'cannstatt-cruiser:testDevice';

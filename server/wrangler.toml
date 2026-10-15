@@ -1,5 +1,5 @@
 # Cloudflare Worker for the Cannstatt Cruiser highscore list.
-# URL after deploy: https://cannstatt-cruiser-scores.marvinmai.workers.dev
+# URL after deploy: https://cannstatt-cruiser-scores.marvin-builds.workers.dev
 name = "cannstatt-cruiser-scores"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"

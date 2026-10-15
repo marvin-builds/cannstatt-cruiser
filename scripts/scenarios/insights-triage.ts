@@ -16,7 +16,7 @@ import { sampleStats } from '../../src/insights/sample-stats';
 import type { TriagedFeedbackEntry } from '../../src/insights/triage-types';
 import { join, type PlaytestContext, scenarioBrowser } from '../playtest-lib';
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const TOKEN = 'geheim-123';
 /** Issues the fake GitHub knows for POST /feedback/:id/link; any other number is 'issue-not-found'. */
 const GITHUB_ISSUES: Record<number, Pick<TriagedFeedbackEntry, 'issueState' | 'issueClosedDay'>> = {
@@ -138,7 +138,7 @@ export default async function (t: PlaytestContext) {
       (await issueText(13)) === '#12 · offen' && (await issueText(10)) === '#9 · erledigt am 12.10.' &&
       (await issueText(9)) === '#8 · verworfen am 11.10.' && (await issueText(8)) === '#5 · nicht gefunden',
       [await issueText(13), await issueText(10), await issueText(9), await issueText(8)]);
-    t.check('issue link opens GitHub', (await item(13).locator('a.fb-issue').getAttribute('href')) === 'https://github.com/marvinmai/cannstatt-cruiser/issues/12');
+    t.check('issue link opens GitHub', (await item(13).locator('a.fb-issue').getAttribute('href')) === 'https://github.com/marvin-builds/cannstatt-cruiser/issues/12');
     t.check('bereit zum Abschließen on 10 and 9 only', (await page.locator('.fb-ready').count()) === 2 && (await item(10).locator('.fb-ready').count()) === 1);
     t.check('status badge reads Neu', (await item(14).locator('.fb-status').textContent()) === 'Neu');
 

@@ -19,7 +19,7 @@ import { adultMode, cssPerViewPixel, dismissRotateHint, type PlaytestContext } f
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const FAKE_FEEDBACK = 'https://feedback.example.test';
 
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

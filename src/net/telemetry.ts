@@ -28,7 +28,7 @@ import {
 } from './telemetry-types';
 
 /** The only host whose players send statistics to the live worker (GitHub Pages). */
-export const PRODUCTION_HOST = 'marvinmai.github.io';
+export const PRODUCTION_HOST = 'marvin-builds.github.io';
 
 const OPT_OUT_KEY = 'statsOptOut';
 

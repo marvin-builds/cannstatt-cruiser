@@ -11,7 +11,7 @@ import { sampleFeedback } from '../../src/insights/sample-feedback';
 import { sampleStats } from '../../src/insights/sample-stats';
 import { join, type PlaytestContext } from '../playtest-lib';
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 const TOKEN = 'geheim-123';
 const SESSION = 'v1.1760799441000.ZmFrZS1zZXNzaW9uLXNpZ25hdHVyZS1mb3ItdGhlLWJvYXJk';
 const STORE_KEY = 'cannstatt-cruiser:insightsSession';

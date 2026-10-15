@@ -1037,12 +1037,12 @@ enough for friends and family.
 ### Server (`server/`, owned by the server slice)
 
 - A Cloudflare Worker with a D1 database (free plan), live at
-  `https://cannstatt-cruiser-scores.marvinmai.workers.dev`. Self-contained:
+  `https://cannstatt-cruiser-scores.marvin-builds.workers.dev`. Self-contained:
   own `package.json`, `tsconfig.json` and Vitest tests; the root build and
   `npm test` ignore the folder. Layout, local dev, deploy steps and the full
   API contract: [server/README.md](../server/README.md). Deploys
   (`npx wrangler deploy`) are done by the orchestrator.
-- **API** (JSON, CORS for `https://marvinmai.github.io` and
+- **API** (JSON, CORS for `https://marvin-builds.github.io` and
   `http://localhost:*` / `http://127.0.0.1:*`):
   - `GET /top` -> `200 {entries: [{rank, name, score, distance, date}]}`, top
     20 by score (a tie goes to the earlier entry), cached 30 s. With
@@ -1197,7 +1197,7 @@ hidden page `insights.html` shows aggregates to the owner.
 - **Client** (`src/net/telemetry.ts`, wired in `src/net/browser.ts` and
   `src/ui/index.ts`): pure builders plus a `Telemetry` sender that never
   throws, queues or retries. `telemetryBaseUrl` sends only from
-  `marvinmai.github.io` in a production build and never with Global Privacy
+  `marvin-builds.github.io` in a production build and never with Global Privacy
   Control. `window.__telemetryUrl` sets an explicit endpoint for playtests;
   there is no fallback to the live worker. The setting `statsOptOut`
   ("Anonyme Statistik: AN/AUS" on the Bestenliste screen and in the settings
@@ -1308,7 +1308,7 @@ hidden page `insights.html` shows aggregates to the owner.
 - **Datenschutz page (ROADMAP 47):** `datenschutz.html` (third Vite input,
   static, `src/privacy/privacy.css`) explains in plain German and English what the game
   stores on the device, the online list, the statistics and the rights; the
-  operator is only named as "marvinmai" with GitHub issues as contact. Keep
+  operator is only named as "marvin-builds" with GitHub issues as contact. Keep
   it true when data handling changes. In the game a small "Datenschutz"
   button sits right of the "Anonyme Statistik" switch on the Bestenliste and
   in settings (`privacyLink` rects in `ScoreListLayout`/`SettingsLayout`);
@@ -1438,7 +1438,7 @@ below the screen), and the button grows with the screen height on tablets
   title row) are drawn at 2x. A note too wide at 2x falls back to a shorter
   wording of the same fact (`ui/note-text.ts`).
 - **Net:** `net/feedback.ts` builds and posts the body (text/plain JSON). It
-  goes to the live worker only from `marvinmai.github.io` in a production
+  goes to the live worker only from `marvin-builds.github.io` in a production
   build, else only to `window.__feedbackUrl`; the statistics opt-out and GPC
   do not apply (explicit player action). `browser.ts` makes one session id
   per page load and shares it with the statistics and feedback.
@@ -1463,7 +1463,7 @@ below the screen), and the button grows with the screen height on tablets
 - **Triage (ROADMAP 56):** migration 0007 adds `status`
   (open/todo/done/rejected), `issue` and `reply` (<= 140 characters, for
   ROADMAP 57). Routes behind `STATS_TOKEN` (401 before any DB access):
-  `POST /feedback/:id/issue` creates an issue in `marvinmai/cannstatt-cruiser`
+  `POST /feedback/:id/issue` creates an issue in `marvin-builds/cannstatt-cruiser`
   (labels `feedback` plus `bug` or `idea`) with the title and body the
   operator edited on the board, stores its number and sets `todo` in the same
   request (409 when it already has one; a failed issue leaves the status). An

@@ -22,7 +22,7 @@ function fakeFetch(status: number, body: unknown, calls: Call[] = []): FetchLike
 
 describe('apiBase', () => {
   it('uses the live worker in production, even with ?api=', () => {
-    expect(apiBase({ hostname: 'marvinmai.github.io', search: '?api=https://evil.example' })).toBe(SCORES_URL);
+    expect(apiBase({ hostname: 'marvin-builds.github.io', search: '?api=https://evil.example' })).toBe(SCORES_URL);
   });
   it('honours ?api= on localhost and 127.0.0.1', () => {
     expect(apiBase({ hostname: 'localhost', search: '?api=http://localhost:8787' })).toBe('http://localhost:8787');

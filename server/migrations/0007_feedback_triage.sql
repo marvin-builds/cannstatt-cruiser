@@ -7,7 +7,7 @@
 --   status: open (new, the default for every old row), todo (a GitHub issue was
 --     made or it is planned), done, rejected. Rows with status todo survive the
 --     365-day prune.
---   issue: the number of the GitHub issue in marvinmai/cannstatt-cruiser, or NULL.
+--   issue: the number of the GitHub issue in marvin-builds/cannstatt-cruiser, or NULL.
 --   reply: the operator's short answer for the player (ROADMAP 57), or NULL.
 ALTER TABLE feedback ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'todo', 'done', 'rejected'));
 ALTER TABLE feedback ADD COLUMN issue INTEGER;

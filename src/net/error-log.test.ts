@@ -24,7 +24,7 @@ describe('error log', () => {
 
   it('logs an uncaught error with the file basename and line, never the full URL or query', () => {
     const log = new ErrorLog();
-    log.error('TypeError: x is undefined', 'https://marvinmai.github.io/cannstatt-cruiser/assets/index-abc123.js?v=2#top', 42);
+    log.error('TypeError: x is undefined', 'https://marvin-builds.github.io/cannstatt-cruiser/assets/index-abc123.js?v=2#top', 42);
     expect(log.lines()).toEqual(['error: TypeError: x is undefined (index-abc123.js:42)']);
   });
 

@@ -19,7 +19,7 @@ import type { Rect } from '../../src/types';
 import type { HighscoresDebug, UiDebugHook } from '../../src/ui/debug';
 import { adultMode, dismissRotateHint, Fingers, type PlaytestContext } from '../playtest-lib';
 
-const API = 'https://cannstatt-cruiser-scores.marvinmai.workers.dev';
+const API = 'https://cannstatt-cruiser-scores.marvin-builds.workers.dev';
 type UiWindow = Window & { __ui?: UiDebugHook };
 
 interface FakeEntry {
