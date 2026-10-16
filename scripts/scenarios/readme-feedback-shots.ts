@@ -14,6 +14,8 @@
  * - insights-stats.png, insights-tickets.png: the hidden insights board at
  *   1280 px (Statistik over 30 days; the Feedback tab with tickets in every
  *   state, linked GitHub issues and player replies).
+ * - insights-stats-portrait.png, insights-tickets-portrait.png: the same
+ *   board and data on a phone held upright (full page, CSS pixels).
  *
  *   npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop,phone-portrait --name readme-feedback-shots
  */
