@@ -131,7 +131,7 @@ On a phone the board stacks into one column and groups the charts by week:
 
 | | |
 |:-:|:-:|
-| <img src="docs/screenshots/insights-stats-portrait.png" width="220" alt="The Statistik tab on a phone held upright: tiles in two columns, weekly bar charts, distributions, device split, places, versions and the Bestenliste, all dummy data"> | <img src="docs/screenshots/insights-tickets-portrait.png" width="220" alt="The Feedback tab on a phone held upright with the same six dummy tickets, their actions wrapping onto two lines"> |
+| <img src="docs/screenshots/insights-stats-portrait.png" width="220" alt="The Statistik tab on a phone held upright: tiles in two columns and the weekly bar charts of sessions, runs and new players, all dummy data"> | <img src="docs/screenshots/insights-tickets-portrait.png" width="220" alt="The Feedback tab on a phone held upright with the same six dummy tickets, their actions wrapping onto two lines"> |
 | Statistik on a phone (dummy data) | Feedback tickets on a phone (dummy data) |
 
 ## Privacy

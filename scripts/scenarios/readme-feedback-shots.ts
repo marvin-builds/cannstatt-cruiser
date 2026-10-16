@@ -15,7 +15,8 @@
  *   1280 px (Statistik over 30 days; the Feedback tab with tickets in every
  *   state, linked GitHub issues and player replies).
  * - insights-stats-portrait.png, insights-tickets-portrait.png: the same
- *   board and data on a phone held upright (full page, CSS pixels).
+ *   board and data on a phone held upright (CSS pixels; the Statistik shot
+ *   ends below its second chart).
  *
  *   npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop,phone-portrait --name readme-feedback-shots
  */
@@ -203,12 +204,16 @@ async function boardShots(t: PlaytestContext, portrait: boolean): Promise<void> 
     await page.waitForSelector('.chart');
     await page.click('.segmented button:has-text("30 T")');
     await page.waitForFunction(() => document.querySelector('.segmented button[aria-pressed=true]')?.textContent === '30 T' && document.querySelector('.board')?.getAttribute('aria-busy') === 'false');
-    const shot = async (name: string) => {
+    /** `height` cuts the full page off below that many CSS pixels. */
+    const shot = async (name: string, height?: number) => {
       const file = resolve(OUT_DIR, `${name}${portrait ? '-portrait' : ''}.png`);
-      await page.screenshot({ path: file, fullPage: true, scale: 'css' });
+      const clip = height === undefined ? undefined : { x: 0, y: 0, width: page.viewportSize()!.width, height };
+      await page.screenshot({ path: file, fullPage: true, scale: 'css', clip });
       await checkSize(t, file);
     };
-    await shot('insights-stats');
+    // The phone shot stops below the second chart: the rest repeats the desktop shot one column at a time.
+    const secondChartEnd = () => page.evaluate(() => Math.ceil(document.querySelectorAll('.chart')[1]!.closest('.card')!.getBoundingClientRect().bottom + window.scrollY + 16));
+    await shot('insights-stats', portrait ? await secondChartEnd() : undefined);
 
     await page.click('#tab-feedback');
     await page.click('.chip:has-text("Erledigt")');
