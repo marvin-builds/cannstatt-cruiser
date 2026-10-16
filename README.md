@@ -30,7 +30,7 @@ It runs in the browser on desktop and phones, and you can install it as an app o
 
 | | |
 |:-:|:-:|
-| ![Title screen with the logo and the German controls help](docs/screenshots/title.png) | ![The skater grinds a ledge high above the street in Stuttgart-Mitte, with the Fernsehturm and the Hauptbahnhof tower behind](docs/screenshots/stunt-line.png) |
+| ![Title screen with the logo, the German controls help and a red dot on the feedback button](docs/screenshots/title.png) | ![The skater grinds a ledge high above the street in Stuttgart-Mitte, with the Fernsehturm and the Hauptbahnhof tower behind](docs/screenshots/stunt-line.png) |
 | Title screen with the controls | A stunt line in Stuttgart-Mitte: "Linie x2!" |
 | ![High five at the NorDIY skatepark with a "klatsch" burst and the popup "High Five! +100", the NorDIY container behind](docs/screenshots/nordiy-high-five.png) | ![Kid mode with a pink bubble-gum tint, Wasen visitors carrying a Lebkuchenherz and a Brezel, the Kursaal behind](docs/screenshots/kid-mode.png) |
 | High five at the NorDIY skatepark | Kindermodus: bubble gum and Lebkuchenherz |

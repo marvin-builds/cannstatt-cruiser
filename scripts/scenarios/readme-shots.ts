@@ -8,7 +8,8 @@
  *
  *   npm run playtest -- --scenario scripts/scenarios/readme-shots.ts --viewports desktop,phone-landscape --name readme-shots
  *
- * desktop: title, the online Bestenliste (the worker faked by a Playwright
+ * desktop: title (a sent report whose fake status answer changed, so the
+ * feedback icon wears its red dot), the online Bestenliste (the worker faked by a Playwright
  * route with a fixture of local nicknames; nothing reaches the live list), a
  * stomp at the Wasen, a stunt line grind in Stuttgart-Mitte, the NorDIY high
  * five and kid mode. phone-landscape: a jump at the Neckar with the touch
@@ -24,9 +25,10 @@ import { gapHolds } from '../../src/gameplay/stunt-line';
 import { jumpWindow, stepOf, windowMiddle } from '../../src/gameplay/stunt-sim';
 import { planStomp } from '../../src/gameplay/testing';
 import { SCORES_URL } from '../../src/net/api';
+import type { FeedbackStatusEntry } from '../../src/net/feedback-types';
 import type {} from '../../src/player/debug';
 import type { CarriedItem, Entity, GameState } from '../../src/types';
-import type { UiDebugHook } from '../../src/ui/debug';
+import type { FeedbackDebug, UiDebugHook } from '../../src/ui/debug';
 import { KICKER_HINT_LAUNCHES } from '../../src/ui/kicker-hint';
 import { blinkOn } from '../../src/ui/layout';
 import { adultMode, captureCanvas, ensureDir, nextKicker, onRamp, type PlaytestContext, stepWhile, tapJump } from '../playtest-lib';
@@ -80,6 +82,16 @@ const NICKNAMES = [
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 
+/** The fake feedback endpoint (window.__feedbackUrl): only its status lookup answers. */
+const FAKE_FEEDBACK = 'https://feedback.example.test';
+/** A report this device sent earlier, last seen as open; the fake status answer says it is planned. */
+const SENT_REPORT = {
+  id: 1, key: '1'.padStart(32, 'a'), day: '2026-10-12', kind: 'idea', text: 'Mehr Brezeln auf der Strecke bitte!', version: '2026-10-11.4',
+  platform: 'other', input: 'keys', orientation: 'landscape', viewWidth: 427, log: [],
+  status: 'open', reply: null, doneVersion: null, seen: JSON.stringify(['open', null, null]),
+};
+const SENT_STATUS: FeedbackStatusEntry[] = [{ id: 1, status: 'todo', reply: 'Kommt auf die Liste. Danke!', doneVersion: null }];
+
 /** Saves the view buffer as docs/screenshots/<name>.png and checks its size. */
 async function save(t: PlaytestContext, name: string): Promise<void> {
   const file = resolve(OUT_DIR, `${name}.png`);
@@ -109,16 +121,34 @@ async function routeFakeWorker(t: PlaytestContext): Promise<void> {
   });
 }
 
+/** The fake feedback worker: the status lookup answers SENT_STATUS; nothing is ever posted. */
+async function routeFakeFeedback(t: PlaytestContext): Promise<void> {
+  await t.page.context().addInitScript((url) => ((window as { __feedbackUrl?: string }).__feedbackUrl = url), FAKE_FEEDBACK);
+  await t.page.route(`${FAKE_FEEDBACK}/**`, (route: Route) => {
+    const headers = { 'Access-Control-Allow-Origin': '*' };
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    if (new URL(route.request().url()).pathname === '/feedback/status') return route.fulfill({ status: 200, headers, json: { entries: SENT_STATUS } });
+    return route.abort();
+  });
+}
+
 /**
  * First-time hints a returning player has seen (stored like the ui stores
  * them), so they don't cover the scenes: the air trick, grind trick and item
  * hints and the ramp hint (shown until KICKER_HINT_LAUNCHES launches).
  */
-const SEEN_HINTS: Record<string, unknown> = { airTrickSeen: true, grindTrickSeen: true, itemHintSeen: true, rampLaunches: KICKER_HINT_LAUNCHES };
+const SEEN_HINTS: Record<string, unknown> = {
+  airTrickSeen: true,
+  grindTrickSeen: true,
+  itemHintSeen: true,
+  rampLaunches: KICKER_HINT_LAUNCHES,
+  feedbackSent: [SENT_REPORT],
+};
 
-/** Reloads as a returning adult-mode player with the fake worker in place, the clock frozen. */
+/** Reloads as a returning adult-mode player with the fake workers in place, the clock frozen. */
 async function returningPlayer(t: PlaytestContext): Promise<void> {
   await routeFakeWorker(t);
+  await routeFakeFeedback(t);
   await t.page.evaluate((seen) => {
     for (const [key, value] of Object.entries(seen)) localStorage.setItem(`cannstatt-cruiser:${key}`, JSON.stringify(value));
   }, SEEN_HINTS);
@@ -166,6 +196,12 @@ const carry = (t: PlaytestContext, item: CarriedItem) => t.page.evaluate((i) => 
 /** The title with a lived-in record (highscore and star total). */
 async function titleShot(t: PlaytestContext): Promise<void> {
   await t.page.evaluate(() => (window as UiWindow).__ui!.setRecords(27_450, 386));
+  const dot = async () => ((await t.page.evaluate(() => (window as UiWindow).__ui!.feedback())) as FeedbackDebug).dot;
+  for (let i = 0; i < 40 && !(await dot()); i++) {
+    await t.wait(50);
+    await t.game.step(1);
+  }
+  t.check('title: the feedback icon has its red dot', await dot());
   let s = await t.game.step(30);
   // The start prompt blinks: wait for its on phase.
   for (let i = 0; i < 60 && !blinkOn(s.modeTime); i++) s = await t.game.step(1);
