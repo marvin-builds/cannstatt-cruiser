@@ -90,10 +90,12 @@ screen. "Ansehen" shows exactly what will be sent, and the error log is only att
 player ticks it. "Mein Feedback" then lists what this device sent and what became of it; a red dot
 marks news.
 
-| | |
-|:-:|:-:|
-| ![The in-game feedback dialog with the tabs Neu and Mein Feedback, a bug report being typed, the buttons Ansehen and Senden](docs/screenshots/feedback-form.png) | ![Mein Feedback with four reports in the states Offen, Nicht geplant, Geplant and Umgesetzt, red dots on the changed ones](docs/screenshots/mein-feedback.png) |
-| Writing a bug report | "Mein Feedback": every report with its status |
+| | | |
+|:-:|:-:|:-:|
+| ![The in-game feedback dialog with the tabs Neu and Mein Feedback, a bug report being typed, the buttons Ansehen and Senden](docs/screenshots/feedback-form.png) | ![Mein Feedback with four reports in the states Offen, Nicht geplant, Geplant and Umgesetzt, red dots on the changed ones](docs/screenshots/mein-feedback.png) | ![A done report: "Umgesetzt in Version 2026-10-13.2" with the reply "Ist drin seit Version 2026-10-13.2. Danke für dein Feedback!"](docs/screenshots/feedback-reply.png) |
+| Writing a bug report | "Mein Feedback": every report with its status | A done report with the reply |
+| ![The feedback form on a phone held upright, as a full-height sheet](docs/screenshots/feedback-form-portrait.png) | ![Mein Feedback on a phone held upright, one card per report](docs/screenshots/mein-feedback-portrait.png) | ![The done report with its version and reply on a phone held upright](docs/screenshots/feedback-reply-portrait.png) |
+| On a phone held upright | Every status on the phone | The reply on the phone |
 
 ## Insights board
 
@@ -155,7 +157,7 @@ Regenerate the feedback and insights screenshots (dummy data from a faked worker
 online):
 
 ```sh
-npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop --name readme-feedback-shots
+npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop,phone-portrait --name readme-feedback-shots
 ```
 
 The highscore, statistics and feedback worker lives in [`server/`](server/README.md) with its
