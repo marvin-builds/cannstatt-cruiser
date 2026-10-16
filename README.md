@@ -4,12 +4,27 @@ A pixel-art endless skate runner through Stuttgart and Bad Cannstatt. Ride along
 past the Wasen and into the city centre, jump over bins, grind benches and ledges, and land a
 kickflip in front of the Riesenrad. The game is available in German and English.
 
+It started as a gift: the first idea was a little game for a friend who is known for carrying his
+cruiser skateboard around with him a lot. It grew from there into a small product of its own, with
+an online leaderboard, feedback from inside the game and a private insights board behind it.
+
 ### [▶ Play now: marvin-builds.github.io/cannstatt-cruiser](https://marvin-builds.github.io/cannstatt-cruiser/)
 
 It runs in the browser on desktop and phones, and you can install it as an app on your phone
 (fullscreen, works offline).
 
 ![The skater bounces off a Wasen visitor in front of the Riesenrad, the popup says "Stomp! +130"](docs/screenshots/stomp.png)
+
+## What's in it
+
+| Part | What it does |
+|---|---|
+| **[The game](#highlights)** | The skate runner itself: real Stuttgart places, tricks, items, a kid mode, German and English, desktop and phone |
+| **[Online Bestenliste](#features)** | A shared top 20 with nicknames, checked for plausible scores on the server |
+| **[Feedback in the game](#feedback-from-inside-the-game)** | Players send a bug report or an idea and later see what became of it, without an account |
+| **[Insights board](#insights-board)** | A private dashboard with anonymous play statistics and a ticket system for the feedback, linked to GitHub issues |
+| **[Offline app and privacy](#privacy)** | Installable PWA that works offline; anonymous statistics that players can switch off |
+| **[Releases](#development)** | CI on every push, releases by tag, a "Neu in dieser Version" screen for players |
 
 ## Highlights
 
@@ -64,10 +79,51 @@ On phones, landscape is the play orientation.
   settings (until installed); phones also get it on game over after a good run ("×" snoozes it).
   Without the browser's install dialog it shows the steps (Android menu, iOS "Teilen"). After
   updates a "Neu in dieser Version" screen shows.
-- **Feedback:** send a bug report ("Fehler") or an idea ("Idee") from inside the game (not in kid mode).
-  "Ansehen" shows exactly what will be sent. "Mein Feedback" lists what this device sent and what
-  became of it (planned, done in which version, the reply); a red dot marks news. The texts stay on
-  the device; only each report's id and a random secret key go out to ask for its status.
+- **Feedback:** bug reports and ideas from inside the game (not in kid mode), see
+  [Feedback from inside the game](#feedback-from-inside-the-game). The texts stay on the device;
+  only each report's id and a random secret key go out to ask for its status.
+
+## Feedback from inside the game
+
+Players report a bug ("Fehler") or share an idea ("Idee") right from the pause menu or the title
+screen. "Ansehen" shows exactly what will be sent, and the error log is only attached when the
+player ticks it. "Mein Feedback" then lists what this device sent and what became of it; a red dot
+marks news.
+
+| | |
+|:-:|:-:|
+| ![The in-game feedback dialog with the tabs Neu and Mein Feedback, a bug report being typed, the buttons Ansehen and Senden](docs/screenshots/feedback-form.png) | ![Mein Feedback with four reports in the states Offen, Nicht geplant, Geplant and Umgesetzt, red dots on the changed ones](docs/screenshots/mein-feedback.png) |
+| Writing a bug report | "Mein Feedback": every report with its status |
+
+## Insights board
+
+A hidden page (`insights.html`, never linked from the game, German only) for the owner, unlocked
+with a token. The screenshots below show **dummy data**.
+
+**Statistik:** anonymous aggregates of the play statistics over 7, 30, 90 or 365 days or
+everything: sessions and runs per day, new and returning players, run length, distance and
+points, input, system and kid mode, cities, regions, countries, game versions and the current
+Bestenliste. A switch marks the owner's own devices as test devices so they can be left out.
+
+**Feedback:** every report is a ticket with the status Neu, Geplant, Erledigt or Abgelehnt.
+"Umsetzen" creates a GitHub issue (or links an existing one) and sets the ticket to Geplant; the
+board keeps reading the issue's state from GitHub and offers "Abschließen" once the issue is
+closed. Every step comes with a short, kid-safe reply that the player reads under "Mein Feedback",
+for example "Ist drin seit Version 2026-10-13.2".
+
+```mermaid
+flowchart LR
+  P[Player sends feedback] --> W[(Worker + D1)]
+  W --> B[Insights board: ticket Neu]
+  B -->|Umsetzen| G[GitHub issue]
+  G -->|issue closed| B2[Abschließen: Erledigt in version X]
+  B2 --> M[Player sees it under Mein Feedback]
+```
+
+| | |
+|:-:|:-:|
+| ![The insights board's Statistik tab over 30 days with tiles, bar charts of sessions, runs and new players, distributions, device split, cities and the Bestenliste, all dummy data](docs/screenshots/insights-stats.png) | ![The insights board's Feedback tab with six dummy tickets: two new ones with Umsetzen and Ablehnen, one planned with an open GitHub issue, one ready to close, one done in a version and one rejected, each with its reply to the player](docs/screenshots/insights-tickets.png) |
+| Statistik (30 days, dummy data) | Feedback tickets with GitHub issues (dummy data) |
 
 ## Privacy
 
@@ -89,10 +145,17 @@ npm run preview    # serve the build
 npm run playtest   # Playwright screenshots + state log in playtest-output/
 ```
 
-Regenerate the screenshots in this README (after art changes):
+Regenerate the game screenshots in this README (after art changes):
 
 ```sh
 npm run playtest -- --scenario scripts/scenarios/readme-shots.ts --viewports desktop,phone-landscape --name readme-shots
+```
+
+Regenerate the feedback and insights screenshots (dummy data from a faked worker, nothing goes
+online):
+
+```sh
+npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop --name readme-feedback-shots
 ```
 
 The highscore, statistics and feedback worker lives in [`server/`](server/README.md) with its
