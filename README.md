@@ -108,7 +108,7 @@ Bestenliste. A switch marks the owner's own devices as test devices so they can 
 **Feedback:** every report is a ticket with the status Neu, Geplant, Erledigt or Abgelehnt.
 "Umsetzen" creates a GitHub issue (or links an existing one) and sets the ticket to Geplant; the
 board keeps reading the issue's state from GitHub and offers "Abschließen" once the issue is
-closed. Every step comes with a short, kid-safe reply that the player reads under "Mein Feedback",
+closed. Every step comes with a short reply that the player reads under "Mein Feedback",
 for example "Ist drin seit Version 2026-10-13.2".
 
 ```mermaid
