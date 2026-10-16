@@ -4,14 +4,18 @@
  * worker), so nothing reaches the live worker or GitHub. Saved to
  * docs/screenshots/:
  *
- * - feedback-form.png, mein-feedback.png: the in-game feedback dialog (a bug
- *   report being written; "Mein Feedback" with every status), the view buffer
+ * - feedback-form.png, mein-feedback.png, feedback-reply.png: the in-game
+ *   feedback dialog (a bug report being written; "Mein Feedback" with every
+ *   status; a done report with its version and reply), the view buffer
  *   upscaled x3 like scripts/scenarios/readme-shots.ts.
+ * - feedback-form-portrait.png, mein-feedback-portrait.png,
+ *   feedback-reply-portrait.png: the same on a phone held upright, where the
+ *   dialog is a page sheet (the page in CSS pixels).
  * - insights-stats.png, insights-tickets.png: the hidden insights board at
  *   1280 px (Statistik over 30 days; the Feedback tab with tickets in every
  *   state, linked GitHub issues and player replies).
  *
- *   npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop --name readme-feedback-shots
+ *   npm run playtest -- --scenario scripts/scenarios/readme-feedback-shots.ts --viewports desktop,phone-portrait --name readme-feedback-shots
  */
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -23,7 +27,7 @@ import { SCORES_URL } from '../../src/net/api';
 import type { FeedbackStatusEntry } from '../../src/net/feedback-types';
 import type { Rect } from '../../src/types';
 import type { FeedbackDebug, UiDebugHook } from '../../src/ui/debug';
-import { adultMode, captureCanvas, ensureDir, type PlaytestContext } from '../playtest-lib';
+import { adultMode, captureCanvas, dismissRotateHint, ensureDir, type PlaytestContext } from '../playtest-lib';
 
 type UiWindow = Window & { __ui?: UiDebugHook };
 
@@ -35,6 +39,7 @@ const FAKE_FEEDBACK = 'https://feedback.example.test';
 const TODAY = '2026-10-15';
 const VERSION = '2026-10-15.1';
 const keyOf = (id: number) => `${id}`.padStart(32, 'a');
+const SHEET = '[role=dialog][aria-label="Feedback"]';
 const mid = (r: Rect) => [Math.floor(r.x + r.w / 2), Math.floor(r.y + r.h / 2)] as const;
 
 /** Reports this device sent earlier (oldest first), all last seen as open. */
@@ -105,8 +110,8 @@ async function checkSize(t: PlaytestContext, file: string): Promise<void> {
   t.check(`${file}: under ${MAX_BYTES / 1024} KB`, size < MAX_BYTES, { size });
 }
 
-/** The in-game dialog: "Neu" with a bug report typed in, then "Mein Feedback". */
-async function gameShots(t: PlaytestContext): Promise<void> {
+/** The in-game dialog: "Neu" with a bug report typed in, "Mein Feedback", then the done report with its reply. */
+async function gameShots(t: PlaytestContext, portrait: boolean): Promise<void> {
   const { page } = t;
   await page.context().addInitScript((url) => ((window as { __feedbackUrl?: string }).__feedbackUrl = url), FAKE_FEEDBACK);
   await page.route(`${FAKE_FEEDBACK}/**`, (route: Route) => {
@@ -122,6 +127,17 @@ async function gameShots(t: PlaytestContext): Promise<void> {
     await t.realTapView(...mid(r));
     await t.game.step(3);
   };
+  const sheet = page.locator(SHEET);
+  const sheetTap = async (name: string | RegExp) => {
+    await sheet.getByRole('button', { name, exact: typeof name === 'string' }).tap();
+    await t.game.step(3);
+  };
+  const shot = async (name: string) => {
+    const file = resolve(OUT_DIR, `${name}${portrait ? '-portrait' : ''}.png`);
+    if (portrait) await page.screenshot({ path: file, scale: 'css' });
+    else await captureCanvas(page, file, SCALE);
+    await checkSize(t, file);
+  };
 
   await page.evaluate((reports) => {
     localStorage.setItem('cannstatt-cruiser:feedbackSent', JSON.stringify(reports));
@@ -130,6 +146,7 @@ async function gameShots(t: PlaytestContext): Promise<void> {
   await page.reload();
   await page.waitForFunction(() => Boolean(window.__game));
   await t.game.pause();
+  if (portrait) await dismissRotateHint(t);
   await adultMode(t);
   for (let i = 0; i < 40 && !(await fb())?.dot; i++) {
     await t.wait(50);
@@ -137,20 +154,28 @@ async function gameShots(t: PlaytestContext): Promise<void> {
   }
   t.check('the status answer arrived (red dot)', (await fb()).dot);
 
-  await page.keyboard.press('KeyF');
-  await t.game.step(3);
+  if (portrait) {
+    await tap((await page.evaluate(() => (window as UiWindow).__ui!.layout())).screen?.feedback);
+    await page.locator(`${SHEET} textarea`).tap();
+  } else {
+    await page.keyboard.press('KeyF');
+    await t.game.step(3);
+  }
   await page.keyboard.type('Nach dem Grind hängt das Bild kurz', { delay: 5 });
   await t.game.step(3);
-  const form = resolve(OUT_DIR, 'feedback-form.png');
-  await captureCanvas(page, form, SCALE);
-  await checkSize(t, form);
+  await shot('feedback-form');
 
-  await tap((await fb()).form.mineTab);
-  const state = await fb();
+  if (portrait) await sheetTap('Mein Feedback');
+  else await tap((await fb()).form.mineTab);
+  let state = await fb();
   t.check('Mein Feedback lists the four reports', state.page === 'list' && state.rows.length === SENT.length, state.rows);
-  const mine = resolve(OUT_DIR, 'mein-feedback.png');
-  await captureCanvas(page, mine, SCALE);
-  await checkSize(t, mine);
+  await shot('mein-feedback');
+
+  if (portrait) await sheetTap(/Umgesetzt/);
+  else await tap(state.rowRects[state.rows.findIndex((r) => r.label === 'Umgesetzt')]);
+  state = await fb();
+  t.check('the done report shows its version and reply', state.page === 'detail' && !!state.detail?.reply, state.detail);
+  await shot('feedback-reply');
 }
 
 /** The insights board at 1280 px: Statistik (30 T), then the Feedback tab. */
@@ -193,11 +218,12 @@ async function boardShots(t: PlaytestContext): Promise<void> {
 }
 
 export default async function readmeFeedbackShots(t: PlaytestContext): Promise<void> {
-  if (t.viewport.name !== 'desktop') {
-    await t.log(`readme-feedback-shots: no shots for viewport ${t.viewport.name} (use desktop)`);
+  const portrait = t.viewport.name === 'phone-portrait';
+  if (t.viewport.name !== 'desktop' && !portrait) {
+    await t.log(`readme-feedback-shots: no shots for viewport ${t.viewport.name} (use desktop,phone-portrait)`);
     return;
   }
   await ensureDir(OUT_DIR);
-  await gameShots(t);
-  await boardShots(t);
+  await gameShots(t, portrait);
+  if (!portrait) await boardShots(t);
 }
