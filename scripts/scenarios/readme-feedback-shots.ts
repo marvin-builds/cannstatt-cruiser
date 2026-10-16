@@ -178,10 +178,10 @@ async function gameShots(t: PlaytestContext, portrait: boolean): Promise<void> {
   await shot('feedback-reply');
 }
 
-/** The insights board at 1280 px: Statistik (30 T), then the Feedback tab. */
-async function boardShots(t: PlaytestContext): Promise<void> {
+/** The insights board at 1280 px or on the phone: Statistik (30 T), then the Feedback tab. */
+async function boardShots(t: PlaytestContext, portrait: boolean): Promise<void> {
   const browser = t.page.context().browser()!;
-  const context = await browser.newContext({ ...t.viewport.options, viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+  const context = await browser.newContext({ ...t.viewport.options, ...(portrait ? {} : { viewport: { width: 1280, height: 900 } }), serviceWorkers: 'block' });
   await context.route(`${SCORES_URL}/**`, (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -201,17 +201,18 @@ async function boardShots(t: PlaytestContext): Promise<void> {
     await page.waitForSelector('.chart');
     await page.click('.segmented button:has-text("30 T")');
     await page.waitForFunction(() => document.querySelector('.segmented button[aria-pressed=true]')?.textContent === '30 T' && document.querySelector('.board')?.getAttribute('aria-busy') === 'false');
-    const statsFile = resolve(OUT_DIR, 'insights-stats.png');
-    await page.screenshot({ path: statsFile, fullPage: true });
-    await checkSize(t, statsFile);
+    const shot = async (name: string) => {
+      const file = resolve(OUT_DIR, `${name}${portrait ? '-portrait' : ''}.png`);
+      await page.screenshot({ path: file, fullPage: true, scale: 'css' });
+      await checkSize(t, file);
+    };
+    await shot('insights-stats');
 
     await page.click('#tab-feedback');
     await page.click('.chip:has-text("Erledigt")');
     await page.click('.chip:has-text("Abgelehnt")');
     await page.click('.fb-item[data-id="30"] .fb-log summary');
-    const ticketsFile = resolve(OUT_DIR, 'insights-tickets.png');
-    await page.screenshot({ path: ticketsFile, fullPage: true });
-    await checkSize(t, ticketsFile);
+    await shot('insights-tickets');
   } finally {
     await context.close();
   }
@@ -225,5 +226,5 @@ export default async function readmeFeedbackShots(t: PlaytestContext): Promise<v
   }
   await ensureDir(OUT_DIR);
   await gameShots(t, portrait);
-  if (!portrait) await boardShots(t);
+  await boardShots(t, portrait);
 }

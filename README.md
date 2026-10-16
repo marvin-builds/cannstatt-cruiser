@@ -127,6 +127,13 @@ flowchart LR
 | ![The insights board's Statistik tab over 30 days with tiles, bar charts of sessions, runs and new players, distributions, device split, cities and the Bestenliste, all dummy data](docs/screenshots/insights-stats.png) | ![The insights board's Feedback tab with six dummy tickets: two new ones with Umsetzen and Ablehnen, one planned with an open GitHub issue, one ready to close, one done in a version and one rejected, each with its reply to the player](docs/screenshots/insights-tickets.png) |
 | Statistik (30 days, dummy data) | Feedback tickets with GitHub issues (dummy data) |
 
+On a phone the board stacks into one column and groups the charts by week:
+
+| | |
+|:-:|:-:|
+| <img src="docs/screenshots/insights-stats-portrait.png" width="220" alt="The Statistik tab on a phone held upright: tiles in two columns, weekly bar charts, distributions, device split, places, versions and the Bestenliste, all dummy data"> | <img src="docs/screenshots/insights-tickets-portrait.png" width="220" alt="The Feedback tab on a phone held upright with the same six dummy tickets, their actions wrapping onto two lines"> |
+| Statistik on a phone (dummy data) | Feedback tickets on a phone (dummy data) |
+
 ## Privacy
 
 The game stores your records on your device. The online list keeps only nickname, score,
