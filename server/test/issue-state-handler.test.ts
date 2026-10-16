@@ -40,15 +40,27 @@ const unreachableGitHub: GitHubFetch = async () => {
 const open = (number: number) => ({ number, state: 'open', state_reason: null, closed_at: null });
 const closed = (number: number, reason: string | null, at = '2026-10-12T09:00:00Z') => ({ number, state: 'closed', state_reason: reason, closed_at: at });
 
-/** Advances the fake timers by read timeouts, yielding to real I/O in between, until `pending` settles. */
+/**
+ * Yields to real I/O until `pending` settles, running out each read timeout once it is set. Waits for the timer
+ * instead of a fixed number of turns, since real work before the read (hashing) can take any number of turns.
+ */
 async function afterTimeouts<T>(pending: Promise<T>): Promise<T> {
   let settled = false;
   void pending.finally(() => { settled = true; });
-  for (let round = 0; round < 20 && !settled; round++) {
+  while (!settled) {
     await new Promise((resolve) => setImmediate(resolve));
-    await vi.advanceTimersByTimeAsync(GITHUB_READ_TIMEOUT_MS);
+    if (vi.getTimerCount() > 0) await vi.advanceTimersByTimeAsync(GITHUB_READ_TIMEOUT_MS);
   }
   return pending;
+}
+
+/** Makes hashing take many I/O turns, like the thread pool on a busy CI runner (issue #3). */
+function slowHashing() {
+  const digest = crypto.subtle.digest.bind(crypto.subtle);
+  vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (...args) => {
+    for (let turn = 0; turn < 50; turn++) await new Promise((resolve) => setImmediate(resolve));
+    return digest(...args);
+  });
 }
 
 let db: FakeD1;
@@ -59,6 +71,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function seed({ status = 'open', issue = null as number | null, state = null as string | null, closedDay = null as string | null, reply = null as string | null } = {}): number {
@@ -155,6 +168,7 @@ describe('GET /feedback with issue states (ROADMAP 82)', () => {
 
   it('answers 200 with the cached states when GitHub hangs (after the read timeout)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    slowHashing();
     const a = seed({ status: 'todo', issue: 3, state: 'open' });
     const github = fakeGitHub({ [LIST_URL]: 'hang' });
     const pending = call('GET', '/feedback', { github: github.fetch });
@@ -164,6 +178,7 @@ describe('GET /feedback with issue states (ROADMAP 82)', () => {
 
   it('keeps a state when its single read hangs or fails', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    slowHashing();
     const a = seed({ status: 'todo', issue: 3, state: 'open' });
     const b = seed({ status: 'todo', issue: 4, state: 'completed', closedDay: '2026-10-03' });
     const github = fakeGitHub({ [LIST_URL]: { status: 200, body: [] }, [issueUrl(3)]: 'hang', [issueUrl(4)]: { status: 502, body: {} } });
