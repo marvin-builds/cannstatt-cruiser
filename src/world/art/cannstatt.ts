@@ -245,9 +245,10 @@ const hedge = baseTile(32, GROUND_Y - 8, 8, (p) => {
 });
 
 /**
- * House-local x of the PST flag, hung once per visit (intro) from the
- * right upper window of a Fachwerk house (window x 14-16, rows 19-21, sill
- * row 22 of the 44 px high house).
+ * House-local x of the PST flag, hung from the right upper window of a
+ * Fachwerk house (window x 14-16, rows 19-21, sill row 22 of the 44 px high
+ * house): once per visit (intro) from the second Bad Cannstatt visit of a
+ * run on, while the start leg shows the plain house.
  */
 export const CANNSTATT_FLAG_X = 12;
 
@@ -289,6 +290,8 @@ export function cannstattZone(): ZoneSpec {
             gap: [2, 14],
             fillersBetween: [3, 5],
           },
+          // Every run (and the title) starts here: the flag waits for the second visit.
+          firstVisitIntro: ['fachwerkRow', 'wasen', 'kursaal', 'fachwerkA'],
           startAt: 44,
         },
       },
@@ -304,7 +307,7 @@ export function cannstattZone(): ZoneSpec {
             fillersBetween: [2, 4],
           },
           startAt: 240,
-          // The Litfasssaeule, lamps and trees leave the flag on the house behind uncovered.
+          // The Litfasssaeule, lamps and trees leave the flag on the house behind uncovered (when it is there).
           uncover: { id: 'fachwerkAFlag', ...flagSpan(PST_FLAG, CANNSTATT_FLAG_X) },
         },
       },
