@@ -421,6 +421,15 @@ npm run playtest -- --headed
   drawn and in `state.trafficDensity`, never more than one vehicle, no truck,
   the same height limits) and `state.trafficDensity` 0 after game over. Run
   it on `desktop,phone-landscape,phone-portrait`.
+- `scripts/scenarios/pst-flag.ts` (ROADMAP 89; run it on
+  `desktop,phone-landscape,phone-portrait`): the PST flag in Bad Cannstatt
+  waits for the second visit of a run. Checks the title and the whole first
+  Cannstatt leg for no flag and finds it hanging on the second Cannstatt leg
+  (`new ZoneRoute().boundary(4)`), riding at a pinned `TOP_SPEED` with stepped
+  ticks and `__gameplay.clear()` (no pickup tint), and finding the flag by its
+  exact green and red pixels in `capture(1)`. Shots: title, the plain house
+  on the first visit, the flag on the second visit (look that no street prop
+  covers it).
 - `scripts/scenarios/skater.ts` has the bin crash (`__player.crash('bin')`):
   canvas shots and skater crops of the dive, kicking legs, pop out and the
   tumbling bin, then a normal crash that still throws the skater off. It

@@ -11,6 +11,12 @@ export interface LayerSpec {
   readonly props?: {
     readonly catalogue: Readonly<Record<string, Prop>>;
     readonly stream: StreamConfig;
+    /**
+     * Intro on the zone's first visit since the route was snapped (run
+     * start, title); later visits use `stream.intro`. Lets a prop wait for
+     * the second visit of a run.
+     */
+    readonly firstVisitIntro?: readonly string[];
     /** Screen x of the first prop after a snap (run start, setZone). */
     readonly startAt: number;
     /** Keeps this layer's props off a scene on the layer behind while it passes the screen. */
@@ -131,7 +137,8 @@ export class DepthLayer {
   introX(route: ZoneRoute, k: number, id: string): number | null {
     this.lookup.clear();
     const leg = route.leg(this.depth, k, this.lookup.next());
-    if (!this.specs[leg.zone]!.props?.stream.intro.includes(id)) return null;
+    const props = this.specs[leg.zone]!.props;
+    if (!props || !introOf(props, route, k).includes(id)) return null;
     return this.stream(route, leg).introX(id);
   }
 
@@ -190,7 +197,9 @@ export class DepthLayer {
     const start = leg.index === 0 ? this.restartX + props.startAt : leg.from + into.prop.width - into.seam + GATEWAY_MARGIN;
     const end = leg.to - out.seam - GATEWAY_MARGIN;
     const rng = new Rng(mixSeed(mixSeed(this.seed, this.salt), leg.index));
-    stream = new PropStream(props.stream, (id) => propOf(props.catalogue, id).width, rng);
+    const intro = introOf(props, route, leg.index);
+    const config = intro === props.stream.intro ? props.stream : { ...props.stream, intro };
+    stream = new PropStream(config, (id) => propOf(props.catalogue, id).width, rng);
     stream.restart(start, end);
     if (props.uncover) this.uncover(stream, route, leg.index, props.uncover);
     this.streams.set(leg.index, stream);
@@ -248,6 +257,11 @@ export class SharedLayer {
   warm(): void {
     for (const prop of Object.values(this.props.catalogue)) prop.warm();
   }
+}
+
+/** The intro of route leg `k` for a zone layer's props (see LayerSpec firstVisitIntro). */
+function introOf(props: NonNullable<LayerSpec['props']>, route: ZoneRoute, k: number): readonly string[] {
+  return props.firstVisitIntro && route.firstVisit(k) ? props.firstVisitIntro : props.stream.intro;
 }
 
 function propOf(catalogue: Readonly<Record<string, Prop>>, id: string): Prop {

@@ -90,6 +90,14 @@ export class ZoneRoute {
     return ROUTE_CYCLE[(((this.first + k) % n) + n) % n]!;
   }
 
+  /** True if leg `k` (>= 0) is the first leg of its zone since the last snap (a run's first visit there). */
+  firstVisit(k: number): boolean {
+    const zone = this.zoneOf(k);
+    // Every zone comes back within one route cycle, so looking back one cycle is enough.
+    for (let j = Math.max(0, k - ROUTE_CYCLE.length); j < k; j++) if (this.zoneOf(j) === zone) return false;
+    return true;
+  }
+
   /** Leg whose gateway the player has passed at `distance`. */
   legAt(distance: number): number {
     return distance < this.firstBoundary ? 0 : Math.floor((distance - this.firstBoundary) / this.length) + 1;
