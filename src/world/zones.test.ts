@@ -184,3 +184,18 @@ describe('ZoneRoute snap', () => {
     expect(route.zoneOf(1)).toBe(1);
   });
 });
+
+describe('ZoneRoute first visits', () => {
+  it('marks only the first leg of each zone since the snap as its first visit', () => {
+    const route = new ZoneRoute();
+    // Cannstatt, Neckar, Mitte, Neckar, Cannstatt, Neckar, Mitte, Neckar, Cannstatt
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => route.firstVisit(k))).toEqual([true, true, true, false, false, false, false, false, false]);
+  });
+
+  it('starts counting again from the snapped leg', () => {
+    const route = new ZoneRoute();
+    route.snap(1, 5000);
+    // Neckar, Mitte, Neckar, Cannstatt, Neckar, Mitte, Neckar, Cannstatt
+    expect([0, 1, 2, 3, 7].map((k) => route.firstVisit(k))).toEqual([true, true, false, true, false]);
+  });
+});

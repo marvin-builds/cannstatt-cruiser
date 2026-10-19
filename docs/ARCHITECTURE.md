@@ -40,7 +40,7 @@ src/core/               engine pieces (foundation-owned, slices only import from
   install.ts            InstallController, detectInstallEnvironment(): state.install, beforeinstallprompt (see Install hint)
   app.ts                startApp(systems): wires everything in the browser, registers ./sw.js and its message listener, watchForUpdates()
 src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in index.ts); notable shared-contract modules:
-  world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances (see Zones)
+  world/zones.ts        ZoneRoute: START_ZONE, ROUTE_CYCLE, gateway distances, firstVisit(k) (see Zones)
   world/art/gateways.ts gateway landmarks per crossing, looked up by from / to zone
   world/traffic.ts      foreground street traffic: dense in Stuttgart-Mitte, light elsewhere (LIGHT_TRAFFIC); LANES (kinds / lightKinds), VEHICLES, TRAFFIC_TOP / FRONT_TOP / EXHAUST_TOP, trafficDensity(), mitteShare() (see Mitte traffic)
   world/art/traffic.ts  vehicle and exhaust art: drawBackTraffic (world layer), drawFrontTraffic (fx layer), smog haze
@@ -678,6 +678,10 @@ each other along the street; there is no time-based cycle.
   leg k (leg 0 = the start zone, leg k begins at gateway k). A snap to the
   Neckar continues towards Mitte. Playtests use `new ZoneRoute().zoneOf(k)`
   instead of hard-coding the order.
+- **First visits:** `ZoneRoute.firstVisit(k)` is true for the first leg of
+  each zone since the last snap (leg 0, then the first Neckar and the first
+  Mitte leg of a run). A layer can show a different intro there
+  (`LayerSpec.props.firstVisitIntro`, see [Flags](#flags)).
 - Every zone lasts `ZONE_LENGTH` (3584 px) of ground distance. The point where
   one zone hands over to the next is a **gateway** (a landmark), aligned to
   the paving grid (`SEAM_GRID`).
@@ -836,12 +840,22 @@ the tall Mitte terrace (`housesBFlag`, `MITTE_FLAG_X`).
   a `Prop` with `flag` set to the flag's name. The flagged house is only in
   its layer's stream `intro`, never in the fillers or landmarks (those use
   the plain house), so each flag shows once per visit of its zone.
+- **PST only from the second Bad Cannstatt visit of a run**: every run and
+  the title start in Bad Cannstatt, so its mid layer sets
+  `firstVisitIntro` to the same intro with the plain `fachwerkA` house. The
+  start leg (title, run start, any snap to Cannstatt) shows no PST flag; it
+  hangs once per visit from the second visit on (Cannstatt -> Neckar -> Mitte
+  -> Neckar -> Cannstatt). `DepthLayer` picks the intro per leg
+  (`ZoneRoute.firstVisit(k)`). The trans flag in Mitte hangs on every visit.
 - **Never covered**: the near layer of the zone keeps the flag clear with
   `LayerSpec.props.uncover = {id, ...flagSpan(flag, dx)}` (the flag, its
   sway and wall shadow in house-local x), the same mechanism as the
   Mombachquelle, so the street props (Litfaßsäule, lamps, trees) never pass in
-  front of it.
-- Tests: `world/art/flags.test.ts`, `world/art/flags-placement.test.ts`.
+  front of it. It only applies on legs whose intro has the flagged house
+  (`DepthLayer.introX` is null otherwise).
+- Tests: `world/art/flags.test.ts`, `world/art/flags-placement.test.ts`
+  (incl. a whole run of nine legs through `DepthLayer`: flags per leg and no
+  near prop over a flag on screen); playtest `scripts/scenarios/pst-flag.ts`.
 
 ## Menu screens (ui)
 

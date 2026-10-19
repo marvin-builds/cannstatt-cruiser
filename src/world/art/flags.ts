@@ -91,7 +91,8 @@ const WALL_SHADOW = 'rgba(40, 30, 20, 0.22)';
  * sits at (`dx`, `top`) in the house prop's own pixels, where the prop is
  * `houseH` high and stands on the ground. Each flag hangs only once per zone
  * visit: put the flagged house in its layer's intro, never in the fillers or
- * landmarks (those use the plain house).
+ * landmarks (those use the plain house); a `firstVisitIntro` with the plain
+ * house holds it back until the zone's second visit of a run.
  */
 export function withFlag(house: Prop, houseH: number, flag: FlagSpec, dx: number, top: number): Prop {
   const frames = Array.from({ length: FLAG_FRAMES }, (_, f) =>
