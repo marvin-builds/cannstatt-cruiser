@@ -22,6 +22,8 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 
 ## Rules
 
+Git workflow: pull requests
+
 - **Ownership:** each slice edits only its own directory (`src/player`, `src/world`,
   `src/gameplay`, `src/ui` + `src/net`, `src/audio` + `public/` + `.github/`, `server/`). Never touch
   `src/main.ts`, `src/core/` or `src/types.ts` from a slice; report needed contract changes instead.
@@ -32,7 +34,7 @@ Vite + TypeScript + Canvas and no engine. The UI text is German.
 - **TDD:** for logic (physics, rules, state, parsing) write the failing Vitest test first.
   Check visual changes with `npm run playtest` and look at the PNGs.
 - **No commits by agents:** do not run `git add/commit/stash/reset` or anything that rewrites
-  history; the orchestrator commits. Work is linear on `main`.
+  history; the orchestrator commits.
 - Use `ctx.rng` for gameplay randomness (deterministic tests), never `Math.random`.
 - Draw at integer coordinates into the view buffer: 180 high, **width adaptive (320-427)**. Never
   assume 320: use `display.viewWidth` for full-width fills, right-anchored UI and spawning off the
@@ -51,13 +53,14 @@ When the user asks to continue (or resumes work on this game), always work in or
   `.claude/workflows/skate-slice-wave.js` (args `{spec, slices: [{name, owns[], brief, acceptance[]}]}`):
   one implementer per slice, then a combined Sonnet reviewer/play-tester, with at most 2 fix rounds.
 - Before committing, the orchestrator checks `npm test` and `npm run build`, looks at the key
-  playtest screenshots itself, and then commits one commit per slice on `main` (linear history)
-  and pushes (the user allowed pushing after each verified slice).
-- Pushing `main` only runs CI (`.github/workflows/ci.yml`); the game goes live only from a release tag.
+  playtest screenshots itself, and then commits one commit per slice on that slice's branch
+  (started from `origin/main`), pushes the branch and opens a pull request (the user allowed
+  pushing after each verified slice). Before the merge the branch is rebased onto `origin/main`.
+- Pushing or merging into `main` only runs CI (`.github/workflows/ci.yml`); the game goes live only from a release tag.
   A release: add a new entry to `src/changelog.ts` (next `YYYY-MM-DD.n` version, at most 6 short kid-safe
   German items that fit 40 characters; players who saw an older version get the "Neu in dieser Version"
   screen from it; its `en` lines give one English line per German item, same 40-character and kid-safe limits), deploy the worker first if `server/` changed (backup, migrations, `npx wrangler deploy`),
-  then push `main` and the tag `v<version>` (`git tag v2026-10-11.3 && git push origin v2026-10-11.3`).
+  merge its pull request, then push the tag `v<version>` on the merged `main` (`git tag v2026-10-11.3 && git push origin v2026-10-11.3`).
   `deploy.yml` refuses a tag that is not `v` + the newest changelog version.
 - New user wishes go into `docs/ROADMAP.md` (backlog and status checkpoint) first. They are briefed to the next fitting slice,
   never patched into a slice that is already running.
