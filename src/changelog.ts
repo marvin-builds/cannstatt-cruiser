@@ -25,6 +25,12 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-19.1',
+    date: '2026-10-19',
+    items: ['Kleine Verbesserungen in Bad Cannstatt'],
+    en: ['Small improvements in Bad Cannstatt'],
+  },
+  {
     version: '2026-10-15.1',
     date: '2026-10-15',
     items: ['Neue Adresse: marvin-builds.github.io'],
