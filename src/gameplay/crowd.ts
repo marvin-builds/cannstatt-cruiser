@@ -40,6 +40,12 @@
  * Kid mode: crowds come too (the street is no less fun), but the smaller
  * row of CROWD_HEADS.kid: four heads is the least that still needs two
  * bounces (three can be crossed with one stomp at every speed).
+ *
+ * The thrown football (GitHub issue #11) knocks over the front of a crowd,
+ * up to three fans from close by (ball-knock.ts): what still stands is
+ * crossed like a shorter crowd, and only counts that leave a human take-off
+ * window to its first standing head fall (else the ball drops in front of
+ * the crowd and it stays as planned here).
  */
 import type { Rng } from '../core/rng';
 import type { ObstacleKind } from '../types';

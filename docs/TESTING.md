@@ -266,7 +266,8 @@ g.endRun();                                     // game-over screen now
   the street busy during effects (see ARCHITECTURE, Effect street).
 - `src/gameplay/test-kit.ts` (Vitest only): `quietGame(speed)` (player +
   gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
-  `place(game, kind, rect)`, `record(game, event)` and `playBot(game, ticks)`.
+  `place(game, kind, rect)`, `record(game, event)`, `playBot(game, ticks)` and
+  `layPattern(game, pattern, originX)` (lays a planned pattern, e.g. a crowd).
 - `Solver` (`solver.ts`) takes a speed or a `Pace`: `constantPace(speed,
   CHILL_JUMP_SCALE)` checks a course with the chill jump. `{stomps: true}`
   allows landing on heads (with the bounce); `takeoffWindow(holds)` is the
@@ -610,6 +611,11 @@ npm run playtest -- --headed
   logic itself has unit tests in `src/core/sw.test.ts` (sw.js in a vm with
   fake caches, network and clients).
 
+- `scripts/scenarios/ball-crowd.ts` (ROADMAP 90, `desktop,phone-landscape`):
+  a football thrown at a VfB and a Wasen crowd from close (three fans fall,
+  front to back, merged "Treffer! +150 x3") and from far (one falls), their
+  items dropping (Lebkuchenherzen in kid mode, never beer), and the rest of
+  the crowd crossed without a crash.
 - `scripts/scenarios/audio-always-on.ts` (ROADMAP 63, all viewports; first
   input is a key on `desktop`, a click on `laptop`, a touch on phones): the
   AudioContext ends `running` with a non-zero master gain

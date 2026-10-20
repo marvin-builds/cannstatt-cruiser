@@ -1,11 +1,12 @@
 /**
  * The thrown football (entity kind 'ball'): it leaves the skater's hands
  * flying forward in a flat arc. If it reaches a person (VfB fan, Wasen
- * visitor), the person tumbles like after a stomp (knockOver), gameplay
- * scores BALL_HIT_POINTS, emits obstacleCleared and ballHit for the person
- * (same tick), and the ball drops away. A fan crowd (crowd.ts) blocks it:
- * the ball drops in front of the first fan it reaches and nobody falls
- * (the crowd is planned as a full row of heads to bounce on). If it lands without a hit, the
+ * visitor), the person tumbles like after a stomp, scores BALL_HIT_POINTS
+ * and emits obstacleCleared and ballHit (ball-knock.ts knockDown), and the
+ * ball drops away. At a fan crowd (crowd.ts) it knocks over the front fans,
+ * more from close by, as many as leave the rest fair (ball-knock.ts
+ * knockCrowd); when none may fall, it drops in front of the first fan. If it
+ * lands without a hit, the
  * seeded gameplay rng decides (RICOCHET_CHANCE) whether it ricochets back:
  * a low, bouncing ball rolling at the skater that knocks him off the board
  * (a normal crash of kind 'ball') unless he jumps over it or is
@@ -21,13 +22,14 @@
  */
 import { GROUND_Y, PLAYER_X } from '../core/config';
 import type { Entity, GameContext, ObstacleKind, Rect } from '../types';
+import { knockCrowd, knockDown, toppleDue } from './ball-knock';
 import { hitBoxInto, isPerson } from './catalogue';
 import { crowdOf } from './crowd-tag';
 import { crashInto } from './health';
 import { overlaps } from './rules';
-import { addPoints } from './scoring';
-import { knockOver } from './stomp';
 import type { Point } from './toss';
+
+export { BALL_HIT_POINTS } from './ball-knock';
 
 /** Width and height of the ball (the football sprite). */
 export const BALL_SIZE = 5;
@@ -36,8 +38,6 @@ const THROW_VX = 200;
 /** Upward start speed of the throw (px/s, negative = up): a flat arc that stays at body height. */
 const THROW_VY = -75;
 const BALL_GRAVITY = 380;
-/** Points for hitting a person (times the multiplier). */
-export const BALL_HIT_POINTS = 150;
 /** Chance that a missed ball ricochets back (if the street allows it). */
 const RICOCHET_CHANCE = 0.5;
 /** Street speed of the ricochet towards the skater (px/s). */
@@ -67,7 +67,7 @@ export function newBall(id: number, hands: Point, speed: number): Entity {
     w: BALL_SIZE,
     h: BALL_SIZE,
     done: false,
-    data: { phase: 'fly', vx: speed + THROW_VX, vy: THROW_VY },
+    data: { phase: 'fly', vx: speed + THROW_VX, vy: THROW_VY, flown: 0 },
   };
 }
 
@@ -83,8 +83,9 @@ export function ricochetRoom(ballX: number, speed: number): [number, number] {
   return [PLAYER_X - room + shift, PLAYER_X + room + shift];
 }
 
-/** Moves every ball one tick (after the scroll) and resolves its hits. */
+/** Moves every ball one tick (after the scroll) and resolves its hits, also the crowd fans still to fall. */
 export function updateBalls(ctx: GameContext, dt: number, streetFree: StreetCheck): void {
+  toppleDue(ctx);
   const entities = ctx.state.entities;
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i]!;
@@ -102,6 +103,7 @@ function stepBall(ctx: GameContext, ball: Entity, dt: number, streetFree: Street
   if (grounded) ball.y = GROUND_Y - ball.h;
   switch (d.phase as BallPhase) {
     case 'fly':
+      d.flown = (d.flown as number) + vx * dt;
       if (!hitPerson(ctx, ball) && grounded) land(ctx, ball, streetFree);
       return;
     case 'back':
@@ -119,24 +121,26 @@ function stepBall(ctx: GameContext, ball: Entity, dt: number, streetFree: Street
 
 const personBox: Rect = { x: 0, y: 0, w: 0, h: 0 };
 
-/** A flying ball reaching a person knocks them over; the ball drops where it is. */
+/**
+ * A flying ball reaching a person knocks them over (at a crowd: its front,
+ * see knockCrowd); the ball drops where it is. A crowd catches it at any
+ * height (raised arms, the flag): a ball over the heads never knocks a hole
+ * into the row behind its front.
+ */
 function hitPerson(ctx: GameContext, ball: Entity): boolean {
-  const { state } = ctx;
-  const entities = state.entities;
+  const entities = ctx.state.entities;
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i]!;
-    if (e.done || !isPerson(e.kind) || !overlaps(ball, hitBoxInto(e as Entity & { kind: ObstacleKind }, personBox))) continue;
+    if (e.done || !isPerson(e.kind)) continue;
+    hitBoxInto(e as Entity & { kind: ObstacleKind }, personBox);
     if (crowdOf(e)) {
-      // Blocked: it drops straight down in front of the fan.
-      ball.x = personBox.x - ball.w;
-      rollAway(ball, 0, Math.max(0, ball.data!.vy as number));
-      return true;
+      personBox.h += personBox.y;
+      personBox.y = 0;
     }
-    knockOver(e, state.time);
-    const points = addPoints(state, ctx.bus, BALL_HIT_POINTS);
-    // Scored like a clear, in the same tick, so the ui merges both into one popup.
-    ctx.bus.emit('obstacleCleared', { entityId: e.id, kind: e.kind, points });
-    ctx.bus.emit('ballHit', { entityId: e.id, kind: e.kind });
+    if (!overlaps(ball, personBox)) continue;
+    if (!crowdOf(e)) knockDown(ctx, e);
+    // Blocked by a crowd where nobody may fall: it drops in front of the first fan, not into the crowd.
+    else if (knockCrowd(ctx, e, ball.data!.flown as number) === 0) ball.x = Math.min(ball.x, personBox.x - ball.w);
     rollAway(ball, 0, Math.max(0, ball.data!.vy as number));
     return true;
   }
