@@ -57,7 +57,8 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/stomp-bot.ts test tooling: stomp window per scene (stompWindow, humanStomp) and rideStomping runs
   gameplay/use.ts       the use button: drink / eat / throw the carried item (DRUNK_DURATION, EAT_BONUS_POINTS)
   gameplay/auto-drink.ts  a carried Maßkrug is drunk by itself after BEER_AUTO_DRINK (6 s)
-  gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom), BALL_HIT_POINTS
+  gameplay/ball.ts      the thrown football entity: hits, ricochet (ricochetRoom)
+  gameplay/ball-knock.ts a ball reaching a fan crowd: how many front fans fall (throwForce, knockCount), the domino, BALL_HIT_POINTS
   gameplay/drop.ts      DroppedItems: the item a ball hit knocks onto the street, lying there until picked up (see Dropped items)
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
   gameplay/stunts.ts    StuntLines: kicker launches and the line tracker (stuntStep / stuntEnd, STUNT_POINTS, STUNT_LINE_BONUS, DEFAULT_LEDGE_HEIGHT)
@@ -1677,8 +1678,20 @@ Contract between gameplay, player, ui and audio (types in `src/types.ts`,
     (`ricochetRoom(ballX, speed)`), and **never while drunk**
     (`drunkTimer > 0`). Otherwise it rolls away harmlessly. The ricochet hops
     low (one jump clears it) and crashes the skater (kind `'ball'`, -1
-    health) unless he jumps over it or is invulnerable. A fan crowd blocks
-    the ball: it drops in front of the first fan and nobody falls.
+    health) unless he jumps over it or is invulnerable. A fan crowd catches
+    the ball at any height and its front falls (`ball-knock.ts`, ROADMAP 90,
+    issue #11): `throwForce` wants 3 fans when the ball has flown up to
+    `CLOSE_THROW` (70 px), 2 up to `FAR_THROW` (120 px), else 1
+    (`KNOCK_MOST` 3). They fall front to back `KNOCK_STAGGER_SECONDS` (0.08 s)
+    apart (`data.fallsAt`), are harmless (done) from the hit on, and each
+    scores `BALL_HIT_POINTS`, emits `obstacleCleared` + `ballHit` and drops
+    its item (drop.ts). Fairness (`knockCount`): the first head still standing
+    must be at least `REACT_SECONDS` (0.2) + `KNOCK_LEAD_SECONDS` (0.5) of
+    riding ahead of the skater, counted from his latest possible landing when
+    airborne; if the wanted count is not fair more fall (up to 3), if none is
+    fair nobody falls. Nobody falls while he grinds or is still above a
+    standing fan in front of the one the ball reached. Only the front of the
+    row ever falls, so a bounce never drops into a gap.
 - **UI**: "Stomp!" on the stomp, then a big popup per item above the raised
   item (`ui/item-look.ts`): "Ball geschnappt!", "Brezel!",
   "Prost!", "Lebkuchenherz!"; kid mode never shows "Prost!". The player
@@ -1769,7 +1782,7 @@ jump is a bonus, never needed). Running into it is a normal person crash.
   it in the real game.
 - **Bot:** `testing.ts` `planJump` plans with stomps on while a crowd is
   ahead, so the HumanBot jumps onto the heads and bounces across.
-- **Items:** crowds block the thrown ball (see Stomp and carried items);
+- **Items:** the thrown ball knocks over the front of a crowd (see Stomp and carried items);
   Wasen fans toss a Lebkuchenherz when stomped, in every mode.
 - **Announcement:** `crowd-watch.ts` emits `crowdAhead {theme}` once per
   crowd when its first fan comes on screen; the ui shows "VfB-Fans!" or

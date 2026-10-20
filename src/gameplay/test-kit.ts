@@ -7,7 +7,8 @@ import { createPlayerTestGame, tick } from '../player/testing';
 import type { Entity, EntityKind, GameEvents, ObstacleKind, Rect } from '../types';
 import { obstacleRect } from './catalogue';
 import { createGameplaySystem } from './index';
-import { type Motion, withMotion } from './motion';
+import { type Motion, motionOf, withMotion } from './motion';
+import type { Pattern } from './patterns';
 import { SolverBot } from './testing';
 
 export function record<K extends keyof GameEvents>(game: Game, name: K): GameEvents[K][] {
@@ -37,6 +38,17 @@ export function obstacle(game: Game, kind: ObstacleKind, x: number, motion?: Mot
   const e = place(game, kind, obstacleRect(kind, x));
   if (motion) withMotion(e, motion, x);
   return e;
+}
+
+/** Lays `pattern`'s pieces like the spawner does, its origin at screen x `originX`; returns the entities. */
+export function layPattern(game: Game, pattern: Pattern, originX: number): Entity[] {
+  return pattern.pieces.map((p) => {
+    const e: Entity = { ...p, data: { ...p.data }, id: nextId++, x: originX + p.x, done: false };
+    const motion = motionOf(e);
+    if (motion) withMotion(e, motion, e.x);
+    game.state.entities.push(e);
+    return e;
+  });
 }
 
 /** Lets the solver bot play (jumping and ducking) for up to `ticks` ticks or until `done`. */
