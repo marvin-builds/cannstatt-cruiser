@@ -25,6 +25,20 @@ export const WHATS_NEW_MAX_ENTRIES = 10;
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '2026-10-21.1',
+    date: '2026-10-21',
+    items: [
+      'Punkte für jeden Grind werden angezeigt',
+      'Der Ball wirft Fans in der Menge um',
+      'Ton läuft jetzt auch in Firefox',
+    ],
+    en: [
+      'Points for every grind pop up',
+      'The ball knocks over fans in a crowd',
+      'Sound now works in Firefox too',
+    ],
+  },
+  {
     version: '2026-10-19.1',
     date: '2026-10-19',
     items: ['Kleine Verbesserungen in Bad Cannstatt'],
