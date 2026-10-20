@@ -466,6 +466,62 @@ describe('WebAudio backend: sound stays on while unmuted (ROADMAP 63)', () => {
     expect(ctx.state).toBe('running');
   });
 
+  /**
+   * Firefox (ROADMAP 91): a context created or resumed without user activation stays suspended
+   * and its resume() promise neither resolves nor rejects; once the page may play, the next
+   * resume() starts it and every waiting promise resolves together.
+   */
+  function firefoxBlocked() {
+    const ctx = new FakeContext('suspended');
+    let allowed = false;
+    const waiting: (() => void)[] = [];
+    ctx.resume = () => {
+      ctx.resumes++;
+      const promise = new Promise<void>((resolve) => waiting.push(resolve));
+      if (allowed) {
+        ctx.setState('running');
+        for (const resolve of waiting.splice(0)) resolve();
+      }
+      return promise;
+    };
+    const backend = createWebAudioBackend(() => ctx as unknown as AudioContext);
+    return { ctx, backend, allow: () => (allowed = true) };
+  }
+
+  it('retries a resume that never settles (Firefox autoplay block) once the page may play', async () => {
+    vi.useFakeTimers();
+    const { ctx, backend, allow } = firefoxBlocked();
+    backend.unlock(); // e.g. Shift or Esc: no user activation in Firefox
+    await vi.advanceTimersByTimeAsync(100);
+    expect(ctx.state).toBe('suspended');
+    // The page gets activation from an input the audio system does not hear (a DOM field stops it).
+    allow();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(ctx.state).toBe('running');
+    expect(backend.masterGain?.()).toBe(MASTER_GAIN);
+  });
+
+  it('starts a blocked Firefox context on the next activating gesture, with the gain from the button', async () => {
+    const { ctx, backend, allow } = firefoxBlocked();
+    backend.unlock();
+    ctx.master!.gain.value = 0;
+    allow();
+    ctx.currentTime = 2;
+    backend.unlock();
+    await flush();
+    expect(ctx.state).toBe('running');
+    expect(backend.masterGain?.()).toBe(MASTER_GAIN);
+  });
+
+  it('stops retrying once the context runs', async () => {
+    vi.useFakeTimers();
+    const { ctx, backend, allow } = firefoxBlocked();
+    allow();
+    backend.unlock();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(ctx.resumes).toBe(1);
+  });
+
   it('plays the waiting cue when the context starts running on its own while resume hangs', () => {
     const ctx = new FakeContext('suspended');
     ctx.resume = () => new Promise(() => {});

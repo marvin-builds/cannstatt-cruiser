@@ -615,8 +615,11 @@ npm run playtest -- --headed
   AudioContext ends `running` with a non-zero master gain
   (`window.__audio.gain()`), mute and unmute, a context suspended from
   outside comes back without toggling mute, a hidden then visible tab keeps
-  the sound. Page scripts are passed as strings on purpose (tsx adds a
-  `__name` helper that breaks functions run in the page).
+  the sound. On `desktop` it also starts the game in Playwright Firefox with
+  Web Audio autoplay blocked (ROADMAP 91): a first key without user
+  activation then Space, Esc then Space, a click and Enter each end with the
+  context `running` and the gain matching the button. Page scripts are
+  passed as strings on purpose (tsx adds a `__name` helper that breaks functions run in the page).
 - `scripts/scenarios/head-jump.ts` (ROADMAP 60, `desktop,phone-landscape`):
   the plain stomp bounce, a tap and a full hold off the same head (apex
   heights in the log, the high arc photographed at its apex) and a buffered

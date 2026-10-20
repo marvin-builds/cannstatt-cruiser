@@ -513,3 +513,7 @@ The USER tested v2026-10-12.3 (board tabs, chips, buttons in Firefox, delete and
 ## User wishes 2026-10-19: Cannstatt's first visit
 
 89. **Plain houses on the first Cannstatt visit (USER 2026-10-19):** the start leg of a run (and the title) shows the plain `fachwerkA` house in the mid layer's intro; the flagged house hangs once per visit from the second Bad Cannstatt visit of a run on, still never covered. Owner: `src/world`.
+
+## GitHub issues 2026-10-20 (#11, #6, from player feedback)
+
+91. **Sound silent at start again, in Firefox (GitHub issue #6, after the fix of 63):** a player on a laptop with Firefox (keyboard, v2026-10-15.1) once started a game without sound while the speaker button showed it on; muting and unmuting fixed it. Find the remaining path with Playwright Firefox (its autoplay policy, a first gesture that does not count as user activation such as a modifier key or Escape, a `resume()` promise that stays pending instead of rejecting, so no retry starts, a context created before activation) and fix it test-first so the sound always matches the button; extend `scripts/scenarios/audio-always-on.ts` with a Firefox run. Owner: `src/audio`.
