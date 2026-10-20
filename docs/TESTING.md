@@ -268,6 +268,9 @@ g.endRun();                                     // game-over screen now
   gameplay, spawner off, speed pinned), `obstacle(game, kind, x, motion?)`,
   `place(game, kind, rect)`, `record(game, event)`, `playBot(game, ticks)` and
   `layPattern(game, pattern, originX)` (lays a planned pattern, e.g. a crowd).
+- `src/gameplay/grind-bot.ts` (Vitest only): `bestGrindJump` finds a street
+  jump onto a rail or bench by trial in a quiet game; `GrindBot` presses
+  only for those jumps (grind-only play, ROADMAP 92).
 - `Solver` (`solver.ts`) takes a speed or a `Pace`: `constantPace(speed,
   CHILL_JUMP_SCALE)` checks a course with the chill jump. `{stomps: true}`
   allows landing on heads (with the bounce); `takeoffWindow(holds)` is the
@@ -284,6 +287,7 @@ g.endRun();                                     // game-over screen now
 |---|---|
 | `window.__gameplay.place(kind, x, variant?, prop?)` | puts `kind` with its left edge at screen x and returns its id: any obstacle (`'banner'`, `'bench'`, ...), people (`'vfbFan'`, `'wasenGuest'`, moving with their middle motion; `variant` 1 = Dirndl; `prop` 0 = Maßkrug, in kid mode Lebkuchenherz, 1 = Brezel) or `'joint'` (drawn as the bubble gum when `state.kidMode`) |
 | `window.__gameplay.place('kicker' \| 'ledge', x, variant?)` | stunt pieces with their left edge at screen x, forming one line: a kicker starts a new line (launching for a `DEFAULT_LEDGE_HEIGHT` ledge), a ledge (`DEFAULT_LEDGE_HEIGHT` up, 100 px long, the zone's look, `variant` 1 = its second look) joins the line placed last. A ledge's entity `y` is its grind surface. Place a line's pieces together: a line whose next piece is missing ends at once. Used by `scripts/scenarios/stunts.ts` |
+| `window.__gameplay.rail(kind, x, height, length)` / `keepFree(x, length)` | `rail` places a `'handrail'` or `'pipe'` with its left edge at screen x and returns its id; `keepFree` keeps the street from screen x on free of spawned patterns for `length` px. Used by `scripts/scenarios/grind-points.ts` |
 | `window.__gameplay.stuntLine(x, seed?)` | places a whole designed stunt line (`stunt-line.ts`) for the current speed and zone with its first kicker at screen x; returns the entity ids (stars included) |
 | `window.__gameplay.stunts()` | the running stunt line `{line, steps, made, multiplier, points}` (points so far, without the line bonus) or null (read-only) |
 | `window.__gameplay.park(offset?, seed?)` / `parkPlan()` | plans the NorDIY park for the current speed with its start `offset` run distance ahead of the skater (default: just beyond the widest view's right edge; `seed` default 1), puts it into `state.park` and lays its kickers, ledges and the `highFiver`, removing what stood there; returns the plan. The speed ramp does not pause for it (pin the speed with `setSpeed`). `parkPlan()` reads `state.park`. Used by `scripts/scenarios/nordiy.ts`, which falls back to riding Bad Cannstatt until the spawner plans a park if the hook is missing |
@@ -446,6 +450,9 @@ npm run playtest -- --headed
   drunk for ~`DRUNK_DURATION`, and every entity that comes onto the street
   from the catch on is from an easy pattern (no people, overhead obstacles
   or rails).
+- `scripts/scenarios/grind-points.ts` (ROADMAP 92, `desktop,phone-landscape`):
+  a rail and a bench ground without other scoring: the score rises every
+  grind tick, and a '+N' popup shows each grind's total at its end.
 - `scripts/scenarios/drop.ts` (gameplay dropped items, run it on
   `desktop,phone-landscape,phone-portrait`): the football hits a Wasen
   visitor and the Brezel falls (shots while falling and lying on the street,

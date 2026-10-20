@@ -4,14 +4,15 @@
  * street, see the dropped items (they are no entities, so window.__game
  * misses them) and the running stunt line, plan a NorDIY park right ahead,
  * lay a named spawn pattern (the combos, a wave, the e-scooter, the pigeons,
- * a fan crowd; in kid mode as kid mode plans them), see which patterns the spawner laid
- * and start a run further down the street.
- * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts, combos.ts and fan-crowd.ts.
+ * a fan crowd; in kid mode as kid mode plans them), put a rail of any size
+ * there and keep a stretch free of spawned patterns, see which patterns the
+ * spawner laid and start a run further down the street.
+ * See scripts/scenarios/ducking.ts, chill.ts, people.ts, drop.ts, stunts.ts, nordiy.ts, combos.ts, fan-crowd.ts and grind-points.ts.
  */
 import { PLAYER_X, VIEW_MAX_W } from '../core/config';
 import { Rng } from '../core/rng';
-import type { CarriedItem, Entity, GameContext, ObstacleKind, ParkPlan, Rect, StuntKind } from '../types';
-import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect } from './catalogue';
+import type { CarriedItem, Entity, GameContext, ObstacleKind, ParkPlan, RailKind, Rect, StuntKind } from '../types';
+import { jointRect, kickerRect, ledgeRect, OBSTACLES, obstacleRect, railRect } from './catalogue';
 import type { DroppedItems } from './drop';
 import type { LaidPattern } from './pattern-log';
 import { motionOf, withMotion } from './motion';
@@ -45,6 +46,10 @@ export interface GameplayDebugHook {
    * zone's second look) joins the line placed last. A ledge's y is its grind surface.
    */
   place(kind: PlaceableKind, x: number, variant?: number, prop?: number): number;
+  /** Places a rail with its left edge at screen x, its top `height` px above the street and `length` px long; returns its id. */
+  rail(kind: RailKind, x: number, height: number, length: number): number;
+  /** Keeps the street from screen x on for `length` px free of spawned patterns (what is already laid there stays). */
+  keepFree(x: number, length: number): void;
   /**
    * Places a whole designed stunt line (stunt-line.ts) for the current speed
    * and zone with its first kicker at screen x; returns the entity ids
@@ -144,6 +149,15 @@ export function installGameplayDebug(
       if (motion) withMotion(e, { walk: mid(motion.walk), sway: mid(motion.sway), phase: 0 }, x);
       ctx.state.entities.push(e);
       return id;
+    },
+    rail(kind, x, height, length) {
+      const e: Entity = { id: nextId++, kind, ...railRect(x, height, length), done: false };
+      ctx.state.entities.push(e);
+      return e.id;
+    },
+    keepFree(x, length) {
+      const start = ctx.state.distance + (x - PLAYER_X);
+      reserve(start, start + length, ctx.state.distance);
     },
     stuntLine(x, seed = 1) {
       const steps = planStuntLine(new Rng(seed), [ctx.state.speed], ctx.state.zoneIndex, nextLine--);

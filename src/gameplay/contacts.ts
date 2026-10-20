@@ -19,6 +19,7 @@ import { crashInto } from './health';
 import { updatePigeons } from './pigeons';
 import { feetOf, LEDGE_FRONT_REACH, landsOnHighLedge, landsOnLedge, landsOnRail, overlaps, pastLedge, stompReach } from './rules';
 import { addPoints, addTrick } from './scoring';
+import type { GrindScore } from './grind-score';
 import type { StarArcs } from './star-arcs';
 import { stompPeople } from './stomp';
 
@@ -28,10 +29,10 @@ export function isLive(e: Entity): boolean {
 
 /**
  * `ledgesReachable`: a launch got the skater up to the stunt ledges (ROADMAP 61, stunts.ts); else he passes in front of them.
- * `stars` scores the stars taken.
+ * `stars` scores the stars taken, `grinds` sums the landing points into the grind's total.
  */
-export function resolveContacts(ctx: GameContext, ledgesReachable: boolean, stars: StarArcs): void {
-  landOnRails(ctx, ledgesReachable);
+export function resolveContacts(ctx: GameContext, ledgesReachable: boolean, stars: StarArcs, grinds: GrindScore): void {
+  landOnRails(ctx, ledgesReachable, grinds);
   stompPeople(ctx);
   checkObstacles(ctx);
   collectStars(ctx, stars);
@@ -42,7 +43,7 @@ export function resolveContacts(ctx: GameContext, ledgesReachable: boolean, star
 const box: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const swallowed: Entity[] = [];
 
-function landOnRails(ctx: GameContext, ledgesReachable: boolean): void {
+function landOnRails(ctx: GameContext, ledgesReachable: boolean, grinds: GrindScore): void {
   const f = feetOf(ctx.state.player);
   const entities = ctx.state.entities;
   for (let i = 0; i < entities.length; i++) {
@@ -50,7 +51,7 @@ function landOnRails(ctx: GameContext, ledgesReachable: boolean): void {
     if (!isLive(e) || !isGrindable(e.kind) || e.done) continue;
     if (!(isRail(e.kind) ? landsOnRail(f, e) : isLedge(e.kind) ? ledgesReachable && landsOnHighLedge(f, e) : landsOnLedge(f, e))) continue;
     ctx.bus.emit('grindStart', { entityId: e.id });
-    if (ctx.state.player.grinding) addTrick(ctx.state, ctx.bus, GRIND_LANDING_POINTS);
+    if (ctx.state.player.grinding) grinds.landed(addTrick(ctx.state, ctx.bus, GRIND_LANDING_POINTS));
     return;
   }
 }
