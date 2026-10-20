@@ -70,8 +70,10 @@ describe('grindable bench', () => {
       expect(bench.y).toBe(GROUND_Y - OBSTACLES.bench.h);
       playBot(game, 120);
       expect(crashes).toEqual([]);
-      // Grind landing = trick 1, the bench passed = trick 2.
-      expect(clears).toEqual([{ entityId: bench.id, kind: 'bench', points: OBSTACLES.bench.points * 2 }]);
+      // Grind landing = trick 1, the bench passed = trick 2; the grind's own "+N" (grind-score.ts) is the other event.
+      const passed = clears.filter((c) => c.points === OBSTACLES.bench.points * 2);
+      expect(passed).toEqual([{ entityId: bench.id, kind: 'bench', points: OBSTACLES.bench.points * 2 }]);
+      expect(clears).toHaveLength(2);
     });
   }
 

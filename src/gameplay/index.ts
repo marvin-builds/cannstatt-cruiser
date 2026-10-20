@@ -10,8 +10,8 @@
  * tossed item (stomp.ts, items.ts, toss.ts, item-art.ts), using the carried
  * item (use.ts: drink, eat, throw the ball, ball.ts; a Maßkrug kept too
  * long is drunk by itself, auto-drink.ts), the item a person hit by the
- * ball drops onto the street for the skater to pick up (drop.ts), grind tricks
- * (grind-trick.ts) and air tricks (air-trick.ts, with the repetition fade,
+ * ball drops onto the street for the skater to pick up (drop.ts), grind points
+ * with a "+N" per grind (grind-score.ts), grind tricks (grind-trick.ts) and air tricks (air-trick.ts, with the repetition fade,
  * flip-fade.ts, and the late-flip bail, bail.ts), the human margins for every take-off, around people and
  * while drunk (fairness.ts), score/combo (scoring.ts) and the stunt lines:
  * kickers, ledges of the upper level and their combo (stunt-line.ts plans
@@ -37,7 +37,7 @@ import { AirTrickScore } from './air-trick';
 import { AutoDrink } from './auto-drink';
 import { bail, duckLanding, landedLate } from './bail';
 import { newBall, updateBalls } from './ball';
-import { GRIND_POINTS, isLedge, isObstacle, isRail } from './catalogue';
+import { isLedge, isObstacle, isRail } from './catalogue';
 import { chillSpeedFactor, countDownChill } from './chill';
 import { ComboGrace } from './combo-grace';
 import { isLive, resolveContacts } from './contacts';
@@ -45,6 +45,7 @@ import { CrowdWatch } from './crowd-watch';
 import { AdaptiveDensity } from './density';
 import { installGameplayDebug } from './debug';
 import { speedAt } from './difficulty';
+import { GrindScore } from './grind-score';
 import { GrindTrick } from './grind-trick';
 import { isPigeons } from './hazards';
 import { DroppedItems } from './drop';
@@ -113,6 +114,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
   const toss = new ItemToss();
   const drops = new DroppedItems();
   const trick = new GrindTrick();
+  const grinds = new GrindScore();
   const autoDrink = new AutoDrink();
   const stunts = new StuntLines();
   const airTrick = new AirTrickScore(() => stunts.multiplier());
@@ -223,6 +225,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         toss.reset();
         drops.reset();
         trick.reset();
+        grinds.reset();
         autoDrink.reset();
         stunts.reset();
         airTrick.reset();
@@ -255,12 +258,16 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       ctx.bus.on('grindStart', (e) => {
         trick.grindStarted(ctx, e.entityId);
         if (!ctx.state.player.grinding) return;
+        grinds.started(ctx, e.entityId);
         airTrick.touchedDown();
         airTrick.refresh();
         const ledge = ctx.state.entities.find((s) => s.id === e.entityId);
         if (ledge && isLedge(ledge.kind)) stunts.made(ctx, ledge);
       });
-      ctx.bus.on('grindEnd', (e) => stunts.grindEnded(e.entityId));
+      ctx.bus.on('grindEnd', (e) => {
+        stunts.grindEnded(e.entityId);
+        grinds.ended(ctx, e.entityId);
+      });
       ctx.bus.on('jump', () => {
         stunts.jumped(ctx.state);
         airTrick.tookOff();
@@ -295,7 +302,10 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
         stunts.crashed(ctx);
         airTrick.drop();
       });
-      ctx.bus.on('obstacleCleared', () => airTrick.cleared());
+      // A grind's "+N" (grind-score.ts) goes out as obstacleCleared too, but clears nothing.
+      ctx.bus.on('obstacleCleared', () => {
+        if (!grinds.announcing) airTrick.cleared();
+      });
       ctx.bus.on('highFive', () => {
         airTrick.refresh();
         missions.count(ctx, 'highFive');
@@ -325,7 +335,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       scroll(ctx, dx);
       comboGrace.update(ctx, dt);
       crowds.update(ctx);
-      if (state.player.grinding) addPoints(state, ctx.bus, GRIND_POINTS);
+      grinds.update(ctx);
       trick.update(ctx);
       airTrick.update(ctx, dt);
       useCarriedItem(ctx, ballThrower, autoDrink.due(state));
@@ -334,7 +344,7 @@ export function createGameplaySystem(options: GameplayOptions = {}): System {
       // Before the contacts, so an item tossed by this tick's stomp starts flying next tick.
       catchItem(ctx, toss.update(handsOf(ctx), dt));
       if (state.player.state !== 'crash') catchItem(ctx, drops.pickUp(state.player.hitbox));
-      resolveContacts(ctx, stunts.ledgesReachable(), starArcs);
+      resolveContacts(ctx, stunts.ledgesReachable(), starArcs, grinds);
       stunts.update(ctx);
       airTrick.settle(ctx);
       session.update(ctx);

@@ -61,6 +61,7 @@ src/player/ world/ gameplay/ audio/ ui/   feature slices (one factory each in in
   gameplay/ball-knock.ts a ball reaching a fan crowd: how many front fans fall (throwForce, knockCount), the domino, BALL_HIT_POINTS
   gameplay/drop.ts      DroppedItems: the item a ball hit knocks onto the street, lying there until picked up (see Dropped items)
   gameplay/grind-trick.ts  grind trick scoring (GRIND_TRICK_POINTS per tick), emits grindTrick
+  gameplay/grind-score.ts  GrindScore: sums a rail or bench grind's points (landing + GRIND_POINTS per tick) and pays them out as one '+N' at its end (ROADMAP 92)
   gameplay/stunts.ts    StuntLines: kicker launches and the line tracker (stuntStep / stuntEnd, STUNT_POINTS, STUNT_LINE_BONUS, DEFAULT_LEDGE_HEIGHT)
   gameplay/stunt-line.ts  designed stunt lines (kickers, ledges, gaps, star trail) checked with stunt-sim.ts
   gameplay/air-trick.ts AirTrickScore: scores player.airTrick on the next clean touchdown (AIR_TRICK_POINTS launch / STREET_AIR_TRICK_POINTS street kickflip over an obstacle / EMPTY_AIR_TRICK_POINTS into empty air), emits airTrick
@@ -382,7 +383,7 @@ the canvas never starts or resumes a run behind them. (Suggested later: move the
 | `grindStart` | `{entityId}` | gameplay |
 | `grindEnd` | `{entityId, ticks}` | gameplay |
 | `grindTrick` | `{entityId, ticks, points}` | gameplay (a [grind trick](#grind-trick) ended while still on the rail or bench) |
-| `obstacleCleared` | `{entityId, kind, points}` | gameplay |
+| `obstacleCleared` | `{entityId, kind, points}` | gameplay; also at the end of a rail or bench grind with the grind's total, so the ui shows '+N' (`grind-score.ts`, ROADMAP 92): a bench grind emits it twice for the same entity (grind total, then the pass clear), stunt ledges never, grind trick points not included |
 | `crash` | `{entityId, kind, health}` | gameplay (kind `'bin'`: the skater is stuck in the bin, see [Bin crash](#bin-crash); kind `'bail'` with `entityId` -1: a kickflip still turning on the landing, see [Air trick](#air-trick); the ui shows "Zu wacklig!" (drunk), "Zu entspannt!" (chilled) or "Zu spät geflippt!" instead of "Autsch!", audio a board clatter) |
 | `starCollected` | `{entityId, stars}` | gameplay (followed in the same tick by the star's `scoreChanged`, and for a completed arc by the bonus's `scoreChanged` and `starArc`, see `gameplay/star-arcs.ts`) |
 | `starArc` | `{stars, points}` | gameplay (every star of an arc taken in one flight; emitted right after the arc bonus's `scoreChanged`; `stars` = the arc's star count, `points` = the bonus added, times the multiplier; the ui shows "Sternenbogen! +points") |
