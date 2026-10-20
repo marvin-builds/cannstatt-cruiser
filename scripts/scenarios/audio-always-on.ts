@@ -6,10 +6,18 @@
  * mute. The first input is a key on `desktop`, a mouse click on `laptop` and a
  * touch on the phone viewports (read from `window.__audio`, no real sound).
  *
+ * On `desktop` it also starts the game in Playwright Firefox with Web Audio
+ * autoplay blocked (ROADMAP 91), once per first gesture: a key that grants no
+ * user activation (like Shift or Esc in Firefox) and then Space, a click, and
+ * Enter. Each must end with the context running and the gain from the speaker
+ * button, without toggling mute. Firefox: `npx playwright install firefox`.
+ *
  *   npm run playtest -- --scenario scripts/scenarios/audio-always-on.ts --name audio-always-on
  */
+import { firefox, type Page } from 'playwright';
 import type { AudioDebug } from '../../src/audio/debug';
-import { dismissRotateHint, type PlaytestContext } from '../playtest-lib';
+import { MASTER_GAIN } from '../../src/audio/sounds';
+import { blockLiveWorkerEverywhere, dismissRotateHint, join, type PlaytestContext } from '../playtest-lib';
 
 type AudioWindow = Window & { __audio?: AudioDebug; __contexts?: AudioContext[] };
 
@@ -96,4 +104,81 @@ export default async function audioAlwaysOn(t: PlaytestContext): Promise<void> {
   t.check('visibility return keeps sound on', on(visible), visible);
   await t.log('end', { back, visible });
   await t.canvasShot('end');
+
+  if (t.viewport.name === 'desktop') await firefoxStarts(t);
 }
+
+/** Firefox prefs of a strict autoplay policy: Web Audio waits for (sticky) user activation. */
+const FIREFOX_AUTOPLAY_BLOCKED = { 'media.autoplay.default': 1, 'media.autoplay.block-webaudio': true, 'media.autoplay.blocking_policy': 0 };
+
+interface FirstGesture {
+  name: string;
+  /** A key the page dispatches itself first: an untrusted event grants no user activation, like Shift or Esc in Firefox. */
+  inactiveKey?: string;
+  /** The real input after it. */
+  press(page: Page): Promise<void>;
+}
+
+const FIREFOX_STARTS: FirstGesture[] = [
+  { name: 'shift-then-space', inactiveKey: 'ShiftLeft', press: (page) => page.keyboard.press('Space') },
+  { name: 'escape-then-space', inactiveKey: 'Escape', press: (page) => page.keyboard.press('Space') },
+  { name: 'click', press: (page) => page.mouse.click(640, 360) },
+  { name: 'enter', press: (page) => page.keyboard.press('Enter') },
+];
+
+/**
+ * Runs in the page before the game (a string, so the bundler's name helpers stay out of the page):
+ * dispatches the inactive key once the game is up and notes the audio status long after the
+ * timed resume retries. No page.evaluate may run before the real input, since Playwright's
+ * evaluate gives the page user activation.
+ */
+const firefoxProbe = (inactiveKey: string | null) => `(() => {
+  window.__probe = [];
+  const key = ${JSON.stringify(inactiveKey)};
+  if (!key) return;
+  const fire = () => {
+    if (!window.__game) return void setTimeout(fire, 50);
+    for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: key, key }));
+    setTimeout(() => window.__probe.push(window.__audio.status() + ' hasBeenActive=' + navigator.userActivation.hasBeenActive), 1500);
+  };
+  setTimeout(fire, 300);
+})()`;
+
+async function firefoxStarts(t: PlaytestContext): Promise<void> {
+  const browser = await firefox.launch({ firefoxUserPrefs: FIREFOX_AUTOPLAY_BLOCKED });
+  blockLiveWorkerEverywhere(browser);
+  try {
+    for (const start of FIREFOX_STARTS) {
+      const context = await browser.newContext({ locale: 'de-DE', viewport: { width: 1280, height: 720 } });
+      const page = await context.newPage();
+      await page.addInitScript(firefoxProbe(start.inactiveKey ?? null));
+      await page.goto(t.page.url());
+      await page.waitForTimeout(3000);
+      await start.press(page);
+      await page.waitForTimeout(600);
+      const after = await firefoxAudio(page);
+      // The inactive key created the context, but Firefox kept it suspended (its resume never settled).
+      const blocked = start.inactiveKey ? after.probe[0] : null;
+      if (start.inactiveKey) t.check(`firefox ${start.name}: blocked before the real input`, blocked === 'suspended hasBeenActive=false', after.probe);
+      const ok = after.status === 'running' && !after.muted && Math.abs((after.gain ?? 0) - MASTER_GAIN) < 0.01;
+      t.check(`firefox ${start.name}: context running, gain matches the speaker button`, ok, after);
+      await t.log(`firefox ${start.name}`, { blocked, after });
+      await page.screenshot({ path: join(t.outDir, `firefox-${start.name}.png`) });
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+const firefoxAudio = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as AudioWindow & { __probe?: string[] };
+    const a = w.__audio;
+    return {
+      status: a?.status() ?? 'missing',
+      gain: a?.gain() ?? null,
+      muted: window.__game?.state().muted ?? null,
+      probe: w.__probe ?? [],
+    };
+  });

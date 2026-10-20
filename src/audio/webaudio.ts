@@ -3,9 +3,11 @@
  * user gesture (autoplay policies). Whenever it is not running (suspended,
  * interrupted on iOS Safari, stopped by the browser) it is resumed on every
  * gesture, on visibility return (wake), when the browser changes its state and
- * a few times after a rejected resume (ROADMAP 63). The master gain always
- * follows the mute flag: it is set from it again on every gesture, wake and
- * return to running, so no fade leftover keeps the game silent. Cues played
+ * a few times on a timer while it still does not run (ROADMAP 63); a resume
+ * promise may reject or, in Firefox while autoplay blocks it, never settle
+ * (ROADMAP 91). The master gain always follows the mute flag: it is set from
+ * it again on every gesture, wake and return to running, so no fade leftover
+ * keeps the game silent. Cues played
  * while the context is resuming wait (see PendingCues) and play once it runs,
  * if still fresh. Missing or failing WebAudio leaves the backend silent;
  * nothing here throws.
@@ -40,7 +42,7 @@ interface RunningLoop {
 const SILENT = 0.0001;
 /** A cue waiting for the context to resume is dropped this many ms after its start time (it would sound late). */
 const PENDING_MAX_AGE_MS = 250;
-/** Wait before trying a rejected resume again, and how often (a gesture or wake starts a new round). */
+/** Wait before trying a resume again while the context still does not run, and how often (a gesture or wake starts a new round). */
 const RESUME_RETRY_MS = 400;
 const RESUME_RETRIES = 3;
 /** Time constant (s) of the mute fade, and how long (s) a fade is left alone before the gain is set outright. */
@@ -411,7 +413,11 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
     playPending();
   }
 
-  /** Resumes a context that is not running; a rejected resume is retried a few times. */
+  /**
+   * Resumes a context that is not running and checks again a little later: a resume that was
+   * rejected (Chrome, Safari) or never settles (Firefox while autoplay blocks it, ROADMAP 91)
+   * is retried a few times, so it starts once the page may play even without another gesture.
+   */
   function resume(): void {
     const ctx = ac;
     if (!ctx || ctx.state === 'running') return;
@@ -419,9 +425,10 @@ export function createWebAudioBackend(factory: ContextFactory = browserContext):
       () =>
         void ctx.resume().then(
           () => ctx.state === 'running' && started(),
-          () => scheduleRetry(),
+          () => {},
         ),
     );
+    scheduleRetry();
   }
 
   function scheduleRetry(): void {
